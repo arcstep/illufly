@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "langchain-chinese"
+version = "0.1.0"
+description = "prepare some firendly tool for Chinese LLMs and langchain"
+authors = ["arcstep <43801@qq.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
