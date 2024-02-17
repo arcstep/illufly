@@ -1,3 +1,14 @@
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.language_models.chat_models import (
+    BaseChatModel,
+    generate_from_stream,
+)
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+
+from typing import Any, Dict, Iterator, List, Optional, cast
+from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
+
 class ZhipuAIChat(BaseChatModel):
     """支持最新的智谱API"""
 
