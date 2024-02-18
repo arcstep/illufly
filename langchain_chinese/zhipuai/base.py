@@ -41,7 +41,7 @@ class ZhipuAIChat(BaseChatModel):
         """Get the namespace of the langchain object."""
         return ["langchain", "chat_models", "ZhipuAI"]
     
-    client: ZhipuAI = None
+    client: Any = None
     """访问智谱AI的客户端"""
 
     model: str = Field(default="glm-3-turbo", alias="model_name")
