@@ -18,16 +18,19 @@ OpenAI 的大模型在引领潮流的同时，中国国内也涌现了很多优�
 
 智谱AI的V4版本通用大模型所有参数都支持了，但还需要做其他的工作：
 
-- 支持异步方法
-- 支持智谱的Tool回调
-- 支持事件流的callback
-- 支持内置的search工具
-- 支持内置的检索工具
-- 支持图片生成能力
-- 支持调用中的异常
-- 提供便利的bind_tools方法
-- 提供基于Tool调用的Agent
-- ...
+[x] 支持所有参数设置
+[x] 支持同步方法
+[ ] 支持异步方法
+[x] 支持流方法
+[x] 支持智谱的Tool回调
+[ ] 支持事件流的callback
+[x] 支持内置的search工具
+[x] 支持内置的检索工具
+[ ] 支持图片生成能力
+[ ] 支持调用中的异常
+[ ] 提供便利的bind_tools方法
+[ ] 提供基于Tool调用的Agent
+[ ] ...
 
 有计划，但尚未支持的模型：
 
@@ -66,4 +69,42 @@ AIMessage(content='好的，我来给您讲一个幽默的笑话：\n\n有一天
 ### stream
 ```python
 llm.invoke("讲个笑话来听吧")
+```
+
+### 使用工具
+```python
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "query_train_info",
+            "description": "根据用户提供的信息，查询对应的车次",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "departure": {
+                        "type": "string",
+                        "description": "出发城市或车站",
+                    },
+                    "destination": {
+                        "type": "string",
+                        "description": "目的地城市或车站",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "要查询的车次日期",
+                    },
+                },
+                "required": ["departure", "destination", "date"],
+            },
+        }
+    }
+]
+
+llm = ChatZhipuAI().bind(tools=tools)
+llm.invoke("你能帮我查询2024年1月1日从北京南站到上海的火车票吗？")
+```
+
+```python
+RunnableBinding(bound=ChatZhipuAI(client=<zhipuai._client.ZhipuAI object at 0x11014fc40>), kwargs={'tools': [{'type': 'function', 'function': {'name': 'query_train_info', 'description': '根据用户提供的信息，查询对应的车次', 'parameters': {'type': 'object', 'properties': {'departure': {'type': 'string', 'description': '出发城市或车站'}, 'destination': {'type': 'string', 'description': '目的地城市或车站'}, 'date': {'type': 'string', 'description': '要查询的车次日期'}}, 'required': ['departure', 'destination', 'date']}}}]})
 ```
