@@ -1,0 +1,1 @@
+from langchain_chinese.zhipuai.base import ZhipuAIChat
