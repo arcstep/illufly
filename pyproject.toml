@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "langchain_chinese"
-version = "0.1.4"
+version = "0.1.5"
 description = "prepare some firendly tool for Chinese LLMs and langchain"
 authors = ["arcstep <43801@qq.com>"]
 homepage = "https://github.com/arcstep/langchain_chinese"
@@ -18,6 +18,10 @@ poetry2setup = "^1.1.0"
 python-dotenv = "^1.0.1"
 langchain = "^0.1.7"
 ipykernel = "^6.29.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.1"
+zhipuai = "^2.0.1"
 
 [build-system]
 requires = ["poetry-core"]

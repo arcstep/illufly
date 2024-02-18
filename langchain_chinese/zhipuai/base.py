@@ -3,13 +3,116 @@ from langchain_core.language_models.chat_models import (
     BaseChatModel,
     generate_from_stream,
 )
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    BaseMessageChunk,
+    HumanMessage,
+    HumanMessageChunk,
+    ToolMessage,
+    ToolMessageChunk,
+    SystemMessage,
+    SystemMessageChunk,
+    ChatMessage,
+    ChatMessageChunk,
+)
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
-from typing import Any, Dict, Iterator, List, Optional, cast
+from typing import Type, Any, Mapping, Dict, Iterator, List, Optional, cast
+
 from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
 
-class ZhipuAIChat(BaseChatModel):
+def _convert_dict_to_message(_dict: Mapping[str, Any]) -> BaseMessage:
+    """Convert a dictionary to a LangChain message.
+
+    Args:
+        _dict: The dictionary.
+
+    Returns:
+        The LangChain message.
+    """
+    role = _dict.get("role")
+    if role == "user":
+        return HumanMessage(content=_dict.get("content", ""))
+    elif role == "assistant":
+        # Fix for azure
+        # Also OpenAI returns None for tool invocations
+        content = _dict.get("content", "") or ""
+        additional_kwargs: Dict = {}
+        if tool_calls := _dict.get("tool_calls"):
+            additional_kwargs["tool_calls"] = tool_calls
+        return AIMessage(content=content, additional_kwargs=additional_kwargs)
+    elif role == "system":
+        return SystemMessage(content=_dict.get("content", ""))
+    elif role == "tool":
+        additional_kwargs = {}
+        return ToolMessage(
+            content=_dict.get("content", ""),
+            tool_call_id=_dict.get("tool_call_id"),
+            additional_kwargs=additional_kwargs,
+        )
+    else:
+        return ChatMessage(content=_dict.get("content", ""), role=role)
+
+def _convert_message_to_dict(message: BaseMessage) -> dict:
+    """Convert a LangChain message to a dictionary.
+
+    Args:
+        message: The LangChain message.
+
+    Returns:
+        The dictionary.
+    """
+    message_dict: Dict[str, Any]
+    if isinstance(message, ChatMessage):
+        message_dict = {"role": message.role, "content": message.content}
+    elif isinstance(message, HumanMessage):
+        message_dict = {"role": "user", "content": message.content}
+    elif isinstance(message, AIMessage):
+        message_dict = {"role": "assistant", "content": message.content}
+        if "tool_calls" in message.additional_kwargs:
+            message_dict["tool_calls"] = message.additional_kwargs["tool_calls"]
+            # If tool calls only, content is None not empty string
+            if message_dict["content"] == "":
+                message_dict["content"] = None
+    elif isinstance(message, SystemMessage):
+        message_dict = {"role": "system", "content": message.content}
+    elif isinstance(message, ToolMessage):
+        message_dict = {
+            "role": "tool",
+            "content": message.content,
+            "tool_call_id": message.tool_call_id,
+        }
+    else:
+        raise TypeError(f"Got unknown type {message}")
+    if "name" in message.additional_kwargs:
+        message_dict["name"] = message.additional_kwargs["name"]
+    return message_dict
+
+def _convert_delta_to_message_chunk(
+    _dict: Mapping[str, Any], default_class: Type[BaseMessageChunk]
+) -> BaseMessageChunk:
+    role = cast(str, _dict.get("role"))
+    content = cast(str, _dict.get("content") or "")
+    additional_kwargs: Dict = {}
+    if _dict.get("tool_calls"):
+        additional_kwargs["tool_calls"] = _dict["tool_calls"]
+
+    if role == "user" or default_class == HumanMessageChunk:
+        return HumanMessageChunk(content=content)
+    elif role == "assistant" or default_class == AIMessageChunk:
+        return AIMessageChunk(content=content, additional_kwargs=additional_kwargs)
+    elif role == "system" or default_class == SystemMessageChunk:
+        return SystemMessageChunk(content=content)
+    elif role == "tool" or default_class == ToolMessageChunk:
+        return ToolMessageChunk(content=content, tool_call_id=_dict["tool_call_id"])
+    elif role or default_class == ChatMessageChunk:
+        return ChatMessageChunk(content=content, role=role)
+    else:
+        return default_class(content=content)  # type: ignore
+
+class ChatZhipuAI(BaseChatModel):
     """支持最新的智谱API"""
 
     @property
@@ -43,8 +146,10 @@ class ZhipuAIChat(BaseChatModel):
     
     client: Any = None
     """访问智谱AI的客户端"""
+    
+    api_key: str = None
 
-    model: str = Field(default="glm-3-turbo", alias="model_name")
+    model: str = Field(default="glm-3-turbo")
     """所要调用的模型编码"""
 
     request_id: Optional[str] = None
@@ -127,7 +232,10 @@ class ZhipuAIChat(BaseChatModel):
         try:
             # 声明 ZhipuAI 的客户端
             from zhipuai import ZhipuAI
-            values["client"] =  ZhipuAI()
+            if values["api_key"] is not None:
+                values["client"] =  ZhipuAI(api_key=values["api_key"])
+            else:
+                values["client"] =  ZhipuAI()
         except ImportError:
             raise RuntimeError(
                 "Could not import zhipuai package. "
@@ -139,37 +247,45 @@ class ZhipuAIChat(BaseChatModel):
     def _generate(
         self,
         messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
+        stream: Optional[bool] = None,
         **kwargs: Any,
     ) -> ChatResult:
         """实现 ZhiputAI 的同步调用"""
-        prompt: List = []
-        for message in messages:
-            if isinstance(message, AIMessage):
-                role = "assistant"
-            else:  # For both HumanMessage and SystemMessage, role is 'user'
-                role = "user"
-
-            prompt.append({"role": role, "content": message.content})
+        prompt = [_convert_message_to_dict(message) for message in messages]
 
         # 构造参数序列
         params = self.get_model_kwargs()
         params.update(kwargs)
         params.update({"stream": False})
+        if stop is not None:
+            params.update({"stop": stop})
     
         response = self.client.chat.completions.create(
             messages=prompt,
             **params
         )
 
-        choice = response.choices[0]
-
-        return ChatResult(
-            generations=[
-                ChatGeneration(
-                    message=AIMessage(content=choice.message.content),
-            )],
-        )
+        generations = []
+        if not isinstance(response, dict):
+            response = response.dict()
+        for res in response["choices"]:
+            message = _convert_dict_to_message(res["message"])
+            generation_info = dict(finish_reason=res.get("finish_reason"))
+            gen = ChatGeneration(
+                message=message,
+                generation_info=generation_info,
+            )
+            generations.append(gen)
+        token_usage = response.get("usage", {})
+        llm_output = {
+            "id": response.get("id"),
+            "created": response.get("created"),
+            "token_usage": token_usage,
+            "model_name": self.model,
+        }
+        return ChatResult(generations=generations, llm_output=llm_output)
 
     # 实现 stream 调用方法
     def _stream(
@@ -180,28 +296,38 @@ class ZhipuAIChat(BaseChatModel):
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         """实现 ZhiputAI 的事件流调用"""
-        prompt: List = []
-        for message in messages:
-            if isinstance(message, AIMessage):
-                role = "assistant"
-            else:  # For both HumanMessage and SystemMessage, role is 'user'
-                role = "user"
-
-            prompt.append({"role": role, "content": message.content})
+        prompt = [_convert_message_to_dict(message) for message in messages]
 
         # 使用流输出
         # 构造参数序列
         params = self.get_model_kwargs()
         params.update(kwargs)
         params.update({"stream": True})
+        if stop is not None:
+            params.update({"stop": stop})
     
         response = self.client.chat.completions.create(
             messages=prompt,
             **params
         )
 
+        default_chunk_class = AIMessageChunk
         for chunk in response:
-            choice = chunk.choices[0]
-            yield ChatGenerationChunk(
-                message=AIMessageChunk(content=choice.delta.content),
+            if not isinstance(chunk, dict):
+                chunk = chunk.dict()
+            if len(chunk["choices"]) == 0:
+                continue
+            choice = chunk["choices"][0]
+            chunk = _convert_delta_to_message_chunk(
+                choice["delta"], default_chunk_class
             )
+            generation_info = {}
+            if finish_reason := choice.get("finish_reason"):
+                generation_info["finish_reason"] = finish_reason
+            default_chunk_class = chunk.__class__
+            chunk = ChatGenerationChunk(
+                message=chunk, generation_info=generation_info or None
+            )
+            if run_manager:
+                run_manager.on_llm_new_token(chunk.text, chunk=chunk)
+            yield chunk
