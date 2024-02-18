@@ -54,8 +54,8 @@ poetry add langchain_chinese
 
 ### invoke
 ```python
-from langchain_chinese import ZhipuAIChat
-llm = ZhipuAIChat()
+from langchain_chinese import ChatZhipuAI
+llm = ChatZhipuAI()
 llm.invoke("讲个笑话来听吧")
 ```
 
