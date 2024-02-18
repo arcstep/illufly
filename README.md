@@ -52,7 +52,7 @@ pip install -U langchain_chinese
 
 或者使用 poetry 安装：
 ```
-poetry add langchain_chinese
+poetry add langchain_chinese@latest
 ```
 
 ## 使用
