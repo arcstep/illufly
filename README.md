@@ -1,4 +1,4 @@
-# 🦜🇨🇳LangChain-Chinese
+# 🦜🇨🇳 LangChain-Chinese
 
 **langchain_chinese** 的目标是提供中文大语言模型和中文友好的`langchain`工具。
 
