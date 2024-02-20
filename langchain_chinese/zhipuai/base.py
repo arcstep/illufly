@@ -231,7 +231,7 @@ class ChatZhipuAI(BaseChatModel):
     def validate_environment(cls, values: Dict) -> Dict:
         try:
             # 声明 ZhipuAI 的客户端
-            from zhipuai import ZhipuAI
+            from zhipuai_pydantic_v1 import ZhipuAI
             if values["api_key"] is not None:
                 values["client"] =  ZhipuAI(api_key=values["api_key"])
             else:
