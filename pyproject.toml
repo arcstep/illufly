@@ -10,7 +10,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-zhipuai_sdk_python_v4 = { git = "https://github.com/arcstep/zhipuai-sdk-python-v4.git", branch = "main" }
+zhipuai = { git = "https://github.com/arcstep/zhipuai-sdk-python-v4.git", branch = "main" }
 
 [tool.poetry.dev-dependencies]
 setuptools = "^69.1.0"
