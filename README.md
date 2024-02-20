@@ -55,6 +55,17 @@ pip install -U langchain_chinese
 poetry add langchain_chinese@latest
 ```
 
+<div class="alert-warning">
+<b>使用langchain_chinese时，请不要单独安装 zhipuai 包</b><br>
+
+由于 langserve 要求使用 pydantic_v1，否则存在很多兼容性问题，
+因此特意专门克隆了该项目，并做出少许修改，以便将 pydantic 从 v2 降级到 v1 。
+
+在安装 langchain_chinese 时已经自动选择了上述修改过的兼容版本，因此不要单独安装 zhipuai 的包。
+
+如果不经过这个处理，你就必须安装 v2 版本的pydantic来兼容 zhipuai，于是在 langserve 时你会发现无法生成API文档。
+</div>
+
 ## 使用
 
 ### invoke
