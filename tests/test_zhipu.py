@@ -21,13 +21,17 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(), override=True)
 
 #
-def test_openai_model_param() -> None:
+def test_zhipuai_model_param() -> None:
     llm = ChatZhipuAI(api_key="foo")
     assert llm.api_key == "foo"
 
     llm = ChatZhipuAI(model="foo")
-    assert llm.model == "foo"    
+    assert llm.model == "foo"
 
+#
+def test_zhipuai_invoke() -> None:
+    llm = ChatZhipuAI(max_tokens=5)
+    llm.invoke("讲个笑话来听")
 
 def test_tool_message_dict_to_tool_message() -> None:
     content = json.dumps({"result": "Example #1"})

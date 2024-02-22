@@ -1,8 +1,23 @@
-from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.callbacks import (
+    AsyncCallbackManagerForLLMRun,
+    CallbackManagerForLLMRun,
+)
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
     generate_from_stream,
 )
+
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
+
+# common types
+from typing import Type, Any, Mapping, Dict, Iterator, List, Optional, cast
+
+# async
+import asyncio
+from typing import AsyncIterator
+
+# all message types
 from langchain_core.messages import (
     AIMessage,
     AIMessageChunk,
@@ -17,11 +32,6 @@ from langchain_core.messages import (
     ChatMessage,
     ChatMessageChunk,
 )
-from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
-
-from typing import Type, Any, Mapping, Dict, Iterator, List, Optional, cast
-
-from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
 
 def _convert_dict_to_message(_dict: Mapping[str, Any]) -> BaseMessage:
     """Convert a dictionary to a LangChain message.
@@ -210,7 +220,7 @@ class ChatZhipuAI(BaseChatModel):
             "model",
             "request_id",
             "do_sample",
-            "stream",
+            "api_key",
             "temperature",
             "top_p",
             "max_tokens",
@@ -230,8 +240,7 @@ class ChatZhipuAI(BaseChatModel):
     @root_validator()
     def validate_environment(cls, values: Dict) -> Dict:
         try:
-            # 声明 ZhipuAI 的客户端
-            from zhipuai_pydantic_v1 import ZhipuAI
+            from zhipuai import ZhipuAI
             if values["api_key"] is not None:
                 values["client"] =  ZhipuAI(api_key=values["api_key"])
             else:
@@ -239,7 +248,7 @@ class ChatZhipuAI(BaseChatModel):
         except ImportError:
             raise RuntimeError(
                 "Could not import zhipuai package. "
-                "Please install it via 'pip install zhipuai'"
+                "Please install it via 'pip install -U zhipuai'"
             )
         return values
 
@@ -330,4 +339,55 @@ class ChatZhipuAI(BaseChatModel):
             )
             if run_manager:
                 run_manager.on_llm_new_token(chunk.text, chunk=chunk)
+            yield chunk
+
+    async def _astream(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        """实现 ZhiputAI 的事件流调用"""
+        prompt = [_convert_message_to_dict(message) for message in messages]
+
+        # 使用流输出
+        # 构造参数序列
+        params = self.get_model_kwargs()
+        params.update(kwargs)
+        params.update({"stream": True})
+        if stop is not None:
+            params.update({"stop": stop})
+
+
+        # 创建一个新的函数来调用 self.client.chat.completions.create
+        def create_completions():
+            return self.client.chat.completions.create(
+                messages=prompt,
+                **params
+            )
+
+        # 由于ZhipuAI没有基于流的异步返回，因此使用asyncio构建
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(None, create_completions)
+
+        default_chunk_class = AIMessageChunk
+        for chunk in response:
+            if not isinstance(chunk, dict):
+                chunk = chunk.dict()
+            if len(chunk["choices"]) == 0:
+                continue
+            choice = chunk["choices"][0]
+            chunk = _convert_delta_to_message_chunk(
+                choice["delta"], default_chunk_class
+            )
+            generation_info = {}
+            if finish_reason := choice.get("finish_reason"):
+                generation_info["finish_reason"] = finish_reason
+            default_chunk_class = chunk.__class__
+            chunk = ChatGenerationChunk(
+                message=chunk, generation_info=generation_info or None
+            )
+            if run_manager:
+                await run_manager.on_llm_new_token(chunk.text, chunk=chunk)
             yield chunk
