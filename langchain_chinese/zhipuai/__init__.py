@@ -1,1 +1,1 @@
-# 智谱AI的代码转移到 https://github.com/arcstep/zhipuai-sdk-python-v4
+# 代码已转移到 https://github.com/arcstep/langchain_zhipuai
