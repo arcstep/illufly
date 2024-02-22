@@ -1,6 +1,5 @@
-from langchain_chinese.zhipuai.base import (
+from zhipu_pydantic_v1 import (
     ChatZhipuAI,
-    _convert_dict_to_message
 )
 
 from langchain_chinese.__version__ import __version__

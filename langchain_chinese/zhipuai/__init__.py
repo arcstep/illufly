@@ -1,0 +1,1 @@
+# 智谱AI的代码转移到 https://github.com/arcstep/zhipuai-sdk-python-v4
