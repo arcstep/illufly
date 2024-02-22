@@ -1,4 +1,4 @@
-from zhipu_pydantic_v1 import (
+from langchain_zhipu import (
     ChatZhipuAI,
 )
 
