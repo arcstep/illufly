@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "langchain_chinese"
-version = "0.2.13"
+version = "0.2.14"
 description = "Prepare some firendly tool for Chinese LLMs and langchain"
 authors = ["arcstep <43801@qq.com>"]
 homepage = "https://github.com/arcstep/langchain_chinese"
@@ -11,7 +11,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.9"
 asyncio = "^3.4.3"
-langchain_zhipu = "^4.0.9"
+langchain_zhipu = "^4.0.10"
 pydantic = ">=1,<3"
 
 [tool.poetry.group.dev.dependencies]
