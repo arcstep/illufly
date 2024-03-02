@@ -99,7 +99,7 @@ class FileLoadFactory:
             return Docx2txtLoader(filename)
         else:
             raise NotImplementedError(f"File extension {ext} not supported now.")
-    
+
 def get_file_extension(filename: str) -> str:
     """Get File Extension"""
     return filename.split(".")[-1]
