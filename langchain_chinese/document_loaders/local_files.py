@@ -46,10 +46,6 @@ class LocalFilesLoader(BaseLoader):
             if key in kwargs:
                 setattr(self, key, kwargs[key])
 
-    def get_file_extension(self, filename: str) -> str:
-        """Get File Extension"""
-        return filename.split(".")[-1]
-  
     def get_files(self) -> list[str]:
         """List All Files with Extension"""
         files = []
@@ -61,7 +57,7 @@ class LocalFilesLoader(BaseLoader):
                 if(self.extensions == []):
                     files.append(os.path.join(dirpath, filename))
                 else:
-                    if self.get_file_extension(filename) in self.extensions:
+                    if get_file_extension(filename) in self.extensions:
                         files.append(os.path.join(dirpath, filename))
 
         # filter files with includes
@@ -85,7 +81,8 @@ class LocalFilesLoader(BaseLoader):
     def lazy_load(self) -> Iterator[Document]:
         """Load files as Documents by FileLoadFactory"""
         for filename in self.get_files():
-            yield self.load_docs(fileanme)
+            for doc in self.load_docs(filename):
+                yield doc
 
     def load(self) -> List[Document]:
         """Load Documents from All Files."""
@@ -103,4 +100,7 @@ class FileLoadFactory:
         else:
             raise NotImplementedError(f"File extension {ext} not supported now.")
     
+def get_file_extension(filename: str) -> str:
+    """Get File Extension"""
+    return filename.split(".")[-1]
     
