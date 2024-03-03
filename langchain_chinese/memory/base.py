@@ -181,9 +181,6 @@ class WithMemoryBinding(RunnableBindingBase):
         hist = config["configurable"]["message_history"]
         # return only historic messages
         # todo: return temp memory
-        print("-"*30, "enter-history", "-"*30)
-        print("history messages: ", hist.messages.copy())
-        print("temp-memory: ", self.memory_reading.buffer_as_messages)
         if self.history_messages_key:
             return self.memory_reading.buffer_as_messages
             # return hist.messages.copy()
@@ -219,7 +216,6 @@ class WithMemoryBinding(RunnableBindingBase):
         hist.add_messages(input_messages + output_messages)
         
         # todo: add to temp memory
-        print("-"*30, "exit-history", "-"*30)
         for message in input_messages:
             if(message.content is not None):
                 self.memory_reading.chat_memory.add_user_message(message.content)

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "langchain_chinese"
-version = "0.2.14"
+version = "0.2.15"
 description = "Prepare some firendly tool for Chinese LLMs and langchain"
 authors = ["arcstep <43801@qq.com>"]
 homepage = "https://github.com/arcstep/langchain_chinese"
