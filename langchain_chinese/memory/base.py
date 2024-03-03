@@ -218,10 +218,10 @@ class WithMemoryBinding(RunnableBindingBase):
         # todo: add to temp memory
         for message in input_messages:
             if(message.content is not None):
-                self.memory_reading.chat_memory.add_user_message(message.content)
+                self.memory_reading.chat_memory.add_user_message(message)
         for message in output_messages:
             if(message.content is not None):
-                self.memory_reading.chat_memory.add_ai_message(message.content)
+                self.memory_reading.chat_memory.add_ai_message(message)
 
     def _merge_configs(self, *configs: Optional[RunnableConfig]) -> RunnableConfig:
         config = super()._merge_configs(*configs)
