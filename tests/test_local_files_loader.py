@@ -1,6 +1,7 @@
 import os
 import shutil
 import pytest
+from unittest.mock import patch
 from langchain_chinese.document_loaders import LocalFilesLoader
 
 # set documents_folder to init LocalFilesLoader
@@ -10,28 +11,23 @@ target_folder = "/tmp/documents_folder"
 def prepare_data():
     os.makedirs(target_folder, exist_ok=True)
 
-    # create some files with different extensions
+    # create some files with different extensions in the root directory
     extensions = ['txt', 'docx', 'pdf', 'jpg']
     for i, ext in enumerate(extensions):
         with open(os.path.join(target_folder, f'test{i}.{ext}'), 'w') as f:
             f.write('test')
 
-    # create a subdirectory
-    os.makedirs(os.path.join(target_folder, 'subdirectory'), exist_ok=True)
-
-    # create some files in the subdirectory
+    # create a subdirectory and some files in it
+    subfolder = os.path.join(target_folder, 'include_dir')
+    os.makedirs(subfolder, exist_ok=True)
     for i, ext in enumerate(extensions):
-        with open(os.path.join(target_folder, 'subdirectory', f'test{i}.{ext}'), 'w') as f:
+        with open(os.path.join(subfolder, f'test{i}.{ext}'), 'w') as f:
             f.write('test')
 
-    # create some files to include
-    for i in range(3):
-        with open(os.path.join(target_folder, f'include_test{i}.txt'), 'w') as f:
-            f.write('test')
-
-    # create some files to exclude
-    for i in range(3):
-        with open(os.path.join(target_folder, f'exclude_test{i}.txt'), 'w') as f:
+    subfolder = os.path.join(target_folder, 'exclude_dir')
+    os.makedirs(subfolder, exist_ok=True)
+    for i, ext in enumerate(extensions):
+        with open(os.path.join(subfolder, f'test{i}.{ext}'), 'w') as f:
             f.write('test')
 
     yield  # this is where the testing happens
@@ -40,35 +36,51 @@ def prepare_data():
     shutil.rmtree(target_folder)
 
 def test_list_files_in_directory():
-    loader = LocalFilesLoader(documents_folder = target_folder)
+    # Test with relative path
+    loader = LocalFilesLoader(documents_folder=target_folder)
     files = loader.get_files()
-    # 检查是否列出了所有文件
-    assert len(files) == 4
+    assert len(files) == 6
 
-def test_list_files_in_subdirectory():
-    loader = LocalFilesLoader(documents_folder = target_folder)
-    loader.includes = ['subdirectory']
+    # Test with absolute path
+    loader = LocalFilesLoader(documents_folder=os.path.abspath(target_folder))
     files = loader.get_files()
-    # 检查是否只列出了子目录中的文件
+    assert len(files) == 6  # change this to the expected number of files
+
+    # Test with environment variable
+    with patch.dict(os.environ, {'LANGCHAIN_CHINESE_DOCUMENTS_FOLDER': target_folder}):
+        loader = LocalFilesLoader()
+        files = loader.get_files()
+        assert len(files) == 6  # change this to the expected number of files
+
+    # Test with subfolder
+    loader = LocalFilesLoader(documents_folder=os.path.join(target_folder, 'include_dir'))
+    files = loader.get_files()
+    assert len(files) == 2  # change this to the expected number of files
+
+    # test extensions
+    loader = LocalFilesLoader(documents_folder=target_folder, extensions=['docx'])
+    files = loader.get_files()
+    assert len(files) == 3
+
+    # test includes
+    loader = LocalFilesLoader(
+        documents_folder=target_folder,
+        extensions=['docx'],
+        includes=["include_dir"]
+    )
+    files = loader.get_files()
+    assert len(files) == 1
+
+    # test excludes
+    loader = LocalFilesLoader(
+        documents_folder=os.path.abspath(target_folder),
+        extensions=['docx'],
+        excludes=["exclude_dir"]
+    )
+    files = loader.get_files()
     assert len(files) == 2
 
 def test_change_default_extensions():
-    loader = LocalFilesLoader(documents_folder = target_folder)
-    loader.extensions = ['txt']
+    loader = LocalFilesLoader(documents_folder=target_folder, extensions=['docx'])
     files = loader.get_files()
-    # 检查是否只列出了 .txt 文件
-    assert all(file.endswith('.txt') for file in files)
-
-def test_change_includes():
-    loader = LocalFilesLoader(documents_folder = target_folder)
-    loader.includes = ['include']
-    files = loader.get_files()
-    # 检查是否只列出了 includes 中指定的文件
-    assert all('include' in file for file in files)
-
-def test_change_excludes():
-    loader = LocalFilesLoader(documents_folder = target_folder)
-    loader.excludes = ['exclude']
-    files = loader.get_files()
-    # 检查是否没有列出 excludes 中指定的文件
-    assert all('exclude' not in file for file in files)
+    assert all(file.endswith('.docx') for file in files)
