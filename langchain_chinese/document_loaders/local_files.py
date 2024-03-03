@@ -38,13 +38,20 @@ class LocalFilesLoader(BaseLoader):
         if(documents_folder is None):
             _documents_folder = os.getenv("LANGCHAIN_CHINESE_DOCUMENTS_FOLDER")
             if(_documents_folder is not None):
-                self.documents_folder = _documents_folder
+                self.documents_folder = os.path.abspath(_documents_folder)
+            else:
+                self.documents_folder = os.path.abspath("./documents")
         else:
-            self.documents_folder = documents_folder
+            self.documents_folder = os.path.abspath(documents_folder)
 
-        for key in ["includes", "excludes", "extensions"]:
-            if key in kwargs:
-                setattr(self, key, kwargs[key])
+        if "extensions" in kwargs:
+            setattr(self, "extensions", kwargs["extensions"])
+
+        if("includes" in kwargs):
+            self.includes = [os.path.abspath(os.path.join(self.documents_folder, f)) for f in kwargs["includes"]]
+
+        if("excludes" in kwargs):
+            self.excludes = [os.path.abspath(os.path.join(self.documents_folder, f)) for f in kwargs["excludes"]]
 
     def get_files(self) -> list[str]:
         """List All Files with Extension"""
@@ -62,13 +69,12 @@ class LocalFilesLoader(BaseLoader):
 
         # filter files with includes
         if(self.includes != []):
-            to_includes = [os.path.join(self.documents_folder, path) for path in self.includes]
-            files = [f for f in files if any(f.startswith(include) for include in to_includes)]
+            files = [f for f in files if any(f.startswith(include) for include in self.includes)]
 
         # filter files with excludes
         if(self.excludes != []):
-            to_excludes = [os.path.join(self.documents_folder, path) for path in self.excludes]
-            files = [f for f in files if not any(f.startswith(exclude) for exclude in to_excludes)]
+            print(f"excludes: {self.excludes}")
+            files = [f for f in files if not any(f.startswith(exclude) for exclude in self.excludes)]
         
         return files
     
