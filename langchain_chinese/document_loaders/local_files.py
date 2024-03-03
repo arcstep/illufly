@@ -17,17 +17,43 @@ class LocalFilesLoader(BaseLoader):
         - PDF
     """
     
-    documents_folder: str = None
-    """Specify the local target folder to load"""
+    # support types
+    extensions: List[str] = ["docx", "pdf"]
     
-    includes: List[str] = []
-    """Only include the folders or files"""
+    # root document folder storage
+    _documents_folder: str = "./documents"
+    
+    @property
+    def documents_folder(self):
+        return self._documents_folder
 
-    excludes: List[str] = []
-    """Not to load the folders or files"""
-    
-    extensions: List[str] = ["pdf", "docx"]
-    """The files with these extentions can be loaded"""
+    @documents_folder.setter
+    def documents_folder(self, value):
+        self._documents_folder = os.path.abspath(value)
+
+    # only include folder or files
+    _includes: List[str] = []
+
+    @property
+    def includes(self):
+        return self._includes
+
+    @includes.setter
+    def includes(self, value):
+        if(value is not None and value != []):
+            self._includes = [os.path.abspath(os.path.join(self.documents_folder, f)) for f in value]
+
+    # excludes folder or files
+    _excludes: List[str] = []
+
+    @property
+    def excludes(self):
+        return self._excludes
+
+    @excludes.setter
+    def excludes(self, value):
+        if(value is not None and value != []):
+            self._excludes = [os.path.abspath(os.path.join(self.documents_folder, f)) for f in value]
 
     def __init__(
         self,
@@ -38,20 +64,15 @@ class LocalFilesLoader(BaseLoader):
         if(documents_folder is None):
             _documents_folder = os.getenv("LANGCHAIN_CHINESE_DOCUMENTS_FOLDER")
             if(_documents_folder is not None):
-                self.documents_folder = os.path.abspath(_documents_folder)
+                self.documents_folder = _documents_folder
             else:
-                self.documents_folder = os.path.abspath("./documents")
+                self.documents_folder = "./documents"
         else:
-            self.documents_folder = os.path.abspath(documents_folder)
+            self.documents_folder = documents_folder
 
-        if "extensions" in kwargs:
-            setattr(self, "extensions", kwargs["extensions"])
-
-        if("includes" in kwargs):
-            self.includes = [os.path.abspath(os.path.join(self.documents_folder, f)) for f in kwargs["includes"]]
-
-        if("excludes" in kwargs):
-            self.excludes = [os.path.abspath(os.path.join(self.documents_folder, f)) for f in kwargs["excludes"]]
+        for key in ["extensions", "includes", "excludes"]:
+            if(kwargs.get(key) is not None):
+                setattr(self, key, kwargs.get(key))
 
     def get_files(self) -> list[str]:
         """List All Files with Extension"""
