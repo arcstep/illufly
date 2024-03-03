@@ -3,26 +3,62 @@
 
 **langchain_chinese** 的目标是提供中文大语言模型和中文友好的`langchain`工具。
 
-## 为什么做这个项目？
+## 一、为什么做这个项目？
 OpenAI 的大模型在引领潮流的同时，中国国内也涌现了很多优秀的大模型，
 这些大模型的接口更新变化太快了，以至于 langchain 这样的框架经常无法及时更新到最新。
 
 为了方便国内用户，我计划在 langchain_chinese 这个项目中将主要的几个中国大模型做好集成和更新维护。
 
-### 模型
+## 二、安装
+
+你可以使用 pip 安装：
+```
+pip install -U langchain_chinese
+```
+
+或者使用 poetry 安装：
+```
+poetry add langchain_chinese@latest
+```
+
+## 三、用法
+
+### 1、模型
 
 目前专门提供了 [智谱AI的langchain集成](https://github.com/arcstep/langchain_zhipuai) ，很快会更新通义千问、文心一言等其他的大模型。
-
-```python
-from langchain_chinese import ChatZhipuAI
-```
 
 - 智谱通用大模型
   - glm-3-turbo
   - glm-4
   - glm-4v
 
-### 记忆
+<div class="alert alert-warning">
+<b>使用langchain_chinese时，最好不要单独安装 zhipuai 包</b><br>
+由于 langserve 要求使用 pydantic_v1，否则存在很多兼容性问题，
+因此特意在 langchain_zhipu 项目中克隆了该项目，并做出少许修改，以便将 pydantic 从 v2 降级到 v1 。<br>
+如果不经过这个处理，你就必须安装 v2 版本的pydantic来兼容 zhipuai，于是在 langserve 时你会发现无法生成API文档。
+</div>
+
+在安装 langchain_chinese 时已经自动安装了 langchain_zhip。
+
+invoke：
+```python
+from langchain_chinese import ChatZhipuAI
+llm = ChatZhipuAI()
+llm.invoke("讲个笑话来听吧")
+```
+
+```
+AIMessage(content='好的，我来给您讲一个幽默的笑话：\n\n有一天，小明迟到了，老师问他：“你为什么迟到？”\n小明回答说：“老师，我今天看到一块牌子上写着‘学校慢行’，所以我就慢慢地走来了。”')
+```
+
+stream：
+```python
+for chunk in llm.stream("讲个笑话来听吧"):
+    print(chunk, end="|", flush=True)
+```
+
+### 2、记忆
 
 也许是 langchain 的发展太快了，官方团队聚焦在 langsmith 和 langgraph 的开发，记忆管理模块用法有点散乱。
 
@@ -151,86 +187,10 @@ memory.buffer_as_messages
  AIMessage(content='一般在初中阶段学习三角函数，小学阶段通常不包括正弦、余弦和正切等概念。')]
 ```
 
-### RAG
+### 3、RAG
 
-### 智能体
+（待补充，计划将常用RAG整合为一个单独模块）
 
+### 4、智能体
 
-## 安装
-
-你可以使用 pip 安装：
-```
-pip install -U langchain_chinese
-```
-
-或者使用 poetry 安装：
-```
-poetry add langchain_chinese@latest
-```
-
-<div class="alert-warning">
-<b>使用langchain_chinese时，请不要单独安装 zhipuai 包</b><br>
-
-由于 langserve 要求使用 pydantic_v1，否则存在很多兼容性问题，
-因此特意专门克隆了该项目，并做出少许修改，以便将 pydantic 从 v2 降级到 v1 。
-
-在安装 langchain_chinese 时已经自动选择了上述修改过的兼容版本，因此不要单独安装 zhipuai 的包。
-
-如果不经过这个处理，你就必须安装 v2 版本的pydantic来兼容 zhipuai，于是在 langserve 时你会发现无法生成API文档。
-</div>
-
-## 使用
-
-### invoke
-```python
-from langchain_chinese import ChatZhipuAI
-llm = ChatZhipuAI()
-llm.invoke("讲个笑话来听吧")
-```
-
-```
-AIMessage(content='好的，我来给您讲一个幽默的笑话：\n\n有一天，小明迟到了，老师问他：“你为什么迟到？”\n小明回答说：“老师，我今天看到一块牌子上写着‘学校慢行’，所以我就慢慢地走来了。”')
-```
-
-### stream
-```python
-llm.invoke("讲个笑话来听吧")
-```
-
-### 使用工具
-```python
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "query_train_info",
-            "description": "根据用户提供的信息，查询对应的车次",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "departure": {
-                        "type": "string",
-                        "description": "出发城市或车站",
-                    },
-                    "destination": {
-                        "type": "string",
-                        "description": "目的地城市或车站",
-                    },
-                    "date": {
-                        "type": "string",
-                        "description": "要查询的车次日期",
-                    },
-                },
-                "required": ["departure", "destination", "date"],
-            },
-        }
-    }
-]
-
-llm = ChatZhipuAI().bind(tools=tools)
-llm.invoke("你能帮我查询2024年1月1日从北京南站到上海的火车票吗？")
-```
-
-```python
-RunnableBinding(bound=ChatZhipuAI(client=<zhipuai._client.ZhipuAI object at 0x11014fc40>), kwargs={'tools': [{'type': 'function', 'function': {'name': 'query_train_info', 'description': '根据用户提供的信息，查询对应的车次', 'parameters': {'type': 'object', 'properties': {'departure': {'type': 'string', 'description': '出发城市或车站'}, 'destination': {'type': 'string', 'description': '目的地城市或车站'}, 'date': {'type': 'string', 'description': '要查询的车次日期'}}, 'required': ['departure', 'destination', 'date']}}}]})
-```
+（待补充，计划将常用智能体整合为一个单独模块）
