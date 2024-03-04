@@ -93,34 +93,26 @@ prompt = ChatPromptTemplate.from_messages(
 chain = prompt | model
 ```
 
-STEP2 构建一个基于内存的持久化存储
+STEP2 构建一个可以管理对话轮次的记忆提取器
 
 ```python
+from langchain_chinese import MemoryManager
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.chat_history import BaseChatMessageHistory
+from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
 
-store = {}
+window = ConversationBufferWindowMemory(
+  return_messages=True, k=2, chat_memory = ChatMessageHistory()
+)
 
-def get_session_history(session_id: str) -> BaseChatMessageHistory:
-    if session_id not in store:
-        store[session_id] = ChatMessageHistory()
-    return store[session_id]
+memory = MemoryManager(shorterm_memory = window)
 ```
 
-STEP3 构建一个可以管理对话轮次的记忆提取器
-```python
-from langchain.memory import ConversationBufferWindowMemory
-
-memory = ConversationBufferWindowMemory(return_messages=True, k=2)
-```
-
-STEP4 使用 langchain_chinese 的 WithMemoryBinding 模块绑定链，成为新的 Runnable
+STEP3 使用 langchain_chinese 的 WithMemoryBinding 模块绑定链，成为新的 Runnable
 ```python
 from langchain_chinese import WithMemoryBinding
 
 withMemoryChain = WithMemoryBinding(
   chain,
-  get_session_history,
   memory,
   input_messages_key="input",
   history_messages_key="history",
@@ -130,7 +122,7 @@ withMemoryChain = WithMemoryBinding(
 OK，接下来我们调用这个新的链。
 ```python
 withMemoryChain.invoke(
-  {"ability": "math", "input": "三角函数什么意思？?"},
+  {"input": "三角函数什么意思？?"},
   config={"configurable": {"session_id": "abc123"}},
 )
 ```
@@ -164,27 +156,29 @@ AIMessage(content='一般来说，小学并不会涉及到正弦函数这种高�
 接下来，我们确认一下两个记忆管理变量：
 
 ```python
-store['abc123'].messages
+memory.get_shorterm_memory("abc123").buffer_as_messages
 ```
 
+这是窗口记忆中显示的2轮对话：
 ```
-[HumanMessage(content='三角函数什么意思？?'),
- AIMessage(content='三角函数是一种描述角度和边长之间关系的数学函数，如正弦、余弦和正切。'),
- HumanMessage(content='正弦是什么?'),
- AIMessage(content='正弦是一个三角函数，表示一个角的对边与斜边的比值。通常用sin表示，例如sin(30°) = 0.5。'),
+[HumanMessage(content='正弦是什么?'),
+ AIMessage(content='在一个直角三角形中，正弦是一个角的对边长度与斜边长度的比值。正弦函数通常用sin表示，对于一个角θ而言，其正弦值可以表示为：sin(θ) = 对边 / 斜边。正弦函数在三角学和数学中有着重要的应用，可以帮助我们计算角度和边长之间的关系。'),
  HumanMessage(content='小学会学到吗?'),
- AIMessage(content='一般在初中阶段学习三角函数，小学阶段通常不包括正弦、余弦和正切等概念。')]
+ AIMessage(content='正弦函数通常不是小学阶段的数学内容，因为它涉及到三角函数和三角学的概念，通常在初中或高中阶段学习。小学阶段的数学教育主要集中在基本的数学运算、几何图形、分数、小数等方面，正弦函数等高级数学概念一般在更高年级的学习中才会接触到。')]
 ```
 
 ```python
-memory.buffer_as_messages
+memory.get_shorterm_memory("abc123").chat_memory.messages
 ```
 
+这是内存中的完整记忆（现在保存在内存中，你也可以保存在redis等数据库中）：
 ```
-[HumanMessage(content='正弦是什么?'),
- AIMessage(content='正弦是一个三角函数，表示一个角的对边与斜边的比值。通常用sin表示，例如sin(30°) = 0.5。'),
+[HumanMessage(content='三角函数什么意思？?'),
+ AIMessage(content='三角函数是指在直角三角形中，角的大小关系到三角形的边长比例的函数。常见的三角函数包括正弦函数、余弦函数、正切函数、余切函数、正割函数和余割函数等。这些函数在数学和物理中有着广泛的应用，可以描述角度和三角形之间的关系。'),
+ HumanMessage(content='正弦是什么?'),
+ AIMessage(content='在一个直角三角形中，正弦是一个角的对边长度与斜边长度的比值。正弦函数通常用sin表示，对于一个角θ而言，其正弦值可以表示为：sin(θ) = 对边 / 斜边。正弦函数在三角学和数学中有着重要的应用，可以帮助我们计算角度和边长之间的关系。'),
  HumanMessage(content='小学会学到吗?'),
- AIMessage(content='一般在初中阶段学习三角函数，小学阶段通常不包括正弦、余弦和正切等概念。')]
+ AIMessage(content='正弦函数通常不是小学阶段的数学内容，因为它涉及到三角函数和三角学的概念，通常在初中或高中阶段学习。小学阶段的数学教育主要集中在基本的数学运算、几何图形、分数、小数等方面，正弦函数等高级数学概念一般在更高年级的学习中才会接触到。')]
 ```
 
 ### 3、RAG
