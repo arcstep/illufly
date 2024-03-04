@@ -1,2 +1,2 @@
 from .base import WithMemoryBinding
-from .memory_menager import MemoryManager
+from .memory_manager import MemoryManager
