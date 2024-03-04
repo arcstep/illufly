@@ -14,7 +14,7 @@ from typing import (
 )
 
 from langchain.memory import ConversationBufferMemory
-from langchain_core.memory import BaseMemory
+from langchain.memory.chat_memory import BaseChatMemory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.load.load import load
 from langchain_core.pydantic_v1 import BaseModel
@@ -41,7 +41,7 @@ class WithMemoryBinding(RunnableBindingBase):
     """Runnable that manages memory for another Runnable."""
 
     # temp memory
-    memory_reading:BaseMemory
+    memory_reading:BaseChatMemory
     # persist memory
     memory_writing: GetSessionHistoryCallable
     input_messages_key: Optional[str] = None
@@ -61,7 +61,7 @@ class WithMemoryBinding(RunnableBindingBase):
             Union[str, BaseMessage, MessagesOrDictWithMessages],
         ],
         memory_writing: GetSessionHistoryCallable,
-        memory_reading: BaseMemory,
+        memory_reading: BaseChatMemory,
         *,
         input_messages_key: Optional[str] = None,
         output_messages_key: Optional[str] = None,
@@ -69,6 +69,7 @@ class WithMemoryBinding(RunnableBindingBase):
         history_factory_config: Optional[Sequence[ConfigurableFieldSpec]] = None,
         **kwargs: Any,
     ) -> None:
+        # 提取记忆 _enter_history / _aenter_history
         history_chain: Runnable = RunnableLambda(
             self._enter_history, self._aenter_history
         ).with_config(run_name="load_history")
@@ -77,14 +78,17 @@ class WithMemoryBinding(RunnableBindingBase):
             history_chain = RunnablePassthrough.assign(
                 **{messages_key: history_chain}
             ).with_config(run_name="insert_history")
+
+        # 写入记忆 _exit_history
         bound = (
             history_chain | runnable.with_listeners(on_end=self._exit_history)
         ).with_config(run_name="RunnableWithMessageHistory")
 
+        # 构造 configurable 中的参数
         if history_factory_config:
             _config_specs = history_factory_config
         else:
-            # If not provided, then we'll use the default session_id field
+            # 如果没有专门指定，就使用默认的 session_id
             _config_specs = [
                 ConfigurableFieldSpec(
                     id="session_id",
@@ -109,6 +113,7 @@ class WithMemoryBinding(RunnableBindingBase):
 
     @property
     def config_specs(self) -> List[ConfigurableFieldSpec]:
+        """构造记忆录入的参数，默认为 session_id"""
         return get_unique_config_specs(
             super().config_specs + list(self.history_factory_config)
         )
@@ -132,7 +137,7 @@ class WithMemoryBinding(RunnableBindingBase):
                 fields[self.input_messages_key] = (Sequence[BaseMessage], ...)
             else:
                 fields["__root__"] = (Sequence[BaseMessage], ...)
-            return create_model(  # type: ignore[call-overload]
+            return create_model(
                 "RunnableWithChatHistoryInput",
                 **fields,
             )
@@ -179,7 +184,7 @@ class WithMemoryBinding(RunnableBindingBase):
 
     def _enter_history(self, input: Any, config: RunnableConfig) -> List[BaseMessage]:
         hist = config["configurable"]["message_history"]
-        # return only historic messages
+        # 提取记忆中应当插入到提示语中的部份
         # todo: return temp memory
         if self.history_messages_key:
             return self.memory_reading.buffer_as_messages
@@ -229,8 +234,8 @@ class WithMemoryBinding(RunnableBindingBase):
 
         configurable = config.get("configurable", {})
 
+        # 如果没有提供 history_factory_config 中要求的键就抛出异常
         missing_keys = set(expected_keys) - set(configurable.keys())
-
         if missing_keys:
             example_input = {self.input_messages_key: "foo"}
             example_configurable = {
@@ -247,10 +252,13 @@ class WithMemoryBinding(RunnableBindingBase):
         parameter_names = _get_parameter_names(self.memory_writing)
 
         if len(expected_keys) == 1:
-            # If arity = 1, then invoke function by positional arguments
+            # 如果configurable中只有一个参数，无论其是否session_id，都当作位置参数传递给记忆体
+            # 所有记忆体的实现中，都应当将第1个位置参数当作session_id使用
             message_history = self.memory_writing(configurable[expected_keys[0]])
         else:
-            # otherwise verify that names of keys patch and invoke by named arguments
+            # 如果有configurable中有多个参数，就当作键值参数传递给记忆体
+            # 在记忆体的实现中，都应当支持按匹配的键值参数来保存和提取记忆历史
+            # 这在一定程度上提供了定制记忆体的可能性
             if set(expected_keys) != set(parameter_names):
                 raise ValueError(
                     f"Expected keys {sorted(expected_keys)} do not match parameter "
@@ -267,6 +275,6 @@ class WithMemoryBinding(RunnableBindingBase):
 
 
 def _get_parameter_names(callable_: GetSessionHistoryCallable) -> List[str]:
-    """Get the parameter names of the callable."""
+    """提取 callable_ 的键值参数"""
     sig = inspect.signature(callable_)
     return list(sig.parameters.keys())
