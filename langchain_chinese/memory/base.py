@@ -36,14 +36,13 @@ if TYPE_CHECKING:
 MessagesOrDictWithMessages = Union[Sequence["BaseMessage"], Dict[str, Any]]
 GetSessionHistoryCallable = Callable[..., BaseChatMessageHistory]
 
+from .memory_manager import MemoryManager
 
 class WithMemoryBinding(RunnableBindingBase):
     """Runnable that manages memory for another Runnable."""
 
-    # temp memory
-    memory_reading:BaseChatMemory
-    # persist memory
-    memory_writing: GetSessionHistoryCallable
+    # 记忆管理
+    memory_manager:MemoryManager
     input_messages_key: Optional[str] = None
     output_messages_key: Optional[str] = None
     history_messages_key: Optional[str] = None
@@ -60,8 +59,7 @@ class WithMemoryBinding(RunnableBindingBase):
             MessagesOrDictWithMessages,
             Union[str, BaseMessage, MessagesOrDictWithMessages],
         ],
-        memory_writing: GetSessionHistoryCallable,
-        memory_reading: BaseChatMemory,
+        memory_manager: MemoryManager,
         *,
         input_messages_key: Optional[str] = None,
         output_messages_key: Optional[str] = None,
@@ -101,8 +99,7 @@ class WithMemoryBinding(RunnableBindingBase):
             ]
 
         super().__init__(
-            memory_writing=memory_writing,
-            memory_reading=memory_reading,
+            memory_manager=memory_manager,
             input_messages_key=input_messages_key,
             output_messages_key=output_messages_key,
             bound=bound,
@@ -183,18 +180,15 @@ class WithMemoryBinding(RunnableBindingBase):
             raise ValueError()
 
     def _enter_history(self, input: Any, config: RunnableConfig) -> List[BaseMessage]:
-        hist = config["configurable"]["message_history"]
+        memory = config["configurable"]["memory"]
         # 提取记忆中应当插入到提示语中的部份
-        # todo: return temp memory
         if self.history_messages_key:
-            return self.memory_reading.buffer_as_messages
-            # return hist.messages.copy()
-        # return all messages
+            return memory.buffer_as_messages
         else:
             input_val = (
                 input if not self.input_messages_key else input[self.input_messages_key]
             )
-            return self.memory_reading.buffer_as_messages + self._get_input_messages(input_val)
+            return memory.buffer_as_messages + self._get_input_messages(input_val)
 
     async def _aenter_history(
         self, input: Dict[str, Any], config: RunnableConfig
@@ -202,7 +196,8 @@ class WithMemoryBinding(RunnableBindingBase):
         return await run_in_executor(config, self._enter_history, input, config)
 
     def _exit_history(self, run: Run, config: RunnableConfig) -> None:
-        hist: BaseChatMessageHistory = config["configurable"]["message_history"]
+        memory = config["configurable"]["memory"]
+        hist = memory.chat_memory
 
         # Get the input messages
         inputs = load(run.inputs)
@@ -212,21 +207,20 @@ class WithMemoryBinding(RunnableBindingBase):
         # If historic messages were prepended to the input messages, remove them to
         # avoid adding duplicate messages to history.
         if not self.history_messages_key:
-            historic_messages = config["configurable"]["message_history"].messages
-            input_messages = input_messages[len(historic_messages) :]
+            input_messages = input_messages[len(hist.messages) :]
 
         # Get the output messages
         output_val = load(run.outputs)
         output_messages = self._get_output_messages(output_val)
         hist.add_messages(input_messages + output_messages)
         
-        # todo: add to temp memory
-        for message in input_messages:
-            if(message.content is not None):
-                self.memory_reading.chat_memory.add_user_message(message)
-        for message in output_messages:
-            if(message.content is not None):
-                self.memory_reading.chat_memory.add_ai_message(message)
+        # # todo: add to temp memory
+        # for message in input_messages:
+        #     if(message.content is not None):
+        #         memory.add_user_message(message)
+        # for message in output_messages:
+        #     if(message.content is not None):
+        #         memory.add_ai_message(message)
 
     def _merge_configs(self, *configs: Optional[RunnableConfig]) -> RunnableConfig:
         config = super()._merge_configs(*configs)
@@ -249,12 +243,12 @@ class WithMemoryBinding(RunnableBindingBase):
                 f"e.g., chain.invoke({example_input}, {example_config})"
             )
 
-        parameter_names = _get_parameter_names(self.memory_writing)
+        parameter_names = _get_parameter_names(self.memory_manager.get_longterm_memory_factory)
 
         if len(expected_keys) == 1:
             # 如果configurable中只有一个参数，无论其是否session_id，都当作位置参数传递给记忆体
             # 所有记忆体的实现中，都应当将第1个位置参数当作session_id使用
-            message_history = self.memory_writing(configurable[expected_keys[0]])
+            memory = self.memory_manager.get_shorterm_memory(configurable[expected_keys[0]])
         else:
             # 如果有configurable中有多个参数，就当作键值参数传递给记忆体
             # 在记忆体的实现中，都应当支持按匹配的键值参数来保存和提取记忆历史
@@ -265,10 +259,10 @@ class WithMemoryBinding(RunnableBindingBase):
                     f"names {sorted(parameter_names)} of memory_writing."
                 )
 
-            message_history = self.memory_writing(
+            memory = self.memory_manager.get_shorterm_memory(
                 **{key: configurable[key] for key in expected_keys}
             )
-        config["configurable"]["message_history"] = message_history
+        config["configurable"]["memory"] = memory
         
         # todo: init temp memory from message_history
         return config
