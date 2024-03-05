@@ -1144,13 +1144,13 @@ extended-testing = ["jinja2 (>=3,<4)"]
 
 [[package]]
 name = "langchain-dashscope"
-version = "0.1.1"
+version = "0.1.3"
 description = "将阿里云灵积模型（通义千问等）集成到LangChain"
 optional = false
 python-versions = ">=3.9,<4.0"
 files = [
-    {file = "langchain_dashscope-0.1.1-py3-none-any.whl", hash = "sha256:c347ba84b38b5aad9f48c52cdbb5833e16328d2d072e6dbc242ba419306b962e"},
-    {file = "langchain_dashscope-0.1.1.tar.gz", hash = "sha256:7db92d110f7e4da6e3611a450bd6297cabfa37d1f970a85aeb3e20031e314df5"},
+    {file = "langchain_dashscope-0.1.3-py3-none-any.whl", hash = "sha256:89a64a72dc6623d3b18c14ccfd341d47447466d94fe8fb0f88d37b54958a6016"},
+    {file = "langchain_dashscope-0.1.3.tar.gz", hash = "sha256:1ebbb977a5c237ac5d88bc4f70c7b61976f5af6cbb5d61248a8f41e2f3e23b05"},
 ]
 
 [package.dependencies]
