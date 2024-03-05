@@ -30,14 +30,11 @@ langchain_chinese 中为智谱和通义千问模型做了langchain集成：
 -----------------------------------------------------------------------
 平台 | langchain 集成 | 大模型 | langchain_chinese 模块 | 可用的model参数
 -----------------------------------------------------------------------
-（1）[![智谱AI](https://img.shields.io/pypi/v/langchain_zhipu.svg)](https://pypi.org/project/langchain_zhipu/) 
+（1）智谱AI[![langchain_zhipu](https://img.shields.io/pypi/v/langchain_zhipu.svg)](https://pypi.org/project/langchain_zhipu/) 
 
-<div class="alert alert-warning">
-<b>使用langchain_chinese的智谱AI时，最好不要单独安装 zhipuai 包</b><br>
-由于 langserve 要求使用 pydantic_v1，否则存在很多兼容性问题，
-因此特意在 langchain_zhipu 项目中克隆了该项目，并做出少许修改，以便将 pydantic 从 v2 降级到 v1 。<br>
-如果不经过这个处理，你就必须安装 v2 版本的pydantic来兼容 zhipuai，于是在 langserve 时你会发现无法生成API文档。
-</div>
+如果你要通过Langchain使用智谱AI，那么langchain_chinese会方便很多。
+
+**智谱官方的 Python SDK 使用了 pydanticc2，在 langserve 时会出现兼容性问题，无法生成API文档。**
 
 ```python
 from langchain_chinese import ChatZhipuAI
@@ -49,7 +46,7 @@ model参数：
   - glm-4
   - glm-4v
 
-（2）[![阿里云灵机模型（通义千问）集成](https://img.shields.io/pypi/v/langchain_dashscope.svg)](https://pypi.org/project/langchain_dashscope/)
+（2）阿里云灵机模型（通义千问）集成 [![langchain_dashscope](https://img.shields.io/pypi/v/langchain_dashscope.svg)](https://pypi.org/project/langchain_dashscope/)
 
 ```python
 from langchain_chinese import ChatTongyiQW
