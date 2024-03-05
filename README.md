@@ -25,21 +25,47 @@ poetry add langchain_chinese@latest
 
 ### 1、模型
 
-目前专门提供了 [智谱AI的langchain集成](https://github.com/arcstep/langchain_zhipuai) ，很快会更新通义千问、文心一言等其他的大模型。
+langchain_chinese 中为智谱和通义千问模型做了langchain集成：
 
-- 智谱通用大模型
-  - glm-3-turbo
-  - glm-4
-  - glm-4v
+-----------------------------------------------------------------------
+平台 | langchain 集成 | 大模型 | langchain_chinese 模块 | 可用的model参数
+-----------------------------------------------------------------------
+（1）[![智谱AI](https://img.shields.io/pypi/v/langchain_zhipu.svg)](https://pypi.org/project/langchain_zhipu/) 
 
 <div class="alert alert-warning">
-<b>使用langchain_chinese时，最好不要单独安装 zhipuai 包</b><br>
+<b>使用langchain_chinese的智谱AI时，最好不要单独安装 zhipuai 包</b><br>
 由于 langserve 要求使用 pydantic_v1，否则存在很多兼容性问题，
 因此特意在 langchain_zhipu 项目中克隆了该项目，并做出少许修改，以便将 pydantic 从 v2 降级到 v1 。<br>
 如果不经过这个处理，你就必须安装 v2 版本的pydantic来兼容 zhipuai，于是在 langserve 时你会发现无法生成API文档。
 </div>
 
-在安装 langchain_chinese 时已经自动安装了 langchain_zhip。
+```python
+from langchain_chinese import ChatZhipuAI
+ChatZhipuAI(model="glm-4")
+```
+
+model参数：
+  - glm-3-turbo
+  - glm-4
+  - glm-4v
+
+（2）[![阿里云灵机模型（通义千问）集成](https://img.shields.io/pypi/v/langchain_dashscope.svg)](https://pypi.org/project/langchain_dashscope/)
+
+```python
+from langchain_chinese import ChatTongyiQW
+ChatTongyiQW(model="qwen-max-1201")
+```
+
+model参数：
+  - qwen-turbo
+  - qwen-plus
+  - qwen-max
+  - qwen-max-1201
+  - qwen-max-longcontext
+  - bailian-v1
+  - dolly-12b-v2
+
+下面以智谱AI为例。
 
 invoke：
 ```python
