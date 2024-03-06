@@ -27,14 +27,14 @@ poetry add langchain_chinese@latest
 
 langchain_chinese 中为智谱和通义千问模型做了langchain集成。
 
-（1）阿里云灵机模型（通义千问）集成 [![langchain_dashscope](https://img.shields.io/pypi/v/langchain_dashscope.svg)](https://pypi.org/project/langchain_dashscope/)
+（1）阿里云服务模型灵积（通义千问等）集成 [![langchain_dashscope](https://img.shields.io/pypi/v/langchain_dashscope.svg)](https://pypi.org/project/langchain_dashscope/)
 
 ```python
 from langchain_chinese import ChatDashScope
 ChatDashScope(model="qwen-max-1201")
 ```
 
-阿里云平台的灵积模型不仅支持通义千问公有云服务，还支持很多开源模型在平台内的部署：
+服务模型灵积除了通义千问，还支持很多开源模型的阿里云部署：
 
   | 模型名 | 模型简介 | 模型输入输出限制 |
   | --- | --- | --- |
