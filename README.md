@@ -30,8 +30,8 @@ langchain_chinese 中为智谱和通义千问模型做了langchain集成。
 （1）阿里云灵机模型（通义千问）集成 [![langchain_dashscope](https://img.shields.io/pypi/v/langchain_dashscope.svg)](https://pypi.org/project/langchain_dashscope/)
 
 ```python
-from langchain_chinese import ChatTongyiQW
-ChatTongyiQW(model="qwen-max-1201")
+from langchain_chinese import ChatDashScope
+ChatDashScope(model="qwen-max-1201")
 ```
 
 阿里云平台的灵积模型不仅支持通义千问公有云服务，还支持很多开源模型在平台内的部署：
@@ -41,7 +41,6 @@ ChatTongyiQW(model="qwen-max-1201")
   | qwen-turbo | 通义千问超大规模语言模型，支持中文、英文等不同语言输入。 | 模型支持8k tokens上下文，为了保证正常的使用和输出，API限定用户输入为6k tokens。 |
   | qwen-plus | 通义千问超大规模语言模型增强版，支持中文、英文等不同语言输入。 | 模型支持32k tokens上下文，为了保证正常的使用和输出，API限定用户输入为30k tokens。 |
   | qwen-max | 通义千问千亿级别超大规模语言模型，支持中文、英文等不同语言输入。随着模型的升级，qwen-max将滚动更新升级，如果希望使用稳定版本，请使用qwen-max-1201。 | 模型支持8k tokens上下文，为了保证正常的使用和输出，API限定用户输入为6k tokens。 |
-  | qwen-max-1201 | 通义千问千亿级别超大规模语言模型，支持中文、英文等不同语言输入。该模型为qwen-max的快照稳定版本，预期维护到下个快照版本发布时间（待定）后一个月。 | 模型支持8k tokens上下文，为了保证正常的使用和输出，API限定用户输入为6k tokens。 |
   | qwen-max-longcontext | 通义千问千亿级别超大规模语言模型，支持中文、英文等不同语言输入。 | 模型支持30k tokens上下文，为了保证正常的使用和输出，API限定用户输入为28k tokens。 |
   | qwen1.5-72b-chat | 通义千问1.5对外开源的72B规模参数量的经过人类指令对齐的chat模型。 | 支持32k tokens上下文，输入最大30k，输出最大2k tokens。 |
   | qwen1.5-14b-chat |  | 模型支持 8k tokens上下文，为了保障正常使用和正常输出，API限定用户输入为6k Tokens。 |
@@ -54,19 +53,12 @@ ChatTongyiQW(model="qwen-max-1201")
 
 如果你要通过Langchain使用智谱AI，那么langchain_chinese会方便很多。
 
-**智谱官方的 Python SDK 使用了 pydanticc2，在 langserve 时会出现兼容性问题，无法生成API文档。**
-
-```python
-from langchain_chinese import ChatZhipuAI
-ChatZhipuAI(model="glm-4")
-```
-
 支持的 model 参数：
   - glm-3-turbo
   - glm-4
   - glm-4v
 
-下面以智谱AI为例。
+**智谱官方的 Python SDK 使用了 pydanticc2，在 langserve 时会出现兼容性问题，无法生成API文档。**
 
 invoke：
 ```python
@@ -133,6 +125,18 @@ window = ConversationBufferWindowMemory(
 
 memory = MemoryManager(shorterm_memory = window)
 ```
+
+**这里也可以设置 longterm_memory_factory 参数，比如设置为 redis 存储，langchain生态中有很多类似的长期记忆存储器。**
+
+例如：
+```python
+memory = MemoryManager(
+  shorterm_memory = window,
+  longterm_memory = lambda session_id: RedisChatMessageHistory(
+    session_id, url="redis://localhost:6379"
+  ))
+```
+
 
 STEP3 使用 langchain_chinese 的 WithMemoryBinding 模块绑定链，成为新的 Runnable
 ```python
