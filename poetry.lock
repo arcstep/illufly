@@ -1144,13 +1144,13 @@ extended-testing = ["jinja2 (>=3,<4)"]
 
 [[package]]
 name = "langchain-dashscope"
-version = "0.1.3"
+version = "0.1.4"
 description = "将阿里云灵积模型（通义千问等）集成到LangChain"
 optional = false
 python-versions = ">=3.9,<4.0"
 files = [
-    {file = "langchain_dashscope-0.1.3-py3-none-any.whl", hash = "sha256:89a64a72dc6623d3b18c14ccfd341d47447466d94fe8fb0f88d37b54958a6016"},
-    {file = "langchain_dashscope-0.1.3.tar.gz", hash = "sha256:1ebbb977a5c237ac5d88bc4f70c7b61976f5af6cbb5d61248a8f41e2f3e23b05"},
+    {file = "langchain_dashscope-0.1.4-py3-none-any.whl", hash = "sha256:9b0f52bf1c219908cb392a709aca0bafae3bc8aa0ae2fe5e20d6107d9956ef3d"},
+    {file = "langchain_dashscope-0.1.4.tar.gz", hash = "sha256:d4fcc7db5c4fddd5598819f50ec4f46191822d2431d632071130a83133ad10fe"},
 ]
 
 [package.dependencies]
@@ -3388,4 +3388,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "fc9e9fd37ca33d77c8cc2f26b087b93b4b0fbdeb3bf0de435077d0e9d904fc1f"
+content-hash = "829e68df89062baaeb7d718a98f469a2cd589e2d046b2fcf6343516ebf48b962"
