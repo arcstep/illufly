@@ -34,29 +34,9 @@ from langchain_chinese import ChatDashScope
 ChatDashScope(model="qwen-max-1201")
 ```
 
-服务模型灵积除了通义千问，还支持很多开源模型的阿里云部署：
-
-  | 模型名 | 模型简介 | 模型输入输出限制 |
-  | --- | --- | --- |
-  | qwen-turbo | 通义千问超大规模语言模型，支持中文、英文等不同语言输入。 | 模型支持8k tokens上下文，为了保证正常的使用和输出，API限定用户输入为6k tokens。 |
-  | qwen-plus | 通义千问超大规模语言模型增强版，支持中文、英文等不同语言输入。 | 模型支持32k tokens上下文，为了保证正常的使用和输出，API限定用户输入为30k tokens。 |
-  | qwen-max | 通义千问千亿级别超大规模语言模型，支持中文、英文等不同语言输入。随着模型的升级，qwen-max将滚动更新升级，如果希望使用稳定版本，请使用qwen-max-1201。 | 模型支持8k tokens上下文，为了保证正常的使用和输出，API限定用户输入为6k tokens。 |
-  | qwen-max-longcontext | 通义千问千亿级别超大规模语言模型，支持中文、英文等不同语言输入。 | 模型支持30k tokens上下文，为了保证正常的使用和输出，API限定用户输入为28k tokens。 |
-  | qwen1.5-72b-chat | 通义千问1.5对外开源的72B规模参数量的经过人类指令对齐的chat模型。 | 支持32k tokens上下文，输入最大30k，输出最大2k tokens。 |
-  | qwen1.5-14b-chat |  | 模型支持 8k tokens上下文，为了保障正常使用和正常输出，API限定用户输入为6k Tokens。 |
-  | qwen1.5-7b-chat |  |  |
-  | baichuan13b-chat-v1 | 由百川智能开发的一个开源的大规模预训练模型。 |  |
-  | baichuan2-7b-chat-v1 | |  |
-  | chatglm3-6b | ChatGLM3-6B-Base 具有在 10B 以下的预训练模型中最强的性能。 |  |
-
 （2）智谱AI [![langchain_zhipu](https://img.shields.io/pypi/v/langchain_zhipu.svg)](https://pypi.org/project/langchain_zhipu/) 
 
 如果你要通过Langchain使用智谱AI，那么langchain_chinese会方便很多。
-
-支持的 model 参数：
-  - glm-3-turbo
-  - glm-4
-  - glm-4v
 
 **智谱官方的 Python SDK 使用了 pydanticc2，在 langserve 时会出现兼容性问题，无法生成API文档。**
 
@@ -184,32 +164,13 @@ withMemoryChain.invoke(
 AIMessage(content='一般来说，小学并不会涉及到正弦函数这种高级数学概念。小学阶段主要着重于基础数学知识的学习，如加减乘除、数学逻辑、几何图形等。正弦函数通常是在中学阶段的数学课程中才会开始学习和理解。在小学阶段，学生可能会了解三角形的基本概念和性质，但不会深入学习三角函数的相关知识。')
 ```
 
-接下来，我们确认一下两个记忆管理变量：
+如果要查看短期记忆和长期记忆，可以使用如下代码：
 
 ```python
+# 查看短期记忆
 memory.get_shorterm_memory("abc123").buffer_as_messages
-```
-
-这是窗口记忆中显示的2轮对话：
-```
-[HumanMessage(content='正弦是什么?'),
- AIMessage(content='在一个直角三角形中，正弦是一个角的对边长度与斜边长度的比值。正弦函数通常用sin表示，对于一个角θ而言，其正弦值可以表示为：sin(θ) = 对边 / 斜边。正弦函数在三角学和数学中有着重要的应用，可以帮助我们计算角度和边长之间的关系。'),
- HumanMessage(content='小学会学到吗?'),
- AIMessage(content='正弦函数通常不是小学阶段的数学内容，因为它涉及到三角函数和三角学的概念，通常在初中或高中阶段学习。小学阶段的数学教育主要集中在基本的数学运算、几何图形、分数、小数等方面，正弦函数等高级数学概念一般在更高年级的学习中才会接触到。')]
-```
-
-```python
+# 查看长期记忆
 memory.get_shorterm_memory("abc123").chat_memory.messages
-```
-
-这是内存中的完整记忆（现在保存在内存中，你也可以保存在redis等数据库中）：
-```
-[HumanMessage(content='三角函数什么意思？?'),
- AIMessage(content='三角函数是指在直角三角形中，角的大小关系到三角形的边长比例的函数。常见的三角函数包括正弦函数、余弦函数、正切函数、余切函数、正割函数和余割函数等。这些函数在数学和物理中有着广泛的应用，可以描述角度和三角形之间的关系。'),
- HumanMessage(content='正弦是什么?'),
- AIMessage(content='在一个直角三角形中，正弦是一个角的对边长度与斜边长度的比值。正弦函数通常用sin表示，对于一个角θ而言，其正弦值可以表示为：sin(θ) = 对边 / 斜边。正弦函数在三角学和数学中有着重要的应用，可以帮助我们计算角度和边长之间的关系。'),
- HumanMessage(content='小学会学到吗?'),
- AIMessage(content='正弦函数通常不是小学阶段的数学内容，因为它涉及到三角函数和三角学的概念，通常在初中或高中阶段学习。小学阶段的数学教育主要集中在基本的数学运算、几何图形、分数、小数等方面，正弦函数等高级数学概念一般在更高年级的学习中才会接触到。')]
 ```
 
 ### 3、RAG
