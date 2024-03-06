@@ -1,9 +1,10 @@
 from typing import Callable, Optional
 from langchain.memory import ConversationBufferMemory
 from langchain.memory.chat_memory import BaseChatMemory
+from langchain_core.messages import BaseMessage
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, List
 import copy
 
 class MemoryManager:
@@ -15,6 +16,7 @@ class MemoryManager:
 
     # 短期记忆管理，用于记忆模板
     _shorterm_memory: BaseChatMemory
+    
     # 为每一个session_id单独建立记忆管理器
     _shorterm_memory_store: dict[str, BaseChatMemory] = {}
 
@@ -37,6 +39,17 @@ class MemoryManager:
         else:
             self._shorterm_memory = shorterm_memory
 
+    # 返回短期记忆的消息列表
+    def shorterm_messages(self, *args: Any, **kwargs: Any) -> List[BaseMessage]:
+        memory = self.get_shorterm_memory(*args, **kwargs)
+        return memory.buffer_as_messages
+
+    # 返回长期记忆的消息列表
+    def longterm_messages(self, *args: Any, **kwargs: Any) -> List[BaseMessage]:
+        memory = self.get_shorterm_memory(*args, **kwargs)
+        return memory.chat_memory.messages
+
+    # 返回短期记忆的管理器对象
     def get_shorterm_memory(self, *args: Any, **kwargs: Any) -> BaseChatMemory:
         session_id: Union[str, Tuple] = None
         if len(args) == 1 and not kwargs:
