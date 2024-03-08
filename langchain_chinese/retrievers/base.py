@@ -19,3 +19,12 @@ def create_qa_chain(llm, retriever, prompt = __DEFAULT_QA_CHAIN_PROMPT):
         | prompt
         | llm
     )
+
+def create_qa_tools():
+    pass
+
+def create_qa_tools_agent():
+    pass
+
+def create_qa_react_agent():
+    pass
