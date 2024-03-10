@@ -3,8 +3,8 @@ from langchain_dashscope import ChatDashScope, DashScopeEmbeddings
 
 from langchain_chinese.document_loaders.base import LocalFilesLoader
 from langchain_chinese.retrievers.base import (
+    AskDocumentTool,
     create_qa_chain,
-    create_qa_tool,
     create_qa_toolkits
 )
 
@@ -27,8 +27,8 @@ __all__ = [
 
     "LocalFilesLoader",
     "WithMemoryBinding",
+    "AskDocumentTool",
     "create_qa_chain",
-    "create_qa_tool",
     "create_qa_toolkits",
     
     "PROMPT_REACT",
