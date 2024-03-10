@@ -5,7 +5,7 @@ from langchain.agents.agent import AgentOutputParser, AgentAction, AgentFinish
 from langchain.agents.format_scratchpad import format_log_to_str
 from langchain.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
-from langchain.tools.render import render_text_description_and_args
+from langchain.tools.render import render_text_description
 from .prompt import PROMPT_COT, PROMPT_REACT
 
 class Action(BaseModel):
@@ -42,7 +42,9 @@ class ReasonOutputParser(AgentOutputParser):
 
 def _prompt_creator(prompt: str) -> Callable[[List[str]], str]:
     def creator(tools: List[str]) -> str:
-        tools_format = render_text_description_and_args(tools)
+        # 请注意，智谱AI等国内大模型对于pydantic的参数解析并不友好，使用JSON描述参数时会误读
+        # 因此，不要使用 render_text_description_and_args 来生成工具描述
+        tools_format = render_text_description(tools)
 
         template = PromptTemplate.from_template(prompt)
         return template.partial(

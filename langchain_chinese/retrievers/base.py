@@ -1,7 +1,13 @@
+from typing import List, Callable, Any, Optional, Type
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain.agents import Tool
-from langchain.tools import StructuredTool
+from langchain_core.runnables import RunnablePassthrough, Runnable
+from langchain.agents import Tool, tool
+from langchain.tools import BaseTool, StructuredTool
+from langchain.pydantic_v1 import BaseModel, Field
+from langchain.callbacks.manager import (
+    AsyncCallbackManagerForToolRun,
+    CallbackManagerForToolRun,
+)
 from functools import wraps
 
 __DEFAULT_QA_CHAIN_PROMPT = """
@@ -13,10 +19,10 @@ __DEFAULT_QA_CHAIN_PROMPT = """
 问题: {question}
 """
 
-def create_qa_chain(llm, retriever, prompt = __DEFAULT_QA_CHAIN_PROMPT):
+def create_qa_chain(llm: Runnable, retriever: Callable, prompt: str = __DEFAULT_QA_CHAIN_PROMPT) -> Callable:
     prompt = ChatPromptTemplate.from_template(prompt)
 
-    def format_docs(docs):
+    def format_docs(docs: List[str]) -> str:
         return "\n\n".join([d.page_content for d in docs])
 
     return (
@@ -25,33 +31,34 @@ def create_qa_chain(llm, retriever, prompt = __DEFAULT_QA_CHAIN_PROMPT):
         | llm
     )
 
-# 将函数安全地转换为工具，并在抛出异常时仍然正常返回
-def make_safe_tool(func):
+def make_safe_tool(func: Callable) -> Callable:
     """Create a new function that wraps the given function with error handling"""
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> str:
         try:
             return str(func(*args, **kwargs))
         except Exception as e:
             return str(e)
     return wrapper
 
-# 基于本地知识库
-def create_qa_tool(
-    qa_chain,
-    tool_name="ask_document",
-    description="""
-    根据资料库回答问题。考虑上下文信息，确保问题对相关概念的定义表述完整。
-    Args:
-    - question:str 必填，用户问题的文字描述
-    """
-):
-    document_qa_tool = StructuredTool.from_function(
-        func=make_safe_tool(lambda query: qa_chain.invoke(query)),
-        name=tool_name,
-        description=description,
-    )
-    return document_qa_tool
 
-def create_qa_toolkits(qa_chain):
-    return [create_qa_tool(qa_chain)]
+class SearchInput(BaseModel):
+    query: str = Field(...)
+
+class AskDocumentTool(BaseTool):
+    name = "ask_document"
+    description = """根据资料库回答问题。考虑上下文信息，确保问题对相关概念的定义表述完整。
+    args:
+    - query 类型是str, 用户问题的文字描述
+    """
+    args_schema: Type[BaseModel] = SearchInput
+    qa_chain: Runnable = Field(...)
+
+    def _run(
+        self, query: str, run_manager: Optional[CallbackManagerForToolRun] = None
+    ) -> str:
+        """Use the tool."""
+        return make_safe_tool(self.qa_chain.invoke)(query)
+
+def create_qa_toolkits(qa_chain: Runnable) -> List[AskDocumentTool]:
+    return [AskDocumentTool(qa_chain=qa_chain)]
