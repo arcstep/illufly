@@ -2,7 +2,11 @@ from langchain_zhipu import ChatZhipuAI, ZhipuAIEmbeddings
 from langchain_dashscope import ChatDashScope, DashScopeEmbeddings
 
 from langchain_chinese.document_loaders.base import LocalFilesLoader
-from langchain_chinese.retrievers.base import create_qa_chain
+from langchain_chinese.retrievers.base import (
+    create_qa_chain,
+    create_qa_tool,
+    create_qa_toolkits
+)
 
 from langchain_chinese.agents.base import (
     PROMPT_REACT,
@@ -24,6 +28,8 @@ __all__ = [
     "LocalFilesLoader",
     "WithMemoryBinding",
     "create_qa_chain",
+    "create_qa_tool",
+    "create_qa_toolkits",
     
     "PROMPT_REACT",
     "PROMPT_COT",
