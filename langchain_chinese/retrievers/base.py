@@ -1,13 +1,11 @@
 from typing import List, Callable, Any, Optional, Type
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough, Runnable
-from langchain.agents import Tool, tool
-from langchain.tools import BaseTool, StructuredTool
+from langchain_core.output_parsers import StrOutputParser
+from langchain.agents import tool
+from langchain.tools import BaseTool
 from langchain.pydantic_v1 import BaseModel, Field
-from langchain.callbacks.manager import (
-    AsyncCallbackManagerForToolRun,
-    CallbackManagerForToolRun,
-)
+from langchain.callbacks.manager import CallbackManagerForToolRun
 from functools import wraps
 
 __DEFAULT_QA_CHAIN_PROMPT = """
@@ -29,6 +27,7 @@ def create_qa_chain(llm: Runnable, retriever: Callable, prompt: str = __DEFAULT_
         {"context": retriever | format_docs, "question": RunnablePassthrough()}
         | prompt
         | llm
+        | StrOutputParser()
     )
 
 def make_safe_tool(func: Callable) -> Callable:
@@ -41,9 +40,8 @@ def make_safe_tool(func: Callable) -> Callable:
             return str(e)
     return wrapper
 
-
 class SearchInput(BaseModel):
-    query: str = Field(...)
+    query: str = Field(title = "提问内容", description="用户问题的文字描述，必须是字符串")
 
 class AskDocumentTool(BaseTool):
     name = "ask_document"
@@ -58,7 +56,7 @@ class AskDocumentTool(BaseTool):
         self, query: str, run_manager: Optional[CallbackManagerForToolRun] = None
     ) -> str:
         """Use the tool."""
-        return make_safe_tool(self.qa_chain.invoke)(query)
+        return self.qa_chain.invoke(query)
 
 def create_qa_toolkits(qa_chain: Runnable) -> List[AskDocumentTool]:
     return [AskDocumentTool(qa_chain=qa_chain)]

@@ -1175,13 +1175,13 @@ extended-testing = ["lxml (>=5.1.0,<6.0.0)"]
 
 [[package]]
 name = "langchain-zhipu"
-version = "4.0.12"
+version = "4.0.14"
 description = "将智谱AI集成到LangChain"
 optional = false
 python-versions = ">=3.9,<4.0"
 files = [
-    {file = "langchain_zhipu-4.0.12-py3-none-any.whl", hash = "sha256:6fcc5d33db8bc69b4d61beb60ee5dd3441965ad51d71c6e4cf67cac73757423a"},
-    {file = "langchain_zhipu-4.0.12.tar.gz", hash = "sha256:3eebe30a56a56c174f0d7a64bfed662d721016fe334903552c7da39e4d7a5213"},
+    {file = "langchain_zhipu-4.0.14-py3-none-any.whl", hash = "sha256:cf0f05e566cee531fae20cc98338db4009413222d4703bd6a0995f0bd6607f23"},
+    {file = "langchain_zhipu-4.0.14.tar.gz", hash = "sha256:ed4bdc09b8b6980ecb8accd11df58d33e66624276258e28ba54f7ac74f74c520"},
 ]
 
 [package.dependencies]
@@ -3388,4 +3388,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "829e68df89062baaeb7d718a98f469a2cd589e2d046b2fcf6343516ebf48b962"
+content-hash = "70d1f2c487772b6abe3b1f7e33c310dea98d2594f7233d776f77a6330be3071a"
