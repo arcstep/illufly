@@ -17,10 +17,9 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.graph import END, MessageGraph
 from langgraph.prebuilt.tool_executor import ToolExecutor, ToolInvocation
 
-from langchain_core.output_parsers import BaseOutputParser
-
 def create_tool_calling_executor(
-	model: LanguageModelLike, tools: Union[ToolExecutor, Sequence[BaseTool]]
+	model: LanguageModelLike,
+	tools: Union[ToolExecutor, Sequence[BaseTool]],
 ):
 	if isinstance(tools, ToolExecutor):
 		tool_executor = tools
