@@ -9,17 +9,18 @@ from langchain_core.messages import (
     HumanMessage,
     ToolMessage
 )
-from langchain_core.runnables import RunnableLambda
+from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from langgraph.graph import END, MessageGraph
 from langgraph.prebuilt.tool_executor import ToolExecutor, ToolInvocation
 
-def create_tool_calling_executor(
+def create_tools_calling_executor(
     model: LanguageModelLike,
     tools: Union[ToolExecutor, Sequence[BaseTool]],
-    chains: dict = {},
+    runnables: dict = {},
+    verbose: bool = False
 ):
     if isinstance(tools, ToolExecutor):
         tool_executor = tools
@@ -39,12 +40,15 @@ def create_tool_calling_executor(
         else:
             tool_call = last_message.additional_kwargs["tool_calls"][0]
             tool_name = tool_call["function"]["name"]
-            print("tool-name: ", tool_name)
-            if tool_name in chains:
-                print(f"log: call chain [{tool_name}]")
+            if verbose:
+                print("tool-name: ", tool_name)
+            if tool_name in runnables:
+                if verbose:
+                    print(f"log: call runnable [{tool_name}]")
                 return tool_name
             else:
-                print(f"log: call tool [{tool_name}]")
+                if verbose:
+                    print(f"log: call tool [{tool_name}]")
                 return "tools-callback"
 
     def _get_actions(messages):
@@ -86,8 +90,11 @@ def create_tool_calling_executor(
 
     workflow.add_node("agent", reasoning_chain)
     workflow.add_node("action", RunnableLambda(call_tool, acall_tool))
-    for chain_name in chains:
-        workflow.add_node(chain_name, chains[chain_name])
+    for runnable_name in runnables:
+        runnable = runnables[runnable_name]
+        if not isinstance(runnable, Runnable) and "node" in runnables[runnable_name]:
+            runnable = runnables[runnable_name]["node"]
+        workflow.add_node(runnable_name, runnable)
 
     workflow.set_entry_point("agent")
 
@@ -95,12 +102,16 @@ def create_tool_calling_executor(
         "tools-callback": "action",
         "end": END,
     }
-    for chain_name in chains:
-        conditions[chain_name] = chain_name
+    for runnable_name in runnables:
+        conditions[runnable_name] = runnable_name
     workflow.add_conditional_edges("agent", should_continue, conditions)
 
     workflow.add_edge("action", "agent")
-    for chain_name in chains:
-        workflow.add_edge(chain_name, END)
+    for runnable_name in runnables:
+        # 直接结束，除非 runnables 字典中指定了 to 键
+        to_node = END
+        if not isinstance(runnable, Runnable) and "to" in runnables[runnable_name]:
+            to_node = runnables[runnable_name]["to"]
+        workflow.add_edge(runnable_name, to_node)
 
     return workflow.compile()
