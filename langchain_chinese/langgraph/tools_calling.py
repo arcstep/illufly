@@ -41,7 +41,7 @@ def create_tools_calling_executor(
             tool_call = last_message.additional_kwargs["tool_calls"][0]
             tool_name = tool_call["function"]["name"]
             if verbose:
-                print("tool-name: ", tool_name)
+                print("runnable-name: ", tool_name)
             if tool_name in runnables:
                 if verbose:
                     print(f"log: call runnable [{tool_name}]")
