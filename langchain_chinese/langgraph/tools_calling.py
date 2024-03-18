@@ -110,6 +110,7 @@ def create_tools_calling_executor(
     for runnable_name in runnables:
         # 直接结束，除非 runnables 字典中指定了 to 键
         to_node = END
+        runnable = runnables[runnable_name]
         if not isinstance(runnable, Runnable) and "to" in runnables[runnable_name]:
             to_node = runnables[runnable_name]["to"]
         workflow.add_edge(runnable_name, to_node)

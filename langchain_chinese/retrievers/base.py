@@ -21,6 +21,15 @@ DEFAULT_QA_CHAIN_PROMPT = """
 问题: {question}
 """
 
+def format_docs(docs: List[str]) -> str:
+    return "\n\n".join([d.page_content for d in docs])
+
+def convert_message_to_str(message: Union[BaseMessage, str]) -> str:
+    if isinstance(message, BaseMessage):
+        return message.content
+    else:
+        return message
+
 def create_qa_chain(llm: Runnable, retriever: Callable, prompt: str = DEFAULT_QA_CHAIN_PROMPT) -> Callable:
     """
     使用 create_qa_chain 构建的LCEL链时，参数应当是一个消息列表。
@@ -32,15 +41,6 @@ def create_qa_chain(llm: Runnable, retriever: Callable, prompt: str = DEFAULT_QA
 
     prompt = ChatPromptTemplate.from_template(prompt)
 
-    def format_docs(docs: List[str]) -> str:
-        return "\n\n".join([d.page_content for d in docs])
-    
-    def convert_message_to_str(message: Union[BaseMessage, str]) -> str:
-        if isinstance(message, BaseMessage):
-            return message.content
-        else:
-            return message
-    
     return (
         {
             "context": (lambda x: convert_message_to_str(x[0])) | retriever | format_docs,
@@ -67,7 +67,7 @@ class AskDocumentTool(BaseTool):
     name: str = ASK_DOCUMENT_TOOL_NAME
     description: str = """根据资料库回答问题。考虑上下文信息，确保问题对相关概念的定义表述完整。
     args:
-    - query 类型是str, 用户问题的文字描述
+    - query 类型是str, 用户问题的文字描述的字符串
     """
     args_schema: Type[BaseModel] = SearchInput
     qa_chain: Runnable = Field(...)
@@ -76,7 +76,10 @@ class AskDocumentTool(BaseTool):
         self, query: str, run_manager: Optional[CallbackManagerForToolRun] = None
     ) -> str:
         """Use the tool."""
-        return self.qa_chain.invoke(query)
+        
+        if isinstance(query, str):
+            query = [query]
+        return self.qa_chain.invoke([convert_message_to_str(q) for q in query])
 
 def create_qa_toolkits(qa_chain: Runnable, name: str = None, description: str = None) -> List[AskDocumentTool]:
     return [AskDocumentTool(qa_chain, name, description)]
