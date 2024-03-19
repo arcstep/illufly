@@ -13,12 +13,12 @@ OpenAI 的大模型在引领潮流的同时，中国国内也涌现了很多优�
 
 你可以使用 pip 安装：
 ```
-pip install -U langchain_chinese
+pip install -U langchain_chinese langchain_zhipu langchain_dashscope
 ```
 
 或者使用 poetry 安装：
 ```
-poetry add langchain_chinese@latest
+poetry add langchain_chinese@latest langchain_zhipu@latest langchain_dashscope@latest
 ```
 
 ## 三、用法
@@ -30,7 +30,7 @@ langchain_chinese 中为智谱和通义千问模型做了langchain集成。
 （1）阿里云服务模型灵积（通义千问等）集成 [![langchain_dashscope](https://img.shields.io/pypi/v/langchain_dashscope.svg)](https://pypi.org/project/langchain_dashscope/)
 
 ```python
-from langchain_chinese import ChatDashScope
+from langchain_dashscope import ChatDashScope
 ChatDashScope(model="qwen-max-1201")
 ```
 
@@ -42,7 +42,7 @@ ChatDashScope(model="qwen-max-1201")
 
 invoke：
 ```python
-from langchain_chinese import ChatZhipuAI
+from langchain_zhipu import ChatZhipuAI
 llm = ChatZhipuAI()
 llm.invoke("讲个笑话来听吧")
 ```
