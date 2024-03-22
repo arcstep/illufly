@@ -22,6 +22,27 @@ def create_tools_calling_executor(
     runnables: dict = {},
     verbose: bool = False
 ):
+    """
+    创建一个工具调用执行器。
+
+    Args:
+        model (LanguageModelLike): 用于执行工具的语言模型。
+        tools (Union[ToolExecutor, Sequence[BaseTool]]): 要执行的工具，可以是一个工具执行器或者一个工具的序列。
+        runnables (dict, optional): 一个字典，其键是工具的名称，值是工具的Runnable对象。默认为空字典。
+        verbose (bool, optional): 如果为True，执行器将打印详细的日志。默认为False。
+
+    Examples:
+        # 直接使用工具
+        create_tools_calling_executor(model, tools=[tool1])
+
+        # 当希望工具作为 Runnable 运行时，可以提供 runnables 参数，这是一个元素为工具名称的字典
+        # Runnable 在执行完成后，默认连接到 END
+        create_tools_calling_executor(model, tools=[tool1], runnables={"tool1": tool1})
+
+        # 也可以将 runnables 字典中的每个元素进一步扩展为字典， 由 node 指定要执行的 Runnable，to 指定处理完后指向的节点
+        create_tools_calling_executor(model, tools=[tool1], runnables={"tool1": {"node": tool1, "to": "agent"}})
+    """
+    
     if isinstance(tools, ToolExecutor):
         tool_executor = tools
         tool_classes = tools.tools
@@ -32,7 +53,7 @@ def create_tools_calling_executor(
     reasoning_chain = (
         model.bind(tools=[convert_to_openai_tool(t) for t in tool_classes])
     )
-    
+
     def should_continue(messages):
         last_message = messages[-1]
         if "tool_calls" not in last_message.additional_kwargs:
