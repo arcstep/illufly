@@ -8,7 +8,7 @@ from langchain.pydantic_v1 import BaseModel, Field, root_validator
 import os
 import yaml
 
-from .prompts.writing import (
+from .prompts.main import (
     OPENAI_PROMPT_TEMPLATE, 
     CHAIN_PROMPT_TEMPLATE,
 )
@@ -88,7 +88,7 @@ class BaseProject(BaseModel):
         return config
 
 
-class BaseWriting(BaseProject):
+class BaseWritingChain(BaseProject):
     """
     简单的写作能力。
     """
@@ -133,34 +133,24 @@ class BaseWriting(BaseProject):
         """
 
         params = ({
-            "demo": "暂无。",
-            "knowledge": "暂无。"
-        })
-        
-        params.update({
             key: (kwargs[key] if key in kwargs else "暂无。")
             for key in self.prompt.input_variables
-            if key not in ['agent_scratchpad', 'chat_history', 'input', 'demo', 'knowledge']
+            if key not in ['agent_scratchpad', 'chat_history', 'input', 'knowledge']
         })
-        
-        if self.retriever is not None:
-            retriever_demo = (lambda x: convert_message_to_str(x["demo"])) | self.retriever | format_docs
-        else:
-            retriever_demo = (lambda x: "暂无。") 
 
-        if self.retriever is not None:
-            retriever_knowledge = (lambda x: convert_message_to_str(x["knowledge"])) | self.retriever | format_docs
-        else:
-            retriever_knowledge = (lambda x: "暂无。") 
-        
         prompt = self.prompt.partial(**params)
 
         return (
             {
-                "demo": retriever_demo,
-                "knowledge": retriever_knowledge,
-                "input": lambda x: convert_message_to_str(x["input"]) ,
+                "knowledge": lambda x: self._query_kg(convert_message_to_str(x)),
+                "input": lambda x: convert_message_to_str(x) ,
             }
             | prompt
             | self.llm
         )
+
+    def _query_kg(self, query):
+        if self.retriever is not None:
+            return (lambda x: query | self.retriever | format_docs)
+        else:
+            return (lambda x: "暂无。")

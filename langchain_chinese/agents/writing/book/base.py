@@ -1,4 +1,4 @@
-from ..base import BaseWriting
+from ..base import BaseWritingChain
 
-class BookWriting(BaseWriting):
+class BookWritingChain(BaseWritingChain):
     pass
