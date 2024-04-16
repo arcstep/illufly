@@ -1,9 +1,26 @@
+from typing import Dict, List, Callable, Any, Optional, Type, Union
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough, Runnable, RunnableAssign
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.messages import BaseMessage
 from langchain.pydantic_v1 import BaseModel, Field, root_validator
-from typing import (
-    Dict
-)
+
 import os
 import yaml
+
+from .prompts.writing import (
+    OPENAI_PROMPT_TEMPLATE, 
+    CHAIN_PROMPT_TEMPLATE,
+)
+
+def format_docs(docs: List[str]) -> str:
+    return "\n\n".join([d.page_content for d in docs])
+
+def convert_message_to_str(message: Union[BaseMessage, str]) -> str:
+    if isinstance(message, BaseMessage):
+        return message.content
+    else:
+        return message
 
 CONFIG_FILE = "config.yml"
 
@@ -17,7 +34,7 @@ class BaseProject(BaseModel):
         Article - 写文章
         Reading - 读取资料
     """
-    
+
     config_path: str = None
     """
     配置文件路径。
@@ -82,6 +99,13 @@ class BaseWriting(BaseProject):
     如果未明确指定，应当使用 "./index.md"
     """
 
+    llm: Runnable = None
+    retriever: Callable = None    
+    prompt: str = None
+
+    class Config:
+        arbitrary_types_allowed = True
+
     @property
     def output_path(self):
         """
@@ -94,6 +118,49 @@ class BaseWriting(BaseProject):
         if values["output_name"] is None:
             # 如果未明确指定 project_folder，就设为配置文件所在的目录
             values["output_name"] = "./index.md"
-
+        
+        if values["llm"] is None:
+            raise BaseException("llm MUST NOT None!")
+        
+        if values["prompt"] is None:
+            values["prompt"] = CHAIN_PROMPT_TEMPLATE
+                
         return values
 
+    def get_chain(self, **kwargs) -> Callable:
+        """
+        构建写作链。
+        """
+
+        params = ({
+            "demo": "暂无。",
+            "knowledge": "暂无。"
+        })
+        
+        params.update({
+            key: (kwargs[key] if key in kwargs else "暂无。")
+            for key in self.prompt.input_variables
+            if key not in ['agent_scratchpad', 'chat_history', 'input', 'demo', 'knowledge']
+        })
+        
+        if self.retriever is not None:
+            retriever_demo = (lambda x: convert_message_to_str(x["demo"])) | self.retriever | format_docs
+        else:
+            retriever_demo = (lambda x: "暂无。") 
+
+        if self.retriever is not None:
+            retriever_knowledge = (lambda x: convert_message_to_str(x["knowledge"])) | self.retriever | format_docs
+        else:
+            retriever_knowledge = (lambda x: "暂无。") 
+        
+        prompt = self.prompt.partial(**params)
+
+        return (
+            {
+                "demo": retriever_demo,
+                "knowledge": retriever_knowledge,
+                "input": lambda x: convert_message_to_str(x["input"]) ,
+            }
+            | prompt
+            | self.llm
+        )
