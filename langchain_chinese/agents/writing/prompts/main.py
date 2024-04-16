@@ -2,7 +2,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.prompts import MessagesPlaceholder
 
 SYSTEM_PROMPT = """
-你是强大的AI写作助手，可以使用工具与指令自动化解决问题。
+你是强大的AI写作助手。
+
+## 写作目标
+{goal}
 
 ## 指导原则
 {instruction}
