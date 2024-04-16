@@ -61,11 +61,15 @@ def make_safe_tool(func: Callable) -> Callable:
     return wrapper
 
 class SearchInput(BaseModel):
-    query: str = Field(title="提问内容", description="用户问题的文字描述，必须是字符串")
+    query: str = Field(
+        title="提问内容",
+        description="用户问题的文字描述，必须是字符串"
+    )
 
 class AskDocumentTool(BaseTool):
     name: str = ASK_DOCUMENT_TOOL_NAME
-    description: str = """根据资料库回答问题。考虑上下文信息，确保问题对相关概念的定义表述完整。
+    description: str = """
+    根据资料库回答问题。考虑上下文信息，确保问题对相关概念的定义表述完整。
     args:
     - query 类型是str, 用户问题的文字描述的字符串
     """
