@@ -1,9 +1,13 @@
-from langchain.pydantic_v1 import BaseModel, Field
+from langchain.pydantic_v1 import BaseModel, Field, root_validator
+from typing import (
+    Dict
+)
 import os
+import yaml
 
 CONFIG_FILE = "config.yml"
 
-def BaseProject(BaseModel):
+class BaseProject(BaseModel):
     """
     用于写作复杂文案的智能体。
     为了写作投标书、方案书等工作文档而准备的一系列工具。
@@ -30,7 +34,7 @@ def BaseProject(BaseModel):
     """
     
     @root_validator()
-    def validate_environment(cls, values: Dict) -> Dict:
+    def validate_base_environment(cls, values: Dict) -> Dict:
         if values["config_path"] is None:
             # 从当前目录开始向上查找配置文件
             current_dir = os.getcwd()
@@ -43,6 +47,13 @@ def BaseProject(BaseModel):
             else:
                 # 如果在所有上级目录中都找不到配置文件，就在当前目录生成配置文件
                 values["config_path"] = os.path.join(os.getcwd(), CONFIG_FILE)
+        else:
+            # 如果 config_path 是目录，就增加 CONFIG_FILE 的路径
+            if os.path.isdir(values["config_path"]):
+                values["config_path"] = os.path.join(values["config_path"], CONFIG_FILE)
+            # 如果 config_path 是相对路径就扩展为绝对路径
+            # 否则直接使用绝对路径
+            values["config_path"] = os.path.abspath(values["config_path"])
 
         if values["project_folder"] is None:
             # 如果未明确指定 project_folder，就设为配置文件所在的目录
@@ -50,8 +61,17 @@ def BaseProject(BaseModel):
 
         return values
 
+    @property
+    def config(self):
+        """
+        读取YAML配置
+        """
+        with open(self.config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        return config
 
-def BaseWriting(BaseProject):
+
+class BaseWriting(BaseProject):
     """
     简单的写作能力。
     """
@@ -70,7 +90,7 @@ def BaseWriting(BaseProject):
         return os.path.join(os.getcwd(), self.output_name)
 
     @root_validator()
-    def validate_environment(cls, values: Dict) -> Dict:
+    def validate_writing_environment(cls, values: Dict) -> Dict:
         if values["output_name"] is None:
             # 如果未明确指定 project_folder，就设为配置文件所在的目录
             values["output_name"] = "./index.md"
