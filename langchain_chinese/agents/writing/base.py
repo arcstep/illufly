@@ -6,6 +6,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain.pydantic_v1 import BaseModel, Field, root_validator
 
+from dotenv import find_dotenv, load_dotenv
 import os
 import yaml
 
@@ -23,70 +24,38 @@ def convert_message_to_str(message: Union[BaseMessage, str]) -> str:
     else:
         return message
 
-CONFIG_FILE = "config.yml"
-
 class BaseProject(BaseModel):
     """
     用于写作复杂文案的智能体。
     为了写作投标书、方案书等工作文档而准备的一系列工具。
-
-    典型的子类包括：
-        BookWriting - 写书，包含多个文件
-        Article - 写文章
-        Reading - 读取资料
     """
 
-    config_path: str = None
-    """
-    配置文件路径。
-    如果未指定，就从当前目录向上层寻找，直到找到配置文件所在的位置；
-    如果仍然找不到，就使用当前目录生成配置文件。
-    
-    从效率和可控性角度考虑，应当在项目初始化时确保这一变量存在。
-    """
-
-    project_folder: str = None
-    """
-    文档根目录。
-    如果未明确指定，从当前目录向上层寻找，直到找到配置文件所在的位置。
-    """
+    project_folder: str = Field(
+        None,
+        description="文档根目录。如果未明确指定，就从环境变量中读取。建议使用 .env 来管理这一配置。"
+    )
     
     @root_validator()
     def validate_base_environment(cls, values: Dict) -> Dict:
-        if values["config_path"] is None:
-            # 从当前目录开始向上查找配置文件
-            current_dir = os.getcwd()
-            while current_dir != os.path.dirname(current_dir):  # 当前目录不是根目录
-                if os.path.exists(os.path.join(current_dir, CONFIG_FILE)):
-                    values["config_path"] = os.path.join(current_dir, CONFIG_FILE)
-                    break
-                else:
-                    current_dir = os.path.dirname(current_dir)
-            else:
-                # 如果在所有上级目录中都找不到配置文件，就在当前目录生成配置文件
-                values["config_path"] = os.path.join(os.getcwd(), CONFIG_FILE)
-        else:
-            # 如果 config_path 是目录，就增加 CONFIG_FILE 的路径
-            if os.path.isdir(values["config_path"]):
-                values["config_path"] = os.path.join(values["config_path"], CONFIG_FILE)
-            # 如果 config_path 是相对路径就扩展为绝对路径
-            # 否则直接使用绝对路径
-            values["config_path"] = os.path.abspath(values["config_path"])
+        project_folder = values.get("project_folder")
 
-        if values["project_folder"] is None:
-            # 如果未明确指定 project_folder，就设为配置文件所在的目录
-            values["project_folder"] = os.path.dirname(values["config_path"])
+        # 如果 project_folder 是 None，尝试从环境变量中获取
+        if project_folder is None:
+            project_folder = os.getenv("PROJECT_FOLDER")
+
+        # 如果 PROJECT_FOLDER 是相对路径，将其转换为相对于 .env 文件的绝对路径
+        if project_folder and not os.path.isabs(project_folder):
+            dotenv_path = find_dotenv()
+            dotenv_dir = os.path.dirname(dotenv_path)
+            project_folder = os.path.join(dotenv_dir, project_folder)
+
+        # 如果 PROJECT_FOLDER 仍然是 None，抛出错误
+        if project_folder is None:
+            raise ValueError("PROJECT_FOLDER 环境变量未设置")
+
+        values["project_folder"] = project_folder
 
         return values
-
-    @property
-    def config(self):
-        """
-        读取YAML配置
-        """
-        with open(self.config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        return config
 
 class SaveContentCallbackHandler(BaseCallbackHandler):
     def __init__(self, output_path:str):
@@ -98,7 +67,7 @@ class SaveContentCallbackHandler(BaseCallbackHandler):
         print(gen[0][0].text)
         print("-"*20)
 
-class BaseWritingChain(BaseProject):
+class WritingChain(BaseProject):
     """
     简单的写作能力。
     """
@@ -132,36 +101,36 @@ class BaseWritingChain(BaseProject):
         arbitrary_types_allowed = True
 
     def save_content_handler(self):
-        return SaveContentCallbackHandler(output_path=self.output_path())
+        return SaveContentCallbackHandler(output_path=self.get_output_path())
 
-    def output_path(self):
+    def get_output_path(self, output_filename: str=None):
         """
-        结合当前文件夹位置和 output_name 文件名，获得输出文件路径。
-        
-        output_dir 属性被设置为如下情况都能正确组需要的路径：
-        - 未设置，即为默认的None
-        - 设置为相对路径
-        - 设置为绝对路径
+        结合 output_dir 和 output_name 文件名，获得输出文件路径。
         """
-        if self.output_dir is None or not os.path.isabs(self.output_dir):
-            output_dir = os.path.join(os.getcwd(), self.output_dir) if self.output_dir else os.getcwd()
-        else:
-            output_dir = self.output_dir
-
-        path = os.path.join(output_dir, self.output_filename)
+        filename = output_filename if output_filename else self.output_filename
+        path = os.path.join(self.output_dir, filename)
         return os.path.abspath(path)
     
     @root_validator()
     def validate_writing_environment(cls, values: Dict) -> Dict:
-        values["output_filename"] = "./index.md" if values["output_filename"] is None else values["output_filename"]
-        values["output_dir"] = os.getcwd() if values["output_dir"] is None else values["output_dir"]
-        
+        if not values["output_filename"]:
+            filename = os.getenv("OUTPUT_FILENAME")
+            if not filename:
+                values["output_filename"] = filename
+            else:
+                values["output_filename"] = "001.md"
+
+        if not values["output_dir"]:
+            values["output_dir"] = values["project_folder"]
+        elif not os.path.isabs(values["output_dir"]):
+            values["output_dir"] = os.path.join(values["project_folder"], values["output_dir"])
+
         if values["llm"] is None:
             raise BaseException("llm MUST NOT None!")
-        
+
         if values["prompt"] is None:
             values["prompt"] = CHAIN_PROMPT_TEMPLATE
-                
+
         return values
 
     def get_chain(self, **kwargs) -> Callable:
