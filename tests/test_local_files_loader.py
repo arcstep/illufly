@@ -2,7 +2,7 @@ import os
 import shutil
 import pytest
 from unittest.mock import patch
-from langchain_chinese.document_loaders import LocalFilesLoader
+from langchain_chinese import LocalFilesLoader
 from langchain_zhipu import ChatZhipuAI
 
 # set documents_folder to init LocalFilesLoader
