@@ -3,6 +3,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough, Runnable, RunnableAssign
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import BaseMessage
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain.pydantic_v1 import BaseModel, Field, root_validator
 
 import os
@@ -87,37 +88,73 @@ class BaseProject(BaseModel):
             config = yaml.safe_load(f)
         return config
 
+class SaveContentCallbackHandler(BaseCallbackHandler):
+    def __init__(self, output_path:str):
+        self.output_path = output_path
+    
+    def on_llm_end(self, response, **kwargs):
+        print("-"*20, "OUTPUT_PATH:", self.output_path, "-"*20)
+        gen = response.generations
+        print(gen[0][0].text)
+        print("-"*20)
 
 class BaseWritingChain(BaseProject):
     """
     简单的写作能力。
     """
     
-    output_name: str = None
+    output_filename: str = None
     """
-    文档输出路径，可使用相对路径。
-    如果未明确指定，应当使用 "./index.md"
+    输出的文档名，默认为 "index.md"。
+    """
+    
+    output_dir: str = None
+    """
+    文档输出的相对路径，默认是当前文件夹。
     """
 
     llm: Runnable = None
-    retriever: Callable = None    
+    """
+    具有推理能力的的大模型。
+    """
+
+    retriever: Callable = None
+    """
+    向量查询对象。
+    """
+
     prompt: str = None
+    """
+    提示语模板。    
+    """
 
     class Config:
         arbitrary_types_allowed = True
 
-    @property
+    def save_content_handler(self):
+        return SaveContentCallbackHandler(output_path=self.output_path())
+
     def output_path(self):
         """
-        结合当前文件夹位置和output_name文件名，获得输出文件路径
+        结合当前文件夹位置和 output_name 文件名，获得输出文件路径。
+        
+        output_dir 属性被设置为如下情况都能正确组需要的路径：
+        - 未设置，即为默认的None
+        - 设置为相对路径
+        - 设置为绝对路径
         """
-        return os.path.join(os.getcwd(), self.output_name)
+        if self.output_dir is None or not os.path.isabs(self.output_dir):
+            output_dir = os.path.join(os.getcwd(), self.output_dir) if self.output_dir else os.getcwd()
+        else:
+            output_dir = self.output_dir
 
+        path = os.path.join(output_dir, self.output_filename)
+        return os.path.abspath(path)
+    
     @root_validator()
     def validate_writing_environment(cls, values: Dict) -> Dict:
-        if values["output_name"] is None:
-            # 如果未明确指定 project_folder，就设为配置文件所在的目录
-            values["output_name"] = "./index.md"
+        values["output_filename"] = "./index.md" if values["output_filename"] is None else values["output_filename"]
+        values["output_dir"] = os.getcwd() if values["output_dir"] is None else values["output_dir"]
         
         if values["llm"] is None:
             raise BaseException("llm MUST NOT None!")
@@ -130,6 +167,8 @@ class BaseWritingChain(BaseProject):
     def get_chain(self, **kwargs) -> Callable:
         """
         构建写作链。
+        
+        kwargs - 可以修改提示语模板中的键值，但请不要使用这些键名：'agent_scratchpad', 'chat_history', 'input', 'knowledge'
         """
 
         params = ({
@@ -146,7 +185,7 @@ class BaseWritingChain(BaseProject):
                 "input": lambda x: convert_message_to_str(x) ,
             }
             | prompt
-            | self.llm
+            | self.llm.with_config(callbacks=[self.save_content_handler()])
         )
 
     def _query_kg(self, query):
