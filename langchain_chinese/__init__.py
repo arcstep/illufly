@@ -11,9 +11,7 @@ from langchain_chinese.agents.base import (
     create_reason_agent,
 )
 
-from langchain_chinese.agents.writing.base import BaseWritingChain
-from langchain_chinese.agents.writing.book.base import BookWritingChain
-from langchain_chinese.agents.writing.article.base import ArticleWritingChain
+from langchain_chinese.agents.writing.base import BaseProject, WritingChain
 
 from langchain_chinese.memory import WithMemoryBinding, MemoryManager
 
@@ -30,6 +28,6 @@ __all__ = [
     "PROMPT_COT",
     "create_reason_agent",
     
-    "BookWriting",
-    "ArticleWriting",
+    "BaseProject",
+    "WritingChain",
 ]
