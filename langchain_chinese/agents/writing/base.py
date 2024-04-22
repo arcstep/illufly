@@ -27,7 +27,7 @@ def convert_message_to_str(message: Union[BaseMessage, str]) -> str:
 class BaseProject(BaseModel):
     """
     用于写作复杂文案的智能体。
-    为了写作投标书、方案书等工作文档而准备的一系列工具。
+    例如，写小说、投标书、方案书等。
     """
 
     project_folder: str = Field(
@@ -70,11 +70,14 @@ class SaveContentCallbackHandler(BaseCallbackHandler):
 class WritingChain(BaseProject):
     """
     简单的写作能力。
+    
+    一个写作链的实例仅管理一个写作片段；
+    使用 .env 可以很方便地让同一个项目中的所有写作链获得相同配置。
     """
     
     output_filename: str = None
     """
-    输出的文档名，默认为 "index.md"。
+    输出的文档名。
     """
     
     output_dir: str = None
@@ -96,6 +99,11 @@ class WritingChain(BaseProject):
     """
     提示语模板。    
     """
+    
+    prompt_vars: Dict[Any, Any] = {}
+    """
+    提示语模板中的键值对设置。 
+    """
 
     class Config:
         arbitrary_types_allowed = True
@@ -111,6 +119,22 @@ class WritingChain(BaseProject):
         path = os.path.join(self.output_dir, filename)
         return os.path.abspath(path)
     
+    def get_prompt_values_from_files(self):
+        """
+        扫描self.output_dir目录，筛查出以".prompt.var"结尾的文件。
+        """
+        if not os.path.isdir(self.output_dir):
+            return {}
+
+        result = {}
+        for filename in os.listdir(self.output_dir):
+            if filename.endswith(".prompt.var"):
+                key = filename[:-len(".prompt.var")]
+                with open(os.path.join(self.output_dir, filename), 'r') as f:
+                    value = f.read()
+                result[key] = value
+        return result
+        
     @root_validator()
     def validate_writing_environment(cls, values: Dict) -> Dict:
         if not values["output_filename"]:
@@ -118,7 +142,7 @@ class WritingChain(BaseProject):
             if not filename:
                 values["output_filename"] = filename
             else:
-                values["output_filename"] = "001.md"
+                values["output_filename"] = "output.md"
 
         if not values["output_dir"]:
             values["output_dir"] = values["project_folder"]
@@ -133,20 +157,29 @@ class WritingChain(BaseProject):
 
         return values
 
-    def get_chain(self, **kwargs) -> Callable:
+    def get_chain(self, output_filename: str=None) -> Callable:
         """
         构建写作链。
         
-        kwargs - 可以修改提示语模板中的键值，但请不要使用这些键名：'agent_scratchpad', 'chat_history', 'input', 'knowledge'
+        通过修改 output_filename 可以将输出保存为指定的文件路径，否则就保存到默认的 "output.md"文件
         """
+        prompt_vars = self.prompt_vars
+        if output_filename:
+            prompt_vars.update({"output_filename": output_filename})
 
-        params = ({
-            key: (kwargs[key] if key in kwargs else "暂无。")
+        # 从对象属性中读取提示语变量
+        input_vars = ({
+            key: (prompt_vars[key] if key in prompt_vars else "暂无。")
             for key in self.prompt.input_variables
-            if key not in ['agent_scratchpad', 'chat_history', 'input', 'knowledge']
         })
+        
+        # 从输出目录中读取提示语变量
+        prompt_values = self.get_prompt_values_from_files()
+        for key, value in prompt_values.items():
+            if key in input_vars.keys():
+                input_vars[key] = value
 
-        prompt = self.prompt.partial(**params)
+        prompt = self.prompt.partial(**input_vars)
 
         return (
             {
