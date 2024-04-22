@@ -67,6 +67,14 @@ class SaveContentCallbackHandler(BaseCallbackHandler):
         print(gen[0][0].text)
         print("-"*20)
 
+        # 检查路径是否存在，如果不存在就创建
+        if not os.path.exists(os.path.dirname(self.output_path)):
+            os.makedirs(os.path.dirname(self.output_path))
+
+        # 将gen[0][0].text写入到文件中
+        with open(self.output_path, 'w') as f:
+            f.write(gen[0][0].text)
+            
 class WritingChain(BaseProject):
     """
     简单的写作能力。
