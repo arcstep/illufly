@@ -19,8 +19,11 @@ SYSTEM_PROMPT = """
 ## 你的写作风格必须符合以下要求
 {styles}
 
+## 你的输出格式必须为：{format}
+
 ## 你的输出内容必须参考如下示例
 {demo}
+
 """
 
 # openai agent
