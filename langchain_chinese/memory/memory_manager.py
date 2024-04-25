@@ -20,6 +20,9 @@ class MemoryManager:
     # 为每一个session_id单独建立记忆管理器
     _shorterm_memory_store: dict[str, BaseChatMemory] = {}
 
+    # 基于内存的记忆存储
+    _history_in_memory: dict[str, ChatMessageHistory] = {}
+
     # 记忆存储的回调函数，要求使用 session_id 位置参数
     get_longterm_memory_factory: Callable[[str], BaseChatMessageHistory]
 
@@ -71,9 +74,6 @@ class MemoryManager:
             return self._shorterm_memory_store[session_id]
         else:
             raise ValueError("Session ID is required")        
-
-    # 基于内存的记忆存储
-    _history_in_memory: dict[str, ChatMessageHistory] = {}
 
     def _get_history_in_memory(self, session_id: str) -> BaseChatMessageHistory:
         """默认的基于内存的记忆"""

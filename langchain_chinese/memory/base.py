@@ -67,9 +67,9 @@ class WithMemoryBinding(RunnableBindingBase):
         history_factory_config: Optional[Sequence[ConfigurableFieldSpec]] = None,
         **kwargs: Any,
     ) -> None:
-        # 提取记忆 _enter_history / _aenter_history
+        # 提取记忆 _enter_memory / _aenter_memory
         history_chain: Runnable = RunnableLambda(
-            self._enter_history, self._aenter_history
+            self._enter_memory, self._aenter_memory
         ).with_config(run_name="load_history")
         messages_key = history_messages_key or input_messages_key
         if messages_key:
@@ -77,9 +77,9 @@ class WithMemoryBinding(RunnableBindingBase):
                 **{messages_key: history_chain}
             ).with_config(run_name="insert_history")
 
-        # 写入记忆 _exit_history
+        # 写入记忆 _exit_memory
         bound = (
-            history_chain | runnable.with_listeners(on_end=self._exit_history)
+            history_chain | runnable.with_listeners(on_end=self._exit_memory)
         ).with_config(run_name="RunnableWithMessageHistory")
 
         # 构造 configurable 中的参数
@@ -179,7 +179,7 @@ class WithMemoryBinding(RunnableBindingBase):
         else:
             raise ValueError()
 
-    def _enter_history(self, input: Any, config: RunnableConfig) -> List[BaseMessage]:
+    def _enter_memory(self, input: Any, config: RunnableConfig) -> List[BaseMessage]:
         memory = config["configurable"]["memory"]
         # 提取记忆中应当插入到提示语中的部份
         if self.history_messages_key:
@@ -190,12 +190,12 @@ class WithMemoryBinding(RunnableBindingBase):
             )
             return memory.buffer_as_messages + self._get_input_messages(input_val)
 
-    async def _aenter_history(
+    async def _aenter_memory(
         self, input: Dict[str, Any], config: RunnableConfig
     ) -> List[BaseMessage]:
-        return await run_in_executor(config, self._enter_history, input, config)
+        return await run_in_executor(config, self._enter_memory, input, config)
 
-    def _exit_history(self, run: Run, config: RunnableConfig) -> None:
+    def _exit_memory(self, run: Run, config: RunnableConfig) -> None:
         memory = config["configurable"]["memory"]
         hist = memory.chat_memory
 
