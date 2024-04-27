@@ -1,12 +1,16 @@
 from typing import Iterator, List, Union
 from langchain_core.documents import Document
 from langchain_community.document_loaders.base import BaseLoader
+from langchain_community.document_loaders import TextLoader
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_community.document_loaders import UnstructuredMarkdownLoader
+from langchain_community.document_loaders.excel import UnstructuredExcelLoader
 
 import os
 import re
+import sys
+# import subprocess
 
 class BaseQALoader(BaseLoader):
     """
@@ -19,7 +23,7 @@ class BaseQALoader(BaseLoader):
     """
     
     # support types
-    extensions: List[str] = ["docx", "pdf", "md"]
+    extensions: List[str] = ["docx", "pdf", "md", "txt", "xlsx"]
     
     # root document folder storage
     _documents_folder: str = "./documents"
@@ -138,28 +142,48 @@ class BaseQALoader(BaseLoader):
 
 class FileLoadFactory:
     @staticmethod
-    def get_loader(filename: str):
-        filename = filename.strip()
+    def get_loader(filename):
         ext = get_file_extension(filename)
         if ext == "pdf":
-            loader = PyPDFLoader(filename)
-            return loader
+            try:
+                import pypdf
+                return PyPDFLoader(filename)
+            except BaseException as e:
+                raise_not_install('pypdf')
         elif ext == "docx":
-            loader = Docx2txtLoader(filename)
-            return loader
+            try:
+                import docx2txt
+                return Docx2txtLoader(filename)
+            except BaseException as e:
+                raise_not_install('docx2txt')
         elif ext == "md":
-            loader = UnstructuredMarkdownLoader(
-                filename, mode="elements", strategy="fast",
-            )
-            return loader
+            try:
+                import unstructured
+                import markdown
+                return UnstructuredMarkdownLoader(filename, mode="elements", strategy="fast")
+            except BaseException as e:
+                raise_not_install(['markdown', 'unstructured'])
+        elif ext == "xlsx":
+            try:
+                import unstructured
+                return UnstructuredExcelLoader(filename, mode="elements")
+            except BaseException as e:
+                raise_not_install('unstructured')
+        elif ext == "txt":
+            return TextLoader(filename, autodetect_encoding=True)
         else:
             print(f"WARNING: Loaded File extension {ext} not supported now.")
-            return None
+
+        return None
+
+def raise_not_install(packages):
+    print(f"please install package: '{packages}' with pip or poetry")
+    # auto install package
+    # subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
 
 def get_file_extension(filename: str) -> str:
     """Get File Extension"""
-    return filename.split(".")[-1]
-
+    return filename.split(".")[-1].lower()
 
 class LocalFilesLoader(BaseQALoader):
     """
