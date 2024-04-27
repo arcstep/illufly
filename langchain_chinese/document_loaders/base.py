@@ -66,16 +66,16 @@ class LocalFilesLoader(BaseLoader):
     - 过滤目标：文件全路径移除 LANGCHAIN_CHINESE_DOCUMENTS_FOLDER 部份后剩余的部份
     
     过滤规则包含：
-    - 目录过滤：由 includes 指定，以列表中的字符串开头就保留
-    - 目录排除：由 excludes 指定，以列表中的字符串开头就排除
-    - 路径过滤：由 path_filter 指定，应当是正则表达式，通常作为文件的过滤规则使用
+    - 目录过滤：由 included_prefixes 指定，以列表中的字符串开头就保留
+    - 目录排除：由 excluded_prefixes 指定，以列表中的字符串开头就排除
+    - 路径过滤：由 path_regex 指定，应当是正则表达式，通常作为文件的过滤规则使用
     - 扩展名过滤：由 extensions 指定，即文件 xxx.ext 的末尾 ext
     """
     
     # support types
     extensions: List[str] = ["docx", "pdf", "md", "txt", "xlsx"]
     
-    # root document folder storage
+    # 希望入库到知识库的本地文件夹根目录
     _documents_folder: str = "./documents"
     
     @property
@@ -86,14 +86,14 @@ class LocalFilesLoader(BaseLoader):
     def documents_folder(self, value):
         self._documents_folder = os.path.abspath(value)
 
-    # question path filter
-    path_filter: str = ".*"
+    # 按照该字符串（正则表达式）筛出将被入库到知识库的本地文档
+    path_regex: str = ".*"
 
-    # only include folder or files
-    includes: List[str] = []
+    # 只要本地文件夹的路径、子文件夹以这些列表中的字符串开头，就被入库到知识库
+    included_prefixes: List[str] = []
 
-    # excludes folder or files
-    excludes: List[str] = []
+    # 只要本地文件夹的路径、子文件夹以这些列表中的字符串开头，就被排除，不会入库到知识库
+    excluded_prefixes: List[str] = []
 
     def __init__(
         self,
@@ -110,7 +110,7 @@ class LocalFilesLoader(BaseLoader):
         else:
             self.documents_folder = documents_folder
 
-        for key in ["extensions", "includes", "excludes", "path_filter"]:
+        for key in ["extensions", "included_prefixes", "excluded_prefixes", "path_regex"]:
             if(kwargs.get(key) is not None):
                 setattr(self, key, kwargs.get(key))
 
@@ -122,11 +122,11 @@ class LocalFilesLoader(BaseLoader):
         for dirpath, dirnames, filenames in os.walk(folders):
             for filename in filenames:
                 relpath = os.path.relpath(os.path.join(dirpath, filename), folders)
-                if self.includes and not any(relpath.startswith(include) for include in self.includes):
+                if self.included_prefixes and not any(relpath.startswith(include) for include in self.included_prefixes):
                     continue
-                if self.excludes and any(relpath.startswith(exclude) for exclude in self.excludes):
+                if self.excluded_prefixes and any(relpath.startswith(exclude) for exclude in self.excluded_prefixes):
                     continue
-                if self.path_filter and not re.search(self.path_filter, relpath):
+                if self.path_regex and not re.search(self.path_regex, relpath):
                     continue
                 if self.extensions and get_file_extension(filename) not in self.extensions:
                     continue
@@ -159,7 +159,9 @@ class LocalFilesQALoader(LocalFilesLoader):
       即根据问题的文本相似度查询文档中的Question部份，
       但根据Question结果的source部份查询匹配的Anwser，作为LLM的参考结果。
     """
-    answer_file: str = ["answer.md", "example.md"]
+    
+    # 根据知识库查询结果的文件来源匹配关联文件，该参数可以指定这些关联文件的名称
+    answer_filenames: str = ["answer.md", "example.md"]
 
     def __init__(
         self,
@@ -168,7 +170,7 @@ class LocalFilesQALoader(LocalFilesLoader):
     ):
         super().__init__(documents_folder, *args, **kwargs)
 
-        for key in ["answer_file"]:
+        for key in ["answer_filenames"]:
             if(kwargs.get(key) is not None):
                 setattr(self, key, kwargs.get(key)) 
 
@@ -184,7 +186,7 @@ class LocalFilesQALoader(LocalFilesLoader):
             raise TypeError("doc must be a str or a Document")
 
         answers = {}
-        for answer_file in self.answer_file:
+        for answer_file in self.answer_filenames:
             target = os.path.join(dirpath, answer_file)
             if os.path.exists(target):
                 answer_key = os.path.splitext(answer_file)[0]
@@ -192,9 +194,9 @@ class LocalFilesQALoader(LocalFilesLoader):
                 answers[answer_key] = answer_content
         return answers
     
-    # 加载文档内容时排除 answer_file
+    # 加载文档内容时排除 answer_filenames
     def get_files(self) -> list[str]:
         """List All Files with Extension"""
         files = super().get_files()
-        files = [f for f in files if os.path.basename(f) not in self.answer_file]
+        files = [f for f in files if os.path.basename(f) not in self.answer_filenames]
         return files
