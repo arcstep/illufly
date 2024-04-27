@@ -1,8 +1,14 @@
-from langchain_chinese.document_loaders.base import LocalFilesLoader
+from langchain_chinese.document_loaders.base import (
+    BaseQALoader,
+    LocalFilesLoader,
+    AnswerQALoader,
+    ExampleQALoader,
+)
+
 from langchain_chinese.retrievers.base import (
     AskDocumentTool,
     create_qa_chain,
-    create_qa_toolkits
+    create_qa_toolkits,
 )
 
 from langchain_chinese.agents.base import (
