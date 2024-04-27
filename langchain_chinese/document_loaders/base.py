@@ -14,12 +14,17 @@ import sys
 
 class BaseQALoader(BaseLoader):
     """
-    从本地文件中检索知识文档。
+    从本地文件中检索知识文档，支持docx、pdf、txt、md、xlsx等文档。
+
+    过滤目标：
+    - 根目录：由 LANGCHAIN_CHINESE_DOCUMENTS_FOLDER 变量指定
+    - 过滤目标：文件全路径移除 LANGCHAIN_CHINESE_DOCUMENTS_FOLDER 部份后剩余的部份
     
-    包含的过滤规则有：
-    - 从 LANGCHAIN_CHINESE_DOCUMENTS_FOLDER 变量指定的路径列举文件
-    - 按照 question_filter 过滤文档路径，但不要过滤 LANGCHAIN_CHINESE_DOCUMENTS_FOLDER 指定的部份
-    - 按照 extensions 过滤指定扩展名的文件
+    过滤规则包含：
+    - 目录过滤：由 includes 指定，应当是过滤目标以列表中的字符串开头就保留
+    - 目录排除：由 excludes 指定，应当是过滤目标以列表中的字符串开头就排除
+    - 路径过滤：由 path_filter 指定，应当是正则表达式字符串，通常应作为文件的过滤规则使用
+    - 扩展名过滤：由 extensions 指定，即文件 xxx.ext 的末尾 ext
     """
     
     # support types
@@ -36,35 +41,17 @@ class BaseQALoader(BaseLoader):
     def documents_folder(self, value):
         self._documents_folder = os.path.abspath(value)
 
-    # question file filter
-    question_filter: str = ".*"
+    # question path filter
+    path_filter: str = ".*"
     
-    # answer file filter
-    answer_filter: str = ".*"
+    # answer file source
+    source_filter: str = ".*"
     
     # only include folder or files
-    _includes: List[str] = []
-
-    @property
-    def includes(self):
-        return self._includes
-
-    @includes.setter
-    def includes(self, value):
-        if(value is not None and value != []):
-            self._includes = [os.path.abspath(os.path.join(self.documents_folder, f)) for f in value]
+    includes: List[str] = []
 
     # excludes folder or files
-    _excludes: List[str] = []
-
-    @property
-    def excludes(self):
-        return self._excludes
-
-    @excludes.setter
-    def excludes(self, value):
-        if(value is not None and value != []):
-            self._excludes = [os.path.abspath(os.path.join(self.documents_folder, f)) for f in value]
+    excludes: List[str] = []
 
     def __init__(
         self,
@@ -81,7 +68,7 @@ class BaseQALoader(BaseLoader):
         else:
             self.documents_folder = documents_folder
 
-        for key in ["extensions", "includes", "excludes", "question_filter", "answer_filter"]:
+        for key in ["extensions", "includes", "excludes", "path_filter", "source_filter"]:
             if(kwargs.get(key) is not None):
                 setattr(self, key, kwargs.get(key))
 
@@ -89,35 +76,19 @@ class BaseQALoader(BaseLoader):
         """List All Files with Extension"""
         files = []
 
-        # get all files defaults
         folders = self.documents_folder
-        print(f"question_filter: {self.question_filter}")
-        print(f"extensions: {self.extensions}")
         for dirpath, dirnames, filenames in os.walk(folders):
-            print("-"*20)
-            print(dirpath, filenames)
             for filename in filenames:
                 relpath = os.path.relpath(os.path.join(dirpath, filename), folders)
-                if(self.extensions == []):
-                    if re.search(self.question_filter, relpath):
-                        files.append(os.path.join(dirpath, filename))
-                else:
-                    if get_file_extension(filename) in self.extensions and re.search(self.question_filter, relpath):
-                        files.append(os.path.join(dirpath, filename))
-                print(relpath)
-                print(files)
-
-        # filter files with includes
-        if(self.includes != []):
-            print(f"include folders: {self.excludes}")
-            files = [f for f in files if any(f.startswith(include) for include in self.includes)]
-            print(files)
-
-        # filter files with excludes
-        if(self.excludes != []):
-            print(f"exclude folders: {self.excludes}")
-            files = [f for f in files if not any(f.startswith(exclude) for exclude in self.excludes)]
-            print(files)
+                if self.includes and not any(relpath.startswith(include) for include in self.includes):
+                    continue
+                if self.excludes and any(relpath.startswith(exclude) for exclude in self.excludes):
+                    continue
+                if self.path_filter and not re.search(self.path_filter, relpath):
+                    continue
+                if self.extensions and get_file_extension(filename) not in self.extensions:
+                    continue
+                files.append(os.path.join(dirpath, filename))
 
         return files
 
@@ -189,19 +160,19 @@ class LocalFilesLoader(BaseQALoader):
     """
     Load Local files as Documents.
     """
-    question_filter = ".*"
-    knowledge_filter = ".*"
+    path_filter = ".*"
+    source_filter = ".*"
 
 class AnswerQALoader(BaseQALoader):
     """
     Load Answer as Documents.
     """
-    question_filter = "input.md"
-    knowledge_filter = "answer.md"
+    path_filter = "input.md"
+    source_filter = "answer.md"
 
 class ExampleQALoader(BaseQALoader):
     """
     Load Example as Documents.
     """
-    question_filter = "input.md"
-    knowledge_filter = "example.md"
+    path_filter = "input.md"
+    source_filter = "example.md"
