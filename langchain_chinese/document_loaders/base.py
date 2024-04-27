@@ -1,20 +1,15 @@
-import os
 from typing import Iterator, List, Union
 from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_community.document_loaders import Docx2txtLoader
 
-class LocalFilesLoader(BaseLoader):
+import os
+import re
+
+class BaseQALoader(BaseLoader):
     """
-    Load Local files as Documents.
-    
-    Support:
-        - TXT
-        - Markdown
-        - Htmls
-        - Word
-        - PDF
+    Load QA knowledge from local files as Documents.
     """
     
     # support types
@@ -31,6 +26,12 @@ class LocalFilesLoader(BaseLoader):
     def documents_folder(self, value):
         self._documents_folder = os.path.abspath(value)
 
+    # question file filter
+    question_filter: str = ".*"
+    
+    # knowledge file filter
+    knowledge_filter: str = ".*"
+    
     # only include folder or files
     _includes: List[str] = []
 
@@ -75,17 +76,24 @@ class LocalFilesLoader(BaseLoader):
                 setattr(self, key, kwargs.get(key))
 
     def get_files(self) -> list[str]:
-        """List All Files with Extension"""
+        """
+        返回本地知识库中的文档，包含如下规则：
+        - 从 LANGCHAIN_CHINESE_DOCUMENTS_FOLDER 变量指定的路径列举文件
+        - 按照 question_filter 过滤文档路径，但不要过滤 LANGCHAIN_CHINESE_DOCUMENTS_FOLDER 指定的部份
+        - 按照 extensions 过滤指定扩展名的文件
+        """
         files = []
-        
+
         # get all files defaults
         folders = self.documents_folder
         for dirpath, dirnames, filenames in os.walk(folders):
             for filename in filenames:
+                relpath = os.path.relpath(os.path.join(dirpath, filename), folders)
                 if(self.extensions == []):
-                    files.append(os.path.join(dirpath, filename))
+                    if re.match(self.question_filter, relpath):
+                        files.append(os.path.join(dirpath, filename))
                 else:
-                    if get_file_extension(filename) in self.extensions:
+                    if get_file_extension(filename) in self.extensions and re.match(self.question_filter, relpath):
                         files.append(os.path.join(dirpath, filename))
 
         # filter files with includes
@@ -98,7 +106,7 @@ class LocalFilesLoader(BaseLoader):
             files = [f for f in files if not any(f.startswith(exclude) for exclude in self.excludes)]
         
         return files
-    
+
     def load_docs(self, filename: str) -> List[Document]:
         """Load file as Documents by FileLoadFactory"""
         file_loader = FileLoadFactory.get_loader(filename)
@@ -130,4 +138,25 @@ class FileLoadFactory:
 def get_file_extension(filename: str) -> str:
     """Get File Extension"""
     return filename.split(".")[-1]
-    
+
+
+class LocalFilesLoader(BaseQALoader):
+    """
+    Load Local files as Documents.
+    """
+    question_filter = ".*"
+    knowledge_filter = ".*"
+
+class AnswerQALoader(BaseQALoader):
+    """
+    Load Answer as Documents.
+    """
+    question_filter = "input.md"
+    knowledge_filter = "answer.md"
+
+class ExampleQALoader(BaseQALoader):
+    """
+    Load Example as Documents.
+    """
+    question_filter = "input.md"
+    knowledge_filter = "example.md"
