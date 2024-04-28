@@ -42,7 +42,7 @@ class WithMemoryBinding(RunnableBindingBase):
     """Runnable that manages memory for another Runnable."""
 
     # 记忆管理
-    memory_manager:MemoryManager
+    memory_manager: MemoryManager
     input_messages_key: Optional[str] = None
     output_messages_key: Optional[str] = None
     history_messages_key: Optional[str] = None
@@ -61,9 +61,9 @@ class WithMemoryBinding(RunnableBindingBase):
         ],
         memory_manager: MemoryManager,
         *,
-        input_messages_key: Optional[str] = None,
+        input_messages_key: Optional[str] = "input",
         output_messages_key: Optional[str] = None,
-        history_messages_key: Optional[str] = None,
+        history_messages_key: Optional[str] = "history",
         history_factory_config: Optional[Sequence[ConfigurableFieldSpec]] = None,
         **kwargs: Any,
     ) -> None:
@@ -165,6 +165,7 @@ class WithMemoryBinding(RunnableBindingBase):
     ) -> List[BaseMessage]:
         from langchain_core.messages import BaseMessage
 
+        # 如果output_val是字典就取其中的output键或指定名字的键
         if isinstance(output_val, dict):
             output_val = output_val[self.output_messages_key or "output"]
 
