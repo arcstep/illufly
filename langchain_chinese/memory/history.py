@@ -14,18 +14,19 @@ from langchain_core.messages import (
     messages_to_dict,
 )
 
-def create_session_id():
+def create_session_id(user_id: str = "default"):
     now = datetime.datetime.now()
     random_digits = random.randint(1000, 9999)  # 生成一个四位的随机数
-    return now.strftime(f"%Y_%m_%d_%H%M%S_{random_digits}")    
+    return now.strftime(f"%Y_%m_%d_%H%M%S_{user_id}_{random_digits}")    
 
 def parse_session_id(session_id: str):
     try:
-        year, month, day, _time_str, _random_digits = session_id.split('_')
+        year, month, day, _time_str, user_id, _random_digits = session_id.split('_')
         parsed = {
             "year": int(year),
             "month": int(month),
             "day": int(day),
+            "user_id": user_id,
             "session_id": session_id,
         }
         if None in parsed.values():
@@ -55,7 +56,11 @@ class LocalFileMessageHistory(BaseChatMessageHistory):
         文件路径的构造规则：{history_folder}/{year}/{month}/{session_id}.json
         """
         parsed = parse_session_id(self.session_id)
-        path = os.path.join(self.history_folder, str(parsed['year']), str(parsed['month']), parsed['session_id'])
+        path = os.path.join(
+            self.history_folder,
+            str(parsed['year']),
+            str(parsed['month']),
+            parsed['session_id'])
         return Path(f"{path}.json")
 
     @history_folder.setter
@@ -66,9 +71,15 @@ class LocalFileMessageHistory(BaseChatMessageHistory):
         self,
         session_id: str = None,
         history_folder: str = None,
+        user_id: str = None,
     ):
+        if user_id is None:
+            self.user_id = "default"
+        else:
+            self.user_id = user_id
+
         if session_id is None:
-            self.session_id = create_session_id()
+            self.session_id = create_session_id(self.user_id)
         else:
             self.session_id = session_id
 
@@ -102,7 +113,7 @@ class LocalFileMessageHistory(BaseChatMessageHistory):
         if not file_path.exists():
             file_path.touch()
 
-        file_path.write_text(json.dumps(all_messages, indent=4))
+        file_path.write_text(json.dumps(all_messages, indent=4, ensure_ascii=False))
 
     def clear(self) -> None:
         """Clear session memory from the local file"""
