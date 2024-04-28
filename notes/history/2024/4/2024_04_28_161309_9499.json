@@ -1,0 +1,26 @@
+[
+    {
+        "type": "ai",
+        "data": {
+            "content": "hi",
+            "additional_kwargs": {},
+            "response_metadata": {},
+            "type": "ai",
+            "name": null,
+            "id": null,
+            "example": false
+        }
+    },
+    {
+        "type": "human",
+        "data": {
+            "content": "\u8bf7\u505a\u6211\u7684\u52a9\u624b\u5427",
+            "additional_kwargs": {},
+            "response_metadata": {},
+            "type": "human",
+            "name": null,
+            "id": null,
+            "example": false
+        }
+    }
+]
