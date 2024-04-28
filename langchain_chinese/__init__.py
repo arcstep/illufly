@@ -18,6 +18,7 @@ from langchain_chinese.agents.base import (
 from langchain_chinese.agents.writing.base import BaseProject, WritingChain
 
 from langchain_chinese.memory import WithMemoryBinding, MemoryManager
+from langchain_chinese.memory.history import LocalFileMessageHistory, create_session_id, parse_session_id
 
 from langchain_chinese.__version__ import __version__
 
@@ -27,6 +28,9 @@ __all__ = [
     "LocalFilesQALoader",
 
     # 记忆和持久化
+    "LocalFileMessageHistory",
+    "create_session_id",
+    "parse_session_id",
     "WithMemoryBinding",
     "AskDocumentTool",
     "create_qa_chain",
