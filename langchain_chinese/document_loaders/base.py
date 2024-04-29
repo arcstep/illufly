@@ -176,7 +176,7 @@ class LocalFilesQALoader(LocalFilesLoader):
 
     def get_answer(self, doc: Union[str, Document]):
         """
-        根据Q文档中Document.meatadata['source']部份的路径，获得匹配的A文档
+        根据Q文档中Document.meatadata['source']部份的路径，获得匹配的A文档。
         """
         if isinstance(doc, str):
             dirpath = os.path.dirname(doc)
@@ -189,14 +189,39 @@ class LocalFilesQALoader(LocalFilesLoader):
         for answer_file in self.answer_filenames:
             target = os.path.join(dirpath, answer_file)
             if os.path.exists(target):
-                answer_key = os.path.splitext(answer_file)[0]
+                answer_key = self._get_answer_key(answer_file)
                 answer_content = [doc.page_content for doc in self.load_docs(target)]
                 answers[answer_key] = answer_content
         return answers
     
-    # 加载文档内容时排除 answer_filenames
+    def get_answers(self, docs: List[Union[str, Document]], answer_keys: List[str] = None):
+        """
+        按照Q文档查询结果和指定的keys清单，生成匹配的A文档。
+        """
+        all_answers = [self.get_answer(doc) for doc in docs]
+        answer_file_keys = [self._get_answer_key(f) for f in self.answer_filenames]
+        
+        # 如果没有指定answer_keys就使用answer_filenames生成
+        if answer_keys:
+            answer_keys = [k for k in answer_keys if k in answer_file_keys]
+        else:
+            answer_keys = answer_file_keys
+
+        # 如连answer_filenames也没有指定，就直接返回{}
+        if answer_keys:
+            expected_answers = {}
+            for k in answer_keys:
+                expected_answers.update({k: a[k] for a in all_answers if k in a})
+            return expected_answers
+        else:
+            return {}
+    
+    # 重载加载文档内容：排除 answer_filenames
     def get_files(self) -> list[str]:
         """List All Files with Extension"""
         files = super().get_files()
         files = [f for f in files if os.path.basename(f) not in self.answer_filenames]
         return files
+    
+    def _get_answer_key(self, answer_file: str):
+        return os.path.splitext(answer_file)[0]
