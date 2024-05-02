@@ -1,6 +1,6 @@
 from typing import List, Callable, Any, Optional, Type, Union
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough, Runnable, RunnableAssign
+from langchain_core.runnables import RunnablePassthrough, Runnable, RunnableAssign, chain
 from langchain_core.output_parsers import StrOutputParser
 from langchain.agents import tool
 from langchain.tools import BaseTool
@@ -32,21 +32,21 @@ def convert_message_to_str(message: Union[BaseMessage, str]) -> str:
 
 def create_qa_chain(llm: Runnable, retriever: Callable, prompt: str = DEFAULT_QA_CHAIN_PROMPT) -> Callable:
     """
-    使用 create_qa_chain 构建的LCEL链时，参数应当是一个消息列表。
+    使用 create_qa_chain 构建的LCEL链时，参数应当是一个消息。
     
     例如：    
     chain = creat_qa_chain(llm, rectriever)
-    chain.invoke(["langchain_chinese是啥？"])
+    chain.invoke("langchain_chinese是啥？")
     """
 
-    prompt = ChatPromptTemplate.from_template(prompt)
+    _prompt = ChatPromptTemplate.from_template(prompt)
 
     return (
         {
-            "context": (lambda x: convert_message_to_str(x[0])) | retriever | format_docs,
-            "question": lambda x: convert_message_to_str(x[0]) ,
+            "context": (lambda x: convert_message_to_str(x)) | retriever | format_docs,
+            "question": lambda x: convert_message_to_str(x) ,
         }
-        | prompt
+        | _prompt
         | llm
     )
 

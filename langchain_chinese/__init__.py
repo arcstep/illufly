@@ -15,10 +15,21 @@ from langchain_chinese.agents.base import (
     create_reason_agent,
 )
 
-from langchain_chinese.agents.writing.base import BaseProject, WritingChain
+from langchain_chinese.writing.base import (
+    BaseProject,
+    WritingChain,
+)
 
-from langchain_chinese.memory import WithMemoryBinding, MemoryManager
-from langchain_chinese.memory.history import LocalFileMessageHistory, create_session_id, parse_session_id
+from langchain_chinese.memory import (
+    WithMemoryBinding,
+    MemoryManager,
+)
+
+from langchain_chinese.memory.history import (
+    LocalFileMessageHistory,
+    create_session_id,
+    parse_session_id,
+)
 
 from langchain_chinese.__version__ import __version__
 
