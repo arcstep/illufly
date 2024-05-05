@@ -76,3 +76,28 @@ class TreeContent(BaseModel):
                     return found
 
         return None
+
+    def all_todos(self) -> List[Dict[str, str]]:
+        """获得所有未完成的内容"""
+        # 初始化一个空列表来存储未完成的节点的信息
+        todos = []
+
+        # 如果当前节点未完成，将其信息添加到列表中
+        if not self.is_completed:
+            todos.append({"id": self.id, "type": self.type})
+
+        # 遍历当前节点的所有子节点
+        for child in self.children:
+            todos.extend(child.all_todos())
+
+        # 返回未完成的节点的信息列表
+        return todos
+
+    def next_todo(self) -> Optional["TreeContent"]:
+        """找出下一个等待完成的任务"""
+        todos = self.all_todos()
+        for item in todos:
+            if item['type'] == 'paragraph':
+                content = self.get_item_by_id(item['id'])
+                return content
+        return None
