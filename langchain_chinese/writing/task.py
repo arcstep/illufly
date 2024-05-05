@@ -8,7 +8,42 @@ from .content import TreeContent
 import json
 import re
 
-OUTLINE_INSTRUCTIONS = """
+PARAGRAPH_FORMAT = """
+
+你必须按照如下格式输出：
+```json
+{
+    "类型": "paragraph",
+    "标题名称": 标题名称,
+    "总字数要求": 段落的字数要求（int类型）,
+    "详细内容": "你的详细输出",
+    "内容摘要": 详细内容提要，可以包括涉及的人物、地点、情节等实体名称和背景设定
+}
+```
+
+"""
+
+OUTLINE_FORMAT = """
+
+如果你决定输出“写作提纲”，就请按照如下格式输出写作大纲：
+```json
+{
+    "类型": "outline",
+    "标题名称": 标题名称,
+    "扩写指南": 可以包含涉及的人物、地点、情节等实体名称和背景设定,
+    "总字数要求": 预计的总体字数要求（int类型）,
+    "大纲数量": 与以上列表相符的大纲数量,
+    "大纲列表": [
+        {"标题名称": "标题名称", "总字数要求": 段落的字数要求（int类型）, "扩写指南": 可以包含涉及的人物、地点、情节等实体名称和背景设定,},
+        {"标题名称": "标题名称", "总字数要求": 段落的字数要求（int类型）, "扩写指南": 可以包含涉及的人物、地点、情节等实体名称和背景设定,},
+        ...
+    ],
+}
+```
+
+"""
+
+OUTLINE_MAIN = """
 你是一名优秀的写手，可以构思写作思路、扩展写作提纲、细化段落内容，
 
 请务必记住：
@@ -18,57 +53,26 @@ OUTLINE_INSTRUCTIONS = """
 （2）反之，如果你发现用户要求的字数不超过限制，你就必须输出段落内容。
 （3）如果你决定输出写作提纲，那么大纲数量必须大于2，否则还是直接输出为段落内容。
 3. 当你输出JSON内容时请特别注意，列表最后一项之后一定不能带有标点符号，这会引起解析错误。
+4. 内容摘要：如果你的输出中出现实体名称、创作设定等，就将其单独提炼到内容摘要，
+   这样做非常必要，可以让分散多次的创作保持人物、地点、设定等一致。
+5. 只输出JSON内容即可，其他不必输出。
 
 例如：
 用户要求字数1500字左右，此时超出了300字的写作限定，你必须输出“写作提纲”，可以分为5个部份，每部份约300字左右；
 用户要求字数80字左右，此时符合300字左右的限定，你必须输出为“段落内容”。
-
-如果你决定输出“写作提纲”，就请按照如下格式输出写作大纲：
-```json
-{
-    "类型": "outline",
-    "标题名称": 标题名称,
-    "内容摘要": 内容摘要,
-    "总字数要求": 预计的总体字数要求（int类型）,
-    "大纲数量": 与以上列表相符的大纲数量,
-    "大纲列表": [
-        {"标题名称": "标题名称", "总字数要求": 段落的字数要求（int类型）, "内容摘要": 内容摘要},
-        {"标题名称": "标题名称", "总字数要求": 段落的字数要求（int类型）, "内容摘要": 内容摘要},
-        {"标题名称": "标题名称", "总字数要求": 段落的字数要求（int类型）, "内容摘要": 内容摘要},
-        ...
-    ]
-}
-```
-
-如果你决定输出“段落内容”，就请按照如下格式输出：
-```json
-{
-    "类型": "paragraph",
-    "标题名称": 标题名称,
-    "内容摘要": 内容摘要,
-    "总字数要求": 段落的字数要求（int类型）,
-    "内容": 你的详细输出
-}
-```
-
-只输出上述的JSON内容即可，其他不必输出。
 """
 
-PARAGRAPH_INSTRUCTIONS = """
+PARAGRAPH_MAIN = """
 你是一名优秀的写手，负责详细构思段落细节。
-
-你必须按照如下格式输出：
-```json
-{
-    "类型": "paragraph",
-    "标题名称": 标题名称,
-    "总字数要求": 段落的字数要求（int类型）,
-    "内容": "你的详细输出"
-}
-```
-
-只输出上述的JSON内容即可，其他不必输出。
+请务必记住：
+1. 当你输出JSON内容时请特别注意，列表最后一项之后一定不能带有标点符号，这会引起解析错误。
+2. 内容摘要：如果你的输出中出现实体名称、创作设定等，就将其单独提炼到内容摘要，
+   这样做非常必要，可以让分散多次的创作保持人物、地点、设定等一致。
+3. 只输出JSON内容即可，其他不必输出。
 """
+
+OUTLINE_INSTRUCTIONS = OUTLINE_MAIN + OUTLINE_FORMAT + PARAGRAPH_FORMAT
+PARAGRAPH_INSTRUCTIONS = PARAGRAPH_MAIN + PARAGRAPH_FORMAT
 
 def get_input(prompt: str = "\n👤: ") -> str:
     return input(prompt)
@@ -77,6 +81,7 @@ class WritingTask(BaseModel):
     """
     写作管理。
     """
+    task_title: Optional[str] = None
     root_content: Optional[TreeContent] = None
     cur_content: Optional[TreeContent] = None
 
@@ -106,7 +111,10 @@ class WritingTask(BaseModel):
             if k in kwargs:
                 setattr(self, k, kwargs[k])
         print("task_mode:", self.task_mode)
-
+    
+    def print_lines(self, numbers: List[int] = []) -> List[Dict[str, Union[str, int]]]:
+        self.root_content.print_lines(numbers)
+    
     def ask_user(self) -> tuple:
         """捕获用户的输入"""
         
@@ -141,18 +149,13 @@ class WritingTask(BaseModel):
         else:
             instruction = PARAGRAPH_INSTRUCTIONS
         
-        prompt_init = ChatPromptTemplate.from_messages([
-            ("system", instruction),
-            ("user", "{{question}}")
-        ], template_format='jinja2')
-
-        prompt_detail = ChatPromptTemplate.from_messages([
+        prompt_with_outline = ChatPromptTemplate.from_messages([
             ("system", instruction),
             ("assistant", "之前的写作提纲为: {{outline}}"),
-            ("user", "{{question}}。请注意，你现在的写作任务是上面已有提纲的一部份")
-        ], template_format='jinja2')
+            ("user", "{{question}}。请注意，你现在的写作任务是上面提纲的一部份")
+        ], template_format="jinja2")
 
-        return (prompt_init | ChatZhipuAI() | JsonOutputParser())
+        return (prompt_with_outline | ChatZhipuAI() | JsonOutputParser())
 
     def ask_ai(self, chain: Runnable, question: str):
         """AI推理"""
@@ -163,11 +166,13 @@ class WritingTask(BaseModel):
         while(counter < self.retry_max):
             counter += 1
             try:
+                outline = self.root_content.get_outlines()
+                input = {"question": question, "outline": outline}
                 if self.streaming:
-                    for resp in chain.stream({"question": question}):
+                    for resp in chain.stream(input):
                         print(resp, flush=True)
                 else:
-                    resp = chain.invoke({"question": question})
+                    resp = chain.invoke(input)
                     print("resp:", resp)
             except Exception as e:
                 print(f"推理错误: {e}")
@@ -193,12 +198,13 @@ class WritingTask(BaseModel):
                 self.cur_content.add_item(TreeContent(
                     words_advice = item['总字数要求'],
                     title = item['标题名称'],
-                    summarise = item['内容摘要'],
+                    howto = item['扩写指南'],
                     is_completed = False,
                 ))
             print("-"*20, "Outlines Done for", self.cur_content.id, "-"*20)
         elif task_type == "paragraph":
-            self.cur_content.text = ai_said['内容']
+            self.cur_content.summarise = ai_said['内容摘要']
+            self.cur_content.text = ai_said['详细内容']
             print("-"*20, "Paragraph Done for", self.cur_content.id, "-"*20)
         else:
             raise(BaseException("Error JSON:", ai_said))
@@ -208,8 +214,13 @@ class WritingTask(BaseModel):
         # self.cur_content.words_advice = ai_said['总字数要求'],
         # self.cur_content.title = ai_said['标题名称'],
         self.cur_content.is_completed = True
+    
+    def prepare(self):
+        """由AI驱动准备背景资料"""
+        pass
 
     def run(self):
+        """由AI驱动展开写作"""
         # 初始化链
         chain = self.get_chain()
         ai_said = {}
@@ -254,7 +265,7 @@ class WritingTask(BaseModel):
                     # 如果下一个任务存在，继续转移到新的任务主题
                     print("-"*20, "Next TODO for ", next_todo.id, "-"*20)
                     self.cur_content = next_todo
-                    user_said = f'请帮我扩写《{next_todo.title}》，内容摘要为：{next_todo.summarise}, 字数约为{next_todo.words_advice}字'
+                    user_said = f'请帮我扩写《{next_todo.title}》, 字数约为{next_todo.words_advice}字，扩写依据为：{next_todo.howto}'
                     print("👤[auto]: ", user_said)
                     chain = self.get_chain()
                 else:
