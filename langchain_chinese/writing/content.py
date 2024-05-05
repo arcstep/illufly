@@ -23,13 +23,14 @@ class TreeContent(BaseModel):
     存储内容的树形结构，段落内容保存在叶子节点，而提纲保存在children不为空的节点。
     """
 
-    # 内容标识
+    # 内容标识  
     id: Optional[str] = None
     type: Optional[str] = "paragraph"
     is_completed: Optional[bool] = False
 
     # 扩写依据
-    words_advice: Optional[int] = 500
+    words_advice: Optional[int] = None
+    title: Optional[str] = None
     summarise: Optional[str] = None
     text: Optional[str] = None
 
