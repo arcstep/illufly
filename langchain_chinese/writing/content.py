@@ -34,6 +34,7 @@ class TreeContent(BaseModel):
     # 扩写依据
     words_advice: Optional[int] = None
     title: Optional[str] = None
+    howto: Optional[str] = None
     summarise: Optional[str] = None
     text: Optional[str] = None
 
@@ -132,7 +133,8 @@ class TreeContent(BaseModel):
                 "is_completed": child.is_completed,
                 "words_advice": child.words_advice,
                 "title": child.title or "",
-                "summarise": child.summarise or "",
+                "howto": child.howto or "",
+                "summarise": child.summarise or None,
                 "text": child.text or "",
                 "path": child.path or "",
             })
@@ -141,7 +143,7 @@ class TreeContent(BaseModel):
 
     def get_outlines(self, numbers: List[int] = []) -> List[Dict[str, Union[str, int]]]:
         """获得大纲清单"""
-        lines = [f"{x['sn']} {x['title']}" for x in self.get_lines(numbers) if x['type'] == 'outline']
+        lines = [f"{x['sn']} {x['title']} \n{x['summarise'] or x['howto']}" for x in self.get_lines(numbers)]
         return '\n'.join(lines)
     
     def print_lines(self, numbers: List[int] = []):
