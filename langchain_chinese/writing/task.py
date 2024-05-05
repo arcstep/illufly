@@ -144,7 +144,7 @@ class WritingTask(BaseModel):
         
             return content, command
 
-    def get_chain(self, llm: Runnable = None):
+    def create_chain(self, llm: Runnable = None):
         """构造Chain"""
         
         words = self.cur_content.words_advice
@@ -165,6 +165,7 @@ class WritingTask(BaseModel):
 
         # 短期记忆体
         memory = MemoryManager(
+            # TODO: 要保存对话历史，应当结合文档管理的文件夹一起考虑
             # lambda session_id: LocalFileMessageHistory(session_id),
             shorterm_memory = ConversationBufferWindowMemory(return_messages=True, k=20)
         )
@@ -248,7 +249,7 @@ class WritingTask(BaseModel):
     def run(self, llm: Runnable = None):
         """由AI驱动展开写作"""
         # 初始化链
-        session_id, chain = self.get_chain(llm)
+        session_id, chain = self.create_chain(llm)
         ai_said = {}
         user_said = ""
         init_ok = False
@@ -293,7 +294,7 @@ class WritingTask(BaseModel):
                     self.cur_content = next_todo
                     user_said = f'请帮我扩写《{next_todo.title}》, 字数约为{next_todo.words_advice}字，扩写依据为：{next_todo.howto}'
                     print("👤[auto]: ", user_said)
-                    session_id, chain = self.get_chain(llm)
+                    session_id, chain = self.create_chain(llm)
                 else:
                     # 如果没有下一个任务，就结束
                     print("-"*20, "Task Complete!", "-"*20)
