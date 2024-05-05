@@ -2,15 +2,19 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 from langchain.pydantic_v1 import BaseModel, Field, root_validator
 from langchain_zhipu import ChatZhipuAI
 from langchain_core.runnables import Runnable
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import JsonOutputParser
+from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
+from ..memory.history import LocalFileMessageHistory, create_session_id
+from ..memory.memory_manager import MemoryManager
+from ..memory.base import WithMemoryBinding
 from .content import TreeContent
 import json
 import re
 
 PARAGRAPH_FORMAT = """
 
-你必须按照如下格式输出：
+如果你决定输出“段落内容”，就请按照如下格式输出（你必须考虑正确的语法，以便我能够用于JSON）：
 ```json
 {
     "类型": "paragraph",
@@ -25,7 +29,7 @@ PARAGRAPH_FORMAT = """
 
 OUTLINE_FORMAT = """
 
-如果你决定输出“写作提纲”，就请按照如下格式输出写作大纲：
+如果你决定输出“写作提纲”，就请按照如下格式输出（你必须考虑正确的语法，以便我能够用于JSON）：
 ```json
 {
     "类型": "outline",
@@ -34,10 +38,10 @@ OUTLINE_FORMAT = """
     "总字数要求": 预计的总体字数要求（int类型）,
     "大纲数量": 与以上列表相符的大纲数量,
     "大纲列表": [
-        {"标题名称": "标题名称", "总字数要求": 段落的字数要求（int类型）, "扩写指南": 可以包含涉及的人物、地点、情节等实体名称和背景设定,},
-        {"标题名称": "标题名称", "总字数要求": 段落的字数要求（int类型）, "扩写指南": 可以包含涉及的人物、地点、情节等实体名称和背景设定,},
-        ...
-    ],
+        {"标题名称": "标题名称", "总字数要求": 段落的字数要求（int类型）, "扩写指南": 可以包含涉及的人物、地点、情节等实体名称和背景设定},
+        ...,
+        {"标题名称": "标题名称", "总字数要求": 段落的字数要求（int类型）, "扩写指南": 可以包含涉及的人物、地点、情节等实体名称和背景设定}
+    ]
 }
 ```
 
@@ -140,7 +144,7 @@ class WritingTask(BaseModel):
         
             return content, command
 
-    def get_chain(self):
+    def get_chain(self, llm: Runnable = None):
         """构造Chain"""
         
         words = self.cur_content.words_advice
@@ -149,15 +153,36 @@ class WritingTask(BaseModel):
         else:
             instruction = PARAGRAPH_INSTRUCTIONS
         
-        prompt_with_outline = ChatPromptTemplate.from_messages([
+        prompt = ChatPromptTemplate.from_messages([
             ("system", instruction),
-            ("assistant", "之前的写作提纲为: {{outline}}"),
-            ("user", "{{question}}。请注意，你现在的写作任务是上面提纲的一部份")
+            MessagesPlaceholder(variable_name="history"),
+            ("human", "{{question}}。请注意，之前的写作提纲为: {{outline}}，你现在的写作任务是上面提纲的一部份")
         ], template_format="jinja2")
+        
+        if llm == None:
+            llm = ChatZhipuAI()
+        chain = prompt | llm
 
-        return (prompt_with_outline | ChatZhipuAI() | JsonOutputParser())
+        # 短期记忆体
+        memory = MemoryManager(
+            # lambda session_id: LocalFileMessageHistory(session_id),
+            shorterm_memory = ConversationBufferWindowMemory(return_messages=True, k=20)
+        )
 
-    def ask_ai(self, chain: Runnable, question: str):
+        # 记忆绑定管理
+        withMemoryChain = WithMemoryBinding(
+            chain,
+            memory,
+            input_messages_key="question",
+            history_messages_key="history",
+        ) | JsonOutputParser()
+        
+        # 构造session
+        session_id = create_session_id()
+
+        return session_id, withMemoryChain
+
+    def ask_ai(self, chain: Runnable, question: str, session_id: str):
         """AI推理"""
         
         resp = None
@@ -168,11 +193,12 @@ class WritingTask(BaseModel):
             try:
                 outline = self.root_content.get_outlines()
                 input = {"question": question, "outline": outline}
+                config = {"configurable": {"session_id": session_id}}
                 if self.streaming:
-                    for resp in chain.stream(input):
+                    for resp in chain.stream(input, config=config):
                         print(resp, flush=True)
                 else:
-                    resp = chain.invoke(input)
+                    resp = chain.invoke(input, config=config)
                     print("resp:", resp)
             except Exception as e:
                 print(f"推理错误: {e}")
@@ -219,10 +245,10 @@ class WritingTask(BaseModel):
         """由AI驱动准备背景资料"""
         pass
 
-    def run(self):
+    def run(self, llm: Runnable = None):
         """由AI驱动展开写作"""
         # 初始化链
-        chain = self.get_chain()
+        session_id, chain = self.get_chain(llm)
         ai_said = {}
         user_said = ""
         init_ok = False
@@ -267,7 +293,7 @@ class WritingTask(BaseModel):
                     self.cur_content = next_todo
                     user_said = f'请帮我扩写《{next_todo.title}》, 字数约为{next_todo.words_advice}字，扩写依据为：{next_todo.howto}'
                     print("👤[auto]: ", user_said)
-                    chain = self.get_chain()
+                    session_id, chain = self.get_chain(llm)
                 else:
                     # 如果没有下一个任务，就结束
                     print("-"*20, "Task Complete!", "-"*20)
@@ -277,7 +303,7 @@ class WritingTask(BaseModel):
                 pass
 
             # AI推理
-            ai_said = self.ask_ai(chain, user_said)
+            ai_said = self.ask_ai(chain, user_said, session_id = session_id)
             init_ok = True
 
             # 处理进度
