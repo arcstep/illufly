@@ -20,6 +20,10 @@ from langchain_chinese.writing.base import (
     WritingChain,
 )
 
+from langchain_chinese.writing.content import (
+    TreeContent,
+)
+
 from langchain_chinese.memory import (
     WithMemoryBinding,
     MemoryManager,
@@ -47,7 +51,8 @@ __all__ = [
     "create_qa_chain",
     "create_qa_toolkits",
     
-    # 大内容编写
+    # 长文内容编写
+    "TreeContent",
     "BaseProject",
     "WritingChain",
 
