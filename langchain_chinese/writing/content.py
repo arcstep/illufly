@@ -17,6 +17,9 @@ def create_content_id():
     global_id_str = str(global_id).zfill(5)
 
     return now.strftime(f"%Y%m%d.%H%M%S.{global_id_str}.{random_digits}")
+
+def generate_sn(numbers: List[int]) -> str:
+    return ".".join(str(number) for number in numbers)
     
 class TreeContent(BaseModel):
     """
@@ -85,7 +88,7 @@ class TreeContent(BaseModel):
 
         # 如果当前节点未完成，将其信息添加到列表中
         if not self.is_completed:
-            todos.append({"id": self.id, "type": self.type})
+            todos.append({"id": self.id, "type": self.type, "words_advice": self.words_advice})
 
         # 遍历当前节点的所有子节点
         for child in self.children:
@@ -102,3 +105,49 @@ class TreeContent(BaseModel):
                 content = self.get_item_by_id(item['id'])
                 return content
         return None
+    
+    def get_lines(self, numbers: List[int] = []) -> List[Dict[str, Union[str, int]]]:
+        """
+        从树形结构中解析出大纲和段落的列表，
+        根据children中的排序和树形结构的深度增加一个多层编号，
+        例如：
+        [
+            {"sn":"1",     "title":"xxx", "summarise": "xxx", "text": ""},
+            {"sn":"1.1",   "title":"xxx", "summarise": "xxx", "text": ""},
+            {"sn":"1.1.1", "title":"xxx", "summarise": "xxx", "text": ""},
+            {"sn":"1.1.2", "title":"xxx", "summarise": "xxx", "text": ""},
+            {"sn":"1.2",   "title":"xxx", "summarise": "xxx", "text": ""},
+            {"sn":"2",     "title":"xxx", "summarise": "xxx", "text": ""},
+            {"sn":"2.1",   "title":"xxx", "summarise": "xxx", "text": ""},
+            {"sn":"2.2",   "title":"xxx", "summarise": "xxx", "text": ""},
+        ]
+        """
+        lines = []
+        for i, child in enumerate(self.children, start=1):
+            new_numbers = numbers + [i]
+            lines.append({
+                "id": child.id,
+                "sn": generate_sn(new_numbers),
+                "type": child.type,
+                "is_completed": child.is_completed,
+                "words_advice": child.words_advice,
+                "title": child.title or "",
+                "summarise": child.summarise or "",
+                "text": child.text or "",
+                "path": child.path or "",
+            })
+            lines.extend(child.get_lines(new_numbers))
+        return lines
+
+    def get_outlines(self, numbers: List[int] = []) -> List[Dict[str, Union[str, int]]]:
+        """获得大纲清单"""
+        lines = [f"{x['sn']} {x['title']}" for x in self.get_lines(numbers) if x['type'] == 'outline']
+        return '\n'.join(lines)
+    
+    def print_lines(self, numbers: List[int] = []):
+        """打印所有行的序号、标题和文字内容"""
+        lines = self.get_lines(numbers)
+        for line in lines:
+            print(line['sn'], line['title'])
+            print(line['text'])
+            print("")
