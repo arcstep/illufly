@@ -24,6 +24,10 @@ from langchain_chinese.writing.content import (
     TreeContent,
 )
 
+from langchain_chinese.writing.task import (
+    WritingTask,
+)
+
 from langchain_chinese.memory import (
     WithMemoryBinding,
     MemoryManager,
@@ -53,6 +57,7 @@ __all__ = [
     
     # 长文内容编写
     "TreeContent",
+    "WritingTask",
     "BaseProject",
     "WritingChain",
 
