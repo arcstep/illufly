@@ -102,7 +102,7 @@ class WritingTask(BaseModel):
     # - skip 可以跳过处理，采纳原有的结果或暂时不处理
     task_mode = "askme"
 
-    streaming = False
+    streaming = True
 
     # 记忆管理
     memory: Optional[MemoryManager] = None
@@ -182,14 +182,14 @@ class WritingTask(BaseModel):
             self.memory,
             input_messages_key="question",
             history_messages_key="history",
-        ) | JsonOutputParser()
+        )
         
         return withMemoryChain
 
     def ask_ai(self, chain: Runnable, question: str):
         """AI推理"""
         
-        resp = None
+        json = None
         print("-"*20, "AI for", self.cur_content.id, "-"*20)
         counter = 0
         while(counter < self.retry_max):
@@ -198,18 +198,24 @@ class WritingTask(BaseModel):
                 outline = self.root_content.get_outlines()
                 input = {"question": question, "outline": outline}
                 config = {"configurable": {"session_id": self.cur_content.id}}
+                text = ""
                 if self.streaming:
                     for resp in chain.stream(input, config=config):
-                        print(resp, flush=True)
+                        print(resp.content, end="", flush=True)
+                        text += resp.content
+                    print()
                 else:
                     resp = chain.invoke(input, config=config)
-                    print("resp:", resp)
+                    print("resp:", resp.content)
+                    text = resp.content
+
+                json = JsonOutputParser().invoke(input=text)
             except Exception as e:
                 print(f"推理错误: {e}")
             
             # 允许重试N次，满足要求后才返回AI的回应
-            if resp and '类型' in resp and '总字数要求' in resp:
-                return resp
+            if json and '类型' in json and '总字数要求' in json:
+                return json
             
         raise Exception(f"大模型解析错误已经超过 {self.retry_max} 次，看来暂时无法工作了！！")
     
