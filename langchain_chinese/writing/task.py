@@ -104,10 +104,23 @@ class WritingTask(BaseModel):
 
     streaming = False
 
+    # 记忆管理
+    memory: Optional[MemoryManager] = None
+
+    class Config:
+        arbitrary_types_allowed = True  # 允许任意类型
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.root_content = TreeContent()
         self.cur_content = self.root_content
+
+        # 短期记忆体
+        self.memory = MemoryManager(
+            # 暂不考虑保存对话历史到磁盘
+            # lambda session_id: LocalFileMessageHistory(session_id),
+            shorterm_memory = ConversationBufferWindowMemory(return_messages=True, k=20)
+        )
 
         # 初始化参数
         keys = ["task_mode"]
@@ -144,7 +157,7 @@ class WritingTask(BaseModel):
         
             return content, command
 
-    def create_chain(self, llm: Runnable = None):
+    def get_chain(self, llm: Runnable = None):
         """构造Chain"""
         
         words = self.cur_content.words_advice
@@ -163,27 +176,17 @@ class WritingTask(BaseModel):
             llm = ChatZhipuAI()
         chain = prompt | llm
 
-        # 短期记忆体
-        memory = MemoryManager(
-            # TODO: 要保存对话历史，应当结合文档管理的文件夹一起考虑
-            # lambda session_id: LocalFileMessageHistory(session_id),
-            shorterm_memory = ConversationBufferWindowMemory(return_messages=True, k=20)
-        )
-
         # 记忆绑定管理
         withMemoryChain = WithMemoryBinding(
             chain,
-            memory,
+            self.memory,
             input_messages_key="question",
             history_messages_key="history",
         ) | JsonOutputParser()
         
-        # 构造session
-        session_id = create_session_id()
+        return withMemoryChain
 
-        return session_id, withMemoryChain
-
-    def ask_ai(self, chain: Runnable, question: str, session_id: str):
+    def ask_ai(self, chain: Runnable, question: str):
         """AI推理"""
         
         resp = None
@@ -194,7 +197,7 @@ class WritingTask(BaseModel):
             try:
                 outline = self.root_content.get_outlines()
                 input = {"question": question, "outline": outline}
-                config = {"configurable": {"session_id": session_id}}
+                config = {"configurable": {"session_id": self.cur_content.id}}
                 if self.streaming:
                     for resp in chain.stream(input, config=config):
                         print(resp, flush=True)
@@ -249,7 +252,7 @@ class WritingTask(BaseModel):
     def run(self, llm: Runnable = None):
         """由AI驱动展开写作"""
         # 初始化链
-        session_id, chain = self.create_chain(llm)
+        chain = self.get_chain(llm)
         ai_said = {}
         user_said = ""
         init_ok = False
@@ -294,7 +297,7 @@ class WritingTask(BaseModel):
                     self.cur_content = next_todo
                     user_said = f'请帮我扩写《{next_todo.title}》, 字数约为{next_todo.words_advice}字，扩写依据为：{next_todo.howto}'
                     print("👤[auto]: ", user_said)
-                    session_id, chain = self.create_chain(llm)
+                    chain = self.get_chain(llm)
                 else:
                     # 如果没有下一个任务，就结束
                     print("-"*20, "Task Complete!", "-"*20)
@@ -304,7 +307,7 @@ class WritingTask(BaseModel):
                 pass
 
             # AI推理
-            ai_said = self.ask_ai(chain, user_said, session_id = session_id)
+            ai_said = self.ask_ai(chain, user_said)
             init_ok = True
 
             # 处理进度
