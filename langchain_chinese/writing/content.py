@@ -82,14 +82,32 @@ class TreeContent(BaseModel):
 
         return None
 
-    def all_todos(self) -> List[Dict[str, str]]:
+    def all(self) -> List[Dict[str, str]]:
         """获得所有未完成的内容"""
         # 初始化一个空列表来存储未完成的节点的信息
-        todos = []
+        all_items = [{
+            "id": self.id,
+            "is_completed": self.is_completed,
+            "type": self.type,
+            "words_advice": self.words_advice,
+            "title": self.title,
+        }]
+
+        # 遍历当前节点的所有子节点
+        for child in self.children:
+            all_items.extend(child.all())
+
+        # 返回未完成的节点的信息列表
+        return all_items
+
+    def todos(self) -> List[Dict[str, str]]:
+        """获得所有未完成的内容"""
+        # 初始化一个空列表来存储未完成的节点的信息
+        todo_items = []
 
         # 如果当前节点未完成，将其信息添加到列表中
         if not self.is_completed:
-            todos.append({
+            todo_items.append({
                 "id": self.id,
                 "type": self.type,
                 "words_advice": self.words_advice,
@@ -98,14 +116,14 @@ class TreeContent(BaseModel):
 
         # 遍历当前节点的所有子节点
         for child in self.children:
-            todos.extend(child.all_todos())
+            todo_items.extend(child.todos())
 
         # 返回未完成的节点的信息列表
-        return todos
+        return todo_items
 
     def next_todo(self) -> Optional["TreeContent"]:
         """找出下一个等待完成的任务"""
-        todos = self.all_todos()
+        todos = self.todos()
         for item in todos:
             if item['type'] == 'paragraph':
                 content = self.get_item_by_id(item['id'])
@@ -153,7 +171,7 @@ class TreeContent(BaseModel):
             output = f"\n  内容摘要 >>> {self.summarise}"
 
         return f'《{self.title}》\n' \
-            + f'总字数要求约{self.words_advice}字；{"已完成" if len(self.all_todos())==0 else "尚未完成"}。\n' \
+            + f'总字数要求约{self.words_advice}字；{"已完成" if len(self.todos())==0 else "* 未完成"}。\n' \
             + f'扩写指南 >>> {self.howto}\n' \
             + output
 
