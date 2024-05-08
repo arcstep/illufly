@@ -13,7 +13,7 @@ import json
 import re
 
 _ROOT_FORMAT = """
-（请确保输出符合JSON语法限定，以便我能够正确解析）
+（请确保输出符合JSON语法限定，并且不要出现其他的JSON键，以便我能够正确解析）
 ```json
 {
     "类型": [str类型, 总是为"root"，不要修改],
@@ -25,7 +25,7 @@ _ROOT_FORMAT = """
 """
 
 _OUTLINE_FORMAT = """
-（请确保输出符合JSON语法限定，以便我能够正确解析）
+（请确保输出符合JSON语法限定，并且不要出现其他的JSON键，以便我能够正确解析）
 ```json
 {
     "类型": [str类型, 总是为"outline"，不要修改],
@@ -48,7 +48,7 @@ _OUTLINE_FORMAT = """
 """
 
 _PARAGRAPH_FORMAT = """
-（请确保输出符合JSON语法限定，以便我能够正确解析）
+（请确保输出符合JSON语法限定，并且不要出现其他的JSON键，以便我能够正确解析）
 ```json
 {
     "类型": [str类型, 总是为"paragraph"，一定不要修改],
@@ -179,19 +179,27 @@ class WritingTask(BaseModel):
             resp = get_input()
             content = None
             command = None
-        
-            if(resp == "quit"):
-                command = "quit"
-            elif(resp == "ok"):
-                command = "ok"
-            else:
+            
+            commands = [
+                "quit",
+                "ok",
+                "all",
+                "todos",
+                "todo",
+                "focus",
+            ]
+
+            for cmd in commands:
+                if re.search(f'^{cmd}\s*', resp):
+                    command = cmd
+                    break
+            if command == None:
                 # 如果用户没有输入有意义的字符串，就重来
-                if command == None and len(resp) < 2:
+                if len(resp) < 2:
                     continue
-                content = resp
                 command = "chat"
         
-            return content, command
+            return resp, command
 
     def get_content_type(self):
         if self.focus == "root@input":
@@ -275,8 +283,8 @@ class WritingTask(BaseModel):
         return withMemoryChain
 
     def output_user_auto_said(self) -> str:
-        user_said = f'请帮我扩写《{self.cur_content.title}》, 字数不超过{self.cur_content.words_advice}字，扩写依据为：{self.cur_content.howto}'
-        print("👤[auto]: ", user_said)
+        user_said = f'请帮我扩写《{self.cur_content.title}》, “详细内容”部份的字数大约为{self.cur_content.words_advice}字，扩写依据为：{self.cur_content.howto}'
+        print("\n👤:[auto] ", user_said)
         return user_said
 
     def ask_ai(self, chain: Runnable, question: str):
@@ -360,22 +368,32 @@ class WritingTask(BaseModel):
         self.root_content.print_text()
         
     def print_focus(self):
-        if self.cur_content.id:
-            print("-"*20, self.cur_content.id, "-"*20)        
+        if self.focus:
+            print("-"*20, self.focus, "-"*20)
         
     def print_todos(self):
         """打印todo清单"""
 
         if self.focus:
             print("-"*20, "Todos", "-"*20)
-            for x in self.root_content.all_todos():
+            for x in self.root_content.todos():
                 if x['words_advice'] and x['title']:
-                    print(f"<位置：{x['id']}> {x['words_advice']}字以内 | 《{x['title']}》")
+                    print(f"* <{x['id']}> {x['words_advice']}字以内 | 《{x['title']}》")
                 else:
-                    print(f"<位置：{x['id']}>")
+                    print(f"* <{x['id']}>")
         else:
             # 如果没有下一个任务，就结束
             print("-"*20, "Done!", "-"*20)
+
+    def print_all(self):
+        """打印所有清单"""
+
+        print("-"*20, "All", "-"*20)
+        for x in self.root_content.all():
+            if x['words_advice'] and x['title']:
+                print(f"{' ' if x['is_completed'] else '*'} <{x['id']}> {x['words_advice']}字以内 | 《{x['title']}》")
+            else:
+                print(f"{' ' if x['is_completed'] else '*'} <{x['id']}>")
 
     def run(self, task: str = None, llm: Runnable = None):
         """由AI驱动展开写作"""
@@ -424,6 +442,22 @@ class WritingTask(BaseModel):
                 print("-"*20, "quit" , "-"*20)
                 break
 
+            # 查看所有任务
+            elif command == "all":
+                self.print_all()
+                continue
+
+            # 查看待办任务
+            elif command == "todos":
+                self.print_todos()
+                continue
+
+            # 查看当前游标
+            elif command == "focus":
+                self.print_focus()
+                continue
+
+            # 确认当前成果
             elif command == "ok":
                 # 尝试更新当前游标指向的内容
                 # 如果更新失败，就要退出循环
