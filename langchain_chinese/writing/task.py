@@ -377,7 +377,7 @@ class WritingTask(BaseModel):
             # 如果没有下一个任务，就结束
             print("-"*20, "Done!", "-"*20)
 
-    def run(self, llm: Runnable = None):
+    def run(self, task: str = None, llm: Runnable = None):
         """由AI驱动展开写作"""
 
         # 处理进度
@@ -388,13 +388,17 @@ class WritingTask(BaseModel):
         ai_said = {}
         user_said = ""
         command = "chat"
-
-        if self.focus.endswith("@output"):
-            # 如果是断点任务重新开始，就从当前节点的output开始
-            user_said = self.output_user_auto_said()
+        
+        if task:
+            # 如果参数中提供了初始化的任务描述，就直接采纳
+            user_said = task
         else:
-            # 否则就先询问用户
-            user_said, command = self.ask_user()
+            if self.focus.endswith("@output"):
+                # 如果是断点任务重新开始，就从当前节点的output开始
+                user_said = self.output_user_auto_said()
+            else:
+                # 否则就先询问用户
+                user_said, command = self.ask_user()
 
         ai_said = self.ask_ai(chain, user_said)
 
