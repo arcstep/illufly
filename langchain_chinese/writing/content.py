@@ -143,7 +143,10 @@ class TreeContent(BaseModel):
 
     def get_outlines(self, numbers: List[int] = []) -> List[Dict[str, Union[str, int]]]:
         """获得大纲清单"""
-        lines = [f"{x['sn']} {x['title']} \n{x['summarise'] or x['howto']}" for x in self.get_lines(numbers)]
+        lines = [
+            f"{x['sn']} {x['title']} \n  扩写指南>> {x['howto']}\n  内容摘要>> {x['summarise']}"
+            for x in self.get_lines(numbers)
+        ]
         return '\n'.join(lines)
     
     def print_lines(self, numbers: List[int] = []):
