@@ -147,28 +147,33 @@ class TreeContent(BaseModel):
             lines.extend(child.get_lines(new_numbers))
         return lines
 
-    def get_root(self) -> str:
-      return f"""
-《{self.title}》
+    def get_input(self) -> str:
+        output = ""
+        if self.summarise:
+            output = f"\n  内容摘要 >>> {self.summarise}"
 
-  {"已完成" if self.is_completed else "尚未完成"}；总字数要求约{self.words_advice}字。
-  扩写指南 >>> {self.howto}
-      """
+        return f'《{self.title}》\n' \
+            + f'总字数要求约{self.words_advice}字；{"已完成" if len(self.all_todos())==0 else "尚未完成"}。\n' \
+            + f'扩写指南 >>> {self.howto}\n' \
+            + output
 
     def get_outlines(self, numbers: List[int] = []) -> List[Dict[str, Union[str, int]]]:
-      """获得大纲清单"""
-      root = self.get_root()
-      lines = [
-        f"{x['sn']} {x['title']} \n  扩写指南 >>> {x['howto']}\n  内容摘要 >>> {x['summarise']}"
-        for x in self.get_lines(numbers)
-      ]
-      all_lines = '\n'.join(lines)
-      return f"{root}\n{all_lines}"
+        """获得大纲清单"""
+        input = self.get_input()
+        lines = [
+            f"{x['sn']} {x['title']} \n  扩写指南 >>> {x['howto']}\n  内容摘要 >>> {x['summarise']}"
+            for x in self.get_lines(numbers)
+        ]
+        all_lines = '\n'.join(lines)
+        return f"{input}\n{all_lines}"
 
     def get_text(self, numbers: List[int] = []):
-      root = self.get_root()
-      lines = [f"{line['sn']} {line['title']}\n {line['text']}" for line in self.get_lines(numbers)]
-      return [root] + lines
+        input = self.get_input()
+        lines = [f"{line['sn']} {line['title']}\n {line['text']}" for line in self.get_lines(numbers)]
+        if self.text:
+            return [input] + lines + self.text
+        else:
+            return [input] + lines
 
     def print_text(self):
       """打印所有行的序号、标题和文字内容"""
