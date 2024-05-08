@@ -16,10 +16,10 @@ _ROOT_FORMAT = """
 （请确保输出符合JSON语法限定，以便我能够正确解析）
 ```json
 {
-    "类型": "root",
-    "标题名称": 根据写作任务，给出用户要求或你推荐的标题名称，不要带编号
-    "扩写指南": 应当尽量包含写作任务中提及的写作要求，也可以包含你的创作建议中所涉及的人物、地点、情节等实体名称和背景设定,
-    "总字数要求": 预计的总体字数要求（int类型），默认为1000字。
+    "类型": [str类型, 总是为"root"，不要修改],
+    "总字数要求": [int类型]预计的总体字数要求，默认为1000字,
+    "标题名称": [str类型]根据写作任务，给出用户要求或你推荐的标题名称，不要带编号,
+    "扩写指南": [str类型]应当尽量包含写作任务中提及的写作要求，也可以包含你的创作建议中所涉及的人物、地点、情节等实体名称和背景设定
 }
 ```
 """
@@ -28,19 +28,19 @@ _OUTLINE_FORMAT = """
 （请确保输出符合JSON语法限定，以便我能够正确解析）
 ```json
 {
-    "类型": "outline",
-    "标题名称": 收到扩写任务时要求的标题,
+    "类型": [str类型, 总是为"outline"，不要修改],
+    "标题名称": [str类型，沿用原有的标题，不要修改]收到扩写任务时要求的标题,
     "大纲列表": [
         {
-            "总字数要求": 段落的字数要求（int类型）,
-            "标题名称": 不带编号的标题名称,
-            "扩写指南": 可以包含涉及的人物、地点、情节等实体名称和背景设定
+            "总字数要求": [int类型]段落的字数要求,
+            "标题名称": [str类型]不带编号的标题名称,
+            "扩写指南": [str类型]可以包含涉及的人物、地点、情节等实体名称和背景设定
         },
         ...,
         {
-            "总字数要求": 段落的字数要求（int类型）,
-            "标题名称": 不带编号的标题名称,
-            "扩写指南": 可以包含涉及的人物、地点、情节等实体名称和背景设定
+            "总字数要求": [int类型]段落的字数要求,
+            "标题名称": [str类型]不带编号的标题名称,
+            "扩写指南": [str类型]可以包含涉及的人物、地点、情节等实体名称和背景设定
         }
     ]
 }
@@ -51,45 +51,34 @@ _PARAGRAPH_FORMAT = """
 （请确保输出符合JSON语法限定，以便我能够正确解析）
 ```json
 {
-    "类型": "paragraph",
-    "标题名称": 收到扩写任务时要求的标题,
-    "详细内容": "你的详细输出",
-    "内容摘要": 详细内容提要，可以包括涉及的人物、地点、情节等实体名称和背景设定
+    "类型": [str类型, 总是为"paragraph"，一定不要修改],
+    "标题名称": [str类型，沿用原有的标题，不要修改]收到扩写任务时要求的标题,
+    "详细内容": [str类型]你的详细输出,
+    "内容摘要": [str类型]详细内容提要，可以包括涉及的人物、地点、情节等实体名称和背景设定
 }
 ```
 """
 
-ROOT_MAIN = """
-你是一名优秀的写手，任务是对写作任务做评估，给出总体写作建议。
-
-请严格按如下格式输出JSON：
-{{root_format}}
-
-不要输出JSON以外的内容。
+_JSON_INSTRUCTION = """
+1. 你只能输出一个JSON段落，否则我将无法正确解析。
+2. 你必须严格遵循我提出的JSON键值规则，不要额外发挥，否则我将无法正确解析。
+3. 在拆分提纲时，每个子任务的字数要求不要低于200字。
+4. 如果你的创作中出现实体名称、创作设定等，就将其单独提炼到扩写指南或内容摘要；
+   这样做非常必要，可以让独立的创作子任务保持一致的背景设定。
 """
 
-OUTLINE_MAIN = """
-你是一名优秀的写手，可以构思写作思路、扩展写作提纲。
+_ROOT_TASK = "你是一名优秀的写手，任务是对写作任务做评估，给出总体写作建议。"
+_OUTLINE_TASK = "你是一名优秀的写手，可以构思写作思路、扩展写作提纲。"
+_PARAGRAPH_TASK = "你是一名优秀的写手，负责详细构思段落细节。"
+
+MAIN_PROMPT = """
+{{task_instruction}}
 
 请务必记住：
-1. 如果你的创作建议中出现实体名称、创作设定等，就将其单独提炼到扩写指南，
-   这样做非常必要，可以让分散多次的创作保持人物、地点、设定等一致。
-2. 你在拆分提纲时，每个子任务的字数要求不要低于200字。
+{{json_instruction}}
 
-请严格按如下格式输出JSON：
-{{outline_format}}
-
-不要输出JSON以外的内容。
-"""
-
-PARAGRAPH_MAIN = """
-你是一名优秀的写手，负责详细构思段落细节。
-请务必记住：
-1. 如果你的创作建议中出现实体名称、创作设定等，就将其单独提炼到内容摘要，
-   这样做非常必要，可以让分散多次的创作保持人物、地点、设定等一致。
-
-请严格按如下格式输出JSON：
-{{paragraph_format}}
+请严格按如下格式输出JSON:
+{{output_format}}
 
 不要输出JSON以外的内容。
 """
@@ -152,7 +141,7 @@ class WritingTask(BaseModel):
         print("Task Mode:", self.task_mode)
 
         if self.root_content == None:
-            self.root_content = TreeContent(id="root")                
+            self.root_content = TreeContent(id="root", type="root")                
         self.move_focus("root", pos="input")
         print("Focus from:", self.focus)
 
@@ -207,49 +196,68 @@ class WritingTask(BaseModel):
         
             return content, command
 
+    def get_content_type(self):
+        if self.focus == "root@input":
+            return "root"
+        elif self.cur_content.words_advice > self.words_per_step:
+            return "outline"
+        else:
+            return "paragraph"
+
     def get_chain(self, llm: Runnable = None):
         """构造Chain"""
         
-        # 获取提示语类型
-        if self.focus == "root@input":
-            prompt_type = "root"
-        elif self.cur_content.words_advice > self.words_per_step:
-            prompt_type = "outline"
-        else:
-            prompt_type = "paragraph"
-
+        # 获取内容类型
+        content_type = self.get_content_type()
         # 获取背景信息
-        outline = self.root_content.get_outlines()
+        outline_exist = self.root_content.get_outlines()
         
         # 构造基础示语模板
-        if prompt_type == "root":
+        if content_type == "root":
+            task_prompt = _ROOT_TASK
             prompt = ChatPromptTemplate.from_messages([
-                ("system", ROOT_MAIN),
+                ("system", MAIN_PROMPT),
                 MessagesPlaceholder(variable_name="history"),
                 ("human", "{{question}}。")
             ], template_format="jinja2").partial(
-                root_format=_ROOT_FORMAT,
+                # 任务指南
+                task_instruction=task_prompt,
+                # 输出格式要求
+                output_format=_ROOT_FORMAT,
+                # JSON严格控制
+                json_instruction=_JSON_INSTRUCTION,
             )
-        elif prompt_type == "outline":
+        elif content_type == "outline":
+            task_prompt = _OUTLINE_TASK
             prompt = ChatPromptTemplate.from_messages([
-                ("system", OUTLINE_MAIN),
+                ("system", MAIN_PROMPT),
                 MessagesPlaceholder(variable_name="history"),
-                ("human", "{{question}}。请注意，总体写作提纲为: {{outline}}，你现在的写作任务是其中的一部份")
+                ("human", "{{question}}。请注意，总体写作提纲为: {{outline_exist}}，你现在的写作任务是其中的一部份")
             ], template_format="jinja2").partial(
                 words_limit=self.words_per_step,
-                outline=outline,
-                paragraph_format=_PARAGRAPH_FORMAT,
-                outline_format=_OUTLINE_FORMAT,
+                outline_exist=outline_exist,
+                # 任务指南
+                task_instruction=task_prompt,
+                # 输出格式要求
+                output_format=_OUTLINE_FORMAT,
+                # JSON严格控制
+                json_instruction=_JSON_INSTRUCTION,
             )
         else:
+            task_prompt = _PARAGRAPH_TASK
             prompt = ChatPromptTemplate.from_messages([
-                ("system", PARAGRAPH_MAIN),
+                ("system", MAIN_PROMPT),
                 MessagesPlaceholder(variable_name="history"),
-                ("human", "{{question}}。请注意，总体写作提纲为: {{outline}}，你现在的写作任务是其中的一部份")
+                ("human", "{{question}}。请注意，总体写作提纲为: {{outline_exist}}，你现在的写作任务是其中的一部份")
             ], template_format="jinja2").partial(
                 words_limit=self.words_per_step,
-                outline=outline,
-                paragraph_format=_PARAGRAPH_FORMAT,
+                outline_exist=outline_exist,
+                # 任务指南
+                task_instruction=task_prompt,
+                # 输出格式要求
+                output_format=_PARAGRAPH_FORMAT,
+                # JSON严格控制
+                json_instruction=_JSON_INSTRUCTION,
             )
 
         # 默认选择智谱AI
@@ -309,11 +317,8 @@ class WritingTask(BaseModel):
     def update_content(self, request: Dict[str, Any] = {}):
         """更新当前内容"""
         
-        if "类型" in request:
-            task_type = request['类型']
-            self.cur_content.type = task_type
-        else:
-            raise(BaseException("Error AI Said: ", request))
+        content_type = self.get_content_type()
+        self.cur_content.type = content_type
         
         if self.focus.endswith("@input"):
             # 更新生成依据
@@ -330,7 +335,7 @@ class WritingTask(BaseModel):
                 self.cur_content.summarise = request["内容摘要"]
         elif self.focus.endswith("@output"):
             # 更新生成大纲或详细内容
-            if task_type == "outline":
+            if content_type == "outline":
                 self.cur_content.children = []
                 for item in request['大纲列表']:
                     if "总字数要求" not in item or "标题名称" not in item or "扩写指南" not in item:
@@ -342,7 +347,7 @@ class WritingTask(BaseModel):
                         is_completed = False,
                     ))
                 print("-"*20, "Outlines Done for", self.cur_content.id, "-"*20)
-            elif task_type == "paragraph":
+            elif content_type == "paragraph":
                 if "内容摘要" in request:
                     self.cur_content.summarise = request["内容摘要"]
                 if "详细内容" in request:
@@ -355,18 +360,38 @@ class WritingTask(BaseModel):
         else:
             raise(BaseException("Error FOCUS:", self.focus))
     
+    def print_todos(self):
+        """打印todo清单"""
+
+        print("-"*20, self.focus, "-"*20)
+        if self.focus:
+            print("-"*20, "Todos", "-"*20)
+            for x in self.root_content.all_todos():
+                print(f"<{x['id']}> {x['words_advice']}字以内 | 《{x['title']}》")
+        else:
+            # 如果没有下一个任务，就结束
+            print("-"*40, "\nAll Complete!")
+
     def run(self, llm: Runnable = None):
         """由AI驱动展开写作"""
+
+        # 处理进度
+        self.print_todos()
+
         # 
         chain = self.get_chain(llm)
         ai_said = {}
         user_said = ""
         command = "chat"
 
-        if self.focus == "root@input":
-            # 如果任务还没有确认，就需要询问用户
+        if self.focus.endswith("@output"):
+            # 如果是断点任务重新开始，就从当前节点的output开始
+            user_said = self.output_user_auto_said()
+        else:
+            # 否则就先询问用户
             user_said, command = self.ask_user()
-            ai_said = self.ask_ai(chain, user_said)
+
+        ai_said = self.ask_ai(chain, user_said)
 
         # 最多允许步数的限制
         max_steps_count = 1e4
@@ -384,7 +409,7 @@ class WritingTask(BaseModel):
                 # 其他模式暂不支持，全部视为 askme
                 user_said, command = self.ask_user()
 
-            print("-"*20, "command:", command, "-"*20)
+            # print("-"*20, "command:", command, "-"*20)
             # 主动退出
             if command == "quit":
                 print("-"*20, "quit" , "-"*20)
@@ -397,6 +422,7 @@ class WritingTask(BaseModel):
 
                 # 获取下一个任务的计划
                 self.move_focus_auto()
+                self.print_todos()
                 print("-"*20, "Move To:", self.focus, "-"*20)
                 if self.focus:
                     if self.focus.endswith("@output"):
@@ -409,8 +435,6 @@ class WritingTask(BaseModel):
                         print("暂时不支持属性修改任务")
                         break
                 else:
-                    # 如果没有下一个任务，就结束
-                    print("-"*40, "\nAll Complete!")
                     break
             else:
                 # 其他命令暂时没有特别处理
@@ -420,6 +444,4 @@ class WritingTask(BaseModel):
             ai_said = self.ask_ai(chain, user_said)
 
             # 处理进度
-            print("-"*20, "Todos", "-"*20)
-            for x in self.root_content.all_todos():
-                print(x['id'], x['words_advice'], "字 |", x['title'])
+            self.print_todos()
