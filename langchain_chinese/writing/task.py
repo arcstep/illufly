@@ -168,9 +168,6 @@ class WritingTask(BaseModel):
                 self.focus = None
         return self.focus
     
-    def print_text(self) -> List[Dict[str, Union[str, int]]]:
-        self.root_content.print_text()
-    
     def ask_user(self) -> tuple:
         """捕获用户的输入"""
         
@@ -286,7 +283,6 @@ class WritingTask(BaseModel):
         """AI推理"""
         
         json = None
-        print("-"*20, "AI for", self.cur_content.id, "-"*20)
         counter = 0
         while(counter < self.retry_max):
             counter += 1
@@ -346,7 +342,7 @@ class WritingTask(BaseModel):
                         howto = item['扩写指南'],
                         is_completed = False,
                     ))
-                print("-"*20, "Outlines Done for", self.cur_content.id, "-"*20)
+                # print("-"*20, "Outlines Done for", self.cur_content.id, "-"*20)
             elif content_type == "paragraph":
                 if "内容摘要" in request:
                     self.cur_content.summarise = request["内容摘要"]
@@ -359,18 +355,27 @@ class WritingTask(BaseModel):
             self.cur_content.is_completed = True
         else:
             raise(BaseException("Error FOCUS:", self.focus))
-    
+
+    def print_text(self):
+        self.root_content.print_text()
+        
+    def print_focus(self):
+        if self.cur_content.id:
+            print("-"*20, self.cur_content.id, "-"*20)        
+        
     def print_todos(self):
         """打印todo清单"""
 
-        print("-"*20, self.focus, "-"*20)
         if self.focus:
             print("-"*20, "Todos", "-"*20)
             for x in self.root_content.all_todos():
-                print(f"<{x['id']}> {x['words_advice']}字以内 | 《{x['title']}》")
+                if x['words_advice'] and x['title']:
+                    print(f"<位置：{x['id']}> {x['words_advice']}字以内 | 《{x['title']}》")
+                else:
+                    print(f"<位置：{x['id']}>")
         else:
             # 如果没有下一个任务，就结束
-            print("-"*40, "\nAll Complete!")
+            print("-"*20, "Done!", "-"*20)
 
     def run(self, llm: Runnable = None):
         """由AI驱动展开写作"""
@@ -423,7 +428,6 @@ class WritingTask(BaseModel):
                 # 获取下一个任务的计划
                 self.move_focus_auto()
                 self.print_todos()
-                print("-"*20, "Move To:", self.focus, "-"*20)
                 if self.focus:
                     if self.focus.endswith("@output"):
                         # 如果下一个任务存在，继续转移到新的扩写任务
@@ -435,6 +439,8 @@ class WritingTask(BaseModel):
                         print("暂时不支持属性修改任务")
                         break
                 else:
+                    # 全部结束，打印成果出来瞧瞧
+                    self.print_text()
                     break
             else:
                 # 其他命令暂时没有特别处理
@@ -442,6 +448,3 @@ class WritingTask(BaseModel):
 
             # AI推理
             ai_said = self.ask_ai(chain, user_said)
-
-            # 处理进度
-            self.print_todos()
