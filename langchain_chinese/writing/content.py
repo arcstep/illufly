@@ -43,7 +43,7 @@ class TreeContent(BaseModel):
 
     # 保存路径
     path: Optional[str] = None
-    
+
     def load(self):
         pass  # 实现加载逻辑
 
@@ -89,7 +89,12 @@ class TreeContent(BaseModel):
 
         # 如果当前节点未完成，将其信息添加到列表中
         if not self.is_completed:
-            todos.append({"id": self.id, "type": self.type, "words_advice": self.words_advice})
+            todos.append({
+                "id": self.id,
+                "type": self.type,
+                "words_advice": self.words_advice,
+                "title": self.title,
+            })
 
         # 遍历当前节点的所有子节点
         for child in self.children:
@@ -123,6 +128,7 @@ class TreeContent(BaseModel):
             {"sn":"2.2",   "title":"xxx", "summarise": "xxx", "text": ""},
         ]
         """
+        
         lines = []
         for i, child in enumerate(self.children, start=1):
             new_numbers = numbers + [i]
@@ -141,18 +147,31 @@ class TreeContent(BaseModel):
             lines.extend(child.get_lines(new_numbers))
         return lines
 
+    def get_root(self) -> str:
+      return f"""
+《{self.title}》
+
+  {"已完成" if self.is_completed else "尚未完成"}；总字数要求约{self.words_advice}字。
+  扩写指南 >>> {self.howto}
+      """
+
     def get_outlines(self, numbers: List[int] = []) -> List[Dict[str, Union[str, int]]]:
-        """获得大纲清单"""
-        lines = [
-            f"{x['sn']} {x['title']} \n  扩写指南>> {x['howto']}\n  内容摘要>> {x['summarise']}"
-            for x in self.get_lines(numbers)
-        ]
-        return '\n'.join(lines)
-    
-    def print_lines(self, numbers: List[int] = []):
-        """打印所有行的序号、标题和文字内容"""
-        lines = self.get_lines(numbers)
-        for line in lines:
-            print(line['sn'], line['title'])
-            print(line['text'])
-            print("")
+      """获得大纲清单"""
+      root = self.get_root()
+      lines = [
+        f"{x['sn']} {x['title']} \n  扩写指南 >>> {x['howto']}\n  内容摘要 >>> {x['summarise']}"
+        for x in self.get_lines(numbers)
+      ]
+      all_lines = '\n'.join(lines)
+      return f"{root}\n{all_lines}"
+
+    def get_text(self, numbers: List[int] = []):
+      root = self.get_root()
+      lines = [f"{line['sn']} {line['title']}\n {line['text']}" for line in self.get_lines(numbers)]
+      return [root] + lines
+
+    def print_text(self):
+      """打印所有行的序号、标题和文字内容"""
+      for line in self.get_text():
+          print(line)
+
