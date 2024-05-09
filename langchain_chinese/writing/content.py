@@ -3,18 +3,19 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 import datetime
 import random
 
-global_id = 0
+GLOBAL_ID = 0
+GLOBAL_ID_MAX = 9999999
 
 def create_content_id():
-    global global_id
+    global GLOBAL_ID
     now = datetime.datetime.now()
-    random_digits = random.randint(100, 999)  # 生成一个四位的随机数
+    random_digits = random.randint(10, 99)  # 生成一个尾部随机数
 
     # 更新 global_id
-    global_id += 1
-    if global_id > 9999999:
-        global_id = 0
-    global_id_str = str(global_id).zfill(5)
+    GLOBAL_ID += 1
+    if GLOBAL_ID > GLOBAL_ID_MAX:
+        GLOBAL_ID = 0
+    global_id_str = str(GLOBAL_ID).zfill(len(f"{GLOBAL_ID_MAX}"))
 
     # return now.strftime(f"%Y%m%d.%H%M%S.{global_id_str}.{random_digits}")
     return f"{global_id_str}.{random_digits}"
