@@ -53,6 +53,10 @@ class MemoryManager:
         return memory.chat_memory.messages
 
     # 返回短期记忆的管理器对象
+    # ⚠️ 注意： 如果使用session_id，就不要以kwargs方式使用
+    #
+    # 正确的方式为 get_shorterm_memory(your_session_id)
+    # 如果 按照 get_shorterm_memory(session_id=your_session_id)，将得到一个键为元组的新记忆体
     def get_shorterm_memory(self, *args: Any, **kwargs: Any) -> BaseChatMemory:
         session_id: Union[str, Tuple] = None
         if len(args) == 1 and not kwargs:
