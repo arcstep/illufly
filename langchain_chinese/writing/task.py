@@ -219,6 +219,8 @@ class WritingTask(BaseModel):
                 "todos",
                 "todo",
                 "focus",
+                "memory",
+                "memory_store",
             ]
 
             for cmd in commands:
@@ -396,6 +398,11 @@ class WritingTask(BaseModel):
         else:
             raise(BaseException("Error FOCUS:", self.focus))
 
+    def get_memory(self, id=None):
+        if id == None:
+            id = self.cur_content.id
+        return self.memory.get_shorterm_memory(id).chat_memory.messages
+
     def print_text(self):
         self.root_content.print_text()
         
@@ -487,6 +494,16 @@ class WritingTask(BaseModel):
             # 查看当前游标
             elif command == "focus":
                 self.print_focus()
+                continue
+
+            # 查看记忆
+            elif command == "memory":
+                print(self.get_memory())
+                continue
+
+            # 查看记忆
+            elif command == "memory_store":
+                print(self.memory._shorterm_memory_store)
                 continue
 
             # 确认当前成果
