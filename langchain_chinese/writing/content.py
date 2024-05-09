@@ -12,11 +12,12 @@ def create_content_id():
 
     # 更新 global_id
     global_id += 1
-    if global_id > 99999:
+    if global_id > 9999999:
         global_id = 0
     global_id_str = str(global_id).zfill(5)
 
-    return now.strftime(f"%Y%m%d.%H%M%S.{global_id_str}.{random_digits}")
+    # return now.strftime(f"%Y%m%d.%H%M%S.{global_id_str}.{random_digits}")
+    return f"{global_id_str}.{random_digits}"
 
 def generate_sn(numbers: List[int]) -> str:
     return ".".join(str(number) for number in numbers)
