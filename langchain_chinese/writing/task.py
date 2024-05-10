@@ -201,35 +201,26 @@ class WritingTask(BaseModel):
                 # JSON严格控制
                 json_instruction=_JSON_INSTRUCTION,
             )
-        elif content_type == "outline":
-            task_prompt = _OUTLINE_TASK
+        else:
+            task_prompt = _OUTLINE_TASK if content_type == "outline" else _PARAGRAPH_TASK
             prompt = ChatPromptTemplate.from_messages([
                 ("system", MAIN_PROMPT),
+                ("ai", "你对我的写作有什么要求？"),
+                ("human", _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT),
                 MessagesPlaceholder(variable_name="history"),
-                ("human", "{{question}}。请注意，总体写作提纲为: {{outline_exist}}，你现在的写作任务是其中的一部份")
+                ("human", "{{question}}。")
             ], template_format="jinja2").partial(
+                # 字数限制
                 words_limit=self.words_per_step,
+                words_advice=self.cur_content.words_advice,
+                # 写作提纲
+                title=self.cur_content.title,
                 outline_exist=outline_exist,
                 # 任务指南
                 task_instruction=task_prompt,
+                howto=self.cur_content.howto,
                 # 输出格式要求
                 output_format=_OUTLINE_FORMAT,
-                # JSON严格控制
-                json_instruction=_JSON_INSTRUCTION,
-            )
-        else:
-            task_prompt = _PARAGRAPH_TASK
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", MAIN_PROMPT),
-                MessagesPlaceholder(variable_name="history"),
-                ("human", "{{question}}。请注意，总体写作提纲为: {{outline_exist}}，你现在的写作任务是其中的一部份")
-            ], template_format="jinja2").partial(
-                words_limit=self.words_per_step,
-                outline_exist=outline_exist,
-                # 任务指南
-                task_instruction=task_prompt,
-                # 输出格式要求
-                output_format=_PARAGRAPH_FORMAT,
                 # JSON严格控制
                 json_instruction=_JSON_INSTRUCTION,
             )
@@ -252,7 +243,7 @@ class WritingTask(BaseModel):
         return withMemoryChain
 
     def output_user_auto_said(self) -> str:
-        user_said = f'请帮我扩写《{self.cur_content.title}》, “详细内容”部份的字数大约为{self.cur_content.words_advice}字，扩写依据为：{self.cur_content.howto}'
+        user_said = f'请帮我扩写'
         print("\n👤:[auto] ", user_said)
         return user_said
 
