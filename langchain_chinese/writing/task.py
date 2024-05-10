@@ -84,7 +84,7 @@ class WritingTask(BaseModel):
     streaming = True
 
     # 记忆管理
-    ai_said: Optional[Dict[str, str]] = {}
+    ai_reply: Optional[Dict[str, str]] = {}
     memory: Optional[MemoryManager] = None
 
     class Config:
@@ -115,7 +115,10 @@ class WritingTask(BaseModel):
         移动到指定节点，默认将位置设定为output。
         """
 
-        if id in ["START", "END"]:
+        if id == "START":
+            self.cur_content = self.root_content
+            self.focus = id
+        elif id == "END":
             self.focus = id
         else:
             target = self.root_content.get_item_by_id(id)
@@ -187,7 +190,7 @@ class WritingTask(BaseModel):
                 # 如果用户没有输入有意义的字符串，就重来
                 continue
             else:
-                return None, "chat", resp
+                return None, "ask", resp
             
         return None, None, None
 
@@ -207,7 +210,7 @@ class WritingTask(BaseModel):
         # 构造基础示语模板
         json_instruction = _JSON_INSTRUCTION
         
-        if content_type == "ROOT":
+        if content_type == "START":
             task_prompt   = _ROOT_TASK
             output_format = _ROOT_FORMAT
             
@@ -305,7 +308,7 @@ class WritingTask(BaseModel):
             
             # 允许重试N次，满足要求后才返回AI的回应
             if json:
-                self.ai_said = json
+                self.ai_reply = json
                 return json
 
         raise Exception(f"AI返回结果无法正确解析，已经超过 {self.retry_max} 次，可能需要调整提示语模板了！！")
@@ -341,7 +344,7 @@ class WritingTask(BaseModel):
             - 详细内容
             - 内容摘要
         """
-        request = self.ai_said 
+        request = self.ai_reply 
         content_type = self.get_content_type()
         self.cur_content.type = content_type
         
@@ -394,7 +397,7 @@ class WritingTask(BaseModel):
         self.root_content.print_text()
         
     def print_focus(self):
-        print(f"self.focus@")
+        print(f"{self.focus}@")
         
     def print_todos(self):
         """打印todo清单"""
@@ -474,15 +477,13 @@ class WritingTask(BaseModel):
         
         # 最多允许步数的限制
         counter = 0
-        user_said = None
-        focus = None
         command = None
         param = None
 
         while(counter < max_steps):
             counter += 1
 
-            if self.ai_said == {}:
+            if self.ai_reply == {}:
                 # 新任务
                 id, command, param = self.ask_user(input)
             else:
@@ -493,13 +494,13 @@ class WritingTask(BaseModel):
                     id, command, param = self.ask_user(input)
 
             # 无效命令过滤
-            if input and command == "ok" and self.ai_said == {}:
+            if input and command == "ok" and self.ai_reply == {}:
                 input = None
                 continue
             
             # 输入重置
             input = None
-            print(f"{self.focus} <{command}>")
+            print(f"{self.focus}@{command}")
 
             # 主动退出
             if command == "quit":
@@ -584,14 +585,14 @@ class WritingTask(BaseModel):
                     break
                 else:
                     # 如果下一个任务存在，继续转移到新的扩写任务
-                    user_said = self.user_said_continue()
+                    param = self.user_said_continue()
                     # 如果不移动任务游标，就一直使用这个chain
                     chain = self.update_chain(llm)
-            elif command == "chat":
+            elif command == "ask":
                 pass
             else:
                 # 其他命令暂时没有特别处理
                 print("UNKOWN COMMAND:", command)
 
             # AI推理
-            self.ask_ai(chain, user_said)
+            self.ask_ai(chain, param)
