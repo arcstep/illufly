@@ -12,6 +12,7 @@ from .content import TreeContent
 from .prompts.task_prompt import *
 import json
 import re
+import os
 
 def get_input(prompt: str = "\n👤: ") -> str:
     return input(prompt)
@@ -85,6 +86,7 @@ class WritingTask(BaseModel):
     streaming = True
 
     # 记忆管理
+    ai_said: Optional[Dict[str, str]] = {}
     memory: Optional[MemoryManager] = None
 
     class Config:
@@ -135,7 +137,7 @@ class WritingTask(BaseModel):
                 self.focus = None
         return self.focus
     
-    def ask_user(self) -> tuple:
+    def ask_user(self, user_said: str = None) -> tuple:
         """捕获用户的输入"""
         
         max_count = 1e3
@@ -143,10 +145,9 @@ class WritingTask(BaseModel):
         while(counter < max_count):
             counter += 1
             
-            resp = get_input()
-            content = None
-            command = None
-            
+            resp = user_said if user_said else get_input()
+            resp = resp.strip()
+
             commands = [
                 "quit",
                 "ok",
@@ -158,19 +159,20 @@ class WritingTask(BaseModel):
                 "memory_store",
             ]
 
+            command = "chat"
+            
             for cmd in commands:
                 if re.search(f'^{cmd}\s*', resp):
                     command = cmd
                     break
-            if command == None:
+            if command == "chat":
                 # 如果用户没有输入有意义的字符串，就重来
-                if len(resp) < 2:
+                if len(resp) <= 0:
                     continue
-                command = "chat"
         
             return resp, command
 
-    def get_chain(self, llm: Runnable = None):
+    def update_chain(self, llm: Runnable = None):
         """构造Chain"""
         
         # 获取内容类型
@@ -230,6 +232,8 @@ class WritingTask(BaseModel):
 
         # 默认选择智谱AI
         if llm == None:
+            if os.environ.get("ZHIPUAI_API_KEY") == None:
+                raise BaseException("您正在尝试在 langchain_chinese 中使用智谱AI，请在环境变量 ZHIPUAI_API_KEY 中提供 APIKEY！")
             llm = ChatZhipuAI()
 
         # 构造链
@@ -245,10 +249,12 @@ class WritingTask(BaseModel):
         
         return withMemoryChain
 
-    def output_user_auto_said(self) -> str:
+    def output_user_auto_said(self) -> (str, str):
+        """自动生成的用户询问"""
+        
         user_said = f'请帮我扩写'
         print("\n👤:[auto] ", user_said)
-        return user_said
+        return user_said, "chat"
 
     def ask_ai(self, chain: Runnable, question: str):
         """AI推理"""
@@ -277,6 +283,7 @@ class WritingTask(BaseModel):
             
             # 允许重试N次，满足要求后才返回AI的回应
             if json:
+                self.ai_said = json
                 return json
             
         raise Exception(f"AI返回结果无法正确解析，已经超过 {self.retry_max} 次，可能需要调整提示语模板了！！")
@@ -289,9 +296,27 @@ class WritingTask(BaseModel):
         else:
             return "paragraph"
 
-    def update_content(self, request: Dict[str, Any] = {}):
-        """更新当前内容"""
-        
+    def update_content(self):
+        """
+        更新当前内容。
+
+        如果是任务初始状态，应当包含：
+            - 标题名称
+            - 总字数要求
+            - 扩写指南
+            - 内容摘要
+
+        如果是提纲，提纲中的元素应当包含：
+            - 大纲列表
+                - 总字数要求
+                - 标题名称
+                - 扩写指南
+
+        如果是段落，应当包含：
+            - 详细内容
+            - 内容摘要
+        """
+        request = self.ai_said 
         content_type = self.get_content_type()
         self.cur_content.type = content_type
         
@@ -371,48 +396,89 @@ class WritingTask(BaseModel):
             else:
                 print(f"{' ' if x['is_completed'] else '*'} <{x['id']}>")
 
-    def run(self, task: str = None, llm: Runnable = None):
-        """由AI驱动展开写作"""
+    def run(self, input: str = None, llm: Runnable = None, task_mode = None, max_steps = 1e4):
+        """
+        由AI驱动展开写作。
+        
+        from langchain_chinese import WritingTask
+        wp = WritingTask()
 
-        # 处理进度
+        支持如下场景：
+        - 给定任务，自动开始
+        w.run(
+            input = "请帮我写一封道歉信"
+            task_mode = "auto"
+        )
+
+        - 未定任务，获取第一次输入，自动开始        
+        w.run(
+            task_mode = "auto"
+        )
+
+        - 给定任务，每次询问
+        w.run(
+            input = "请帮我写一封道歉信"
+            task_mode = "askme"
+        )
+
+        - 未定任务，每次询问
+        w.run(
+            task_mode = "askme"
+        )
+
+        - 询问模式退出前，尚在初始阶段
+
+        - 询问模式退出前，有任务待确认
+        - 询问模式退出前，任务已确认
+        - 询问模式接续后，转自动
+        - 仅对大纲自动模式，段落手动模式
+
+        - 每一步执行后都直接退出（不做循环）
+          max_steps = 1 即可
+        """
+        
+        # 更新任务模式
+        if task_mode:
+            self.task_mode = task_mode
+
+        # 打印处理进度
+        self.print_focus()
         self.print_todos()
 
-        # 
-        chain = self.get_chain(llm)
-        ai_said = {}
-        user_said = ""
-        command = "chat"
+        # 初始化链
+        chain = self.update_chain(llm)
         
-        if task:
-            # 如果参数中提供了初始化的任务描述，就直接采纳
-            user_said = task
-        else:
-            if self.focus.endswith("@output"):
-                # 如果是断点任务重新开始，就从当前节点的output开始
-                user_said = self.output_user_auto_said()
-            else:
-                # 否则就先询问用户
-                user_said, command = self.ask_user()
-
-        ai_said = self.ask_ai(chain, user_said)
-
         # 最多允许步数的限制
-        max_steps_count = 1e4
         counter = 0
-        while(counter < max_steps_count):
+        user_said = None
+        command = None
+
+        while(counter < max_steps):
             counter += 1
 
-            if self.task_mode == "auto":
-                # 自动回复OK
-                command = "ok"
-            elif self.task_mode == "askme":
-                # 否则获取用户输入
-                user_said, command = self.ask_user()
+            if self.ai_said == None:
+                # 全新任务
+                if self.task_mode == "auto":
+                    if self.focus == "root@input" and user_said == None:
+                        user_said, command = self.ask_user(input)
+                    else:
+                        user_said, command = self.ask_user("ok")
+                else:
+                    if self.focus == "root@input" and user_said == None:
+                        user_said, command = self.ask_user(input)
+                    else:
+                        user_said, command = self.ask_user()
             else:
-                # 其他模式暂不支持，全部视为 askme
-                user_said, command = self.ask_user()
+                # 跟踪之前状态的任务
+                if self.task_mode == "auto":
+                    user_said, command = self.ask_user("ok")
+                else:
+                    user_said, command = self.ask_user()
 
             # print("-"*20, "command:", command, "-"*20)
+            # if self.ai_said:
+            #     print("ai said: ", self.ai_said)
+            # print("user said: ", user_said)
             # 主动退出
             if command == "quit":
                 print("-"*20, "quit" , "-"*20)
@@ -447,7 +513,7 @@ class WritingTask(BaseModel):
             elif command == "ok":
                 # 尝试更新当前游标指向的内容
                 # 如果更新失败，就要退出循环
-                self.update_content(request=ai_said)
+                self.update_content()
 
                 # 获取下一个任务的计划
                 self.move_focus_auto()
@@ -455,9 +521,9 @@ class WritingTask(BaseModel):
                 if self.focus:
                     if self.focus.endswith("@output"):
                         # 如果下一个任务存在，继续转移到新的扩写任务
-                        user_said = self.output_user_auto_said()
+                        _command, user_said = self.output_user_auto_said()
                         # 如果不移动游标，就一直使用这个chain
-                        chain = self.get_chain(llm)
+                        chain = self.update_chain(llm)
                     elif self.focus.endswith("@input"):
                         # 如果进入到属性修改任务
                         print("暂时不支持属性修改任务")
@@ -466,9 +532,11 @@ class WritingTask(BaseModel):
                     # 全部结束，打印成果出来瞧瞧
                     self.print_text()
                     break
+            elif command == "chat":
+                print("chat ...")
             else:
                 # 其他命令暂时没有特别处理
-                pass
+                print("UNKOWN COMMAND:", command)
 
             # AI推理
-            ai_said = self.ask_ai(chain, user_said)
+            self.ask_ai(chain, user_said)
