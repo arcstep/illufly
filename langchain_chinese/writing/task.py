@@ -30,8 +30,9 @@ class WritingTask(BaseModel):
     - 支持大纲导出
     - 支持文字导出
 
-    TODO:
     - 改进子任务对话时的指令跟随能力：强调标题背景
+
+    TODO:
     - 支持在子任务对话中的其他聊天场景：非写作对话
     - 编辑和扩展input中的提示语变量
     - 编辑和扩展全局的提示语变量
@@ -137,10 +138,13 @@ class WritingTask(BaseModel):
                 self.focus = None
         return self.focus
     
+    import re
+
     def ask_user(self, user_said: str = None) -> tuple:
         """捕获用户的输入"""
         
-        max_count = 1e3
+        # 最多重新输入100次
+        max_count = 100
         counter = 0
         while(counter < max_count):
             counter += 1
@@ -151,26 +155,59 @@ class WritingTask(BaseModel):
             commands = [
                 "quit",
                 "ok",
+                "words_advice",
+                "title",
+                "howto",
+                "summarise",
+                "children",
+                "reload",
                 "all",
                 "todos",
                 "todo",
                 "focus",
                 "memory",
                 "memory_store",
+                "text",
             ]
 
-            command = "chat"
+            # 使用正则表达式解析命令
+            match_full = re.match(r'^([\w-]+)@([\w-]+):([\w-]+)(.*)$', resp)
+            match_pos = re.match(r'^([\w-]+)@([\w-]+)(.*)$', resp)
+            match_id = re.match(r'^([\w-]+):([\w-]+)(.*)$', resp)
+            match_command = re.match(r'^([\w-]+)(.*)$', resp)
             
-            for cmd in commands:
-                if re.search(f'^{cmd}\s*', resp):
-                    command = cmd
-                    break
-            if command == "chat":
+            id, pos, command, param = None, None, None, None
+            
+            if match_full:
+                id, pos, command, param = match_full.groups()
+            elif match_pos:
+                id = None
+                pos, command, param = match_pos.groups()
+            elif match_id:
+                pos = None
+                id, command, param = match_id.groups()
+            elif match_command:
+                id, pos = None, None
+                command, param = match_command.groups()
+
+            pos = "input" if pos == "input" else "output"
+            param = param.strip()  # 去除参数前后的空格
+            if command in commands:
+                return id, pos, command, param
+            elif len(resp) <= 0:
                 # 如果用户没有输入有意义的字符串，就重来
-                if len(resp) <= 0:
-                    continue
+                continue
+            else:
+                return None, None, "chat", resp
+            
+        return None, None, None, None
+
+    def output_user_auto_said(self) -> (str, str):
+        """自动生成的用户询问"""
         
-            return resp, command
+        user_said = f'请开始创作！'
+        # print("\n👤:[auto] ", user_said)
+        return user_said
 
     def update_chain(self, llm: Runnable = None):
         """构造Chain"""
@@ -240,8 +277,7 @@ class WritingTask(BaseModel):
 
         # 构造链
         chain = prompt | llm
-        
-        print(prompt.format(task="<<DEMO_TASK>>", history=[]))
+        # print(prompt.format(task="<<DEMO_TASK>>", history=[]))
 
         # 记忆绑定管理
         withMemoryChain = WithMemoryBinding(
@@ -253,16 +289,9 @@ class WritingTask(BaseModel):
         
         return withMemoryChain
 
-    def output_user_auto_said(self) -> (str, str):
-        """自动生成的用户询问"""
-        
-        user_said = f'请开始创作！'
-        print("\n👤:[auto] ", user_said)
-        return user_said, "chat"
-
     def ask_ai(self, chain: Runnable, task: str):
         """AI推理"""
-        
+
         json = None
         counter = 0
         while(counter < self.retry_max):
@@ -289,7 +318,7 @@ class WritingTask(BaseModel):
             if json:
                 self.ai_said = json
                 return json
-            
+
         raise Exception(f"AI返回结果无法正确解析，已经超过 {self.retry_max} 次，可能需要调整提示语模板了！！")
     
     def get_content_type(self):
@@ -455,20 +484,22 @@ class WritingTask(BaseModel):
         # 最多允许步数的限制
         counter = 0
         user_said = None
+        focus = None
         command = None
+        param = None
 
         while(counter < max_steps):
             counter += 1
 
             if self.ai_said == {}:
                 # 新任务
-                user_said, command = self.ask_user(input)
+                id, pos, command, param = self.ask_user(input)
             else:
                 # 跟踪之前状态的任务
                 if self.task_mode == "auto":
-                    user_said, command = self.ask_user("ok")
+                    id, pos, command, param = self.ask_user("ok")
                 else:
-                    user_said, command = self.ask_user(input)
+                    id, pos, command, param = self.ask_user(input)
 
             # 无效命令过滤
             if input and command == "ok" and self.ai_said == {}:
@@ -477,12 +508,37 @@ class WritingTask(BaseModel):
             
             # 输入重置
             input = None
-            print(f"command <{command}>")
+            print(f"{self.focus} <{command}>")
 
             # 主动退出
             if command == "quit":
                 break
 
+            # 查看字数建议
+            elif command == "words_advice":
+                print(self.cur_content.words_advice)
+                continue
+
+            # 查看标题
+            elif command == "title":
+                print(self.cur_content.title)
+                continue
+
+            # 查看扩写指南
+            elif command == "howto":
+                print(self.cur_content.howto)
+                continue
+
+            # 查看内容摘要
+            elif command == "summarise":
+                print(self.cur_content.summarise)
+                continue
+
+            # 查看所有任务
+            elif command == "children":
+                print(self.cur_content.children)
+                continue
+            
             # 查看所有任务
             elif command == "all":
                 self.print_all()
@@ -507,6 +563,11 @@ class WritingTask(BaseModel):
             elif command == "memory_store":
                 print(self.memory._shorterm_memory_store)
                 continue
+
+            # 查看成果
+            elif command == "text":
+                self.print_text()
+                continue
             
             # 重新加载
             # 在更新提示语模板、变量之后
@@ -527,7 +588,7 @@ class WritingTask(BaseModel):
                 if self.focus:
                     if self.focus.endswith("@output"):
                         # 如果下一个任务存在，继续转移到新的扩写任务
-                        _command, user_said = self.output_user_auto_said()
+                        user_said = self.output_user_auto_said()
                         # 如果不移动游标，就一直使用这个chain
                         chain = self.update_chain(llm)
                     elif self.focus.endswith("@input"):
