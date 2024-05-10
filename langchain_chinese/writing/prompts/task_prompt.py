@@ -72,6 +72,14 @@ _PARAGRAPH_FORMAT = """
 ```
 """
 
+# 自动生成编写大纲或段落
+_AUTO_OUTLINE_OR_PARAGRAPH_PROMPT = """
+你现在的写作任务是针对提纲《{{title}}》，字数大约为{{words_advice}}字。
+扩写依据为：{{howto}}。
+注意，你所写的提纲是下面总体提纲的一部份：
+{{outline_exist}}
+"""
+
 __all__ = [
     "MAIN_PROMPT",
     "_ROOT_TASK",
@@ -81,4 +89,5 @@ __all__ = [
     "_ROOT_FORMAT",
     "_OUTLINE_FORMAT",
     "_PARAGRAPH_FORMAT",
+    "_AUTO_OUTLINE_OR_PARAGRAPH_PROMPT",
 ]
