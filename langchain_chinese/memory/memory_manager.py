@@ -5,7 +5,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
 from typing import Any, Dict, Union, List
-import copy
+from copy import deepcopy
 
 class MemoryManager:
     """实现记忆的工厂类，将短期记忆和持久化记忆绑定在一起管理。
@@ -59,7 +59,7 @@ class MemoryManager:
     def get_shorterm_memory(self, session_id: str = "default") -> BaseChatMemory:
         if session_id not in self._shorterm_memory_store:
             history = self.get_longterm_memory_factory(session_id)
-            self._shorterm_memory_store[session_id] = copy.copy(self._shorterm_memory)
+            self._shorterm_memory_store[session_id] = deepcopy(self._shorterm_memory)
             self._shorterm_memory_store[session_id].chat_memory = history
 
         return self._shorterm_memory_store[session_id]
