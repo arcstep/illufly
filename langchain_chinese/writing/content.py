@@ -192,7 +192,7 @@ class TreeContent(BaseModel):
         input = self.get_input()
         lines = [f"{line['sn']} {line['title']}\n {line['text']}" for line in self.get_lines(numbers)]
         if self.text:
-            return [input] + lines + self.text
+            return [input] + lines + [self.text]
         else:
             return [input] + lines
 
