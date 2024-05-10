@@ -7,18 +7,19 @@ GLOBAL_ID = 0
 GLOBAL_ID_MAX = 9999999
 
 def create_content_id():
-    global GLOBAL_ID
-    now = datetime.datetime.now()
-    random_digits = random.randint(10, 99)  # 生成一个尾部随机数
-
     # 更新 global_id
+    global GLOBAL_ID
     GLOBAL_ID += 1
-    if GLOBAL_ID > GLOBAL_ID_MAX:
-        GLOBAL_ID = 0
-    global_id_str = str(GLOBAL_ID).zfill(len(f"{GLOBAL_ID_MAX}"))
 
+    # if GLOBAL_ID > GLOBAL_ID_MAX:
+    #     GLOBAL_ID = 0
+    # global_id_str = str(GLOBAL_ID).zfill(len(f"{GLOBAL_ID_MAX}"))
+
+    # now = datetime.datetime.now()
+    # random_digits = random.randint(10, 99)  # 生成一个尾部随机数
     # return now.strftime(f"%Y%m%d.%H%M%S.{global_id_str}.{random_digits}")
-    return f"{global_id_str}.{random_digits}"
+    # return f"{global_id_str}.{random_digits}"
+    return f"{GLOBAL_ID}"
 
 def generate_sn(numbers: List[int]) -> str:
     return ".".join(str(number) for number in numbers)
