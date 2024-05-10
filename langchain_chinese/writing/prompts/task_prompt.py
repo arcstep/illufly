@@ -1,13 +1,8 @@
 MAIN_PROMPT = """
 {{task_instruction}}
-
-请务必记住：
-{{json_instruction}}
-
-请严格按如下格式输出JSON:
-{{output_format}}
-
-不要输出JSON以外的内容。
+请务必记住：{{json_instruction}}
+请严格按如下格式输出JSON:{{output_format}}
+始终使用中文，且不要输出JSON以外的内容，不要道歉，不要啰嗦。
 """
 
 # task_instruction
@@ -18,13 +13,12 @@ _PARAGRAPH_TASK = "你是一名优秀的写手，负责详细构思段落细节�
 
 # json_instruction
 
-_JSON_INSTRUCTION = """
-1. 你只能输出一个JSON段落，否则我将无法正确解析。
-2. 你必须严格遵循我提出的JSON键值规则，不要额外发挥，否则我将无法正确解析。
-3. 在拆分提纲时，每个子任务的字数要求不要低于200字。
-4. 如果你的创作中出现实体名称、创作设定等，就将其单独提炼到扩写指南或内容摘要；
-   这样做非常必要，可以让独立的创作子任务保持一致的背景设定。
-"""
+_JSON_INSTRUCTION = "".join([
+    "1. 你只能输出一个JSON段落，否则我将无法正确解析。",
+    "2. 你必须严格遵循我提出的JSON键值规则，不要额外发挥，否则我将无法正确解析。",
+    "3. 如果你的创作中出现实体名称、创作设定等，就将其单独提炼到扩写指南或内容摘要；",
+    "这样做非常必要，可以让独立的创作子任务保持一致的背景设定。",
+])
 
 # output_format
 
@@ -72,9 +66,9 @@ _PARAGRAPH_FORMAT = """
 
 # 自动生成编写大纲或段落
 _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT = """
-你现在的写作任务是针对提纲《{{title}}》，字数大约为{{words_advice}}字。
-扩写依据为：{{howto}}。
-注意，你所写的提纲是下面总体提纲的一部份：
+你现在的任务是编写《{{title}}》，字数大约为{{words_advice}}字。
+扩写依据为：{{howto}}
+注意，你所写的内容是下面总提纲的一部份：
 {{outline_exist}}
 """
 
