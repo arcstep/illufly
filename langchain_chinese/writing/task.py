@@ -63,14 +63,11 @@ class WritingTask(BaseModel):
     cur_content: Optional[TreeContent] = None
 
     # 创作游标 forcus 取值范围为：
-    # - "root@input"
-    # - "root@output"
-    # - "内容对象@input"
-    # - "内容对象@output"
-    #
-    # 默认的自动创作路径应当是：
-    # root@input -> root@output -> 内容对象@output
-    focus: Optional[str] = "root@input"
+    # - "START"
+    # - "ROOT"
+    # - "子内容ID"
+    # - "END"
+    focus: Optional[str] = "START"
     
     # 控制参数
     words_per_step = 500
@@ -104,41 +101,42 @@ class WritingTask(BaseModel):
         )
 
         # 初始化参数
-        keys = ["task_mode", ""]
+        keys = ["task_mode"]
         for k in keys:
             if k in kwargs:
                 setattr(self, k, kwargs[k])
-        print("Task Mode:", self.task_mode)
 
         if self.root_content == None:
-            self.root_content = TreeContent(id="root", type="root")                
-        self.move_focus("root", pos="input")
-        print("Focus from:", self.focus)
+            self.root_content = TreeContent(id="ROOT", type="root")                
+        self.move_focus("START")
 
-    def move_focus(self, id: str, pos: str="output") -> Tuple[TreeContent, str]:
+    def move_focus(self, id: str) -> str:
         """
         移动到指定节点，默认将位置设定为output。
         """
-        target = self.root_content.get_item_by_id(id)
-        self.cur_content = target
-        self.focus = f"{self.cur_content.id}@{pos}"
-        return self.cur_content, self.focus
+
+        if id in ["START", "END"]:
+            self.focus = id
+        else:
+            target = self.root_content.get_item_by_id(id)
+            self.cur_content = target
+            self.focus = self.cur_content.id
+
+        return self.focus
 
     def move_focus_auto(self) -> str:
         """
         从root开始遍历所有未完成的节点。
         """
-        if self.focus.endswith("@input"):
-            self.move_focus(self.cur_content.id, pos="output")
+        if self.focus == "START":
+            self.move_focus(self.cur_content.id)
         else:
             next_todo = self.root_content.next_todo()
             if next_todo:
-                self.move_focus(next_todo.id, pos="output")
+                self.move_focus(next_todo.id)
             else:
-                self.focus = None
+                self.focus = "END"
         return self.focus
-    
-    import re
 
     def ask_user(self, user_said: str = None) -> tuple:
         """捕获用户的输入"""
@@ -153,59 +151,50 @@ class WritingTask(BaseModel):
             resp = resp.strip()
 
             commands = [
-                "quit",
-                "ok",
-                "words_advice",
-                "title",
-                "howto",
-                "summarise",
-                "children",
-                "reload",
-                "all",
-                "todos",
-                "todo",
-                "focus",
-                "memory",
-                "memory_store",
-                "text",
+                "quit",       # 退出
+                "reload",     # 重新加载模型
+                "all",        # 所有任务
+                "todos",      # 所有待办
+                "ok",         # 确认INIT任务，或某ID提纲或段落
+                "children",   # 查看某ID提纲
+                "words",      # 查看后修改某ID字数
+                "title",      # 查看后修改某ID标题
+                "howto",      # 查看后修改某ID扩写指南
+                "summarise",  # 查看后修改某ID段落摘要
+                "move",       # 移动任务到某ID
+                "todo",       # 某ID待办，默认当前ID
+                "memory",     # 某ID对话记忆，默认当前ID
+                "history",    # 某ID对话历史，默认当前ID
+                "text",       # 某ID下的文字成果，默认ROOT
             ]
 
             # 使用正则表达式解析命令
-            match_full = re.match(r'^([\w-]+)@([\w-]+):([\w-]+)(.*)$', resp)
-            match_pos = re.match(r'^([\w-]+)@([\w-]+)(.*)$', resp)
-            match_id = re.match(r'^([\w-]+):([\w-]+)(.*)$', resp)
+            match_full = re.match(r'^([\w-]+)@([\w-]+)(.*)$', resp)
             match_command = re.match(r'^([\w-]+)(.*)$', resp)
             
-            id, pos, command, param = None, None, None, None
+            id, command, param = None, None, None
             
             if match_full:
-                id, pos, command, param = match_full.groups()
-            elif match_pos:
-                id = None
-                pos, command, param = match_pos.groups()
-            elif match_id:
-                pos = None
-                id, command, param = match_id.groups()
+                id, command, param = match_full.groups()
             elif match_command:
-                id, pos = None, None
+                id = None
                 command, param = match_command.groups()
 
-            pos = "input" if pos == "input" else "output"
             param = param.strip()  # 去除参数前后的空格
             if command in commands:
-                return id, pos, command, param
+                return id, command, param
             elif len(resp) <= 0:
                 # 如果用户没有输入有意义的字符串，就重来
                 continue
             else:
-                return None, None, "chat", resp
+                return None, "chat", resp
             
-        return None, None, None, None
+        return None, None, None
 
-    def output_user_auto_said(self) -> (str, str):
-        """自动生成的用户询问"""
+    def user_said_continue(self) -> (str, str):
+        """用户确认继续生成"""
         
-        user_said = f'请开始创作！'
+        user_said = f'请开始！'
         # print("\n👤:[auto] ", user_said)
         return user_said
 
@@ -218,7 +207,7 @@ class WritingTask(BaseModel):
         # 构造基础示语模板
         json_instruction = _JSON_INSTRUCTION
         
-        if content_type == "root":
+        if content_type == "ROOT":
             task_prompt   = _ROOT_TASK
             output_format = _ROOT_FORMAT
             
@@ -322,12 +311,15 @@ class WritingTask(BaseModel):
         raise Exception(f"AI返回结果无法正确解析，已经超过 {self.retry_max} 次，可能需要调整提示语模板了！！")
     
     def get_content_type(self):
-        if self.focus == "root@input":
-            return "root"
-        elif self.cur_content.words_advice > self.words_per_step:
-            return "outline"
+        if self.focus == "START":
+            return "START"
+        elif self.focus == "END":
+            return None
         else:
-            return "paragraph"
+            if self.cur_content.words_advice > self.words_per_step:
+                return "outline"
+            else:
+                return "paragraph"
 
     def update_content(self):
         """
@@ -353,7 +345,7 @@ class WritingTask(BaseModel):
         content_type = self.get_content_type()
         self.cur_content.type = content_type
         
-        if self.focus.endswith("@input"):
+        if content_type == "START":
             # 更新生成依据
             try:
                 self.cur_content.title = request["标题名称"]
@@ -366,7 +358,9 @@ class WritingTask(BaseModel):
                 self.cur_content.howto = request["扩写指南"]
             if "内容摘要" in request:
                 self.cur_content.summarise = request["内容摘要"]
-        elif self.focus.endswith("@output"):
+        elif content_type == "END":
+            return
+        else:
             # 更新生成大纲或详细内容
             if content_type == "outline":
                 self.cur_content.children = []
@@ -390,8 +384,6 @@ class WritingTask(BaseModel):
             
             # 生成子任务后，提纲自身的任务就算完成了
             self.cur_content.is_completed = True
-        else:
-            raise(BaseException("Error FOCUS:", self.focus))
 
     def get_memory(self, id=None):
         if id == None:
@@ -402,14 +394,13 @@ class WritingTask(BaseModel):
         self.root_content.print_text()
         
     def print_focus(self):
-        if self.focus:
-            print("-"*20, self.focus, "-"*20)
+        print(f"self.focus@")
         
     def print_todos(self):
         """打印todo清单"""
 
         if self.focus:
-            print("-"*20, "Todos", "-"*20)
+            print("-"*20, "TODOs", "-"*20)
             for x in self.root_content.todos():
                 if x['words_advice'] and x['title']:
                     print(f"* <{x['id']}> {x['words_advice']}字以内 | 《{x['title']}》")
@@ -493,13 +484,13 @@ class WritingTask(BaseModel):
 
             if self.ai_said == {}:
                 # 新任务
-                id, pos, command, param = self.ask_user(input)
+                id, command, param = self.ask_user(input)
             else:
                 # 跟踪之前状态的任务
                 if self.task_mode == "auto":
-                    id, pos, command, param = self.ask_user("ok")
+                    id, command, param = self.ask_user("ok")
                 else:
-                    id, pos, command, param = self.ask_user(input)
+                    id, command, param = self.ask_user(input)
 
             # 无效命令过滤
             if input and command == "ok" and self.ai_said == {}:
@@ -515,7 +506,7 @@ class WritingTask(BaseModel):
                 break
 
             # 查看字数建议
-            elif command == "words_advice":
+            elif command == "words":
                 print(self.cur_content.words_advice)
                 continue
 
@@ -550,7 +541,7 @@ class WritingTask(BaseModel):
                 continue
 
             # 查看当前游标
-            elif command == "focus":
+            elif command == "todo":
                 self.print_focus()
                 continue
 
@@ -560,7 +551,7 @@ class WritingTask(BaseModel):
                 continue
 
             # 查看记忆
-            elif command == "memory_store":
+            elif command == "store":
                 print(self.memory._shorterm_memory_store)
                 continue
 
@@ -585,20 +576,17 @@ class WritingTask(BaseModel):
                 # 获取下一个任务的计划
                 self.move_focus_auto()
                 self.print_todos()
-                if self.focus:
-                    if self.focus.endswith("@output"):
-                        # 如果下一个任务存在，继续转移到新的扩写任务
-                        user_said = self.output_user_auto_said()
-                        # 如果不移动游标，就一直使用这个chain
-                        chain = self.update_chain(llm)
-                    elif self.focus.endswith("@input"):
-                        # 如果进入到属性修改任务
-                        print("暂时不支持属性修改任务")
-                        break
-                else:
+                if self.focus == "START":
+                    pass
+                elif self.focus == "END":
                     # 全部结束，打印成果出来瞧瞧
                     self.print_text()
                     break
+                else:
+                    # 如果下一个任务存在，继续转移到新的扩写任务
+                    user_said = self.user_said_continue()
+                    # 如果不移动任务游标，就一直使用这个chain
+                    chain = self.update_chain(llm)
             elif command == "chat":
                 pass
             else:
