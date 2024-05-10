@@ -187,8 +187,9 @@ class WritingTask(BaseModel):
             
             prompt = ChatPromptTemplate.from_messages([
                 ("system", MAIN_PROMPT),
+                ("ai", "好的，我将严格按要求的JSON格式输出。"),
                 MessagesPlaceholder(variable_name="history"),
-                ("human", "{{question}}。")
+                ("human", "{{task}}"),
             ], template_format="jinja2").partial(
                 # 任务指南
                 task_instruction=task_prompt,
@@ -212,8 +213,9 @@ class WritingTask(BaseModel):
                 ("system", MAIN_PROMPT),
                 ("ai", "你对我的写作有什么要求？"),
                 ("human", _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT),
+                ("ai", "好的，我将严格按要求的JSON格式输出。"),
                 MessagesPlaceholder(variable_name="history"),
-                ("human", "{{question}}。")
+                ("human", "{{task}}")
             ], template_format="jinja2").partial(
                 # 字数限制
                 words_limit=self.words_per_step,
@@ -238,12 +240,14 @@ class WritingTask(BaseModel):
 
         # 构造链
         chain = prompt | llm
+        
+        print(prompt.format(task="<<DEMO_TASK>>", history=[]))
 
         # 记忆绑定管理
         withMemoryChain = WithMemoryBinding(
             chain,
             self.memory,
-            input_messages_key="question",
+            input_messages_key="task",
             history_messages_key="history",
         )
         
@@ -252,11 +256,11 @@ class WritingTask(BaseModel):
     def output_user_auto_said(self) -> (str, str):
         """自动生成的用户询问"""
         
-        user_said = f'请帮我扩写'
+        user_said = f'请开始创作！'
         print("\n👤:[auto] ", user_said)
         return user_said, "chat"
 
-    def ask_ai(self, chain: Runnable, question: str):
+    def ask_ai(self, chain: Runnable, task: str):
         """AI推理"""
         
         json = None
@@ -264,7 +268,7 @@ class WritingTask(BaseModel):
         while(counter < self.retry_max):
             counter += 1
             try:
-                input = {"question": question}
+                input = {"task": task}
                 config = {"configurable": {"session_id": self.cur_content.id}}
                 text = ""
                 if self.streaming:
@@ -456,32 +460,27 @@ class WritingTask(BaseModel):
         while(counter < max_steps):
             counter += 1
 
-            if self.ai_said == None:
-                # 全新任务
-                if self.task_mode == "auto":
-                    if self.focus == "root@input" and user_said == None:
-                        user_said, command = self.ask_user(input)
-                    else:
-                        user_said, command = self.ask_user("ok")
-                else:
-                    if self.focus == "root@input" and user_said == None:
-                        user_said, command = self.ask_user(input)
-                    else:
-                        user_said, command = self.ask_user()
+            if self.ai_said == {}:
+                # 新任务
+                user_said, command = self.ask_user(input)
             else:
                 # 跟踪之前状态的任务
                 if self.task_mode == "auto":
                     user_said, command = self.ask_user("ok")
                 else:
-                    user_said, command = self.ask_user()
+                    user_said, command = self.ask_user(input)
 
-            # print("-"*20, "command:", command, "-"*20)
-            # if self.ai_said:
-            #     print("ai said: ", self.ai_said)
-            # print("user said: ", user_said)
+            # 无效命令过滤
+            if input and command == "ok" and self.ai_said == {}:
+                input = None
+                continue
+            
+            # 输入重置
+            input = None
+            print(f"command <{command}>")
+
             # 主动退出
             if command == "quit":
-                print("-"*20, "quit" , "-"*20)
                 break
 
             # 查看所有任务
@@ -508,6 +507,13 @@ class WritingTask(BaseModel):
             elif command == "memory_store":
                 print(self.memory._shorterm_memory_store)
                 continue
+            
+            # 重新加载
+            # 在更新提示语模板、变量之后
+            elif command == "reload":
+                print("已经更新访问AI的参数配置")
+                chain = self.update_chain(llm)
+                continue
 
             # 确认当前成果
             elif command == "ok":
@@ -533,7 +539,7 @@ class WritingTask(BaseModel):
                     self.print_text()
                     break
             elif command == "chat":
-                print("chat ...")
+                pass
             else:
                 # 其他命令暂时没有特别处理
                 print("UNKOWN COMMAND:", command)
