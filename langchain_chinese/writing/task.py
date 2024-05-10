@@ -397,21 +397,21 @@ class WritingTask(BaseModel):
         self.root_content.print_text()
         
     def print_focus(self):
-        print(f"{self.focus}@")
+        print(f"[{self.focus}]")
         
     def print_todos(self):
         """打印todo清单"""
 
-        if self.focus:
+        if self.focus == "END":
+            # 如果没有下一个任务，就结束
+            print("-"*20, "Done!", "-"*20)
+        else:
             print("-"*20, "TODOs", "-"*20)
             for x in self.root_content.todos():
                 if x['words_advice'] and x['title']:
                     print(f"* <{x['id']}> {x['words_advice']}字以内 | 《{x['title']}》")
                 else:
                     print(f"* <{x['id']}>")
-        else:
-            # 如果没有下一个任务，就结束
-            print("-"*20, "Done!", "-"*20)
 
     def print_all(self):
         """打印所有清单"""
@@ -500,7 +500,14 @@ class WritingTask(BaseModel):
             
             # 输入重置
             input = None
-            print(f"{self.focus}@{command}")
+            # print(f"[{self.focus}]")
+            
+            # 定义一个命令处理函数
+            obj = self.root_content.get_item_by_id(id) if id else self.cur_content
+            def process_command(k, v):
+                if v:
+                    setattr(obj, k, v)
+                print(getattr(obj, k))
 
             # 主动退出
             if command == "quit":
@@ -508,27 +515,29 @@ class WritingTask(BaseModel):
 
             # 查看字数建议
             elif command == "words":
-                print(self.cur_content.words_advice)
+                if param and param.isdigit():
+                    param = int(param)
+                process_command("words_advice", param)
                 continue
 
             # 查看标题
             elif command == "title":
-                print(self.cur_content.title)
+                process_command("title", param)
                 continue
 
             # 查看扩写指南
             elif command == "howto":
-                print(self.cur_content.howto)
+                process_command("howto", param)
                 continue
 
             # 查看内容摘要
             elif command == "summarise":
-                print(self.cur_content.summarise)
+                process_command("summarise", param)
                 continue
 
             # 查看所有任务
             elif command == "children":
-                print(self.cur_content.children)
+                process_command('children', None)
                 continue
             
             # 查看所有任务
@@ -558,7 +567,7 @@ class WritingTask(BaseModel):
 
             # 查看成果
             elif command == "text":
-                self.print_text()
+                process_command('text', None)
                 continue
             
             # 重新加载
