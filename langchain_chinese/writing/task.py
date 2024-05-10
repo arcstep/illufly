@@ -170,25 +170,19 @@ class WritingTask(BaseModel):
         
             return resp, command
 
-    def get_content_type(self):
-        if self.focus == "root@input":
-            return "root"
-        elif self.cur_content.words_advice > self.words_per_step:
-            return "outline"
-        else:
-            return "paragraph"
-
     def get_chain(self, llm: Runnable = None):
         """构造Chain"""
         
         # 获取内容类型
         content_type = self.get_content_type()
-        # 获取背景信息
-        outline_exist = self.root_content.get_outlines()
         
         # 构造基础示语模板
+        json_instruction = _JSON_INSTRUCTION
+        
         if content_type == "root":
-            task_prompt = _ROOT_TASK
+            task_prompt   = _ROOT_TASK
+            output_format = _ROOT_FORMAT
+            
             prompt = ChatPromptTemplate.from_messages([
                 ("system", MAIN_PROMPT),
                 MessagesPlaceholder(variable_name="history"),
@@ -197,12 +191,21 @@ class WritingTask(BaseModel):
                 # 任务指南
                 task_instruction=task_prompt,
                 # 输出格式要求
-                output_format=_ROOT_FORMAT,
+                output_format=output_format,
                 # JSON严格控制
-                json_instruction=_JSON_INSTRUCTION,
+                json_instruction=json_instruction,
             )
         else:
-            task_prompt = _OUTLINE_TASK if content_type == "outline" else _PARAGRAPH_TASK
+            # 获取背景信息
+            outline_exist = self.root_content.get_outlines()
+
+            if content_type == "outline":
+                task_prompt   = _OUTLINE_TASK
+                output_format = _OUTLINE_FORMAT
+            else:
+                task_prompt   = _PARAGRAPH_TASK
+                output_format = _PARAGRAPH_FORMAT
+
             prompt = ChatPromptTemplate.from_messages([
                 ("system", MAIN_PROMPT),
                 ("ai", "你对我的写作有什么要求？"),
@@ -220,9 +223,9 @@ class WritingTask(BaseModel):
                 task_instruction=task_prompt,
                 howto=self.cur_content.howto,
                 # 输出格式要求
-                output_format=_OUTLINE_FORMAT,
+                output_format=output_format,
                 # JSON严格控制
-                json_instruction=_JSON_INSTRUCTION,
+                json_instruction=json_instruction,
             )
 
         # 默认选择智谱AI
@@ -278,6 +281,14 @@ class WritingTask(BaseModel):
             
         raise Exception(f"AI返回结果无法正确解析，已经超过 {self.retry_max} 次，可能需要调整提示语模板了！！")
     
+    def get_content_type(self):
+        if self.focus == "root@input":
+            return "root"
+        elif self.cur_content.words_advice > self.words_per_step:
+            return "outline"
+        else:
+            return "paragraph"
+
     def update_content(self, request: Dict[str, Any] = {}):
         """更新当前内容"""
         

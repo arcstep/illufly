@@ -42,6 +42,7 @@ class TreeContent(BaseModel):
 
     # 提纲扩展
     children: List["TreeContent"] = []
+    parant: Optional["TreeContent"] = None
 
     # 保存路径
     path: Optional[str] = None
