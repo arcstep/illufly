@@ -31,53 +31,38 @@ class MemoryManager:
         longterm_memory_factory: Optional[Callable[[str], BaseChatMessageHistory]] = None,
         shorterm_memory: Optional[BaseChatMemory] = None
     ) -> None:
+        # 默认使用内存保存长期记忆
+        # 可更换保存到redis、文件、数据库等
         if longterm_memory_factory is None:
             self.get_longterm_memory_factory = self._get_history_in_memory
         else:
             self.get_longterm_memory_factory = longterm_memory_factory
 
-        # 使用窗口记忆、Token记忆等记忆体
+        # 默认使用内存保存窗口记忆
+        # 可更换为使用限定对话窗口、限定总Token数等
         if shorterm_memory is None:
             self._shorterm_memory = ConversationBufferMemory()
         else:
             self._shorterm_memory = shorterm_memory
 
     # 返回短期记忆的消息列表
-    def shorterm_messages(self, *args: Any, **kwargs: Any) -> List[BaseMessage]:
-        memory = self.get_shorterm_memory(*args, **kwargs)
+    def shorterm_messages(self, session_id: str = "default") -> List[BaseMessage]:
+        memory = self.get_shorterm_memory(session_id)
         return memory.buffer_as_messages
 
     # 返回长期记忆的消息列表
-    def longterm_messages(self, *args: Any, **kwargs: Any) -> List[BaseMessage]:
-        memory = self.get_shorterm_memory(*args, **kwargs)
+    def longterm_messages(self, session_id: str = "default") -> List[BaseMessage]:
+        memory = self.get_shorterm_memory(session_id)
         return memory.chat_memory.messages
 
-    # 返回短期记忆的管理器对象
-    # ⚠️ 注意： 如果使用session_id，就不要以kwargs方式使用
-    #
-    # 正确的方式为 get_shorterm_memory(your_session_id)
-    # 如果 按照 get_shorterm_memory(session_id=your_session_id)，将得到一个键为元组的新记忆体
-    def get_shorterm_memory(self, *args: Any, **kwargs: Any) -> BaseChatMemory:
-        session_id: Union[str, Tuple] = None
-        if len(args) == 1 and not kwargs:
-            # 如果只有一个位置参数，按照原来的逻辑处理
-            session_id = args[0]
+    # 返回记忆管理器对象
+    def get_shorterm_memory(self, session_id: str = "default") -> BaseChatMemory:
+        if session_id not in self._shorterm_memory_store:
             history = self.get_longterm_memory_factory(session_id)
-        else:
-            # 否则，将所有参数传递给 get_longterm_memory_factory
-            history = self.get_longterm_memory_factory(*args, **kwargs)
-            
-            # 将 kwargs 转换为元组，以便用作字典的键
-            session_id = tuple(kwargs.items())
+            self._shorterm_memory_store[session_id] = copy.copy(self._shorterm_memory)
+            self._shorterm_memory_store[session_id].chat_memory = history
 
-        # 动态建立短期记忆
-        if session_id is not None:
-            if session_id not in self._shorterm_memory_store:
-                self._shorterm_memory_store[session_id] = copy.copy(self._shorterm_memory)
-                self._shorterm_memory_store[session_id].chat_memory = history
-            return self._shorterm_memory_store[session_id]
-        else:
-            raise ValueError("Session ID is required")        
+        return self._shorterm_memory_store[session_id]
 
     def _get_history_in_memory(self, session_id: str) -> BaseChatMessageHistory:
         """默认的基于内存的记忆"""
