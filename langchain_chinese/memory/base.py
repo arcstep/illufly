@@ -64,7 +64,6 @@ class WithMemoryBinding(RunnableBindingBase):
         input_messages_key: Optional[str] = "input",
         output_messages_key: Optional[str] = None,
         history_messages_key: Optional[str] = "history",
-        history_factory_config: Optional[Sequence[ConfigurableFieldSpec]] = None,
         **kwargs: Any,
     ) -> None:
         # 提取记忆 _enter_memory / _aenter_memory
@@ -80,23 +79,19 @@ class WithMemoryBinding(RunnableBindingBase):
         # 写入记忆 _exit_memory
         bound = (
             history_chain | runnable.with_listeners(on_end=self._exit_memory)
-        ).with_config(run_name="RunnableWithMessageHistory")
+        ).with_config(run_name="WithMemoryBinding")
 
-        # 构造 configurable 中的参数
-        if history_factory_config:
-            _config_specs = history_factory_config
-        else:
-            # 如果没有专门指定，就使用默认的 session_id
-            _config_specs = [
-                ConfigurableFieldSpec(
-                    id="session_id",
-                    annotation=str,
-                    name="Session ID",
-                    description="Unique identifier for a session.",
-                    default="",
-                    is_shared=True,
-                ),
-            ]
+        # 构造 config.configurable 中的参数，可以被 Runnable 自举
+        _config_specs = [
+            ConfigurableFieldSpec(
+                id="session_id",
+                annotation=str,
+                name="Session ID",
+                description="Unique identifier for a session.",
+                default="",
+                is_shared=True,
+            ),
+        ]
 
         super().__init__(
             memory_manager=memory_manager,
@@ -110,7 +105,7 @@ class WithMemoryBinding(RunnableBindingBase):
 
     @property
     def config_specs(self) -> List[ConfigurableFieldSpec]:
-        """构造记忆录入的参数，默认为 session_id"""
+        """构造记忆录入的参数"""
         return get_unique_config_specs(
             super().config_specs + list(self.history_factory_config)
         )
@@ -215,13 +210,7 @@ class WithMemoryBinding(RunnableBindingBase):
         output_messages = self._get_output_messages(output_val)
         hist.add_messages(input_messages + output_messages)
         
-        # # todo: add to temp memory
-        # for message in input_messages:
-        #     if(message.content is not None):
-        #         memory.add_user_message(message)
-        # for message in output_messages:
-        #     if(message.content is not None):
-        #         memory.add_ai_message(message)
+        # print("_exit_memory", hist)
 
     def _merge_configs(self, *configs: Optional[RunnableConfig]) -> RunnableConfig:
         config = super()._merge_configs(*configs)
@@ -264,8 +253,8 @@ class WithMemoryBinding(RunnableBindingBase):
                 **{key: configurable[key] for key in expected_keys}
             )
         config["configurable"]["memory"] = memory
+        # print("_merge_configs:", memory)
         
-        # todo: init temp memory from message_history
         return config
 
 
