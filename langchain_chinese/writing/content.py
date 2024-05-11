@@ -13,7 +13,6 @@ class TreeContent(BaseModel):
 
     # 内容标识
     id: Optional[int] = 0
-    all_children_id: Optional[int] = 0
     
     @property
     def sid(self) -> str:
@@ -34,9 +33,12 @@ class TreeContent(BaseModel):
 
     # 子项扩展
     children: List["TreeContent"] = []
-    root: Optional["TreeContent"] = None
     parant: Optional["TreeContent"] = None
 
+    # root_children_counter 仅根对象有效
+    root_children_counter: Optional[int] = 0
+    root: Optional["TreeContent"] = None
+    
     # 保存路径
     path: Optional[str] = None
 
@@ -52,15 +54,15 @@ class TreeContent(BaseModel):
 
         # 子内容的ID自动递增
         root = self.root or self
+        root.root_children_counter += 1
         
         kwargs.update({
-            "id": root.all_children_id + 1,
+            "id": root.root_children_counter,
             "parent": self,
             "root": root,
         })
         content = TreeContent(**kwargs)
 
-        root.all_children_id += 1
         self.children.append(content)
         self.type = "outline"
 
