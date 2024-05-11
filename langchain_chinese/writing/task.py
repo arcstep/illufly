@@ -566,7 +566,7 @@ class WritingTask(BaseModel):
                     obj = self.root_content.get_item_by_id(id)
 
                 # 设置内容属性
-                if obj and v:
+                if obj and v is not None:
                     setattr(obj, k, v)
                 
                 # 打印指定对象的指定属性
