@@ -3,24 +3,6 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 import datetime
 import random
 
-GLOBAL_ID = 0
-GLOBAL_ID_MAX = 9999999
-
-def create_content_id():
-    # 更新 global_id
-    global GLOBAL_ID
-    GLOBAL_ID += 1
-
-    # if GLOBAL_ID > GLOBAL_ID_MAX:
-    #     GLOBAL_ID = 0
-    # global_id_str = str(GLOBAL_ID).zfill(len(f"{GLOBAL_ID_MAX}"))
-
-    # now = datetime.datetime.now()
-    # random_digits = random.randint(10, 99)  # 生成一个尾部随机数
-    # return now.strftime(f"%Y%m%d.%H%M%S.{global_id_str}.{random_digits}")
-    # return f"{global_id_str}.{random_digits}"
-    return f"{GLOBAL_ID}"
-
 def generate_sn(numbers: List[int]) -> str:
     return ".".join(str(number) for number in numbers)
     
@@ -29,8 +11,17 @@ class TreeContent(BaseModel):
     存储内容的树形结构，段落内容保存在叶子节点，而提纲保存在children不为空的节点。
     """
 
-    # 内容标识  
-    id: Optional[str] = None
+    # 内容标识
+    id: Optional[int] = 0
+    all_children_id: Optional[int] = 0
+    
+    @property
+    def sid(self) -> str:
+        if self.id == 0:
+            return "ROOT"
+        else:
+            return f"{self.id}"
+
     type: Optional[str] = "paragraph"
     is_completed: Optional[bool] = False
 
@@ -41,8 +32,9 @@ class TreeContent(BaseModel):
     summarise: Optional[str] = None
     text: Optional[str] = None
 
-    # 提纲扩展
+    # 子项扩展
     children: List["TreeContent"] = []
+    root: Optional["TreeContent"] = None
     parant: Optional["TreeContent"] = None
 
     # 保存路径
@@ -54,19 +46,25 @@ class TreeContent(BaseModel):
     def save(self):
         pass  # 实现保存逻辑
 
-    @root_validator
-    def auto_generate_id(cls, value):
-        if value['id'] is None:
-            value['id'] = create_content_id()   
-        return value
-
-    def add_item(self, content: "TreeContent"):
-        if self.children is None:
+    def add_item(self, **kwargs):
+        if self.children == None:
             self.children = []
+
+        # 子内容的ID自动递增
+        root = self.root or self
+        
+        kwargs.update({
+            "id": root.all_children_id + 1,
+            "parent": self,
+            "root": root,
+        })
+        content = TreeContent(**kwargs)
+
+        root.all_children_id += 1
         self.children.append(content)
         self.type = "outline"
 
-        return content.id
+        return content
 
     def get_item_by_id(self, id: str) -> Optional["TreeContent"]:
         """递归查询并返回指定id的Content"""
