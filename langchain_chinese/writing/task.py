@@ -588,14 +588,16 @@ class WritingTask(BaseModel):
 
             # 修改或打印当前的待处理任务ID
             elif command == "todo":
-                if id:
+                if focus == "END":
+                    self.move_focus(focus)
+                else:
                     process_content_command('is_completed', False)
-                    self.move_focus(id)
-                    memory = self.get_memory()
+                    memory = self.get_memory(session_id=focus)
                     if len(memory) > 0:
                         self.ai_reply_json = JsonOutputParser.invoke(input=memory[-1])
                     else:
                         self.ai_reply_json = {}
+                    self.move_focus(focus)
 
             # 询问AI
             elif command == "ask":
