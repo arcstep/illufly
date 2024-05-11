@@ -76,7 +76,7 @@ class WritingTask(BaseModel):
     # - 子任务可能的配置分为：
     # - auto 全部自动回复 OK
     # - askme 每一步骤都要求用户确认
-    task_mode = "askme"
+    auto_mode = "askme"
 
     task_title: Optional[str] = None
     task_howto: Optional[str] = None
@@ -101,7 +101,7 @@ class WritingTask(BaseModel):
         )
 
         # 初始化参数
-        keys = ["task_mode"]
+        keys = ["auto_mode"]
         for k in keys:
             if k in kwargs:
                 setattr(self, k, kwargs[k])
@@ -114,16 +114,23 @@ class WritingTask(BaseModel):
         """
         移动到指定节点，默认将位置设定为output。
         """
-
         if id == "START":
             self.cur_content = self.root_content
             self.focus = id
         elif id == "END":
+            self.cur_content = None
             self.focus = id
+        elif id == None:
+            # 没有解析到内容ID
+            pass
         else:
             target = self.root_content.get_item_by_id(id)
-            self.cur_content = target
-            self.focus = self.cur_content.id
+            if target:
+                self.cur_content = target
+                self.focus = target.id
+            else:
+                # 在对象树中无法找到内容ID
+                pass
 
         return self.focus
 
@@ -131,7 +138,9 @@ class WritingTask(BaseModel):
         """
         从root开始遍历所有未完成的节点。
         """
-        if self.focus == "START":
+        if self.focus == "END":
+            pass
+        elif self.focus == "START":
             self.move_focus(self.cur_content.id)
         else:
             next_todo = self.root_content.next_todo()
@@ -155,20 +164,20 @@ class WritingTask(BaseModel):
 
             commands = [
                 "quit",       # 退出
-                "reload",     # 重新加载模型
+                "text",       # 某ID下的文字成果，默认ROOT
                 "all",        # 所有任务
                 "todos",      # 所有待办
-                "ok",         # 确认INIT任务，或某ID提纲或段落
+                "todo",       # 某ID待办，默认当前ID
+                "ok",         # 确认INIT任务，或某ID提纲或段落，然后自动进入下一待办任务
                 "children",   # 查看某ID提纲
                 "words",      # 查看后修改某ID字数
                 "title",      # 查看后修改某ID标题
                 "howto",      # 查看后修改某ID扩写指南
                 "summarise",  # 查看后修改某ID段落摘要
-                "move",       # 移动任务到某ID
-                "todo",       # 某ID待办，默认当前ID
+                "reload",     # 重新加载模型
                 "memory",     # 某ID对话记忆，默认当前ID
-                "history",    # 某ID对话历史，默认当前ID
-                "text",       # 某ID下的文字成果，默认ROOT
+                "store",      # 某ID对话历史，默认当前ID
+                "ask",        # 向AI提问
             ]
 
             # 使用正则表达式解析命令
@@ -210,7 +219,9 @@ class WritingTask(BaseModel):
         # 构造基础示语模板
         json_instruction = _JSON_INSTRUCTION
         
-        if content_type == "START":
+        if content_type == None:
+            return None
+        elif content_type == "START":
             task_prompt   = _ROOT_TASK
             output_format = _ROOT_FORMAT
             
@@ -290,7 +301,7 @@ class WritingTask(BaseModel):
             counter += 1
             try:
                 input = {"task": task}
-                config = {"configurable": {"session_id": self.cur_content.id}}
+                config = {"configurable": {"session_id": self.focus}}
                 text = ""
                 if self.streaming:
                     for resp in chain.stream(input, config=config):
@@ -348,7 +359,9 @@ class WritingTask(BaseModel):
         content_type = self.get_content_type()
         self.cur_content.type = content_type
         
-        if content_type == "START":
+        if content_type == "END":
+            return
+        elif content_type == "START":
             # 更新生成依据
             try:
                 self.cur_content.title = request["标题名称"]
@@ -361,8 +374,6 @@ class WritingTask(BaseModel):
                 self.cur_content.howto = request["扩写指南"]
             if "内容摘要" in request:
                 self.cur_content.summarise = request["内容摘要"]
-        elif content_type == "END":
-            return
         else:
             # 更新生成大纲或详细内容
             if content_type == "outline":
@@ -388,17 +399,17 @@ class WritingTask(BaseModel):
             # 生成子任务后，提纲自身的任务就算完成了
             self.cur_content.is_completed = True
 
-    def get_memory(self, id=None):
-        if id == None:
-            id = self.cur_content.id
-        return self.memory.get_shorterm_memory(id).chat_memory.messages
+    def get_memory(self, session_id=None):
+        if session_id == None:
+            session_id = self.focus
+        return self.memory.get_shorterm_memory(session_id).chat_memory.messages
 
     def print_text(self):
         self.root_content.print_text()
         
     def print_focus(self):
         print(f"[{self.focus}]")
-        
+
     def print_todos(self):
         """打印todo清单"""
 
@@ -423,7 +434,7 @@ class WritingTask(BaseModel):
             else:
                 print(f"{' ' if x['is_completed'] else '*'} <{x['id']}>")
 
-    def run(self, input: str = None, llm: Runnable = None, task_mode = None, max_steps = 1e4):
+    def run(self, input: str = None, llm: Runnable = None, auto_mode = None, max_steps = 1e4):
         """
         由AI驱动展开写作。
         
@@ -434,23 +445,23 @@ class WritingTask(BaseModel):
         - 给定任务，自动开始
         w.run(
             input = "请帮我写一封道歉信"
-            task_mode = "auto"
+            auto_mode = "all"
         )
 
         - 未定任务，获取第一次输入，自动开始        
         w.run(
-            task_mode = "auto"
+            auto_mode = "all"
         )
 
         - 给定任务，每次询问
         w.run(
             input = "请帮我写一封道歉信"
-            task_mode = "askme"
+            auto_mode = "askme"
         )
 
         - 未定任务，每次询问
         w.run(
-            task_mode = "askme"
+            auto_mode = "askme"
         )
 
         - 询问模式退出前，尚在初始阶段
@@ -465,8 +476,8 @@ class WritingTask(BaseModel):
         """
         
         # 更新任务模式
-        if task_mode:
-            self.task_mode = task_mode
+        if auto_mode:
+            self.auto_mode = auto_mode
 
         # 打印处理进度
         self.print_focus()
@@ -488,7 +499,7 @@ class WritingTask(BaseModel):
                 id, command, param = self.ask_user(input)
             else:
                 # 跟踪之前状态的任务
-                if self.task_mode == "auto":
+                if self.auto_mode == "all":
                     id, command, param = self.ask_user("ok")
                 else:
                     id, command, param = self.ask_user(input)
@@ -503,43 +514,29 @@ class WritingTask(BaseModel):
             # print(f"[{self.focus}]")
             
             # 定义一个命令处理函数
-            obj = self.root_content.get_item_by_id(id) if id else self.cur_content
             def process_command(k, v):
-                if v:
+                if self.focus == "END" and id == None:
+                    obj = None
+                elif self.focus == "START" and id == None:
+                    obj = self.root_content
+                else:
+                    obj = self.root_content.get_item_by_id(id) if id else self.cur_content
+
+                if obj and v:
                     setattr(obj, k, v)
-                print(getattr(obj, k))
+                    print(getattr(obj, k))
+                else:
+                    raise BaseException("Invlid content ID or Property Value")
 
             # 主动退出
             if command == "quit":
                 break
 
-            # 查看字数建议
-            elif command == "words":
-                if param and param.isdigit():
-                    param = int(param)
-                process_command("words_advice", param)
+            # 查看成果
+            elif command == "text":
+                process_content_command('text', None)
                 continue
 
-            # 查看标题
-            elif command == "title":
-                process_command("title", param)
-                continue
-
-            # 查看扩写指南
-            elif command == "howto":
-                process_command("howto", param)
-                continue
-
-            # 查看内容摘要
-            elif command == "summarise":
-                process_command("summarise", param)
-                continue
-
-            # 查看所有任务
-            elif command == "children":
-                process_command('children', None)
-                continue
-            
             # 查看所有任务
             elif command == "all":
                 self.print_all()
@@ -550,31 +547,17 @@ class WritingTask(BaseModel):
                 self.print_todos()
                 continue
 
-            # 查看当前游标
+            # 修改或打印当前的待处理任务ID
             elif command == "todo":
+                if id:
+                    process_content_command('is_completed', False)
+                    self.move_focus(id)
+                    memory = self.get_memory()
+                    if len(memory) > 0:
+                        self.ai_said = memory[-1].content
+                    else:
+                        self.ai_said = {}
                 self.print_focus()
-                continue
-
-            # 查看记忆
-            elif command == "memory":
-                print(self.get_memory())
-                continue
-
-            # 查看记忆
-            elif command == "store":
-                print(self.memory._shorterm_memory_store)
-                continue
-
-            # 查看成果
-            elif command == "text":
-                process_command('text', None)
-                continue
-            
-            # 重新加载
-            # 在更新提示语模板、变量之后
-            elif command == "reload":
-                print("已经更新访问AI的参数配置")
-                chain = self.update_chain(llm)
                 continue
 
             # 确认当前成果
@@ -591,16 +574,64 @@ class WritingTask(BaseModel):
                 elif self.focus == "END":
                     # 全部结束，打印成果出来瞧瞧
                     self.print_text()
-                    break
+                    if auto_mode == "all":
+                        break
                 else:
                     # 如果下一个任务存在，继续转移到新的扩写任务
                     param = self.user_said_continue()
                     # 如果不移动任务游标，就一直使用这个chain
                     chain = self.update_chain(llm)
+
+            # 查看所有任务
+            elif command == "children":
+                process_content_command('children', None)
+                continue
+            
+            # 查看或修改字数建议
+            elif command == "words":
+                if param and param.isdigit():
+                    param = int(param)
+                process_content_command("words_advice", param)
+                continue
+
+            # 查看或修改标题
+            elif command == "title":
+                process_content_command("title", param)
+                continue
+
+            # 查看或修改扩写指南
+            elif command == "howto":
+                process_content_command("howto", param)
+                continue
+
+            # 查看或修改内容摘要
+            elif command == "summarise":
+                process_content_command("summarise", param)
+                continue
+
+            # 重新加载
+            # 在更新提示语模板、变量之后
+            elif command == "reload":
+                print("已经更新访问AI的参数配置")
+                chain = self.update_chain(llm)
+                continue
+            
+            # 查看记忆
+            elif command == "memory":
+                print(self.get_memory(id))
+                continue
+
+            # 查看记忆
+            elif command == "store":
+                print(self.memory._shorterm_memory_store)
+                continue
+
+            # 询问AI
             elif command == "ask":
                 pass
+
+            # 其他命令暂时没有特别处理
             else:
-                # 其他命令暂时没有特别处理
                 print("UNKOWN COMMAND:", command)
 
             # AI推理
