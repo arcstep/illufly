@@ -13,13 +13,6 @@ class TreeContent(BaseModel):
 
     # 内容标识
     id: Optional[int] = 0
-    
-    @property
-    def sid(self) -> str:
-        if self.id == 0:
-            return "ROOT"
-        else:
-            return f"{self.id}"
 
     type: Optional[str] = "paragraph"
     is_completed: Optional[bool] = False
@@ -33,7 +26,7 @@ class TreeContent(BaseModel):
 
     # 子项扩展
     children: List["TreeContent"] = []
-    parant: Optional["TreeContent"] = None
+    parent: Optional["TreeContent"] = None
 
     # root_children_counter 仅根对象有效
     root_children_counter: Optional[int] = 0
@@ -68,10 +61,14 @@ class TreeContent(BaseModel):
 
         return content
 
-    def get_item_by_id(self, id: str) -> Optional["TreeContent"]:
+    def get_item_by_id(self, id: Union[int, str]) -> Optional["TreeContent"]:
         """递归查询并返回指定id的Content"""
+        
         if id == None:
             return None
+        
+        if isinstance(id, str):
+            id = int(id)
             
         if self.id == id:
             return self
