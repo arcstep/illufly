@@ -32,6 +32,7 @@ _INVLIAD_COMMANDS = [
     "memory",     # 某ID对话记忆，默认当前ID
     "store",      # 某ID对话历史，默认当前ID
     "ask",        # 向AI提问
+    "reply",      # AI的当前回复
 ]
 
 class WritingTask(BaseModel):
@@ -56,7 +57,6 @@ class WritingTask(BaseModel):
 
     - 支持对日志输出着色
 
-    - 支持移动游标：到根、下一个、上一个、特定位置
     - 支持重写：将已完成状态改为未完成
     - 支持重新确认：不必自动寻找下一个
 
@@ -193,6 +193,9 @@ class WritingTask(BaseModel):
                 pass
 
             # 根据 focus 变换 id 值
+            if focus == None:
+                focus = self.focus
+
             if focus == "END":
                 id = None
             elif focus == "START":
@@ -550,10 +553,10 @@ class WritingTask(BaseModel):
             # 定义一个命令处理函数
             def process_content_command(k, v):
                 # 当前在END节点，没有todo项，且未指定操作对象ID
-                if self.focus == "END" and id == None:
+                if focus == "END":
                     obj = None
                 # 当前在START节点，且未指定操作对象ID
-                elif self.focus == "START" and id == None:
+                elif focus == "START":
                     obj = self.root_content
                 # 当前在普通节点，且为指定操作对象ID
                 elif id == None:
@@ -568,7 +571,7 @@ class WritingTask(BaseModel):
                 
                 # 打印指定对象的指定属性
                 if obj:
-                    print(getattr(obj, k))
+                    print(f'<{focus}> {k:}', getattr(obj, k))
 
             # 主动退出
             if command == "quit":
@@ -592,18 +595,31 @@ class WritingTask(BaseModel):
                     self.move_focus(focus)
                 else:
                     process_content_command('is_completed', False)
-                    memory = self.get_memory(session_id=focus)
-                    if len(memory) > 0:
-                        self.ai_reply_json = JsonOutputParser.invoke(input=memory[-1])
-                    else:
-                        self.ai_reply_json = {}
-                    self.move_focus(focus)
+                    if focus != self.focus:
+                        memory = self.get_memory(session_id=focus)
+                        if len(memory) > 0:
+                            self.ai_reply_json = JsonOutputParser().invoke(input=memory[-1])
+                        else:
+                            self.ai_reply_json = {}
+                        self.move_focus(focus)
+
+                        # 修改了内容目标，所以重新生成LLM链
+                        chain = self.update_chain(llm)
+                self.print_focus()
 
             # 询问AI
             elif command == "ask":
                 if not param:
                     param = "请重新生成"
                 self.ask_ai(chain, param)
+            
+            # 获取AI回复
+            elif command == "reply":
+                memory = self.get_memory(session_id=focus)
+                if len(memory) > 0:
+                    print(memory[-1].content)
+                else:
+                    print("...")
 
             # 确认当前成果
             elif command == "ok":
@@ -626,6 +642,7 @@ class WritingTask(BaseModel):
                 else:
                     # 如果下一个任务存在，继续转移到新的扩写任务
                     param = self.user_said_continue()
+
                     # 如果不移动任务游标，就一直使用这个chain
                     chain = self.update_chain(llm)
 
@@ -641,17 +658,33 @@ class WritingTask(BaseModel):
                     param = int(param)
                 process_content_command("words_advice", param)
 
+                # 修改当前目标属性，所以要重新生成LLM链
+                if focus == self.focus:
+                    chain = self.update_chain(llm)
+
             # 查看或修改标题
             elif command == "title":
                 process_content_command("title", param)
+
+                # 修改当前目标属性，所以要重新生成LLM链
+                if focus == self.focus:
+                    chain = self.update_chain(llm)
 
             # 查看或修改扩写指南
             elif command == "howto":
                 process_content_command("howto", param)
 
+                # 修改当前目标属性，所以要重新生成LLM链
+                if focus == self.focus:
+                    chain = self.update_chain(llm)
+
             # 查看或修改内容摘要
             elif command == "summarise":
                 process_content_command("summarise", param)
+
+                # 修改当前目标属性，所以要重新生成LLM链
+                if focus == self.focus:
+                    chain = self.update_chain(llm)
 
             # 重新加载
             # 在更新提示语模板、变量之后
