@@ -1,3 +1,9 @@
+# end chat prompt
+END_PROMPT = """
+你是一名优秀的写手，负责提供写作咨询。
+"""
+
+# main chat prompt
 MAIN_PROMPT = """
 {{task_instruction}}
 请务必记住：{{json_instruction}}
