@@ -1,6 +1,5 @@
 from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
 from langchain.pydantic_v1 import BaseModel, Field, root_validator
-from langchain_zhipu import ChatZhipuAI
 from langchain_core.runnables import Runnable
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import JsonOutputParser
@@ -16,6 +15,24 @@ import os
 
 def get_input(prompt: str = "\n👤: ") -> str:
     return input(prompt)
+
+_INVLIAD_COMMANDS = [
+    "quit",       # 退出
+    "text",       # 某ID下的文字成果，默认ROOT
+    "all",        # 所有任务
+    "todos",      # 所有待办
+    "todo",       # 某ID待办，默认当前ID
+    "ok",         # 确认INIT任务，或某ID提纲或段落，然后自动进入下一待办任务
+    "children",   # 查看某ID提纲
+    "words",      # 查看后修改某ID字数
+    "title",      # 查看后修改某ID标题
+    "howto",      # 查看后修改某ID扩写指南
+    "summarise",  # 查看后修改某ID段落摘要
+    "reload",     # 重新加载模型
+    "memory",     # 某ID对话记忆，默认当前ID
+    "store",      # 某ID对话历史，默认当前ID
+    "ask",        # 向AI提问
+]
 
 class WritingTask(BaseModel):
     """
@@ -60,7 +77,7 @@ class WritingTask(BaseModel):
 
     """
     root_content: Optional[TreeContent] = None
-    cur_content: Optional[TreeContent] = None
+    todo_content: Optional[TreeContent] = None
 
     # 创作游标 forcus 取值范围为：
     # - "START"
@@ -84,7 +101,7 @@ class WritingTask(BaseModel):
     streaming = True
 
     # 记忆管理
-    ai_reply: Optional[Dict[str, str]] = {}
+    ai_reply_json: Optional[Dict[str, str]] = {}
     memory: Optional[MemoryManager] = None
 
     class Config:
@@ -107,7 +124,7 @@ class WritingTask(BaseModel):
                 setattr(self, k, kwargs[k])
 
         if self.root_content == None:
-            self.root_content = TreeContent(id="ROOT", type="root")                
+            self.root_content = TreeContent(type="root")                
         self.move_focus("START")
 
     def move_focus(self, id: str) -> str:
@@ -115,10 +132,10 @@ class WritingTask(BaseModel):
         移动到指定节点，默认将位置设定为output。
         """
         if id == "START":
-            self.cur_content = self.root_content
+            self.todo_content = self.root_content
             self.focus = id
         elif id == "END":
-            self.cur_content = None
+            self.todo_content = None
             self.focus = id
         elif id == None:
             # 没有解析到内容ID
@@ -126,7 +143,7 @@ class WritingTask(BaseModel):
         else:
             target = self.root_content.get_item_by_id(id)
             if target:
-                self.cur_content = target
+                self.todo_content = target
                 self.focus = target.id
             else:
                 # 在对象树中无法找到内容ID
@@ -141,7 +158,7 @@ class WritingTask(BaseModel):
         if self.focus == "END":
             pass
         elif self.focus == "START":
-            self.move_focus(self.cur_content.id)
+            self.move_focus(self.todo_content.id)
         else:
             next_todo = self.root_content.next_todo()
             if next_todo:
@@ -158,49 +175,44 @@ class WritingTask(BaseModel):
         counter = 0
         while(counter < max_count):
             counter += 1
-            
+
             resp = user_said if user_said else get_input()
             resp = resp.strip()
-
-            commands = [
-                "quit",       # 退出
-                "text",       # 某ID下的文字成果，默认ROOT
-                "all",        # 所有任务
-                "todos",      # 所有待办
-                "todo",       # 某ID待办，默认当前ID
-                "ok",         # 确认INIT任务，或某ID提纲或段落，然后自动进入下一待办任务
-                "children",   # 查看某ID提纲
-                "words",      # 查看后修改某ID字数
-                "title",      # 查看后修改某ID标题
-                "howto",      # 查看后修改某ID扩写指南
-                "summarise",  # 查看后修改某ID段落摘要
-                "reload",     # 重新加载模型
-                "memory",     # 某ID对话记忆，默认当前ID
-                "store",      # 某ID对话历史，默认当前ID
-                "ask",        # 向AI提问
-            ]
 
             # 使用正则表达式解析命令
             match_full = re.match(r'^([\w-]+)@([\w-]+)(.*)$', resp)
             match_command = re.match(r'^([\w-]+)(.*)$', resp)
-            
-            id, command, param = None, None, None
-            
-            if match_full:
-                id, command, param = match_full.groups()
-            elif match_command:
-                id = None
-                command, param = match_command.groups()
 
+            # 提取值
+            if match_full:
+                focus, command, param = match_full.groups()
+            elif match_command:
+                focus = None
+                command, param = match_command.groups()
+            else:
+                pass
+            
+            # 根据 focus 变换 id 值
+            if focus == "END":
+                id = None
+            elif focus == "START":
+                id = self.root_content.id
+            else:
+                id = focus
+
+            # 提取参数值
             param = param.strip()  # 去除参数前后的空格
-            if command in commands:
+            
+            # 如果 command 为合法命令就返回命令元组
+            if command in _INVLIAD_COMMANDS:
                 return id, command, param
+            # 如果用户没有输入有意义的字符串，就重来
             elif len(resp) <= 0:
-                # 如果用户没有输入有意义的字符串，就重来
                 continue
+            # 否则按照简化的 ask 命令输出
             else:
                 return None, "ask", resp
-            
+
         return None, None, None
 
     def user_said_continue(self) -> (str, str):
@@ -220,14 +232,19 @@ class WritingTask(BaseModel):
         json_instruction = _JSON_INSTRUCTION
         
         if content_type == None:
-            return None
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", END_PROMPT),
+                ("ai", "好的。"),
+                MessagesPlaceholder(variable_name="history"),
+                ("human", "{{task}}"),
+            ], template_format="jinja2")
         elif content_type == "START":
             task_prompt   = _ROOT_TASK
             output_format = _ROOT_FORMAT
             
             prompt = ChatPromptTemplate.from_messages([
                 ("system", MAIN_PROMPT),
-                ("ai", "好的，我将严格按要求的JSON格式输出。"),
+                ("ai", "好的，我会尽最大努力。"),
                 MessagesPlaceholder(variable_name="history"),
                 ("human", "{{task}}"),
             ], template_format="jinja2").partial(
@@ -253,30 +270,35 @@ class WritingTask(BaseModel):
                 ("system", MAIN_PROMPT),
                 ("ai", "你对我的写作有什么要求？"),
                 ("human", _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT),
-                ("ai", "好的，我将严格按要求的JSON格式输出。"),
+                ("ai", "好的，我会尽最大努力。"),
                 MessagesPlaceholder(variable_name="history"),
                 ("human", "{{task}}")
             ], template_format="jinja2").partial(
                 # 字数限制
                 words_limit=self.words_per_step,
-                words_advice=self.cur_content.words_advice,
+                words_advice=self.todo_content.words_advice,
                 # 写作提纲
-                title=self.cur_content.title,
+                title=self.todo_content.title,
                 outline_exist=outline_exist,
                 # 任务指南
                 task_instruction=task_prompt,
-                howto=self.cur_content.howto,
+                howto=self.todo_content.howto,
                 # 输出格式要求
                 output_format=output_format,
                 # JSON严格控制
                 json_instruction=json_instruction,
             )
 
-        # 默认选择智谱AI
+        # 根据环境变量选择默认的LLM
         if llm == None:
-            if os.environ.get("ZHIPUAI_API_KEY") == None:
-                raise BaseException("您正在尝试在 langchain_chinese 中使用智谱AI，请在环境变量 ZHIPUAI_API_KEY 中提供 APIKEY！")
-            llm = ChatZhipuAI()
+            if os.environ.get("ZHIPUAI_API_KEY"):
+                from langchain_zhipu import ChatZhipuAI
+                llm = ChatZhipuAI()
+            elif os.environ.get("OPENAI_API_KEY"):
+                from langchain_openai import ChatOpenAI
+                llm = ChatOpenAI(model_name="gpt-4-turbo")
+            else:
+                raise BaseException("您必须指定一个LLM，或者配置正确的环境变量：ZHIPUAI_API_KEY！")
 
         # 构造链
         chain = prompt | llm
@@ -313,24 +335,27 @@ class WritingTask(BaseModel):
                     print("resp:", resp.content)
                     text = resp.content
 
-                json = JsonOutputParser().invoke(input=text)
+                if self.focus == "END":
+                    return text
+                else:
+                    json = JsonOutputParser().invoke(input=text)
+                    if json:
+                        self.ai_reply_json = json
+                        return json
+                    else:
+                        raise BaseException("JSON为空")
             except Exception as e:
                 print(f"推理错误: {e}")
-            
-            # 允许重试N次，满足要求后才返回AI的回应
-            if json:
-                self.ai_reply = json
-                return json
 
         raise Exception(f"AI返回结果无法正确解析，已经超过 {self.retry_max} 次，可能需要调整提示语模板了！！")
     
     def get_content_type(self):
-        if self.focus == "START":
-            return "START"
-        elif self.focus == "END":
+        if self.focus == "END":
             return None
+        elif self.focus == "START":
+            return "START"
         else:
-            if self.cur_content.words_advice > self.words_per_step:
+            if self.todo_content.words_advice > self.words_per_step:
                 return "outline"
             else:
                 return "paragraph"
@@ -355,49 +380,49 @@ class WritingTask(BaseModel):
             - 详细内容
             - 内容摘要
         """
-        request = self.ai_reply 
+        request = self.ai_reply_json 
         content_type = self.get_content_type()
-        self.cur_content.type = content_type
+        self.todo_content.type = content_type
         
         if content_type == "END":
             return
         elif content_type == "START":
             # 更新生成依据
             try:
-                self.cur_content.title = request["标题名称"]
-                self.cur_content.words_advice = request["总字数要求"]
+                self.todo_content.title = request["标题名称"]
+                self.todo_content.words_advice = request["总字数要求"]
             except BaseException as e:
                 print(self.focus, "缺少必要的字段：标题名称 | 总字数要求")
                 raise(e)
 
             if "扩写指南" in request:
-                self.cur_content.howto = request["扩写指南"]
+                self.todo_content.howto = request["扩写指南"]
             if "内容摘要" in request:
-                self.cur_content.summarise = request["内容摘要"]
+                self.todo_content.summarise = request["内容摘要"]
         else:
             # 更新生成大纲或详细内容
             if content_type == "outline":
-                self.cur_content.children = []
+                self.todo_content.children = []
                 for item in request['大纲列表']:
                     if "总字数要求" not in item or "标题名称" not in item or "扩写指南" not in item:
                         raise(BaseException("缺少必要的字段：标题名称 | 总字数要求 | 扩写指南"))
-                    self.cur_content.add_item(TreeContent(
+                    self.todo_content.add_item(
                         words_advice = item['总字数要求'],
                         title = item['标题名称'],
                         howto = item['扩写指南'],
                         is_completed = False,
-                    ))
-                # print("-"*20, "Outlines Done for", self.cur_content.id, "-"*20)
+                    )
+                # print("-"*20, "Outlines Done for", self.todo_content.id, "-"*20)
             elif content_type == "paragraph":
                 if "内容摘要" in request:
-                    self.cur_content.summarise = request["内容摘要"]
+                    self.todo_content.summarise = request["内容摘要"]
                 if "详细内容" in request:
-                    self.cur_content.text = request["详细内容"]
+                    self.todo_content.text = request["详细内容"]
             else:
                 raise(BaseException("Error JSON:", request))
             
             # 生成子任务后，提纲自身的任务就算完成了
-            self.cur_content.is_completed = True
+            self.todo_content.is_completed = True
 
     def get_memory(self, session_id=None):
         if session_id == None:
@@ -494,7 +519,7 @@ class WritingTask(BaseModel):
         while(counter < max_steps):
             counter += 1
 
-            if self.ai_reply == {}:
+            if self.ai_reply_json == {}:
                 # 新任务
                 id, command, param = self.ask_user(input)
             else:
@@ -505,28 +530,36 @@ class WritingTask(BaseModel):
                     id, command, param = self.ask_user(input)
 
             # 无效命令过滤
-            if input and command == "ok" and self.ai_reply == {}:
+            if input and command == "ok" and self.ai_reply_json == {}:
                 input = None
                 continue
-            
+
             # 输入重置
             input = None
             # print(f"[{self.focus}]")
             
             # 定义一个命令处理函数
-            def process_command(k, v):
+            def process_content_command(k, v):
+                # 当前在END节点，没有todo项，且未指定操作对象ID
                 if self.focus == "END" and id == None:
                     obj = None
+                # 当前在START节点，且未指定操作对象ID
                 elif self.focus == "START" and id == None:
                     obj = self.root_content
+                # 当前在普通节点，且为指定操作对象ID
+                elif id == None:
+                    obj = self.todo_content
+                # 已明确指定操作对象ID
                 else:
-                    obj = self.root_content.get_item_by_id(id) if id else self.cur_content
+                    obj = self.root_content.get_item_by_id(id)
 
+                # 设置内容属性
                 if obj and v:
                     setattr(obj, k, v)
+                
+                # 打印指定对象的指定属性
+                if obj:
                     print(getattr(obj, k))
-                else:
-                    raise BaseException("Invlid content ID or Property Value")
 
             # 主动退出
             if command == "quit":
@@ -554,9 +587,9 @@ class WritingTask(BaseModel):
                     self.move_focus(id)
                     memory = self.get_memory()
                     if len(memory) > 0:
-                        self.ai_said = memory[-1].content
+                        self.ai_reply_json = JsonOutputParser.invoke(input=memory[-1])
                     else:
-                        self.ai_said = {}
+                        self.ai_reply_json = {}
                 self.print_focus()
                 continue
 
@@ -586,7 +619,7 @@ class WritingTask(BaseModel):
             elif command == "children":
                 process_content_command('children', None)
                 continue
-            
+
             # 查看或修改字数建议
             elif command == "words":
                 if param and param.isdigit():
