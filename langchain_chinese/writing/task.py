@@ -155,6 +155,8 @@ class WritingTask(BaseModel):
             # 根据 focus 变换 id 值
             if focus == None:
                 focus = self.focus
+            else:
+                focus = focus.upper()
 
             if focus == "END":
                 id = None
