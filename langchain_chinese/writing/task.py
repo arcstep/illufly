@@ -38,62 +38,20 @@ _INVLIAD_COMMANDS = [
 class WritingTask(BaseModel):
     """
     写作管理。
-    
-    DONE:
-    - 支持一键直出长文
-    - 支持询问模式
-    - 支持将大纲作为提示语变量
-    - 支持将创作中的实体、背景设定作为扩写依据
-    - 支持各种状态查询命令
-    - 支持大纲导出
-    - 支持文字导出
-
-    - 改进子任务对话时的指令跟随能力：强调标题背景
-
-    TODO:
-    - 支持在子任务对话中的其他聊天场景：非写作对话
-    - 编辑和扩展input中的提示语变量
-    - 编辑和扩展全局的提示语变量
-
-    - 支持对日志输出着色
-
-    - 支持重写：将已完成状态改为未完成
-    - 支持重新确认：不必自动寻找下一个
-
-    - 序列化和反序列化
-
-    - 支持导出到模板库
-    - 支持从模板库加载模板
-
-    - 支持提炼并优化提纲模板
-    - 支持长文改写
-
-    - 支持精确拆解提纲模板
-    - 支持仿写
-
-    - 支持本地知识库检索
-
-    - 支持数据查询
-
     """
     root_content: Optional[TreeContent] = None
     todo_content: Optional[TreeContent] = None
 
-    # 创作游标 forcus 取值范围为：
-    # - "START"
-    # - "ROOT"
-    # - "子内容ID"
-    # - "END"
+    # 任务游标：
     focus: Optional[str] = "START"
     
     # 控制参数
     words_per_step = 500
     retry_max = 5
 
-    # - 子任务可能的配置分为：
-    # - auto 全部自动回复 OK
-    # - askme 每一步骤都要求用户确认
-    auto_mode = "askme"
+    # 自动运行模式
+    # none | all | outline | paragraph
+    auto = "none"
 
     task_title: Optional[str] = None
     task_howto: Optional[str] = None
@@ -118,7 +76,7 @@ class WritingTask(BaseModel):
         )
 
         # 初始化参数
-        keys = ["auto_mode"]
+        keys = ["auto"]
         for k in keys:
             if k in kwargs:
                 setattr(self, k, kwargs[k])
@@ -177,20 +135,22 @@ class WritingTask(BaseModel):
             counter += 1
 
             resp = user_said if user_said else get_input()
-            resp = resp.strip()
 
             # 使用正则表达式解析命令
-            match_full = re.match(r'^([\w-]+)@([\w-]+)(.*)$', resp)
-            match_command = re.match(r'^([\w-]+)(.*)$', resp)
+            match_full = re.match(r'^\s*<([\w-]+)>\s*([\w-]+)(.*)$', resp)
+            match_command = re.match(r'^([\w-]+)\s*(.*)$', resp)
 
             # 提取值
             if match_full:
-                focus, command, param = match_full.groups()
+                focus, command, prompt = match_full.groups()
             elif match_command:
                 focus = None
-                command, param = match_command.groups()
+                command, prompt = match_command.groups()
             else:
-                pass
+                command = "ask"
+            
+            # 全部转化为小写
+            command = command.lower().strip()
 
             # 根据 focus 变换 id 值
             if focus == None:
@@ -204,11 +164,11 @@ class WritingTask(BaseModel):
                 id = focus
 
             # 提取参数值
-            param = param.strip()  # 去除参数前后的空格
+            prompt = prompt.strip()  # 去除参数前后的空格
             
             # 如果 command 为合法命令就返回命令元组
             if command in _INVLIAD_COMMANDS:
-                return focus, id, command, param
+                return focus, id, command, prompt
             # 如果用户没有输入有意义的字符串，就重来
             elif len(resp) <= 0:
                 continue
@@ -470,50 +430,14 @@ class WritingTask(BaseModel):
             else:
                 print(f"{' ' if x['is_completed'] else '*'} {sid}")
 
-    def run(self, input: str = None, llm: Runnable = None, auto_mode = None, max_steps = 1e4):
+    def run(self, input: str = None, llm: Runnable = None, auto = None, max_steps = 1e4):
         """
         由AI驱动展开写作。
-        
-        from langchain_chinese import WritingTask
-        wp = WritingTask()
-
-        支持如下场景：
-        - 给定任务，自动开始
-        w.run(
-            input = "请帮我写一封道歉信"
-            auto_mode = "all"
-        )
-
-        - 未定任务，获取第一次输入，自动开始        
-        w.run(
-            auto_mode = "all"
-        )
-
-        - 给定任务，每次询问
-        w.run(
-            input = "请帮我写一封道歉信"
-            auto_mode = "askme"
-        )
-
-        - 未定任务，每次询问
-        w.run(
-            auto_mode = "askme"
-        )
-
-        - 询问模式退出前，尚在初始阶段
-
-        - 询问模式退出前，有任务待确认
-        - 询问模式退出前，任务已确认
-        - 询问模式接续后，转自动
-        - 仅对大纲自动模式，段落手动模式
-
-        - 每一步执行后都直接退出（不做循环）
-          max_steps = 1 即可
         """
         
         # 更新任务模式
-        if auto_mode:
-            self.auto_mode = auto_mode
+        if auto:
+            self.auto = auto
 
         # 初始化链
         chain = self.update_chain(llm)
@@ -524,23 +448,23 @@ class WritingTask(BaseModel):
         # 最多允许步数的限制
         counter = 0
         command = None
-        param = None
+        prompt = None
 
         while(counter < max_steps):
             counter += 1
 
             if self.ai_reply_json == {}:
                 # 新任务
-                focus, id, command, param = self.ask_user(input)
+                focus, id, command, prompt = self.ask_user(input)
             else:
                 # 跟踪之前状态的任务
-                if self.auto_mode == "all":
-                    focus, id, command, param = self.ask_user("ok")
-                elif self.auto_mode == "askme":
-                    focus, id, command, param = self.ask_user(input)
+                if self.auto == "all":
+                    focus, id, command, prompt = self.ask_user("ok")
+                elif self.auto == "askme":
+                    focus, id, command, prompt = self.ask_user(input)
                 else:
                     # TODO: 支持更多的模式
-                    focus, id, command, param = self.ask_user(input)
+                    focus, id, command, prompt = self.ask_user(input)
 
             # 无效命令过滤
             if input and command == "ok" and self.ai_reply_json == {}:
@@ -609,9 +533,9 @@ class WritingTask(BaseModel):
 
             # 询问AI
             elif command == "ask":
-                if not param:
-                    param = "请重新生成"
-                self.ask_ai(chain, param)
+                if not prompt:
+                    prompt = "请重新生成"
+                self.ask_ai(chain, prompt)
             
             # 获取AI回复
             elif command == "reply":
@@ -635,18 +559,18 @@ class WritingTask(BaseModel):
                 elif self.focus == "END":
                     # 全部结束，打印成果出来瞧瞧
                     self.print_text()
-                    if self.auto_mode == "all":
+                    if self.auto == "all":
                         break
                     else:
-                        self.auto_mode = "askme"
+                        self.auto = "askme"
                 else:
                     # 如果下一个任务存在，继续转移到新的扩写任务
-                    param = self.user_said_continue()
+                    prompt = self.user_said_continue()
 
                     # 如果不移动任务游标，就一直使用这个chain
                     chain = self.update_chain(llm)
 
-                self.ask_ai(chain, param)
+                self.ask_ai(chain, prompt)
 
             # 查看所有任务
             elif command == "children":
@@ -654,9 +578,9 @@ class WritingTask(BaseModel):
 
             # 查看或修改字数建议
             elif command == "words":
-                if param and param.isdigit():
-                    param = int(param)
-                process_content_command("words_advice", param)
+                if prompt and prompt.isdigit():
+                    prompt = int(prompt)
+                process_content_command("words_advice", prompt)
 
                 # 修改当前目标属性，所以要重新生成LLM链
                 if focus == self.focus:
@@ -664,7 +588,7 @@ class WritingTask(BaseModel):
 
             # 查看或修改标题
             elif command == "title":
-                process_content_command("title", param)
+                process_content_command("title", prompt)
 
                 # 修改当前目标属性，所以要重新生成LLM链
                 if focus == self.focus:
@@ -672,7 +596,7 @@ class WritingTask(BaseModel):
 
             # 查看或修改扩写指南
             elif command == "howto":
-                process_content_command("howto", param)
+                process_content_command("howto", prompt)
 
                 # 修改当前目标属性，所以要重新生成LLM链
                 if focus == self.focus:
@@ -680,7 +604,7 @@ class WritingTask(BaseModel):
 
             # 查看或修改内容摘要
             elif command == "summarise":
-                process_content_command("summarise", param)
+                process_content_command("summarise", prompt)
 
                 # 修改当前目标属性，所以要重新生成LLM链
                 if focus == self.focus:
