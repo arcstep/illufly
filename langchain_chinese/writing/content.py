@@ -1,18 +1,72 @@
 from langchain.pydantic_v1 import BaseModel, Field, root_validator
 from typing import Any, Dict, Iterator, List, Optional, Union
+from statemachine import StateMachine, State
 import datetime
 import random
 
 def generate_sn(numbers: List[int]) -> str:
     return ".".join(str(number) for number in numbers)
+
+class ContentState(StateMachine):
+    """实现基于有限状态机的内容管理"""
+
+    # 定义有限状态机的状态
+    #
+    # 扩写指南
+    init = State("init", initial=True)
+    # 完全重新生成：有扩写指南，祖先已完成扩写
+    todo = State("todo")
+    # 已完成扩写
+    done = State("done")
+    # 重新生成：已完成扩写，支持锁定部份内容后修改，也可直接确认
+    mod = State("mod")
     
+    # 定义有限状态机的状态转换
+    #
+    init_todo = init.to(todo)
+
+    todo_done = todo.to(done)
+    done_todo = done.to(todo)
+
+    done_mod = done.to(mod)
+    mod_done = mod.to(done)
+
+    mod_todo = mod.to(todo)
+    
+_INVALID_PROMPT_INPUT = ["title", "words_advice", "howto", "summarise", "text"]
+
 class TreeContent(BaseModel):
     """
-    存储内容的树形结构，段落内容保存在叶子节点，而提纲保存在children不为空的节点。
+    存储内容的树形结构，段落内容保存在叶子节点，而提纲保存在children的列表中。
     """
 
     # 内容标识
     id: Optional[int] = 0
+    
+    # 内容状态管理
+    _fsm: Optional["ContentState"] = ContentState()
+    
+    @property
+    def state(self):
+        return _fsm.current_state.id
+    
+    def init_todo(self):
+        self._fsm.init_todo()
+
+    def todo_done(self):
+        self._fsm.todo_done()
+
+    def done_todo(self):
+        self._fsm.done_todo()
+
+    def done_mod(self):
+        self._fsm.done_mod()
+
+    def mode_done(self):
+        self._fsm.mode_done()
+
+    def mode_todo(self):
+        self._fsm.mode_todo()
 
     type: Optional[str] = "paragraph"
     is_completed: Optional[bool] = False
@@ -32,6 +86,22 @@ class TreeContent(BaseModel):
     root_children_counter: Optional[int] = 0
     root: Optional["TreeContent"] = None
     
+    # 设置提示语输入
+    def set_prompt_input(k: str, v: str):
+        """
+        TODO: 考虑引起的状态变化
+        """
+        if k in _INVALID_PROMPT_INPUT and v != None:
+            return setattr(self, k, v)
+        else:
+            raise BaseException("No prompt input KEY: ", k)
+
+    def get_prompt_input(k: str):
+        if k in _INVALID_PROMPT_INPUT:
+            return getattr(self, k)
+        else:
+            raise BaseException("No prompt input KEY: ", k)
+
     # 保存路径
     path: Optional[str] = None
 
@@ -55,6 +125,7 @@ class TreeContent(BaseModel):
             "root": root,
         })
         content = TreeContent(**kwargs)
+        content.init_todo()
 
         self.children.append(content)
         self.type = "outline"
@@ -63,10 +134,10 @@ class TreeContent(BaseModel):
 
     def get_item_by_id(self, id: Union[int, str]) -> Optional["TreeContent"]:
         """递归查询并返回指定id的Content"""
-        
+
         if id == None:
             return None
-        
+
         if isinstance(id, str):
             id = int(id)
             
@@ -167,6 +238,7 @@ class TreeContent(BaseModel):
         return lines
 
     def get_input(self) -> str:
+        """获得提示语输入"""
         output = ""
         if self.summarise:
             output = f"\n  内容摘要 >>> {self.summarise}"
@@ -187,6 +259,7 @@ class TreeContent(BaseModel):
         return f"{input}\n{all_lines}"
 
     def get_text(self, numbers: List[int] = []):
+        """获得文字成果"""
         input = self.get_input()
         lines = [f"{line['sn']} {line['title']}\n {line['text']}" for line in self.get_lines(numbers)]
         if self.text:
@@ -198,4 +271,3 @@ class TreeContent(BaseModel):
       """打印所有行的序号、标题和文字内容"""
       for line in self.get_text():
           print(line)
-
