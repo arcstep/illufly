@@ -79,6 +79,7 @@ _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT = """
 """
 
 __all__ = [
+    "END_PROMPT",
     "MAIN_PROMPT",
     "_ROOT_TASK",
     "_OUTLINE_TASK",
