@@ -16,24 +16,44 @@ import os
 def get_input(prompt: str = "\n👤: ") -> str:
     return input(prompt)
 
-_INVLIAD_COMMANDS = [
+_COMMON_COMMANDS = [
     "quit",       # 退出
-    "text",       # 某ID下的文字成果，默认ROOT
     "all",        # 所有任务
     "todos",      # 所有待办
+    "ask",
+]
+
+_AI_CHAT_COMMANDS = [
     "todo",       # 某ID待办，默认当前ID
-    "ok",         # 确认INIT任务，或某ID提纲或段落，然后自动进入下一待办任务
-    "children",   # 查看某ID提纲
+    "ok",         # 确认START任务，或某ID提纲或段落，然后自动进入下一待办任务
+    "reload",     # 重新加载模型
+    "memory",     # 某ID对话记忆，默认当前ID
+    "store",      # 某ID对话历史，默认当前ID
+    "ask",        # 向AI提问
+]
+
+_WRITE_COMMANDS = [
+    "todo",       # 某ID待办，默认当前ID
     "words",      # 查看后修改某ID字数
     "title",      # 查看后修改某ID标题
     "howto",      # 查看后修改某ID扩写指南
     "summarise",  # 查看后修改某ID段落摘要
     "reload",     # 重新加载模型
+]
+
+_READ_COMMANDS = [
+    "text",       # 某ID下的文字成果，默认ROOT
+    "todo",       # 某ID待办，默认当前ID
+    "children",   # 查看某ID提纲
+    "words",      # 查看后修改某ID字数
+    "title",      # 查看后修改某ID标题
+    "howto",      # 查看后修改某ID扩写指南
+    "summarise",  # 查看后修改某ID段落摘要
     "memory",     # 某ID对话记忆，默认当前ID
     "store",      # 某ID对话历史，默认当前ID
-    "ask",        # 向AI提问
     "reply",      # AI的当前回复
 ]
+
 
 class WritingTask(BaseModel):
     """
@@ -134,11 +154,16 @@ class WritingTask(BaseModel):
         while(counter < max_count):
             counter += 1
 
-            resp = user_said if user_said else get_input()
+            if user_said == None:
+                # 自动回复 ok 指令
+                if self.auto == "all" and self.focus != "END" and self.ai_reply_json != {}:
+                    user_said = "ok"
+                else:
+                    user_said = get_input()
 
             # 使用正则表达式解析命令
-            match_full = re.match(r'^\s*<([\w-]+)>\s*([\w-]+)(.*)$', resp)
-            match_command = re.match(r'^([\w-]+)\s*(.*)$', resp)
+            match_full = re.match(r'^\s*<([\w-]+)>\s*([\w-]+)(.*)$', user_said)
+            match_command = re.match(r'^([\w-]+)\s+(.*)$', user_said)
 
             # 提取值
             if match_full:
@@ -147,7 +172,12 @@ class WritingTask(BaseModel):
                 focus = None
                 command, prompt = match_command.groups()
             else:
-                command = "ask"
+                focus = None
+                command = user_said.lower().strip()
+                prompt = user_said
+
+            # 提取参数值
+            prompt = prompt.strip()  # 去除参数前后的空格
             
             # 全部转化为小写
             command = command.lower().strip()
@@ -160,23 +190,21 @@ class WritingTask(BaseModel):
 
             if focus == "END":
                 id = None
+                obj = None
             elif focus == "START":
                 id = self.root_content.id
+                obj = self.root_content
             else:
                 id = focus
+                obj = self.root_content.get_item_by_id(id)
 
-            # 提取参数值
-            prompt = prompt.strip()  # 去除参数前后的空格
-            
             # 如果 command 为合法命令就返回命令元组
-            if command in _INVLIAD_COMMANDS:
-                return focus, id, command, prompt
-            # 如果用户没有输入有意义的字符串，就重来
-            elif len(resp) <= 0:
-                continue
-            # 否则按照简化的 ask 命令输出
-            else:
-                return self.focus, None, "ask", resp
+            valid_commands = self.get_commands(obj)
+            if command in valid_commands:
+                if command == "ok" and self.ai_reply_json == {}:
+                    continue
+
+            return focus, id, "ask", prompt
 
         return None, None, None, None
 
@@ -184,7 +212,7 @@ class WritingTask(BaseModel):
         """用户确认继续生成"""
         
         user_said = f'请开始！'
-        # print("\n👤:[auto] ", user_said)
+        print("\n👤:[auto] ", user_said)
         return user_said
 
     def update_chain(self, llm: Runnable = None):
@@ -432,6 +460,48 @@ class WritingTask(BaseModel):
             else:
                 print(f"{' ' if x['is_completed'] else '*'} {sid}")
 
+    def get_commands(self, content):
+        """
+        根据状态返回可用的指令集
+        """
+        state = content._fsm.current_state.id
+
+        commands = _COMMON_COMMANDS
+        if state == "init":
+            commands = list(set(commands + _READ_COMMANDS))
+        elif state == "todo":
+            commands = list(set(commands + _READ_COMMANDS + _WRITE_COMMANDS + _AI_CHAT_COMMANDS))
+        elif state == "mod":
+            commands = list(set(commands + _READ_COMMANDS + _WRITE_COMMANDS + _AI_CHAT_COMMANDS))
+        elif state == "done":
+            commands = list(set(commands + _READ_COMMANDS + _WRITE_COMMANDS))
+        else:
+            raise BaseException("Unknow conent STATE:", state)
+        return commands
+
+    # 指令处理函数：查看或修改内容对象的
+    def process_content_command(focus, id, k, v):
+        # 当前在END节点，没有todo项，且未指定操作对象ID
+        if focus == "END":
+            obj = None
+        # 当前在START节点，且未指定操作对象ID
+        elif focus == "START":
+            obj = self.root_content
+        # 当前在普通节点，且为指定操作对象ID
+        elif id == None:
+            obj = self.todo_content
+        # 已明确指定操作对象ID
+        else:
+            obj = self.root_content.get_item_by_id(id)
+
+        # 设置内容属性
+        if obj and v != None:
+            obj.set_prompt_input(k, v)
+
+        # 打印指定对象的指定属性
+        if obj:
+            print(f'<{focus}> {k:}', obj.get_prompt_input(k))
+
     def run(self, input: str = None, llm: Runnable = None, auto = None, max_steps = 1e4):
         """
         由AI驱动展开写作。
@@ -455,57 +525,19 @@ class WritingTask(BaseModel):
         while(counter < max_steps):
             counter += 1
 
-            if self.ai_reply_json == {}:
-                # 新任务
-                focus, id, command, prompt = self.ask_user(input)
-            else:
-                # 跟踪之前状态的任务
-                if self.auto == "all":
-                    focus, id, command, prompt = self.ask_user("ok")
-                elif self.auto == "askme":
-                    focus, id, command, prompt = self.ask_user(input)
-                else:
-                    # TODO: 支持更多的模式
-                    focus, id, command, prompt = self.ask_user(input)
-
-            # 无效命令过滤
-            if input and command == "ok" and self.ai_reply_json == {}:
-                input = None
-                continue
-
-            # 输入重置
+            # 获取用户指令
+            focus, id, command, prompt = self.ask_user(input)
             input = None
 
-            # 定义一个命令处理函数
-            def process_content_command(k, v):
-                # 当前在END节点，没有todo项，且未指定操作对象ID
-                if focus == "END":
-                    obj = None
-                # 当前在START节点，且未指定操作对象ID
-                elif focus == "START":
-                    obj = self.root_content
-                # 当前在普通节点，且为指定操作对象ID
-                elif id == None:
-                    obj = self.todo_content
-                # 已明确指定操作对象ID
-                else:
-                    obj = self.root_content.get_item_by_id(id)
-
-                # 设置内容属性
-                if obj and v is not None:
-                    setattr(obj, k, v)
-                
-                # 打印指定对象的指定属性
-                if obj:
-                    print(f'<{focus}> {k:}', getattr(obj, k))
-
+            # 处理用户指令
+            #
             # 主动退出
             if command == "quit":
                 break
 
             # 查看成果
             elif command == "text":
-                process_content_command('text', None)
+                self.process_content_command(focus, id, 'text', None)
 
             # 查看所有任务
             elif command == "all":
@@ -576,13 +608,13 @@ class WritingTask(BaseModel):
 
             # 查看所有任务
             elif command == "children":
-                process_content_command('children', None)
+                self.process_content_command(focus, id, 'children', None)
 
             # 查看或修改字数建议
             elif command == "words":
                 if prompt and prompt.isdigit():
                     prompt = int(prompt)
-                process_content_command("words_advice", prompt)
+                self.process_content_command(focus, id, "words_advice", prompt)
 
                 # 修改当前目标属性，所以要重新生成LLM链
                 if focus == self.focus:
@@ -590,7 +622,7 @@ class WritingTask(BaseModel):
 
             # 查看或修改标题
             elif command == "title":
-                process_content_command("title", prompt)
+                self.process_content_command(focus, id, "title", prompt)
 
                 # 修改当前目标属性，所以要重新生成LLM链
                 if focus == self.focus:
@@ -598,7 +630,7 @@ class WritingTask(BaseModel):
 
             # 查看或修改扩写指南
             elif command == "howto":
-                process_content_command("howto", prompt)
+                self.process_content_command(focus, id, "howto", prompt)
 
                 # 修改当前目标属性，所以要重新生成LLM链
                 if focus == self.focus:
@@ -606,7 +638,7 @@ class WritingTask(BaseModel):
 
             # 查看或修改内容摘要
             elif command == "summarise":
-                process_content_command("summarise", prompt)
+                self.process_content_command(focus, id, "summarise", prompt)
 
                 # 修改当前目标属性，所以要重新生成LLM链
                 if focus == self.focus:
