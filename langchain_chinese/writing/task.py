@@ -362,66 +362,11 @@ class WritingTask(BaseModel):
     def update_content(self):
         """
         更新当前内容。
-
-        如果是任务初始状态，应当包含：
-            - 标题名称
-            - 总字数要求
-            - 扩写指南
-            - 内容摘要
-
-        如果是提纲，提纲中的元素应当包含：
-            - 大纲列表
-                - 总字数要求
-                - 标题名称
-                - 扩写指南
-
-        如果是段落，应当包含：
-            - 详细内容
-            - 内容摘要
         """
-        request = self.ai_reply_json 
-        content_type = self.get_content_type()
-        self.todo_content.type = content_type
-        
-        if content_type == "END":
+        if self.get_content_type() == "END":
             return
-        elif content_type == "START":
-            # 更新生成依据
-            try:
-                self.todo_content.title = request["标题名称"]
-                self.todo_content.words_advice = request["总字数要求"]
-            except BaseException as e:
-                print(self.focus, "缺少必要的字段：标题名称 | 总字数要求")
-                raise(e)
-
-            if "扩写指南" in request:
-                self.todo_content.howto = request["扩写指南"]
-            if "内容摘要" in request:
-                self.todo_content.summarise = request["内容摘要"]
         else:
-            # 更新生成大纲或详细内容
-            if content_type == "outline":
-                self.todo_content.children = []
-                for item in request['大纲列表']:
-                    if "总字数要求" not in item or "标题名称" not in item or "扩写指南" not in item:
-                        raise(BaseException("缺少必要的字段：标题名称 | 总字数要求 | 扩写指南"))
-                    self.todo_content.add_item(
-                        words_advice = item['总字数要求'],
-                        title = item['标题名称'],
-                        howto = item['扩写指南'],
-                        is_completed = False,
-                    )
-                # print("-"*20, "Outlines Done for", self.todo_content.id, "-"*20)
-            elif content_type == "paragraph":
-                if "内容摘要" in request:
-                    self.todo_content.summarise = request["内容摘要"]
-                if "详细内容" in request:
-                    self.todo_content.text = request["详细内容"]
-            else:
-                raise(BaseException(content_type, " |Error Reply:", request))
-            
-            # 生成子任务后，提纲自身的任务就算完成了
-            self.todo_content.is_completed = True
+            self.todo_content.ok(self.ai_reply_json)
 
     def get_memory(self, session_id=None):
         if session_id == None:
@@ -583,7 +528,10 @@ class WritingTask(BaseModel):
             elif command == "ok":
                 # 尝试更新当前游标指向的内容
                 # 如果更新失败，就要退出循环
-                self.update_content()
+                if self.focus == "END":
+                    continue
+                else:
+                    self.todo_content.ok(self.ai_reply_json) 
 
                 # 获取下一个任务的计划
                 self.move_focus_auto()
