@@ -37,8 +37,12 @@ _INVALID_PROMPT_INPUT = ["title", "words_advice", "howto", "summarise", "text"]
 
 class TreeContent(BaseModel):
     """
-    存储内容的树形结构，段落内容保存在叶子节点，而提纲保存在children的列表中。
+    存储内容的树形结构，段落内容保存在叶子节点，而提纲保存在children的列表中。    
     """
+    # - item：对象，add_item, get_item_xx 等
+    # - content：对象中的属性，update_content 等
+    # - prompt_input：对象中扩写依据相关的属性，title, words_advice, howto，使用 set_prompt_input 设置
+    # - state：结合FSM反应的对象状态    
 
     # 内容标识
     id: Optional[int] = 0
@@ -50,48 +54,84 @@ class TreeContent(BaseModel):
     def state(self):
         return _fsm.current_state.id
     
-    def init_todo(self):
-        self._fsm.init_todo()
+    @property
+    def is_completed(self):
+        return self.state == 'done'
+    
+    def ok(self, request = Dict[str, Any]):
+        if self.state == "init":
+            if "总字数要求" not in item or "标题名称" not in item or "扩写指南" not in item:
+                raise(BaseException("缺少必要的字段：标题名称 | 总字数要求 | 扩写指南"))
 
-    def todo_done(self):
-        self._fsm.todo_done()
+            self.title = request["标题名称"]
+            self.words_advice = request["总字数要求"]
+            self.howto = request["扩写指南"]
+            
+            self._fsm.init_todo()
 
-    def done_todo(self):
-        self._fsm.done_todo()
+        elif self.state == "todo":
+            if self.type == "outline":
+                # 删除旧的子项，逐个添加新的子项
+                self.children = []
+                for item in request['大纲列表']:
+                    if "总字数要求" not in item or "标题名称" not in item or "扩写指南" not in item:
+                        raise(BaseException("缺少必要的字段：标题名称 | 总字数要求 | 扩写指南"))
 
-    def done_mod(self):
-        self._fsm.done_mod()
+                    self.add_item(
+                        words_advice = item['总字数要求'],
+                        title = item['标题名称'],
+                        howto = item['扩写指南'],
+                        is_completed = False,
+                    )
+                # print("-"*20, "Outlines Done for", self.id, "-"*20)
+            elif self.type == "paragraph":
+                if "内容摘要" not in item or "详细内容" not in item:
+                    raise(BaseException("缺少必要的字段：内容摘要 | 详细内容"))
 
-    def mode_done(self):
-        self._fsm.mode_done()
+                if "内容摘要" in request:
+                    self.summarise = request["内容摘要"]
+                if "详细内容" in request:
+                    self.text = request["详细内容"]
+            else:
+                raise(BaseException(f"No Type {self.type} for id {self.id}:"))
 
-    def mode_todo(self):
-        self._fsm.mode_todo()
+            self._fsm.todo_done()
+
+        elif self.state == "mod":
+            self._fsm.mod_done()
+
+            raise(BaseException("Action for [mod] Not Implement"))
+
+        else:
+            raise BaseException("Error State for [ok] command:", self.state)
 
     type: Optional[str] = "paragraph"
-    is_completed: Optional[bool] = False
 
-    # 扩写依据
+    # 扩写指南
     words_advice: Optional[int] = None
     title: Optional[str] = None
     howto: Optional[str] = None
+    # 段落
     summarise: Optional[str] = None
     text: Optional[str] = None
-
-    # 子项扩展
+    # 提纲
     children: List["TreeContent"] = []
+
+    # 祖先
     parent: Optional["TreeContent"] = None
+    root: Optional["TreeContent"] = None
 
     # root_children_counter 仅根对象有效
     root_children_counter: Optional[int] = 0
-    root: Optional["TreeContent"] = None
     
     # 设置提示语输入
     def set_prompt_input(k: str, v: str):
         """
-        TODO: 考虑引起的状态变化
+        修改创作依据将引起状态变化。
         """
         if k in _INVALID_PROMPT_INPUT and v != None:
+            if self.state == "done":
+                self._fsm.done_mod()
             return setattr(self, k, v)
         else:
             raise BaseException("No prompt input KEY: ", k)
@@ -147,7 +187,7 @@ class TreeContent(BaseModel):
         for child in self.children or []:
             if child.id == id:
                 return child
-            if self.type == "outline":
+            if len(self.children) > 0:
                 found = child.get_item_by_id(id)
                 if found:
                     return found
