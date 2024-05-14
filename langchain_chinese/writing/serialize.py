@@ -3,14 +3,22 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 class ContentSerialize():
     """支持序列化的属性存储结构"""
 
-    def __init__(self, **kwargs):
-        self._id_counter: int = 0
-        self._path: Optional[str] = None
-        self._parent: Optional["ContentSerialize"] = None
-        self._children: Dict[str, "ContentSerialize"] = {}
+    def __init__(
+        self,
+        project_id: str = None,
+        id_counter: int = 0,
+        parent: "ContentSerialize" = None,
+    ):
+        """
+        初始化方法
+        """
+        self._project_id = project_id        
+        self._id_counter = id_counter
+        self._path = path
+        self._parent = parent
 
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+        self._path: str = None
+        self._children: Dict[str, "ContentSerialize"] = {}
 
     @property
     def id(self):
@@ -52,8 +60,9 @@ class ContentSerialize():
         new_kwargs = {} if kwargs is None else kwargs
         id_counter = max(self._children) + 1 if self._children else 1
         new_kwargs.update({
-            "_id_counter": id_counter,
-            "_parent": self,
+            "project_id": self._project_id,
+            "id_counter": id_counter,
+            "parent": self,
         })
 
         content = ContentSerialize(**new_kwargs)
