@@ -16,6 +16,7 @@ langchain = "^0.1.20"
 langchain-community = "^0.0.38"
 python-dotenv = "^1.0.1"
 python-statemachine = "^2.2.0"
+pydot = "^2.0.0"
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^69.1.0"
