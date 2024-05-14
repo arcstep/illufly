@@ -13,6 +13,9 @@ class ContentTree(BaseModel):
     todo_content: Optional[ContentNode] = None
     memory: Optional[MemoryManager] = None
 
+    class Config:
+        arbitrary_types_allowed = True  # 允许任意类型
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 

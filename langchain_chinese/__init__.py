@@ -28,8 +28,12 @@ from langchain_chinese.writing.serialize import (
     ContentSerialize,
 )
 
-from langchain_chinese.writing.content import (
-    TreeContent,
+from langchain_chinese.writing.node import (
+    ContentNode,
+)
+
+from langchain_chinese.writing.tree import (
+    ContentTree,
 )
 
 from langchain_chinese.writing.task import (

@@ -7,7 +7,7 @@ from langchain.memory import ConversationBufferMemory, ConversationBufferWindowM
 from ..memory.history import LocalFileMessageHistory, create_session_id
 from ..memory.memory_manager import MemoryManager
 from ..memory.base import WithMemoryBinding
-from .content import TreeContent
+from .tree import ContentTree
 from .command import *
 from .prompts.task_prompt import *
 import json
@@ -58,10 +58,10 @@ _READ_COMMANDS = [
 
 class WritingTask(BaseModel):
     """
-    写作管理。
+    写作管理。`
     """
-    root_content: Optional[TreeContent] = None
-    todo_content: Optional[TreeContent] = None
+    root_content: Optional[ContentTree] = None
+    todo_content: Optional[ContentTree] = None
 
     # 控制参数
     words_per_step = 500
@@ -105,7 +105,7 @@ class WritingTask(BaseModel):
                 setattr(self, k, kwargs[k])
 
         if self.root_content == None:
-            self.root_content = TreeContent(type="root")                
+            self.root_content = ContentTree(type="root")                
         self.move_focus("START")
 
     def move_focus(self, focus: str) -> str:
