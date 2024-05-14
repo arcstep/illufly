@@ -20,6 +20,14 @@ from langchain_chinese.writing.base import (
     WritingChain,
 )
 
+from langchain_chinese.writing.state import (
+    ContentState,
+)
+
+from langchain_chinese.writing.serialize import (
+    ContentSerialize,
+)
+
 from langchain_chinese.writing.content import (
     TreeContent,
 )
