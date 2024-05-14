@@ -8,6 +8,7 @@ from ..memory.history import LocalFileMessageHistory, create_session_id
 from ..memory.memory_manager import MemoryManager
 from ..memory.base import WithMemoryBinding
 from .content import TreeContent
+from .command import *
 from .prompts.task_prompt import *
 import json
 import re
@@ -62,9 +63,6 @@ class WritingTask(BaseModel):
     root_content: Optional[TreeContent] = None
     todo_content: Optional[TreeContent] = None
 
-    # 任务游标：
-    focus: Optional[str] = "START"
-    
     # 控制参数
     words_per_step = 500
     retry_max = 5
@@ -81,6 +79,11 @@ class WritingTask(BaseModel):
     # 记忆管理
     ai_reply_json: Optional[Dict[str, str]] = {}
     memory: Optional[MemoryManager] = None
+
+    # 任务游标：
+    @property
+    def default_focus(self):
+        return f'{todo_content.id}#{todo_content.default_scope}'
 
     class Config:
         arbitrary_types_allowed = True  # 允许任意类型
@@ -145,69 +148,6 @@ class WritingTask(BaseModel):
                 self.focus = "END"
         return self.focus
 
-    def ask_user(self, user_said: str = None) -> tuple:
-        """捕获用户的输入"""
-        
-        # 最多重新输入100次
-        max_count = 100
-        counter = 0
-        while(counter < max_count):
-            counter += 1
-
-            if user_said == None:
-                # 自动回复 ok 指令
-                if self.auto == "all" and self.focus != "END" and self.ai_reply_json != {}:
-                    user_said = "ok"
-                else:
-                    user_said = get_input()
-
-            # 使用正则表达式解析命令
-            match_full = re.match(r'^\s*<([\w-]+)>\s*([\w-]+)(.*)$', user_said)
-            match_command = re.match(r'^([\w-]+)\s+(.*)$', user_said)
-
-            # 提取值
-            if match_full:
-                focus, command, prompt = match_full.groups()
-            elif match_command:
-                focus = None
-                command, prompt = match_command.groups()
-            else:
-                focus = None
-                command = user_said.lower().strip()
-                prompt = user_said
-
-            # 提取参数值
-            prompt = prompt.strip()  # 去除参数前后的空格
-            
-            # 全部转化为小写
-            command = command.lower().strip()
-
-            # 根据 focus 变换 id 值
-            if focus == None:
-                focus = self.focus
-            else:
-                focus = focus.upper()
-
-            if focus == "END":
-                id = None
-                obj = None
-            elif focus == "START":
-                id = self.root_content.id
-                obj = self.root_content
-            else:
-                id = focus
-                obj = self.root_content.get_item_by_id(id)
-
-            # 如果 command 为合法命令就返回命令元组
-            valid_commands = self.get_commands(obj)
-            if command in valid_commands:
-                if command == "ok" and self.ai_reply_json == {}:
-                    continue
-
-            return focus, id, "ask", prompt
-
-        return None, None, None, None
-
     def user_said_continue(self) -> (str, str):
         """用户确认继续生成"""
         
@@ -215,139 +155,6 @@ class WritingTask(BaseModel):
         print("\n👤:[auto] ", user_said)
         return user_said
 
-    def update_chain(self, llm: Runnable = None):
-        """构造Chain"""
-        
-        # 获取内容类型
-        content_type = self.get_content_type()
-        
-        # 构造基础示语模板
-        json_instruction = _JSON_INSTRUCTION
-        
-        if content_type == None:
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", END_PROMPT),
-                ("ai", "好的。"),
-                MessagesPlaceholder(variable_name="history"),
-                ("human", "{{task}}"),
-            ], template_format="jinja2")
-        elif content_type == "START":
-            task_prompt   = _ROOT_TASK
-            output_format = _ROOT_FORMAT
-            
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", MAIN_PROMPT),
-                ("ai", "好的，我会尽最大努力。"),
-                MessagesPlaceholder(variable_name="history"),
-                ("human", "{{task}}"),
-            ], template_format="jinja2").partial(
-                # 任务指南
-                task_instruction=task_prompt,
-                # 输出格式要求
-                output_format=output_format,
-                # JSON严格控制
-                json_instruction=json_instruction,
-            )
-        else:
-            # 获取背景信息
-            outline_exist = self.root_content.get_outlines()
-
-            if content_type == "outline":
-                task_prompt   = _OUTLINE_TASK
-                output_format = _OUTLINE_FORMAT
-            else:
-                task_prompt   = _PARAGRAPH_TASK
-                output_format = _PARAGRAPH_FORMAT
-
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", MAIN_PROMPT),
-                ("ai", "你对我的写作有什么要求？"),
-                ("human", _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT),
-                ("ai", "好的，我会尽最大努力。"),
-                MessagesPlaceholder(variable_name="history"),
-                ("human", "{{task}}")
-            ], template_format="jinja2").partial(
-                # 字数限制
-                words_limit=self.words_per_step,
-                words_advice=self.todo_content.words_advice,
-                # 写作提纲
-                title=self.todo_content.title,
-                outline_exist=outline_exist,
-                # 任务指南
-                task_instruction=task_prompt,
-                howto=self.todo_content.howto,
-                # 输出格式要求
-                output_format=output_format,
-                # JSON严格控制
-                json_instruction=json_instruction,
-            )
-
-        # 根据环境变量选择默认的LLM
-        if llm == None:
-            if os.environ.get("ZHIPUAI_API_KEY"):
-                from langchain_zhipu import ChatZhipuAI
-                llm = ChatZhipuAI()
-            elif os.environ.get("OPENAI_API_KEY"):
-                from langchain_openai import ChatOpenAI
-                llm = ChatOpenAI(model_name="gpt-4-turbo")
-            else:
-                raise BaseException("您必须指定一个LLM，或者配置正确的环境变量：ZHIPUAI_API_KEY！")
-
-        # 构造链
-        chain = prompt | llm
-        # print(prompt.format(task="<<DEMO_TASK>>", history=[]))
-
-        # 记忆绑定管理
-        withMemoryChain = WithMemoryBinding(
-            chain,
-            self.memory,
-            input_messages_key="task",
-            history_messages_key="history",
-        )
-        
-        return withMemoryChain
-
-    def ask_ai(self, chain: Runnable, task: str):
-        """AI推理"""
-        
-        if len(task) == 0:
-            return
-        
-        # print("ask AI:", task)
-        # print(chain.get_prompts())
-
-        json = None
-        counter = 0
-        while(counter < self.retry_max):
-            counter += 1
-            try:
-                input = {"task": task}
-                config = {"configurable": {"session_id": f'{self.focus}'}}
-                text = ""
-                if self.streaming:
-                    for resp in chain.stream(input, config=config):
-                        print(resp.content, end="", flush=True)
-                        text += resp.content
-                    print()
-                else:
-                    resp = chain.invoke(input, config=config)
-                    print("resp:", resp.content)
-                    text = resp.content
-
-                if self.focus == "END":
-                    return text
-                else:
-                    json = JsonOutputParser().invoke(input=text)
-                    if json:
-                        self.ai_reply_json = json
-                        return json
-                    else:
-                        raise BaseException("JSON为空")
-            except Exception as e:
-                print(f"推理错误: {e}")
-
-        raise Exception(f"AI返回结果无法正确解析，已经超过 {self.retry_max} 次，可能需要调整提示语模板了！！")
-    
     def get_content_type(self):
         if self.focus == "END":
             return None
@@ -358,15 +165,6 @@ class WritingTask(BaseModel):
                 return "outline"
             else:
                 return "paragraph"
-
-    def update_content(self):
-        """
-        更新当前内容。
-        """
-        if self.get_content_type() == "END":
-            return
-        else:
-            self.todo_content.ok(self.ai_reply_json)
 
     def get_memory(self, session_id=None):
         if session_id == None:
@@ -404,25 +202,6 @@ class WritingTask(BaseModel):
                 print(f"{' ' if x['is_completed'] else '*'} {sid} {x['words_advice']}字以内 | 《{x['title']}》")
             else:
                 print(f"{' ' if x['is_completed'] else '*'} {sid}")
-
-    def get_commands(self, content):
-        """
-        根据状态返回可用的指令集
-        """
-        state = content._fsm.current_state.id
-
-        commands = _COMMON_COMMANDS
-        if state == "init":
-            commands = list(set(commands + _READ_COMMANDS))
-        elif state == "todo":
-            commands = list(set(commands + _READ_COMMANDS + _WRITE_COMMANDS + _AI_CHAT_COMMANDS))
-        elif state == "mod":
-            commands = list(set(commands + _READ_COMMANDS + _WRITE_COMMANDS + _AI_CHAT_COMMANDS))
-        elif state == "done":
-            commands = list(set(commands + _READ_COMMANDS + _WRITE_COMMANDS))
-        else:
-            raise BaseException("Unknow conent STATE:", state)
-        return commands
 
     # 指令处理函数：查看或修改内容对象的
     def process_content_command(focus, id, k, v):
@@ -474,15 +253,25 @@ class WritingTask(BaseModel):
             focus, id, command, prompt = self.ask_user(input)
             input = None
 
+            if focus == "END":
+                obj = None
+            # 当前在START节点，且未指定操作对象ID
+            elif focus == "START":
+                obj = self.root_content
+            # 当前在普通节点，且为指定操作对象ID
+            elif id == None:
+                obj = self.todo_content
+            # 已明确指定操作对象ID
+            else:
+                obj = self.root_content.get_item_by_id(id)
+
             # 处理用户指令
+            command = BaseCommand.create_command(command, obj, prompt)
             #
             # 主动退出
-            if command == "quit":
+            resp = command.invoke()
+            if resp["reply"] == "end":
                 break
-
-            # 查看成果
-            elif command == "text":
-                self.process_content_command(focus, id, 'text', None)
 
             # 查看所有任务
             elif command == "all":
