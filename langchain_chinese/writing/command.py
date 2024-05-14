@@ -1,5 +1,4 @@
 from typing import Any, Dict, Iterator, List, Optional, Union
-from .content import TreeContent
 
 class BaseCommand():
     """
@@ -14,8 +13,8 @@ class BaseCommand():
     例如： `<0.1#create> ask 请帮我重新生成`就是向id为‘0.1’的内容对象发送AI指令
 
     """
-    def __init__(self, target: [TreeContent] = None, prompt: [str] = None):
-        self.target = target if target == None else self.target
+    def __init__(self, bound: [Any] = None, prompt: [str] = None):
+        self.bound = bound if bound == None else self.bound
         self.prompt = prompt if prompt == None else self.prompt
 
     def invoke(self):
@@ -26,12 +25,12 @@ class BaseCommand():
 
     def process_content_command(k, v):
         # 设置内容属性
-        if self.target and v != None:
-            self.target.set_prompt_input(k, v)
+        if self.bound and v != None:
+            self.bound.set_prompt_input(k, v)
 
         # 打印指定对象的指定属性
-        if target:
-            print(f'{k:}', self.target.get_prompt_input(k))
+        if bound:
+            print(f'{k:}', self.bound.get_prompt_input(k))
     
 class CommandQuit(BaseCommand):
     def __init__(self, *args, **kwargs):
@@ -169,46 +168,46 @@ class CommandStore(BaseCommand):
     def invoke(self):
         return {"reply": "end"}
 
-def create_command(target: [TreeContent] = None, command_name: str = "Unknown", prompt: str = None):
+def create_command(bound: [Any] = None, command_name: str = "Unknown", prompt: str = None):
     """构造命令对象"""
 
     if command_name == "quit":
-        return CommandQuit(target, prompt)
+        return CommandQuit(bound, prompt)
 
     elif command_name == "all":
-        return CommandAll(target, prompt)
+        return CommandAll(bound, prompt)
     elif command_name == "todos":
-        return CommandTodos(target, prompt)
+        return CommandTodos(bound, prompt)
     elif command_name == "todo":
-        return CommandTodo(target, prompt)
+        return CommandTodo(bound, prompt)
 
     elif command_name == "ok":
-        return CommandOK(target, prompt)
+        return CommandOK(bound, prompt)
 
     elif command_name == "children":
-        return CommandChildren(target, prompt)
+        return CommandChildren(bound, prompt)
     elif command_name == "title":
-        return CommandTitle(target, prompt)
+        return CommandTitle(bound, prompt)
     elif command_name == "words":
-        return CommandWords(target, prompt)
+        return CommandWords(bound, prompt)
     elif command_name == "howto":
-        return CommandHowto(target, prompt)
+        return CommandHowto(bound, prompt)
     elif command_name == "summarise":
-        return CommandSummarise(target, prompt)
+        return CommandSummarise(bound, prompt)
     elif command_name == "text":
-        return CommandText(target, prompt)
+        return CommandText(bound, prompt)
 
     elif command_name == "ask":
-        return CommandAsk(target, prompt)
+        return CommandAsk(bound, prompt)
     elif command_name == "reply":
-        return CommandReply(target, prompt)
+        return CommandReply(bound, prompt)
 
     elif command_name == "reload":
-        return CommandReload(target, prompt)
+        return CommandReload(bound, prompt)
     elif command_name == "memory":
-        return CommandMemory(target, prompt)
+        return CommandMemory(bound, prompt)
     elif command_name == "store":
-        return CommandStore(target, prompt)
+        return CommandStore(bound, prompt)
     else:
         raise BaseException("Unkown Command Name:", command_name)
 

@@ -14,7 +14,6 @@ class ContentSerialize():
         """
         self._project_id = project_id        
         self._id_counter = id_counter
-        self._path = path
         self._parent = parent
 
         self._path: str = None
