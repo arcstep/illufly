@@ -1,237 +1,71 @@
 from typing import Any, Dict, Iterator, List, Optional, Union
+from abc import ABC, abstractmethod
 
-class BaseCommand():
+class BaseCommand(ABC):
     """
-    标准化命令格式为： <id#scope> command prompt
-    参数说明：
-        - id 内容ID, "0", "0.1.2"
-        - scope 描述视角的字符串，可使用下列值：
-        - command 命令名称
-        - prompt 命令参数或发送给AI的提示语
-    
-    与ID组合起来即为内容节点的session_id
-    例如： `<0.1#create> ask 请帮我重新生成`就是向id为‘0.1’的内容对象发送AI指令
+    继承BaseCommand就可以方便实现指令调度。
 
+    如果命令存在于多个对象中，可能需要实现简单的指令路由，即：
+      按照优先顺序检查各个对象中包含的commands，来决定由哪个对象执行指令。
     """
-    def __init__(self, bound: [Any] = None, prompt: [str] = None):
-        self.bound = bound if bound == None else self.bound
-        self.prompt = prompt if prompt == None else self.prompt
 
-    def invoke(self):
-        return {"reply": "unkown"}
+    @abstractmethod
+    @staticmethod
+    def commands(self) -> List[str]:
+        """
+        列举有哪些可用的指令。
+        """
+        return []
     
-    def help(self):
-        pass
+    @abstractmethod
+    @staticmethod
+    def default_command(self) -> str:
+        return None
 
-    def process_content_command(k, v):
-        # 设置内容属性
-        if self.bound and v != None:
-            self.bound.set_prompt_input(k, v)
+    def invoke(self, user_said: str) -> Any:
+        """
+        从用户输入中解析指令后，直接执行。
+        通常，你应该通过重载call函数来定义执行逻辑，再通过invoke函数调用。
+        """
+        resp = self.parser(user_said)
+        if command_resp and command_resp in self.commands:
+            resp['reply'] = self.call(**command_resp)
 
-        # 打印指定对象的指定属性
-        if bound:
-            print(f'{k:}', self.bound.get_prompt_input(k))
-    
-class CommandQuit(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "quit"
-    
-    def invoke(self):
-        return {"reply": "end"}
+        return resp
 
-class CommandAll(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "all"
-    
-    def invoke(self):
-        return {"reply": "end"}
+    @abstractmethod
+    def call(self, **kwargs):
+        """
+        执行指令。
+        """
+        return {"reply": None}
 
-class CommandTodos(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "todos"
-    
-    def invoke(self):
-        return {"reply": "end"}
+    def parser(self, user_said: str) -> tuple:
+        """
+        指令解析器，可以解析用户输入为指令。
+        重载该函数可以重新定义你的指令结构解析或输出。
 
-class CommandTodo(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "todo"
-    
-    def invoke(self):
-        return {"reply": "end"}
+        默认的合法指令格式为: 
+            - <id> command args
+            - <id> command
+            - command args
+            - command
+            - args
+        参数说明:
+            - id 内容ID, "0", "0.1.2"
+            - command 命令名称
+            - args 命令参数或发送给AI的提示语
 
-class CommandOK(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "ok"
-    
-    def invoke(self):
-        return {"reply": "end"}
+        例如: '<0.1> ask 请帮我重新生成'就是向id为'0.1'的内容对象发送AI指令
+        """
+        if user_said is None:
+            return {"id": None, "command": None, "args": None}
 
-class CommandChildren(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "children"
-    
-    def invoke(self):
-        self.process_content_command('children', None)
-        return {"reply": "success"}
+        pattern = r'^\s*(?:<([\w-]+)>)?\s*(' + '|'.join(self.__class__.commands()) + r')?\s*(.*)$'
+        match = re.match(pattern, user_said, re.IGNORECASE)
 
-class CommandTitle(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "title"
-    
-    def invoke(self):
-        self.process_content_command('title', self.prompt)
-        return {"reply": "success"}
-
-class CommandHowto(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "howto"
-    
-    def invoke(self):
-        self.process_content_command('howto', self.prompt)
-        return {"reply": "success"}
-
-class CommandSummarise(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "summarise"
-    
-        self.process_content_command('summarise', self.prompt)
-        return {"reply": "success"}
-
-class CommandWords(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "words"
-    
-    def invoke(self):
-        prompt = self.prompt
-        if prompt and prompt.isdigit():
-            prompt = int(prompt)
-        self.process_content_command('words_advice', prompt)
-        return {"reply": "success"}
-
-class CommandText(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "text"
-    
-    def invoke(self):
-        self.process_content_command('text', self.prompt)
-        return {"reply": "success"}
-
-class CommandAsk(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "ask"
-    
-    def invoke(self):
-        return {"reply": "end"}
-
-class CommandReply(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "reply"
-    
-    def invoke(self):
-        return {"reply": "end"}
-
-class CommandReload(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "reload"
-    
-    def invoke(self):
-        return {"reply": "end"}
-
-class CommandMemory(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "memory"
-    
-    def invoke(self):
-        return {"reply": "end"}
-
-class CommandStore(BaseCommand):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "store"
-    
-    def invoke(self):
-        return {"reply": "end"}
-
-def create_command(bound: [Any] = None, command_name: str = "Unknown", prompt: str = None):
-    """构造命令对象"""
-
-    if command_name == "quit":
-        return CommandQuit(bound, prompt)
-
-    elif command_name == "all":
-        return CommandAll(bound, prompt)
-    elif command_name == "todos":
-        return CommandTodos(bound, prompt)
-    elif command_name == "todo":
-        return CommandTodo(bound, prompt)
-
-    elif command_name == "ok":
-        return CommandOK(bound, prompt)
-
-    elif command_name == "children":
-        return CommandChildren(bound, prompt)
-    elif command_name == "title":
-        return CommandTitle(bound, prompt)
-    elif command_name == "words":
-        return CommandWords(bound, prompt)
-    elif command_name == "howto":
-        return CommandHowto(bound, prompt)
-    elif command_name == "summarise":
-        return CommandSummarise(bound, prompt)
-    elif command_name == "text":
-        return CommandText(bound, prompt)
-
-    elif command_name == "ask":
-        return CommandAsk(bound, prompt)
-    elif command_name == "reply":
-        return CommandReply(bound, prompt)
-
-    elif command_name == "reload":
-        return CommandReload(bound, prompt)
-    elif command_name == "memory":
-        return CommandMemory(bound, prompt)
-    elif command_name == "store":
-        return CommandStore(bound, prompt)
-    else:
-        raise BaseException("Unkown Command Name:", command_name)
-
-__all__ = [
-    "BaseCommand",
-    
-    "CommandQuit",
-
-    "CommandAll",
-    "CommandTodos",
-    "CommandTodo",
-
-    "CommandOK",
-
-    "CommandChildren",
-    "CommandTitle",
-    "CommandWords",
-    "CommandHowto",
-    "CommandSummarise",
-    "CommandText",
-
-    "CommandAsk",
-    "CommandReply",
-    "CommandReload",
-    "CommandMemory",
-    "CommandStore",
-]
+        if match:
+            content_id, command, args = match.groups()
+            return {"id": content_id, "command": command, "args": args}
+        else:
+            return {"id": None, "command": self.__class__.default_command(), "args": user_said}
