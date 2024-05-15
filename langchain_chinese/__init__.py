@@ -28,6 +28,10 @@ from langchain_chinese.writing.serialize import (
     ContentSerialize,
 )
 
+from langchain_chinese.writing.command import (
+    BaseCommand,
+)
+
 from langchain_chinese.writing.node import (
     ContentNode,
 )
