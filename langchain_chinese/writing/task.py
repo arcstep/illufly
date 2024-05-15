@@ -8,14 +8,108 @@ from ..memory.history import LocalFileMessageHistory, create_session_id
 from ..memory.memory_manager import MemoryManager
 from ..memory.base import WithMemoryBinding
 from .tree import ContentTree
-from .command import *
+from .command import BaseCommand
 from .prompts.task_prompt import *
 import json
 import re
 import os
 
-def get_input(prompt: str = "\n👤: ") -> str:
-    return input(prompt)
+class Task(BaseCommand):
+    """
+    任务处理。
+    """
+
+    def __init__(self):
+        self.human_input = lambda x : x if x != None else input("\n👤: ")
+        self.tree = ContentTree()
+
+    # 遍历内容树
+    def find_todo_node(self) -> str:
+        """
+        移动到下一个未完成节点。
+        """
+        return self.tree.next_todo()
+        target = self.root_content.get_item_by_id(focus)
+        if target:
+            self.todo_content = target
+            self.focus = f'{target.id}'
+        else:
+            # 在对象树中无法找到内容ID
+            pass
+
+        return self.focus
+
+    # from BaseCommand
+    def commands(self) -> List[str]:
+        return []
+
+    # from BaseCommand
+    def call(self, **kwargs):
+        return {"reply": None}
+
+    def cmd_route(self, user_said: str):
+        """查找指令并执行"""
+
+        container = [self, self.tree]
+        for obj in container:
+            resp = obj.invoke(command, prompt)
+            if resp['command']:
+                return resp
+
+        return {"command": None}
+
+    def step(self, user_said: str = None):
+        """单步执行"""
+
+        input_str = self.human_input(user_said)
+        return self.cmd_route(input_str)
+
+    def auto(self, ask: str = None, streaming = True):
+        """全自动运行"""
+
+        # 最多允许步数的限制
+        counter = 0
+        command = None
+        prompt = None
+        max_steps = 10
+        user_said = ask
+
+        while(counter < max_steps):
+            counter += 1
+            # 获取用户指令
+            user_said = self.human_input(user_said)
+            result = self.cmd_route(input_str)
+
+            # 流式返回
+            if streaming:
+                yield result['reply']
+
+            # 日志输出
+            print(result['reply'])
+
+            user_said = None
+
+    def cycle(self, ask: str = None):
+        """每一步都询问"""
+
+        # 最多允许步数的限制
+        counter = 0
+        command = None
+        prompt = None
+        max_steps = 10
+        user_said = ask
+
+        while(counter < max_steps):
+            counter += 1
+
+            # 获取用户指令
+            user_said = self.human_input(user_said)
+            result = self.cmd_route(input_str)
+
+            # 日志输出
+            print(result['reply'])
+
+            user_said = None
 
 _COMMON_COMMANDS = [
     "quit",       # 退出
