@@ -1,14 +1,15 @@
 from typing import Any, Dict, Iterator, List, Optional, Union
 from langchain.pydantic_v1 import BaseModel, Field, root_validator
-from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
+from langchain.memory import ConversationBufferWindowMemory
 from ..memory.history import LocalFileMessageHistory, create_session_id
 from ..memory.memory_manager import MemoryManager
 from ..memory.base import WithMemoryBinding
 from .node import ContentNode
+from .command import BaseCommand
 
-class ContentTree(BaseModel):
+class ContentTree(BaseModel, BaseCommand):
     """内容管理树。"""
-    
+
     root_content: Optional[ContentNode] = None
     todo_content: Optional[ContentNode] = None
     memory: Optional[MemoryManager] = None
@@ -35,6 +36,25 @@ class ContentTree(BaseModel):
         if self.root_content == None:
             self.root_content = TreeContent(type="root")                
         self.move_focus("START")
+
+    # inherit
+    @staticmethod
+    def commands(self) -> List[str]:
+        return [
+            "title", "howto", "text", "words_advice", "children", 
+            "ok", "todo", "modi",
+        ]
+
+    # inherit
+    def call(self, **kwargs):
+        command = kwargs['command']
+        args = kwargs['args']
+        if command == "ok":
+            res = self.ok()
+        else:
+            res = self._cmd_process_content_command(command, args)
+
+        return res
 
     # 任务游标：
     @property
