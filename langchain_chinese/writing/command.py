@@ -1,7 +1,7 @@
 from typing import Any, Dict, Iterator, List, Optional, Union
-from abc import ABC, abstractmethod
+import re
 
-class BaseCommand(ABC):
+class BaseCommand():
     """
     继承BaseCommand就可以方便实现指令调度。
 
@@ -9,16 +9,13 @@ class BaseCommand(ABC):
       按照优先顺序检查各个对象中包含的commands，来决定由哪个对象执行指令。
     """
 
-    @abstractmethod
-    @staticmethod
+    @classmethod
     def commands(self) -> List[str]:
         """
         列举有哪些可用的指令。
         """
-        return []
+        raise NotImplementedError("子类必须实现这个方法")
     
-    @abstractmethod
-    @staticmethod
     def default_command(self) -> str:
         return None
 
@@ -28,17 +25,17 @@ class BaseCommand(ABC):
         通常，你应该通过重载call函数来定义执行逻辑，再通过invoke函数调用。
         """
         resp = self.parser(user_said)
-        if command_resp and command_resp in self.commands:
-            resp['reply'] = self.call(**command_resp)
+
+        if resp and resp['command'] in self.commands():
+            resp['reply'] = self.call(**resp)
 
         return resp
 
-    @abstractmethod
-    def call(self, **kwargs):
+    def call(self, id: str = None, command: str = None, args: str = None):
         """
         执行指令。
         """
-        return {"reply": None}
+        raise NotImplementedError("子类必须实现这个方法")
 
     def parser(self, user_said: str) -> tuple:
         """
@@ -61,11 +58,11 @@ class BaseCommand(ABC):
         if user_said is None:
             return {"id": None, "command": None, "args": None}
 
-        pattern = r'^\s*(?:<([\w-]+)>)?\s*(' + '|'.join(self.__class__.commands()) + r')?\s*(.*)$'
+        pattern = r'^\s*(?:<([\w.-]+)>)?\s*(' + '|'.join(self.__class__.commands()) + r')?\s*(.*)$'
         match = re.match(pattern, user_said, re.IGNORECASE)
 
         if match:
             content_id, command, args = match.groups()
-            return {"id": content_id, "command": command, "args": args}
-        else:
-            return {"id": None, "command": self.__class__.default_command(), "args": user_said}
+        command = self.default_command() if command == None else command
+
+        return {"id": content_id, "command": command, "args": args}
