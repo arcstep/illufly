@@ -31,7 +31,7 @@ class BaseCommand():
 
         return resp
 
-    def call(self, id: str = None, command: str = None, args: str = None):
+    def call(self, **kwargs):
         """
         执行指令。
         """

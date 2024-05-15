@@ -32,11 +32,11 @@ class ContentState(StateMachine):
         """<#init> ok"""
         print("<#init> ok")
 
-    def on_todo_done(self, event_data):
+    def on_todo_done(self):
         """<#todo> ok"""
         print("<#todo> ok")
 
-    def on_modi_done(self, event_data):
+    def on_modi_done(self):
         """<#modi> ok"""
         print("<#modi> ok")
 
@@ -49,11 +49,11 @@ class ContentState(StateMachine):
     # command: clear
     modi_todo = s_modi.to(s_todo, on="on_modi_todo")
 
-    def on_done_todo(self, event_data):
+    def on_done_todo(self):
         """<#done> todo"""
         print("<#done> todo")
 
-    def on_done_modi(self, event_data):
+    def on_done_modi(self):
         """<#modi> todo"""
         print("<#modi> todo")
     
@@ -62,7 +62,7 @@ class ContentState(StateMachine):
         print("<#done> modi")
 
     # conditions
-    def existing_howto(self, event_data):
+    def existing_howto(self):
         """存在扩写指南"""
         print("存在扩写指南")
         return True
