@@ -31,7 +31,7 @@ class ContentTree(BaseCommand):
         return []
 
     # inherit
-    def parser(self, user_said: str) -> tuple:
+    def parse(self, user_said: str) -> tuple:
         if user_said is None:
             return {"id": None, "command": None, "args": None}
 
