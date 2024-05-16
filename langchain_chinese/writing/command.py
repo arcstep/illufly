@@ -9,7 +9,6 @@ class BaseCommand():
       按照优先顺序检查各个对象中包含的commands，来决定由哪个对象执行指令。
     """
 
-    @classmethod
     def commands(self) -> List[str]:
         """
         列举有哪些可用的指令。
@@ -43,13 +42,10 @@ class BaseCommand():
         重载该函数可以重新定义你的指令结构解析或输出。
 
         默认的合法指令格式为: 
-            - <id> command args
-            - <id> command
             - command args
             - command
             - args
         参数说明:
-            - id 内容ID, "0", "0.1.2"
             - command 命令名称
             - args 命令参数或发送给AI的提示语
 
@@ -58,11 +54,11 @@ class BaseCommand():
         if user_said is None:
             return {"id": None, "command": None, "args": None}
 
-        pattern = r'^\s*(?:<([\w.-]+)>)?\s*(' + '|'.join(self.__class__.commands()) + r')?\s*(.*)$'
+        pattern = r'^\s*(' + '|'.join(self.__class__.commands()) + r')?\s*(.*)$'
         match = re.match(pattern, user_said, re.IGNORECASE)
 
         if match:
-            content_id, command, args = match.groups()
+            command, args = match.groups()
         command = self.default_command() if command == None else command
 
-        return {"id": content_id, "command": command, "args": args}
+        return {"command": command, "args": args}

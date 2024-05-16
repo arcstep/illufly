@@ -21,7 +21,12 @@ class Task(BaseCommand):
 
     def __init__(self):
         self.human_input = lambda x : x if x != None else input("\n👤: ")
-        self.tree = ContentTree()
+        self.memory = MemoryManager(
+            # 暂不考虑保存对话历史到磁盘
+            # lambda session_id: LocalFileMessageHistory(session_id),
+            shorterm_memory = ConversationBufferWindowMemory(return_messages=True, k=20)
+        )
+        self.tree = ContentTree(memory=self.memory)
 
     # 遍历内容树
     def find_todo_node(self) -> str:
@@ -47,12 +52,12 @@ class Task(BaseCommand):
     def call(self, **kwargs):
         return {"reply": None}
 
-    def cmd_route(self, user_said: str):
-        """查找指令并执行"""
+    def broad_cast(self, user_said: str):
+        """广播指令并执行"""
 
         container = [self, self.tree]
         for obj in container:
-            resp = obj.invoke(command, prompt)
+            resp = obj.invoke(user_said)
             if resp['command']:
                 return resp
 
@@ -62,7 +67,7 @@ class Task(BaseCommand):
         """单步执行"""
 
         input_str = self.human_input(user_said)
-        return self.cmd_route(input_str)
+        return self.broad_cast(input_str)
 
     def auto(self, ask: str = None, streaming = True):
         """全自动运行"""
@@ -78,7 +83,7 @@ class Task(BaseCommand):
             counter += 1
             # 获取用户指令
             user_said = self.human_input(user_said)
-            result = self.cmd_route(input_str)
+            result = self.broad_cast(input_str)
 
             # 流式返回
             if streaming:
@@ -104,7 +109,7 @@ class Task(BaseCommand):
 
             # 获取用户指令
             user_said = self.human_input(user_said)
-            result = self.cmd_route(input_str)
+            result = self.broad_cast(input_str)
 
             # 日志输出
             print(result['reply'])
