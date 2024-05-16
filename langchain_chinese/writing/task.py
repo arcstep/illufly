@@ -1,7 +1,6 @@
 from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
 from langchain.pydantic_v1 import BaseModel, Field, root_validator
 from langchain_core.runnables import Runnable
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import JsonOutputParser
 from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
 from ..memory.history import LocalFileMessageHistory, create_session_id
