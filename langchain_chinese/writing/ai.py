@@ -1,6 +1,7 @@
 from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
 from langchain_core.runnables import Runnable
 from langchain_core.output_parsers import JsonOutputParser
+from langchain.schema.output_parser import StrOutputParser
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ConversationBufferWindowMemory
 from .prompts.task_prompt import *
@@ -11,7 +12,7 @@ class BaseAI():
     向AI提问。
     """
     
-    def __init__(self, llm: Runnable = None, streaming: bool = True):
+    def __init__(self, llm: Runnable = None):
         if llm == None:
             if os.environ.get("ZHIPUAI_API_KEY"):
                 from langchain_zhipu import ChatZhipuAI
@@ -25,7 +26,6 @@ class BaseAI():
             self.llm = llm
 
         self.memory = ConversationBufferWindowMemory(k=20, return_messages=True)
-        self.streaming = streaming
 
         self.retry_max: int = 5
     
@@ -113,9 +113,9 @@ class BaseAI():
     def get_chain(self, prompt = None):
         # 构造链
         if prompt == None:
-            chain = self.prompt_default() | self.llm
+            chain = self.prompt_default() | self.llm | StrOutputParser()
         else:
-            chain = prompt | self.llm
+            chain = prompt | self.llm | StrOutputParser()
 
         return chain
 
@@ -127,32 +127,27 @@ class BaseAI():
         counter = 0
         while(counter < self.retry_max):
             counter += 1
-            try:
-                text = ""
-                if self.streaming:
-                    for resp in chain.stream({"task": task, "history": self.memory.buffer}):
-                        print(resp.content, end="", flush=True)
-                        text += resp.content
-                    print()
-                else:
-                    resp = chain.invoke({"task": task, "history": self.memory.buffer})
-                    print("resp:", resp.content)
-                    text = resp.content
+            # try:
+            text = ""
+            resp = chain.stream({"task": task, "history": self.memory.buffer})
+            for chunk in resp:
+                print(chunk, end="", flush=True)
+                text += chunk
+            print()
 
-                # 存储到记忆管理中
-                self.memory.chat_memory.add_user_message(task)
-                self.memory.chat_memory.add_ai_message(text)
+            # 存储到记忆管理中
+            self.memory.chat_memory.add_user_message(task)
+            self.memory.chat_memory.add_ai_message(text)
 
-                if return_json:
-                    print("要求输出JSON ...")
-                    json = JsonOutputParser().invoke(input=text)
-                    if json:
-                        return json
-                    else:
-                        raise BaseException("JSON为空")
+            if return_json:
+                json = JsonOutputParser().invoke(input=text)
+                if json:
+                    return json
                 else:
-                    return text
-            except Exception as e:
-                print(f"推理错误: ", e)
+                    raise BaseException("JSON为空")
+            else:
+                return text
+            # except Exception as e:
+            #     print(f"推理错误: ", e)
 
         raise Exception(f"AI返回结果无法正确解析，已经超过 {self.retry_max} 次，可能需要调整提示语模板！！")
