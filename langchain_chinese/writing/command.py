@@ -23,7 +23,7 @@ class BaseCommand():
         从用户输入中解析指令后，直接执行。
         通常，你应该通过重载call函数来定义执行逻辑，再通过invoke函数调用。
         """
-        resp = self.parser(user_said)
+        resp = self.parse(user_said)
 
         if resp and resp['command'] in self.commands():
             resp['reply'] = self.call(**resp)
@@ -36,7 +36,7 @@ class BaseCommand():
         """
         raise NotImplementedError("子类必须实现这个方法")
 
-    def parser(self, user_said: str) -> tuple:
+    def parse(self, user_said: str) -> Dict[str, Optional[str]]:
         """
         指令解析器，可以解析用户输入为指令。
         重载该函数可以重新定义你的指令结构解析或输出。
@@ -54,11 +54,13 @@ class BaseCommand():
         if user_said is None:
             return {"id": None, "command": None, "args": None}
 
-        pattern = r'^\s*(' + '|'.join(self.__class__.commands()) + r')?\s*(.*)$'
+        pattern = r'^\s*(' + '|'.join(self.commands()) + r')?\s*(.*)$'
         match = re.match(pattern, user_said, re.IGNORECASE)
 
         if match:
             command, args = match.groups()
-        command = self.default_command() if command == None else command
-
-        return {"command": command, "args": args}
+            command = command or self.default_command()
+            args = None if args == command else args
+            return {"command": command, "args": args}
+        else:
+            return {"command": self.default_command(), "args": None}
