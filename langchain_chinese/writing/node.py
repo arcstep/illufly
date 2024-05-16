@@ -2,10 +2,6 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 from langchain_core.runnables import Runnable
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import JsonOutputParser
-from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
-from ..memory.history import LocalFileMessageHistory, create_session_id
-from ..memory.memory_manager import MemoryManager
-from ..memory.base import WithMemoryBinding
 from .serialize import ContentSerialize
 from .state import ContentState
 from .command import BaseCommand
@@ -56,25 +52,26 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
     def commands(self) -> List[str]:
         """动态返回可用的指令集"""
         if self.state == "init":
-            if self.howto == None:
+            if self.last_ai_reply_json == None:
                 return ["task"]
+            elif self.howto == None:
+                return ["task", "ok"]
             else:
                 return _INVALID_PROPS_COMMAND + ["task", "ok"]
         elif self.state in ["todo", "modi"]:
-            return _INVALID_PROPS_COMMAND + ["ok"]
+            return _INVALID_PROPS_COMMAND + ["task", "ok"]
         else:
             return _INVALID_PROPS_COMMAND
 
     # inherit
     def call(self, command: str = None, args: str = None, **kwargs):
         if command == "task":
-            res = self.ask_ai(task=args)
-            self.last_ai_reply_json = res
+            return self.ask_ai(task=args)
         elif command == "ok":
             self.ok()
-            res = self.state
+            return self.state
         elif command == "state":
-            res = self.state
+            return self.state
         elif command in _INVALID_PROPS_COMMAND:
             if v != None:
                 # 设置内容属性
@@ -82,28 +79,38 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
             else:
                 # 打印指定对象的指定属性
                 res = self._cmd_get_prop(k)
-        else:
-            raise NotImplementedError(f"尚未实现这个命令：{command}")
+            return res
 
-        return res
+        raise NotImplementedError(f"尚未实现这个命令：{command}")
 
-    def ask_ai(self, task: str = "请开始。"):
+    def default_command(self) -> str:
+        return "task"
+
+    def ask_ai(self, task: str = None):
         """向AI询问，获得生成结果"""
+
+        task = task or "请开始。"
+
         if self.state == "init":
-            chain = self.ai.prompt_init()
+            prompt = self.ai.prompt_init()
+
         elif self.state == "todo":
-            chain = self.ai.prompt_todo(
+            prompt = self.ai.prompt_todo(
                 title=self.title,
                 content_type=self.type,
-                words_per_step=self.words_limit,
+                words_limit=self.words_limit,
                 words_advice=self.words_advice,
                 howto=self.howto,
                 outline_exist=self.root.all_outlines
             )
+
         else:
             raise NotImplementedError(f"<{self.id}> 对象在状态[{self.state}]没有指定提示语模板")
 
-        return self.ai.ask_ai(chain, session_id=self.id, task=task)
+        chain = self.ai.get_chain(prompt)
+        json = self.ai.ask_ai(task, chain, return_json=True)
+        self.last_ai_reply_json = json
+        return json
 
     # 设置提示语输入
     def _cmd_set_prop(self, k: str, v: str):
