@@ -6,17 +6,17 @@ class ContentState(StateMachine):
     # 定义有限状态机的状态
     #
     # 初始化扩写指南
-    s_init = State("init", initial=True)
+    s_init = State("init", value="init", initial=True)
     # 已有扩写指南，生成内容结果
-    s_todo = State("todo")
+    s_todo = State("todo", value="todo")
     # 已生成内容结果
-    s_done = State("done")
+    s_done = State("done", value="done")
     # 已有扩写指南，重新修改内容结果
-    s_modi = State("modi")
+    s_modi = State("modi", value="modi")
 
     @property
     def state(self):
-        return self.current_state.id
+        return self.current_state.value
     
     @property
     def is_complete(self):
