@@ -1,5 +1,5 @@
 # end chat prompt
-END_PROMPT = """
+DEFAULT_PROMPT = """
 你是一名优秀的写手，负责提供写作咨询。
 """
 
@@ -79,7 +79,7 @@ _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT = """
 """
 
 __all__ = [
-    "END_PROMPT",
+    "DEFAULT_PROMPT",
     "MAIN_PROMPT",
     "_ROOT_TASK",
     "_OUTLINE_TASK",

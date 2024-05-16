@@ -6,14 +6,14 @@ class ContentSerialize():
     def __init__(
         self,
         project_id: str = None,
-        id_counter: int = 0,
+        index: int = 0,
         parent: "ContentSerialize" = None,
     ):
         """
         初始化方法
         """
         self._project_id = project_id        
-        self._id_counter = id_counter
+        self._index = index
         self._parent = parent
 
         self._path: str = None
@@ -22,9 +22,50 @@ class ContentSerialize():
     @property
     def id(self):
         if self._parent == None:
-            return f'{self._id_counter}'
+            return f'{self._index}'
         else:
-            return ".".join([self._parent.id, f'{self._id_counter}'])
+            return ".".join([self._parent.id, f'{self._index}'])
+
+    @property
+    def parent(self):
+        return self._parent
+
+    @property
+    def root(self):
+        root = self
+        max_counter = 1e4
+
+        while root._parent:
+            root = root._parent
+            counter += 1
+            if counter > max_counter:
+                raise BaseException("父对象嵌套过多！")
+
+        return root
+
+    @property
+    def content(self) -> Dict[str, Union[str, int]]:
+        """
+        内容清单。
+        """
+        return {
+            "id": self.id,
+            "type": self.type,
+            "state": self.state,
+            "is_complete": self.is_complete,
+            "path": self.path or "",
+        }        
+
+    # 扁平化列表的内容列表
+    @property
+    def all_content(self) -> List[Dict[str, Union[str, int]]]:
+        """
+        从树形结构中转化为扁平化列表的内容清单列表。
+        """
+        items = [self.content]
+        for child in self._children.values():
+            items.extend(child.all_content)
+        return items
 
     def __str__(self):
         str_children = [f"<id:{obj.id}>" for obj in self._children.values()]
@@ -40,14 +81,14 @@ class ContentSerialize():
         if id is None:
             return None
 
-        id_counters = [int(counter) for counter in id.split(".")]
-        if id_counters[0] != self._id_counter:
+        indexs = [int(counter) for counter in id.split(".")]
+        if indexs[0] != self._index:
             raise BaseException("Invalid id: 无法在当前对象的子项列表中查询该ID!")
 
         current_item = self
 
-        if len(id_counters) > 1:
-            for counter in id_counters[1:]:
+        if len(indexs) > 1:
+            for counter in indexs[1:]:
                 current_item = current_item._children.get(counter)
             
                 if current_item is None:
@@ -57,14 +98,14 @@ class ContentSerialize():
 
     def add_item(self, **kwargs):
         new_kwargs = {} if kwargs is None else kwargs
-        id_counter = max(self._children) + 1 if self._children else 1
+        index = max(self._children) + 1 if self._children else 1
         new_kwargs.update({
             "project_id": self._project_id,
-            "id_counter": id_counter,
+            "index": index,
             "parent": self,
         })
 
-        content = ContentSerialize(**new_kwargs)
-        self._children[id_counter] = content
+        node = ContentSerialize(**new_kwargs)
+        self._children[index] = node
 
-        return content
+        return node
