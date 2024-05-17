@@ -72,7 +72,8 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
             if self.state == "todo" and not self.is_draft:
                 return self.ask_ai(task="请继续。")
             else:
-                self.ok()
+                if self.state in ['init', 'todo']:
+                    self.ok()
                 return self.state
         elif command == "help":
             return self.help_ai(task=args)

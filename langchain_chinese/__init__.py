@@ -15,14 +15,14 @@ from langchain_chinese.agents.base import (
     create_reason_agent,
 )
 
-from langchain_chinese.writing.base import BaseProject, WritingChain
-from langchain_chinese.writing.serialize import ContentSerialize
-from langchain_chinese.writing.command import BaseCommand
-from langchain_chinese.writing.state import ContentState
-from langchain_chinese.writing.node import ContentNode
-from langchain_chinese.writing.tree import ContentTree
-from langchain_chinese.writing.task import WritingTask
-from langchain_chinese.writing.ai import BaseAI
+from langchain_chinese.base import BaseProject, WritingChain
+from langchain_chinese.serialize import ContentSerialize
+from langchain_chinese.command import BaseCommand
+from langchain_chinese.state import ContentState
+from langchain_chinese.node import ContentNode
+from langchain_chinese.tree import ContentTree
+from langchain_chinese.task import WritingTask
+from langchain_chinese.ai import BaseAI
 
 from langchain_chinese.memory import WithMemoryBinding, MemoryManager
 
