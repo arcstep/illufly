@@ -25,6 +25,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         howto: str=None,
         summarise: str=None,
         text: str=None,
+        last_ai_reply_json: Dict[str, Any]={},
         **kwargs,
     ):
         ContentState.__init__(self)
@@ -44,10 +45,11 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         self.summarise = summarise
         self.text = text
 
-        self.ai = BaseAI()
         # 最后的AI回复
-        self.last_ai_reply_json: Dict[str, str] = {}
+        self.last_ai_reply_json = last_ai_reply_json
+
         self.is_draft: bool = False
+        self.ai = BaseAI()
 
     # inherit
     @property
@@ -140,7 +142,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
                 raise(BaseException(f"缺少必要的字段：{item}"))
 
     def on_init_todo(self):
-        super().on_init_todo()
+        # super().on_init_todo()
 
         self.reply_json_validator(self.last_ai_reply_json, ["标题名称", "总字数要求", "扩写指南"])
         self.title = self.last_ai_reply_json["标题名称"]
@@ -150,31 +152,31 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         self.is_draft = False
 
     def on_todo_done(self):
-        super().on_todo_done()
+        # super().on_todo_done()
 
-        if self.type == "outline":
-            # 删除旧的子项，逐个添加新的子项
-            self._children = {}
-            self.reply_json_validator(self.last_ai_reply_json, ["大纲列表"])
+        if self.is_draft:
+            if self.type == "outline":
+                # 删除旧的子项，逐个添加新的子项
+                self._children = {}
+                self.reply_json_validator(self.last_ai_reply_json, ["大纲列表"])
 
-            for item in self.last_ai_reply_json['大纲列表']:
-                self.reply_json_validator(item, ["标题名称", "总字数要求", "扩写指南"])
-                self.add_item(
-                    item_class=ContentNode,
-                    title=item['标题名称'],
-                    howto=item['扩写指南'],
-                    words_advice=item['总字数要求'],
-                )
-                self.is_draft = False
+                for item in self.last_ai_reply_json['大纲列表']:
+                    self.reply_json_validator(item, ["标题名称", "总字数要求", "扩写指南"])
+                    self.add_item(
+                        item_class=ContentNode,
+                        last_ai_reply_json=item,
+                        is_draft=True
+                    )
 
-        elif self.type == "paragraph":
-            self.reply_json_validator(self.last_ai_reply_json, ["内容摘要", "详细内容"])
-            self.summarise = self.last_ai_reply_json["内容摘要"]
-            self.text = self.last_ai_reply_json["详细内容"]
+            elif self.type == "paragraph":
+                self.reply_json_validator(self.last_ai_reply_json, ["内容摘要", "详细内容"])
+                self.summarise = self.last_ai_reply_json["内容摘要"]
+                self.text = self.last_ai_reply_json["详细内容"]
+
+            else:
+                raise BaseException("Unknown type for content: ", self.id)
+
             self.is_draft = False
-
-        else:
-            raise BaseException("Unknown type for content: ", self.id)
 
     def find_not_complete_node(self, type=None):
         """查询未完成子项"""
