@@ -59,7 +59,7 @@
 - [x] `ok` 将AI生成的内容保存到节点中
 - [x] `memory` 提取当前节点记忆
 - [ ] `outlines` 当前大纲
-- [ ] `all [number]` 已完成文字成果的部份文字，默认为全部
+- [ ] `show [number]` 已完成文字成果的部份文字，默认为全部
 - [ ] `export [filename.txt]` 导出文字到TXT文件
 - [ ] `export [filename.docx]` 导出文字到Word文件
 - [ ] `export [filename.md]` 导出文字到MD文件

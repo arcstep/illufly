@@ -60,13 +60,13 @@ class ContentSerialize():
 
     # 扁平化列表的内容列表
     @property
-    def all_content(self) -> List[Dict[str, Union[str, int]]]:
+    def all_nodes(self) -> List[Dict[str, Union[str, int]]]:
         """
         从树形结构中转化为扁平化列表的内容清单列表。
         """
         items = [self.content]
         for child in self._children.values():
-            items.extend(child.all_content)
+            items.extend(child.all_nodes)
         return items
 
     def __str__(self):
