@@ -32,7 +32,7 @@ class ContentTree(BaseCommand):
     def call(self, command, args, **kwargs):
         if command == 'move' and args:
             # 转移到新的指定对象
-            obj = self.root.get_item_by_id(resp['id'])
+            obj = self.root.get_item_by_id(args)
             self.todo_node = obj or self.todo_node
             return obj != None
 

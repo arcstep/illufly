@@ -8,7 +8,7 @@ class WritingTask(BaseCommand):
     """
 
     def __init__(self):
-        self.human_input = lambda x : x if x != None else input("\n👤: ")
+        self.human_input = lambda x=None : x if x != None else input("\n👤: ")
         self.tree = ContentTree()
 
     # inherit
@@ -19,59 +19,68 @@ class WritingTask(BaseCommand):
     # inherit
     @property
     def commands(self) -> List[str]:
-        return self.tree.commands
+        return ["quit"] + self.tree.commands
 
     # inherit
     def call(self, command, args, **kwargs):
-        return self.tree.call(command, args, **kwargs)
+        if command == "quit":
+            return "<QUIT>"
+        else:
+            return self.tree.call(command, args, **kwargs)
 
-    def step(self, user_said: str = None):
-        """单步执行"""
-
-        input_str = self.human_input(user_said)
-        return self.invoke(input_str)
-
-    def auto(self, ask: str = None, streaming = True):
+    def auto_write(self, user_said: str):
         """全自动运行"""
 
-        # 最多允许步数的限制
         counter = 0
-        max_steps = 10
-        user_said = ask
+        max_steps = 1e3
+
+        self.invoke(user_said)
+        self.invoke("ok")
 
         while(counter < max_steps):
             counter += 1
-            # 获取用户指令
-            user_said = self.human_input(user_said)
-            result = self.invoke(input_str)
 
-            # 流式返回
-            if streaming:
-                yield result['reply']
+            resp = self.invoke("todo")
+            if resp['reply']:
+                self.invoke(f"move {resp['reply']}")
+                if self.tree.todo_node.state == "init":
+                    self.invoke("ok")
+                if self.tree.todo_node.state == "todo":
+                    self.invoke("task 请继续")
+                    self.invoke("ok")
+            else:
+                print("END")
+                break
 
-            # 日志输出
-            print(result['reply'])
-
-            user_said = None
-
-    def repl(self, ask: str = None):
+    def repl_write(self, user_said: str = None):
         """每一步都询问"""
 
-        # 最多允许步数的限制
         counter = 0
-        command = None
-        prompt = None
-        max_steps = 10
-        user_said = ask
+        max_steps = 1e3
+
+        resp = self.invoke(user_said)
+        print(resp)
 
         while(counter < max_steps):
             counter += 1
 
-            # 获取用户指令
-            user_said = self.human_input(user_said)
-            result = self.invoke(input_str)
+            if self.tree.todo_node.is_complete:
+                resp = self.invoke("todo")
+                if resp['reply']:
+                    self.invoke(f"move {resp['reply']}")
 
-            # 日志输出
-            print(result['reply'])
+                if self.tree.todo_node.state == "init":
+                    self.invoke("ok")
 
-            user_said = None
+                if not self.tree.todo_node.is_draft:
+                    self.invoke("task 请继续")
+            
+            n = self.tree.todo_node
+            print(f'<{n.id} #{n.state}> {n.title}')
+
+            user_said = self.human_input()
+            resp = self.invoke(user_said)
+            print(resp)
+            if resp or resp['reply'] == '<QUIT>':
+                print("QUIT")
+                break
