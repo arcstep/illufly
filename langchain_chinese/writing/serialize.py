@@ -35,6 +35,7 @@ class ContentSerialize():
     def root(self):
         root = self
         max_counter = 1e4
+        counter = 0
 
         while root._parent:
             root = root._parent
