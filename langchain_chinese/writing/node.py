@@ -9,22 +9,22 @@ from .ai import BaseAI
 import datetime
 import random
 
-_INVALID_PROPS_COMMAND = ["title", "words_advice", "howto", "summarise", "text"]
-
 class ContentNode(ContentState, ContentSerialize, BaseCommand):
     """
     存储内容的树形结构，段落内容保存在叶子节点，而提纲保存在children的列表中。    
     """
 
+    invlalid_prop_commands = ["title", "words_advice", "howto", "summarise", "text"]
+
     def __init__(
         self,
-        type: str = "unknown",
-        words_limit: int = 500,
-        words_advice: int = None,
-        title: str = None,
-        howto: str = None,
-        summarise: str = None,
-        text: str = None,
+        type: str="unknown",
+        words_limit: int=500,
+        words_advice: int=None,
+        title: str=None,
+        howto: str=None,
+        summarise: str=None,
+        text: str=None,
         **kwargs,
     ):
         ContentState.__init__(self)
@@ -52,19 +52,19 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
     def commands(self) -> List[str]:
         """动态返回可用的指令集"""
         if self.state == "init":
-            if self.last_ai_reply_json == None:
+            if self.last_ai_reply_json is None:
                 return ["task"]
-            elif self.howto == None:
+            elif self.howto is None:
                 return ["task", "ok"]
             else:
-                return _INVALID_PROPS_COMMAND + ["task", "ok"]
+                return self.invlalid_prop_commands + ["task", "ok"]
         elif self.state in ["todo", "modi"]:
-            return _INVALID_PROPS_COMMAND + ["task", "ok"]
+            return self.invlalid_prop_commands + ["task", "ok"]
         else:
-            return _INVALID_PROPS_COMMAND
+            return self.invlalid_prop_commands
 
     # inherit
-    def call(self, command: str = None, args: str = None, **kwargs):
+    def call(self, command: str=None, args: str=None, **kwargs):
         if command == "task":
             return self.ask_ai(task=args)
         elif command == "ok":
@@ -72,7 +72,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
             return self.state
         elif command == "state":
             return self.state
-        elif command in _INVALID_PROPS_COMMAND:
+        elif command in self.invlalid_prop_commands:
             if v != None:
                 # 设置内容属性
                 res = self._cmd_set_prop(k, v)
@@ -86,7 +86,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
     def default_command(self) -> str:
         return "task"
 
-    def ask_ai(self, task: str = None):
+    def ask_ai(self, task: str=None):
         """向AI询问，获得生成结果"""
 
         task = task or "请开始。"
@@ -114,7 +114,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
 
     # 设置提示语输入
     def _cmd_set_prop(self, k: str, v: str):
-        if k in _INVALID_PROPS_COMMAND and v != None:
+        if k in self.invlalid_prop_commands and v != None:
             if self.state == "done":
                 # 如果修改属性，则转为修改状态
                 self._fsm.done_mod()
@@ -124,7 +124,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
             raise BaseException("No prompt input KEY: ", k)
 
     def _cmd_get_prop(self, k: str):
-        if k in _INVALID_PROPS_COMMAND:
+        if k in self.invlalid_prop_commands:
             return getattr(self, k)
         else:
             raise BaseException("No prompt input KEY: ", k)
@@ -170,13 +170,13 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         else:
             raise BaseException("Unknown type for content: ", self.id)
 
-    def not_complete_child(self, type = None):
+    def not_complete_child(self, type=None):
         """查询未完成子项"""
 
         obj = None
         search_types = ["outline", "paragraph", "unknown"] if type == None else [type]
 
-        for i, child in enumerate(self._children, start=1):
+        for child in self._children.values():
             if not child.is_complete and child.type in search_types:
                 obj = child
             else:
