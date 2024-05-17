@@ -11,7 +11,7 @@ import random
 
 class ContentNode(ContentState, ContentSerialize, BaseCommand):
     """
-    存储内容的树形结构，段落内容保存在叶子节点，而提纲保存在children的列表中。    
+    树形结构的内容存储节点，段落内容保存在叶子节点，而提纲保存在children的列表中。
     """
 
     invlalid_prop_commands = ["title", "words_advice", "howto", "summarise", "text"]
@@ -47,8 +47,10 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         self.ai = BaseAI()
         # 最后的AI回复
         self.last_ai_reply_json: Dict[str, str] = {}
+        self.is_draft: bool = False
 
     # inherit
+    @property
     def commands(self) -> List[str]:
         """动态返回可用的指令集"""
         if self.state == "init":
@@ -83,6 +85,8 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
 
         raise NotImplementedError(f"尚未实现这个命令：{command}")
 
+    # inherit
+    @property
     def default_command(self) -> str:
         return "task"
 
@@ -110,6 +114,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         chain = self.ai.get_chain(prompt)
         json = self.ai.ask_ai(task, chain, return_json=True)
         self.last_ai_reply_json = json
+        self.is_draft = True
         return json
 
     # 设置提示语输入
@@ -138,11 +143,11 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         super().on_init_todo()
 
         self.reply_json_validator(self.last_ai_reply_json, ["标题名称", "总字数要求", "扩写指南"])
-
         self.title = self.last_ai_reply_json["标题名称"]
         self.howto = self.last_ai_reply_json["扩写指南"]
         self.words_advice = self.last_ai_reply_json["总字数要求"]
         self.type = "outline" if self.words_advice > self.words_limit else "paragraph"
+        self.is_draft = False
 
     def on_todo_done(self):
         super().on_todo_done()
@@ -154,34 +159,59 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
 
             for item in self.last_ai_reply_json['大纲列表']:
                 self.reply_json_validator(item, ["标题名称", "总字数要求", "扩写指南"])
-
                 self.add_item(
                     item_class=ContentNode,
                     title=item['标题名称'],
                     howto=item['扩写指南'],
                     words_advice=item['总字数要求'],
                 )
+                self.is_draft = False
 
         elif self.type == "paragraph":
             self.reply_json_validator(self.last_ai_reply_json, ["内容摘要", "详细内容"])
             self.summarise = self.last_ai_reply_json["内容摘要"]
             self.text = self.last_ai_reply_json["详细内容"]
+            self.is_draft = False
 
         else:
             raise BaseException("Unknown type for content: ", self.id)
 
-    def not_complete_child(self, type=None):
+    def find_not_complete_node(self, type=None):
         """查询未完成子项"""
 
         obj = None
         search_types = ["outline", "paragraph", "unknown"] if type == None else [type]
+
+        if not self.is_complete and self.type in search_types:
+            return self
 
         for child in self._children.values():
             if not child.is_complete and child.type in search_types:
                 obj = child
             else:
                 if child._children:
-                    obj = child.not_completed_child
+                    obj = child.find_not_complete_node(type)
+
+            if obj:
+                break
+
+        return obj
+
+    def find_draft_node(self, type=None):
+        """查询未完成子项"""
+
+        obj = None
+        search_types = ["outline", "paragraph", "unknown"] if type == None else [type]
+
+        if self.is_draft and self.type in search_types:
+            return self
+
+        for child in self._children.values():
+            if child.is_draft and child.type in search_types:
+                obj = child
+            else:
+                if child._children:
+                    obj = child.find_draft_node(type)
 
             if obj:
                 break
@@ -195,6 +225,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
             "type": self.type,
             "state": self.state,
             "is_complete": self.is_complete,
+            "is_draft": self.is_draft,
             "words_advice": self.words_advice,
             "title": self.title or "",
             "howto": self.howto or "",
