@@ -20,9 +20,9 @@ poetry add textlong@latest
 `textlong` 中提供如下结构化长文档的创作模式：
 
 - 一键直出：输入写作要求后，由AI直接创作
-- （其他模式正在研发中，请参考路线图说明 [路线图](https://github.com/arcstep/textlong/blob/main/roadmap.md)）
+- （其他模式正在研发中，请参考[路线图](https://github.com/arcstep/textlong/blob/main/roadmap.md)）
 
-**应用示范：**
+**使用示例：**
 
 ```python
 import os
@@ -33,7 +33,13 @@ from textlong import WritingTask
 
 # 使用默认的智谱AI推理
 t = WritingTask()
-t.auto_write("task 给好基友写一封信, 1800字")
+t.auto_write("task 给好基友写一封信, 1800字，分4段就行")
+```
 
-t.invoke("")
+之后你可以查看生成的成果：
+```python
+# 查看创作大纲
+t.invoke("outlines")['reply']
+# 查看文本
+t.invoke("texts")['reply']
 ```
