@@ -5,8 +5,8 @@ class ContentSerialize():
 
     def __init__(
         self,
-        project_id: str = None,
-        index: int = 0,
+        project_id: str=None,
+        index: int=0,
         parent: "ContentSerialize" = None,
         **kwargs
     ):
@@ -99,7 +99,7 @@ class ContentSerialize():
 
     def add_item(self, item_class=None, **kwargs):
         if item_class is None:
-            item_class = ContentSerialize
+            item_class = self.__class__
 
         new_kwargs = {} if kwargs is None else kwargs
         index = max(self._children) + 1 if self._children else 1

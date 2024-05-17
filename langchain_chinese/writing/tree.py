@@ -10,13 +10,11 @@ class ContentTree(BaseCommand):
     def __init__(
         self,
         todo_node: Optional[ContentNode] = None,
-        memory: Optional[MemoryManager] = None,
         **kwargs
     ):
         super().__init__(**kwargs)
 
         self.todo_node = TreeContent() if todo_node == None else todo_node
-        self.memory = memory
 
     @property
     def root(self):

@@ -12,8 +12,8 @@ class BaseAI():
     向AI提问。
     """
     
-    def __init__(self, llm: Runnable = None):
-        if llm == None:
+    def __init__(self, llm: Runnable=None):
+        if llm is None:
             if os.environ.get("ZHIPUAI_API_KEY"):
                 from langchain_zhipu import ChatZhipuAI
                 self.llm = ChatZhipuAI()
@@ -66,11 +66,11 @@ class BaseAI():
     def prompt_todo(
         self,
         title: str,
-        content_type: str = "paragraph",
-        words_limit: int = 500,
-        words_advice: int = 500,
-        howto: str = None,
-        outline_exist: List[Any] = None,
+        content_type: str="paragraph",
+        words_limit: int=500,
+        words_advice: int=500,
+        howto: str=None,
+        outline_exist: List[Any]=None,
     ):
         main_prompt = MAIN_PROMPT
         auto_prompt = _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT
@@ -110,7 +110,7 @@ class BaseAI():
     def template_modi(self):
         return None
     
-    def get_chain(self, prompt = None):
+    def get_chain(self, prompt=None):
         # 构造链
         if prompt == None:
             chain = self.prompt_default() | self.llm | StrOutputParser()
@@ -119,7 +119,7 @@ class BaseAI():
 
         return chain
 
-    def ask_ai(self, task, chain: Runnable = None, return_json = True):
+    def ask_ai(self, task, chain: Runnable=None, return_json=True):
         """AI推理"""
 
         chain = chain or self.get_chain()
