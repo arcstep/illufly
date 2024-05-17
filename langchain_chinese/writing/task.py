@@ -77,10 +77,11 @@ class WritingTask(BaseCommand):
             
             n = self.tree.todo_node
             print(f'<{n.id} #{n.state}> {n.title}')
+            print(self.commands)
 
             user_said = self.human_input()
             resp = self.invoke(user_said)
             print(resp)
-            if resp or resp['reply'] == '<QUIT>':
+            if not resp or resp['reply'] == '<QUIT>':
                 print("QUIT")
                 break
