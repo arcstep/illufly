@@ -9,12 +9,14 @@ class BaseCommand():
       按照优先顺序检查各个对象中包含的commands，来决定由哪个对象执行指令。
     """
 
+    @property
     def commands(self) -> List[str]:
         """
         列举有哪些可用的指令。
         """
         raise NotImplementedError("子类必须实现这个方法")
     
+    @property
     def default_command(self) -> str:
         return None
 
@@ -24,13 +26,18 @@ class BaseCommand():
         通常，你应该通过重载call函数来定义执行逻辑，再通过invoke函数调用。
         """
         resp = self.parse(user_said)
+        print("-"*20, "invoke", "-"*20)
+        print(self.__class__)
+        print(resp)
 
-        if resp and resp['command'] in self.commands():
+        if resp and resp['command'] in self.commands:
             resp['reply'] = self.call(**resp)
+        else:
+            NotImplementedError("用户输入不支持：", resp)            
 
         return resp
 
-    def call(self, **kwargs):
+    def call(self, args, **kwargs):
         """
         执行指令。
         """
@@ -54,13 +61,16 @@ class BaseCommand():
         if user_said is None:
             return {"id": None, "command": None, "args": None}
 
-        pattern = r'^\s*(' + '|'.join(self.commands()) + r')?\s*(.*)$'
+        pattern = r'^\s*(' + '|'.join(self.commands) + r')?\s*(.*)$'
         match = re.match(pattern, user_said, re.IGNORECASE)
+ 
+        print("-"*20, "match", "-"*20)
+        print(match.groups())
+        print(self.commands)
+        print("default command:", self.default_command)
 
         if match:
             command, args = match.groups()
-            command = command or self.default_command()
-            args = None if args == command else args
-            return {"command": command, "args": args}
+            return {"command": command or self.default_command, "args": args}
         else:
-            return {"command": self.default_command(), "args": None}
+            return {"command": self.default_command, "args": None}
