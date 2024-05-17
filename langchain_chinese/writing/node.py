@@ -14,8 +14,6 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
     树形结构的内容存储节点，段落内容保存在叶子节点，而提纲保存在children的列表中。
     """
 
-    invlalid_prop_commands = ["title", "words_advice", "howto", "summarise", "text"]
-
     def __init__(
         self,
         type: str="unknown",
@@ -51,38 +49,50 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         self.is_draft: bool = False
         self.ai = BaseAI()
 
+    howto_commands = ["title", "words_advice", "howto"]
+    result_commands = ["summarise", "text"]
+    state_commands = ["state", "memory", "ok", "todo", "modi", "task"]
+
     # inherit
     @property
     def commands(self) -> List[str]:
-        """动态返回可用的指令集"""
-        if self.state == "init":
-            if self.last_ai_reply_json is None:
-                return ["task"]
-            elif self.howto is None:
-                return ["task", "ok"]
-            else:
-                return self.invlalid_prop_commands + ["task", "ok"]
-        elif self.state in ["todo", "modi"]:
-            return self.invlalid_prop_commands + ["task", "ok"]
-        else:
-            return self.invlalid_prop_commands
+        """
+        TODO: 考虑动态返回可用的指令集。
+              但要避免不合法的指令被当作默认指令的参数返回！！！
+        """
+        return self.howto_commands + self.result_commands + self.state_commands + [self.default_command]
 
     # inherit
     def call(self, command: str=None, args: str=None, **kwargs):
-        if command == "task":
-            return self.ask_ai(task=args)
+        if command == "state":
+            return {"id": self.id, "state": self.state, "is_draft": self.is_draft, "is_complete": self.is_complete}
+        elif command == "memory":
+            return self.ai.memory.buffer_as_str
         elif command == "ok":
-            self.ok()
-            return self.state
-        elif command == "state":
-            return self.state
-        elif command in self.invlalid_prop_commands:
-            if v != None:
-                # 设置内容属性
-                res = self._cmd_set_prop(k, v)
+            if self.state == "todo" and not self.is_draft:
+                return self.ask_ai(task="请继续。")
+            else:
+                self.ok()
+                return self.state
+        elif command == "help":
+            return self.help_ai(task=args)
+        elif command == "task":
+            if self.state == "done":
+                return "<END>"
+            else:
+                return self.ask_ai(task=args)
+        elif command in self.result_commands:
+            res = self._cmd_set_prop(command, args) if args and len(args) > 0 else self._cmd_get_prop(command)
+            return res
+        elif command in self.howto_commands:
+            if args and len(args) > 0:
+                # 修改扩写依据后，应当取消草稿状态：
+                #   以便优先触发task指令，重新生成结果
+                res = self._cmd_set_prop(command, args)
+                self.is_draft = False
             else:
                 # 打印指定对象的指定属性
-                res = self._cmd_get_prop(k)
+                res = self._cmd_get_prop(command)
             return res
 
         raise NotImplementedError(f"尚未实现这个命令：{command}")
@@ -90,12 +100,22 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
     # inherit
     @property
     def default_command(self) -> str:
-        return "task"
+        return "help"
+
+    def help_ai(self, task: str=None):
+        """向AI询问，获得生成结果"""
+
+        default_task = "有哪些命令可以使用？"
+
+        chain = self.ai.get_chain()
+        chat = self.ai.ask_ai(task or default_task, chain, return_json=False)
+
+        return chat
 
     def ask_ai(self, task: str=None):
         """向AI询问，获得生成结果"""
 
-        task = task or "请开始。"
+        default_task = "请开始。"
 
         if self.state == "init":
             prompt = self.ai.prompt_init()
@@ -114,27 +134,21 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
             raise NotImplementedError(f"<{self.id}> 对象在状态[{self.state}]没有指定提示语模板")
 
         chain = self.ai.get_chain(prompt)
-        json = self.ai.ask_ai(task, chain, return_json=True)
+        json = self.ai.ask_ai(task or default_task, chain, return_json=True)
         self.last_ai_reply_json = json
         self.is_draft = True
+
         return json
 
     # 设置提示语输入
     def _cmd_set_prop(self, k: str, v: str):
-        if k in self.invlalid_prop_commands and v != None:
-            if self.state == "done":
-                # 如果修改属性，则转为修改状态
-                self._fsm.done_mod()
-            setattr(self, k, v)
-            return True
-        else:
-            raise BaseException("No prompt input KEY: ", k)
+        setattr(self, k, v)
+        if self.state != 'todo':
+            self.edit()
+        return True
 
     def _cmd_get_prop(self, k: str):
-        if k in self.invlalid_prop_commands:
-            return getattr(self, k)
-        else:
-            raise BaseException("No prompt input KEY: ", k)
+        return getattr(self, k)
 
     def reply_json_validator(self, item:Dict[str, Any], keys:List[str]):
         for k in keys:

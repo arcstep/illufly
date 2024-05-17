@@ -27,6 +27,9 @@ class ContentState(StateMachine):
     todo_done = s_todo.to(s_done, on="on_todo_done")
     modi_done = s_modi.to(s_done, on="on_modi_done")
     ok = init_todo | todo_done | modi_done
+    
+    # 不需要处理事件，而是直接转移状态
+    edit = s_init.to(s_todo) | s_done.to(s_todo) | s_modi.to(s_todo)
 
     def on_init_todo(self):
         """<#init> ok"""
