@@ -26,9 +26,6 @@ class BaseCommand():
         通常，你应该通过重载call函数来定义执行逻辑，再通过invoke函数调用。
         """
         resp = self.parse(user_said)
-        print("-"*20, "invoke", "-"*20)
-        print(self.__class__)
-        print(resp)
 
         if resp and resp['command'] in self.commands:
             resp['reply'] = self.call(**resp)
@@ -64,11 +61,6 @@ class BaseCommand():
         pattern = r'^\s*(' + '|'.join(self.commands) + r')?\s*(.*)$'
         match = re.match(pattern, user_said, re.IGNORECASE)
  
-        print("-"*20, "match", "-"*20)
-        print(match.groups())
-        print(self.commands)
-        print("default command:", self.default_command)
-
         if match:
             command, args = match.groups()
             return {"command": command or self.default_command, "args": args}
