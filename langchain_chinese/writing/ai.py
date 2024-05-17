@@ -119,7 +119,7 @@ class BaseAI():
 
         return chain
 
-    def ask_ai(self, task, chain: Runnable=None, return_json=True):
+    def ask_ai(self, task, chain: Runnable=None, return_json=False):
         """AI推理"""
 
         chain = chain or self.get_chain()
