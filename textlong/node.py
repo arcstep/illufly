@@ -128,7 +128,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
                 words_limit=self.words_limit,
                 words_advice=self.words_advice,
                 howto=self.howto,
-                outline_exist=self.root.all_outlines
+                outline_exist=self.root.get_outlines()
             )
 
         else:
@@ -250,19 +250,17 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
             "text": self.text or "",
         }
 
-    @property
-    def all_outlines(self) -> List[Dict[str, Union[str, int]]]:
+    def get_outlines(self) -> List[Dict[str, Union[str, int]]]:
         """获得大纲清单"""
         outlines = [
             f"{x['id']} {x['title']} \n  扩写指南 >>> {x['howto']}\n  内容摘要 >>> {x['summarise']}"
-            for x in self.all_content
+            for x in self.all_nodes
         ]
         return '\n'.join(outlines)
 
-    @property
-    def all_text(self):
+    def show(self):
         outlines = [
             f"{x['id']} {x['title']} \n {x['text']}"
-            for x in self.all_content
+            for x in self.all_nodes
         ]
         return '\n'.join(outlines)

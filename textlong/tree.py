@@ -55,8 +55,8 @@ class ContentTree(BaseCommand):
             else:
                 obj = self.todo_node
             return obj.id if obj else None
-        elif command == "all":
-            return self.root.all_content
+        elif command == "nodes":
+            return self.root.all_nodes
         else:
             return self.todo_node.call(command, args, **kwargs)
 
