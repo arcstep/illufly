@@ -21,7 +21,7 @@ from langchain_chinese.writing.command import BaseCommand
 from langchain_chinese.writing.state import ContentState
 from langchain_chinese.writing.node import ContentNode
 from langchain_chinese.writing.tree import ContentTree
-from langchain_chinese.writing.task import WritingTask, Task
+from langchain_chinese.writing.task import WritingTask
 from langchain_chinese.writing.ai import BaseAI
 
 from langchain_chinese.memory import WithMemoryBinding, MemoryManager
