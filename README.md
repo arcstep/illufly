@@ -17,12 +17,10 @@ poetry add langchain_chinese@latest langchain_zhipu@latest
 
 ## 二、结构化长文生成能力
 
-计划在 `langchain_chinese` 中提供如下结构化长文档的创作模式：
+`langchain_chinese` 中提供如下结构化长文档的创作模式：
 
 - 一键直出：输入写作要求后，由AI直接创作
-- 模板直出：输入写作要求后，先上传提纲模板，再由AI创作
-- 长文修改：输入写作要求后，先上传要修改的文案，再由AI优化
-- 长文仿写：输入写作要求后，先上传要仿写的文案，再由AI仿写
+- （其他模式正在研发中，请参考路线图说明 roadmap.md）
 
 **应用示范：**
 
@@ -34,8 +32,8 @@ load_dotenv(find_dotenv(), override=True)
 from langchain_chinese import WritingTask
 
 # 使用默认的智谱AI推理
-wp = WritingTask(task_mode="auto")
-wp.run()
-```
+t = WritingTask()
+t.auto_write("task 给好基友写一封信, 1800字")
 
-例如，你可以继续输入："帮我写一个1000字小故事"，就会进入一个自动创作过程。
+t.invoke("")
+```
