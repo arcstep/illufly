@@ -156,9 +156,10 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
                 self.reply_json_validator(item, ["标题名称", "总字数要求", "扩写指南"])
 
                 self.add_item(
-                    title = item['标题名称'],
-                    howto = item['扩写指南'],
-                    words_advice = item['总字数要求'],
+                    item_class=ContentNode,
+                    title=item['标题名称'],
+                    howto=item['扩写指南'],
+                    words_advice=item['总字数要求'],
                 )
 
         elif self.type == "paragraph":
