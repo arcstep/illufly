@@ -27,6 +27,9 @@ class BaseCommand():
         """
         resp = self.parse(user_said)
 
+        # 打印执行的指令
+        print(resp)
+
         if resp and resp['command'] in self.commands:
             resp['reply'] = self.call(**resp)
         else:
@@ -63,6 +66,8 @@ class BaseCommand():
  
         if match:
             command, args = match.groups()
-            return {"command": command or self.default_command, "args": args}
+            command = command if command and len(command) > 0 else self.default_command
+            args = args if args and len(args) > 0 else None
+            return {"command": command, "args": args}
         else:
             return {"command": self.default_command, "args": None}
