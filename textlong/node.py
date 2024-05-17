@@ -24,6 +24,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         summarise: str=None,
         text: str=None,
         last_ai_reply_json: Dict[str, Any]={},
+        is_draft=False,
         **kwargs,
     ):
         ContentState.__init__(self)
@@ -45,8 +46,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
 
         # 最后的AI回复
         self.last_ai_reply_json = last_ai_reply_json
-
-        self.is_draft: bool = False
+        self.is_draft: bool = is_draft
         self.ai = BaseAI()
 
     howto_commands = ["title", "words_advice", "howto"]
@@ -177,11 +177,20 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
 
                 for item in self.last_ai_reply_json['大纲列表']:
                     self.reply_json_validator(item, ["标题名称", "总字数要求", "扩写指南"])
-                    self.add_item(
-                        item_class=ContentNode,
+                    words_advice = item["总字数要求"]
+                    type = "outline" if words_advice > self.words_limit else "paragraph"
+                    title = item["标题名称"]
+                    howto = item["扩写指南"]
+                    node = self.add_item(
+                        type=type,
+                        title=title,
+                        howto=howto,
+                        words_advice=words_advice,
                         last_ai_reply_json=item,
-                        is_draft=True
+                        is_draft=False,
+                        item_class=ContentNode,
                     )
+                    node.edit()
 
             elif self.type == "paragraph":
                 self.reply_json_validator(self.last_ai_reply_json, ["内容摘要", "详细内容"])
@@ -254,13 +263,13 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         """获得大纲清单"""
         outlines = [
             f"{x['id']} {x['title']} \n  扩写指南 >>> {x['howto']}\n  内容摘要 >>> {x['summarise']}"
-            for x in self.all_nodes
+            for x in self.all_content
         ]
         return '\n'.join(outlines)
 
-    def show(self):
+    def get_texts(self):
         outlines = [
             f"{x['id']} {x['title']} \n {x['text']}"
-            for x in self.all_nodes
+            for x in self.all_content
         ]
         return '\n'.join(outlines)

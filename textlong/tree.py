@@ -26,7 +26,7 @@ class ContentTree(BaseCommand):
     # inherit
     @property
     def commands(self) -> List[str]:
-        return ["move", "todo", "draft", "all"] + self.todo_node.commands
+        return ["move", "todo", "draft", "outlines", "nodes", "texts"] + self.todo_node.commands
 
     # inherit
     def call(self, command, args, **kwargs):
@@ -56,7 +56,11 @@ class ContentTree(BaseCommand):
                 obj = self.todo_node
             return obj.id if obj else None
         elif command == "nodes":
-            return self.root.all_nodes
+            return self.root.all_content
+        elif command == "outlines":
+            return self.root.get_outlines()
+        elif command == "texts":
+            return self.root.get_texts()
         else:
             return self.todo_node.call(command, args, **kwargs)
 
