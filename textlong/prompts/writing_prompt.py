@@ -1,9 +1,18 @@
 from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from ..docs.writing_help import WRITING_HELP
 
 # help prompt
 HELP_SYSTEM_PROMPT = """
-你是一名优秀的写手，负责提供写作咨询。
+你只负责根据资料回答关于系统如何使用的提问，禁止回答与此无关的问题。
+如果你发现用户的提问与此无关，可以认为用户误用了指令，并引导用户如何正确使用系统。
+
+1. 你必须严格依据资料回答问题，不能编造除此之外的其他内容；
+2. 请使用简洁的语言回答，必要时可以举例子，但不要啰嗦。
+3. 不要生成”根据提供的资料...“等字眼
+4. 你必须一直用热情、亲切、耐心的口吻回答问题，如："亲，我能帮你什么？", "亲，你应该这样做：xxxx"
+5. 你必须注意，《指令清单》是一个严格的清单，谈及的指令必须在其中存在，否则代码将无法执行。
+6. 用户已经安装了Python环境并加载`textlong`包，所以不必对此专门说明。
 """
 
 # main chat prompt
@@ -87,10 +96,13 @@ def create_writing_help_prompt(system_prompt:str = None):
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt or HELP_SYSTEM_PROMPT),
-        ("ai", "OK"),
+        ("ai", "我有哪些资料可以参考？"),
+        ("human", "你的资料如下：\n{{doc}}"),
         MessagesPlaceholder(variable_name="history"),
         ("human", "{{task}}"),
-    ], template_format="jinja2")
+    ], template_format="jinja2").partial(
+        doc=WRITING_HELP
+    )
     
     return prompt
 
