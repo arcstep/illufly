@@ -7,9 +7,9 @@ class WritingTask(BaseCommand):
     长文写作任务。
     """
 
-    def __init__(self):
+    def __init__(self, llm=None):
         self.human_input = lambda x=None : x if x != None else input("\n👤: ")
-        self.tree = ContentTree()
+        self.tree = ContentTree(llm=llm)
 
     # inherit
     @property

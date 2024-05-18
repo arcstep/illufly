@@ -1,5 +1,8 @@
-# end chat prompt
-DEFAULT_PROMPT = """
+from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+# help prompt
+HELP_SYSTEM_PROMPT = """
 你是一名优秀的写手，负责提供写作咨询。
 """
 
@@ -13,7 +16,7 @@ MAIN_PROMPT = """
 
 # task_instruction
 
-_ROOT_TASK = "你是一名优秀的写手，任务是对写作任务做评估，给出总体写作建议。"
+_INIT_TASK = "你是一名优秀的写手，任务是对写作任务做评估，给出总体写作建议。"
 _OUTLINE_TASK = "你是一名优秀的写手，可以构思写作思路、扩展写作提纲。"
 _PARAGRAPH_TASK = "你是一名优秀的写手，负责详细构思段落细节。"
 
@@ -28,7 +31,7 @@ _JSON_INSTRUCTION = "".join([
 
 # output_format
 
-_ROOT_FORMAT = """
+_INIT_FORMAT = """
 （请确保输出符合JSON语法限定，并且不要出现其他的JSON键，以便我能够正确解析）
 ```json
 {
@@ -78,15 +81,79 @@ _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT = """
 {{outline_exist}}
 """
 
-__all__ = [
-    "DEFAULT_PROMPT",
-    "MAIN_PROMPT",
-    "_ROOT_TASK",
-    "_OUTLINE_TASK",
-    "_PARAGRAPH_TASK",
-    "_JSON_INSTRUCTION",
-    "_ROOT_FORMAT",
-    "_OUTLINE_FORMAT",
-    "_PARAGRAPH_FORMAT",
-    "_AUTO_OUTLINE_OR_PARAGRAPH_PROMPT",
-]
+
+def create_writing_help_prompt(system_prompt:str = None):
+    """咨询系统如何使用"""
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt or HELP_SYSTEM_PROMPT),
+        ("ai", "OK"),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{{task}}"),
+    ], template_format="jinja2")
+    
+    return prompt
+
+def create_writing_init_prompt(main_prompt=None, task_prompt=None, output_format=None, json_instruction=None):
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", main_prompt or MAIN_PROMPT),
+        ("ai", "OK"),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{{task}}"),
+    ], template_format="jinja2").partial(
+        # 任务指南
+        task_instruction=task_prompt or _INIT_TASK,
+        # 输出格式要求
+        output_format=output_format or _INIT_FORMAT,
+        # JSON严格控制
+        json_instruction=json_instruction or _JSON_INSTRUCTION,
+    )
+
+    return prompt
+
+def create_writing_todo_prompt(
+    title: str,
+    content_type: str="paragraph",
+    words_limit: int=500,
+    words_advice: int=500,
+    howto: str=None,
+    outline_exist: List[Any]=None,
+    main_prompt: str=None,
+    auto_prompt: str=None,
+    json_instruction: str=None,
+):
+    main_prompt = MAIN_PROMPT
+    auto_prompt = _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT
+    json_instruction = _JSON_INSTRUCTION 
+
+    if content_type == "outline":
+        task_prompt   = _OUTLINE_TASK
+        output_format = _OUTLINE_FORMAT
+    else:
+        task_prompt   = _PARAGRAPH_TASK
+        output_format = _PARAGRAPH_FORMAT
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", main_prompt),
+        ("ai", "有什么具体要求？"),
+        ("human", auto_prompt),
+        ("ai", "OK"),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{{task}}")
+    ], template_format="jinja2").partial(
+        # 字数限制
+        words_limit=words_limit,
+        words_advice=words_advice,
+        # 写作要求
+        title=title,
+        outline_exist=outline_exist,
+        task_instruction=task_prompt,
+        howto=howto,
+        # 输出格式要求
+        output_format=output_format,
+        # JSON严格控制
+        json_instruction=json_instruction,
+    )
+
+    return prompt
