@@ -59,7 +59,7 @@ class WritingTask(BaseCommand):
         max_steps = 1e3
 
         resp = self.invoke(user_said)
-        print(resp)
+        # print(resp)
 
         while(counter < max_steps):
             counter += 1
@@ -76,12 +76,12 @@ class WritingTask(BaseCommand):
                     self.invoke("task 请继续")
             
             n = self.tree.todo_node
-            print(f'<{n.id} #{n.state}> {n.title}')
-            print(self.commands)
+            print(f'<{n.id} #{n.state}> [Title: {n.title}]')
+            # print(self.commands)
 
             user_said = self.human_input()
             resp = self.invoke(user_said)
-            print(resp)
+            # print(resp)
             if not resp or resp['reply'] == '<QUIT>':
                 print("QUIT")
                 break

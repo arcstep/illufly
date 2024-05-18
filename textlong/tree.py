@@ -7,12 +7,13 @@ class ContentTree(BaseCommand):
 
     def __init__(
         self,
-        todo_node: Optional[ContentNode] = None,
+        todo_node: Optional[ContentNode]=None,
+        llm=None,
         **kwargs
     ):
         super().__init__(**kwargs)
 
-        self.todo_node = ContentNode() if todo_node == None else todo_node
+        self.todo_node = ContentNode(llm=llm) if todo_node == None else todo_node
 
     @property
     def root(self):

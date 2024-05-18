@@ -7,7 +7,7 @@ class ContentSerialize():
         self,
         project_id: str=None,
         index: int=0,
-        parent: "ContentSerialize" = None,
+        parent: "ContentSerialize"=None,
         **kwargs
     ):
         """
