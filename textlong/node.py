@@ -31,15 +31,17 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         last_ai_reply_json: Dict[str, Any]={},
         is_draft=False,
         llm=None,
+        memory=None,
         state=None,
         **kwargs,
     ):
+        ContentSerialize.__init__(self, **kwargs)
+        BaseCommand.__init__(self)
         if state:
+            # 初始化节点时可以直接指定FSM的初始值
             ContentState.__init__(self, start_value=state)
         else:
             ContentState.__init__(self)
-
-        ContentSerialize.__init__(self, **kwargs)
 
         self.type = type
 
@@ -58,7 +60,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         # 最后的AI回复
         self.last_ai_reply_json = last_ai_reply_json
         self.is_draft: bool = is_draft
-        self.ai = BaseAI(llm)
+        self.ai = BaseAI(llm, memory)
 
     howto_commands = ["title", "words_advice", "howto"]
     result_commands = ["summarise", "text"]
@@ -200,6 +202,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
                         is_draft=False,
                         item_class=ContentNode,
                         llm=self.ai.llm,
+                        memory=self.ai.memory,
                     )
                     node.edit()
 
@@ -263,11 +266,13 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
             "state": self.state,
             "is_complete": self.is_complete,
             "is_draft": self.is_draft,
+            "words_limit": self.words_limit,
             "words_advice": self.words_advice,
             "title": self.title or "",
             "howto": self.howto or "",
-            "summarise": self.summarise or None,
+            "summarise": self.summarise or "",
             "text": self.text or "",
+            "last_ai_reply_json": self.last_ai_reply_json,
         }
 
     def get_outlines(self) -> List[Dict[str, Union[str, int]]]:
