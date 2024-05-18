@@ -43,7 +43,7 @@ task = WritingTask(llm=ChatOpenAI())
 task.auto_write("task 给好基友写一封信, 1800字，分4段就行")
 ```
 
-**4. 使用`repl_write`方法在进入循环控制台生成一段长文：**
+**4. 使用`repl_write`方法控制台，在人工干预过程中生成一段长文：**
 
 ```python
 task.repl_write("task 给好基友写一封信, 1800字，分4段就行")

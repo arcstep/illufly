@@ -1,7 +1,15 @@
 from typing import Any, Dict, Iterator, List, Optional, Union
+from dotenv import find_dotenv
+import os
+import json
 
 class ContentSerialize():
-    """支持序列化的属性存储结构"""
+    """
+    支持序列化的属性存储结构
+    
+    args:
+    - project_id 项目的ID，在对多个项目同时操作时，
+    """
 
     def __init__(
         self,
@@ -13,12 +21,12 @@ class ContentSerialize():
         """
         初始化方法
         """
-        self._project_id = project_id        
+        self._project_id = project_id or "default"
         self._index = index
         self._parent = parent
 
-        self._path: str = None
         self._children: Dict[str, "ContentSerialize"] = {}
+
 
     @property
     def id(self):
@@ -52,10 +60,6 @@ class ContentSerialize():
         """
         return {
             "id": self.id,
-            "type": self.type,
-            "state": self.state,
-            "is_complete": self.is_complete,
-            "path": self.path or "",
         }        
 
     # 扁平化列表的内容列表
@@ -73,11 +77,22 @@ class ContentSerialize():
         str_children = [f"<id:{obj.id}>" for obj in self._children.values()]
         return f"<{self.__class__.__name__} id:{self.id}, children:{str_children}>"
 
+    def get_project_folder(self):
+        """从环境变量中获得项目的存储目录"""
+        return os.getenv("TEXTLONG_FOLDER") or "textlong_data"
+
     def load(self):
         pass  # 实现加载逻辑
 
-    def save(self):
-        pass  # 实现保存逻辑
+    def dump(self):
+        """导出内容"""
+        project_folder = self.get_project_folder()
+        for item in self.all_content:
+            print(item)
+            path = os.path.join(project_folder, "contents", item['id']) + ".json"
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w') as f:
+                json.dump(item, f, indent=4)
 
     def get_item_by_id(self, id: str) -> Optional["ContentSerialize"]:
         if id is None:
