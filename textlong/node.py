@@ -31,9 +31,14 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         last_ai_reply_json: Dict[str, Any]={},
         is_draft=False,
         llm=None,
+        state=None,
         **kwargs,
     ):
-        ContentState.__init__(self)
+        if state:
+            ContentState.__init__(self, start_value=state)
+        else:
+            ContentState.__init__(self)
+
         ContentSerialize.__init__(self, **kwargs)
 
         self.type = type
