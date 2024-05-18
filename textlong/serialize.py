@@ -27,7 +27,6 @@ class ContentSerialize():
 
         self._children: Dict[str, "ContentSerialize"] = {}
 
-
     @property
     def id(self):
         if self._parent == None:
@@ -81,15 +80,54 @@ class ContentSerialize():
         """从环境变量中获得项目的存储目录"""
         return os.getenv("TEXTLONG_FOLDER") or "textlong_data"
 
+    def sort_key(self, filename: str) -> List[int]:
+        return list(map(int, filename[:-5].split('.')))
+
     def load(self):
-        pass  # 实现加载逻辑
+        """加载内容及其所有子节点"""
+
+        project_folder = self.get_project_folder()
+        contents_dir = os.path.join(project_folder, self._project_id, "contents")
+
+        # 检查目录是否存在
+        if not os.path.exists(contents_dir):
+            raise FileNotFoundError(f"目录 {contents_dir} 不存在")
+
+        # 读取目录下的所有文件
+        all_files = sorted(os.listdir(contents_dir), key=self.sort_key)
+        print(all_files)
+        for filename in all_files:
+            basename = os.path.basename(filename)
+            if filename.endswith(".json") and basename.startswith(self.id) and basename != f'{self.id}.json':
+                with open(os.path.join(contents_dir, filename), 'r') as f:
+                    data = json.load(f)
+
+                # 从数据中创建 ContentSerialize 对象
+                item_id = data.get('id')
+                if item_id is None:
+                    raise ValueError(f"文件 {filename} 中的数据没有 'id' 字段")
+
+                # 分割 id，获取父节点和当前节点的索引
+                id_parts = item_id.split('.')
+                parent_id = '.'.join(id_parts[:-1]) if len(id_parts) > 1 else None
+                index = int(id_parts[-1])
+
+                # 查找父节点
+                parent = self.get_item_by_id(parent_id) if parent_id else self
+
+                # 创建新的 ContentSerialize 对象并添加到父节点的 _children 字典中
+                node = self.__class__(project_id=self._project_id, index=index, parent=parent, **data)
+                parent._children[index] = node
+
+        return self
 
     def dump(self):
-        """导出内容"""
+        """导出内容及其所有子节点"""
+
         project_folder = self.get_project_folder()
         for item in self.all_content:
             print(item)
-            path = os.path.join(project_folder, "contents", item['id']) + ".json"
+            path = os.path.join(project_folder, self._project_id, "contents", item['id']) + ".json"
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w') as f:
                 json.dump(item, f, indent=4)
