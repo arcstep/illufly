@@ -5,6 +5,11 @@ from langchain_core.output_parsers import JsonOutputParser
 from .serialize import ContentSerialize
 from .state import ContentState
 from .command import BaseCommand
+from .prompts import (
+    create_writing_help_prompt,
+    create_writing_init_prompt,
+    create_writing_todo_prompt,
+)
 from .ai import BaseAI
 import datetime
 import random
@@ -25,6 +30,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         text: str=None,
         last_ai_reply_json: Dict[str, Any]={},
         is_draft=False,
+        llm=None,
         **kwargs,
     ):
         ContentState.__init__(self)
@@ -47,7 +53,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         # 最后的AI回复
         self.last_ai_reply_json = last_ai_reply_json
         self.is_draft: bool = is_draft
-        self.ai = BaseAI()
+        self.ai = BaseAI(llm)
 
     howto_commands = ["title", "words_advice", "howto"]
     result_commands = ["summarise", "text"]
@@ -108,8 +114,8 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
 
         default_task = "有哪些命令可以使用？"
 
-        chain = self.ai.get_chain()
-        chat = self.ai.ask_ai(task or default_task, chain, return_json=False)
+        prompt = create_writing_help_prompt()
+        chat = self.ai.ask_ai(task or default_task, prompt, return_json=False)
 
         return chat
 
@@ -119,10 +125,10 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         default_task = "请开始。"
 
         if self.state == "init":
-            prompt = self.ai.prompt_init()
+            prompt = create_writing_init_prompt()
 
         elif self.state == "todo":
-            prompt = self.ai.prompt_todo(
+            prompt = create_writing_todo_prompt(
                 title=self.title,
                 content_type=self.type,
                 words_limit=self.words_limit,
@@ -134,8 +140,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         else:
             raise NotImplementedError(f"<{self.id}> 对象在状态[{self.state}]没有指定提示语模板")
 
-        chain = self.ai.get_chain(prompt)
-        json = self.ai.ask_ai(task or default_task, chain, return_json=True)
+        json = self.ai.ask_ai(task or default_task, prompt, return_json=True)
         self.last_ai_reply_json = json
         self.is_draft = True
 
@@ -189,6 +194,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
                         last_ai_reply_json=item,
                         is_draft=False,
                         item_class=ContentNode,
+                        llm=self.ai.llm,
                     )
                     node.edit()
 
