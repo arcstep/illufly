@@ -1,18 +1,25 @@
 WRITING_HELP = """
-# 这是一个关于textlong和WritingTask的使用指南
+# `textlong`包使用指南
 
-## 基本介绍
-`textlong`是一个基于大语言模型的长文本生成框架，是一个python包。
-主要特点是通过将生成任务拆解为树形层次结构的任务提纲，再为提纲中的每个子任务生成文本，以便合成超长的文本结果。
+`textlong`是一个python包, 基于大语言模型的AI工作, 可用于长文写作、长文理解等任务。
 
-本文介绍的WritingTask模块就是专门负责生成任务的。
+## `WritingTask`模块。
 
-## 如何使用
+`WritingTask`模块专门负责生成任务。
+其工作方式是将写作任务拆解为写作提纲和子任务，再执行每个子任务，最后合成完整文本。
 
-### invoke方法
+### 写作功能
+
+#### 创建写作项目
+
+```python
+from textlong import 
+```
+
+#### invoke方法
 最灵活的方法是调用WritingTask的invoke方法。
 
-第一步，你应当准备好访问大语言模型所需的APIKEY，你可以选择你喜欢的任何LLM，如ChatGPT、智谱AI等，
+第一步，你应当准备好访问大语言模型所需的APIKEY，你可以选择你喜欢的任何LLM,如ChatGPT、智谱AI等，
 默认支持的是智谱AI。
 
 第二步，你要在代码中创建`WritingTask`对象。
@@ -22,6 +29,7 @@ WRITING_HELP = """
 ```python
 from textlong import WritingTask
 task = WritingTask()
+```
 
 **使用ChatGPT:**
 
@@ -41,14 +49,14 @@ task = WritingTask(llm=ChatOpenAI())
 task.invoke("task 致孩子的一封信, 800字")
 task.invoke("ok")
 ```
-### auto_write方法
+#### auto_write方法
 使用auto_write方法可以在生成任务后自动执行ok命令，自动生成和确认所有子任务，直至全文创作完毕。
 
 ```python
 task.auto_write("task 致孩子的一封信, 800字")
 ```
 
-### repl_write方法
+#### repl_write方法
 如果你希望精细控制，还可以使用repl_write方法。
 
 ```python
@@ -58,8 +66,7 @@ task.repl_write("task 致孩子的一封信, 800字")
 repl_write会进入一个控制台循环，这通常是在`Jupyter Notes`或命令行终端的环境中。
 在控制台循环中，你可以不断输入`ok`指令，直至完成，也可以选择其他指令，执行重新生成、修改扩写指南等任务。
 
-
-## 命令清单
+### invoke和repl中可用的命令清单
 
 这些命令并非shell脚本，而是在WritingTask的invoke方法中的参数。
 一般的使用方法例如：`writingTaskObj.invoke("<命令名称> <可选的参数>")`

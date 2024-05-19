@@ -1,35 +1,13 @@
 from typing import Any, Dict, Iterator, List, Optional, Union
 from .node import ContentNode
 from .command import BaseCommand
-import datetime
-import random
-
-def create_project_id():
-    now = datetime.datetime.now()
-    random_digits = random.randint(1000, 9999)
-    return now.strftime(f"TL_%Y_%m_%d_%H%M%S_{random_digits}")
 
 class ContentTree(BaseCommand):
     """内容管理树。"""
 
-    def __init__(
-        self,
-        project_id=None,
-        llm=None,
-        memory=None,
-        words_limit=500,
-        todo_node: Optional[ContentNode]=None,
-        **kwargs
-    ):
+    def __init__(self, **kwargs):
         BaseCommand.__init__(self)
-
-        node_kwargs = {
-            "project_id": project_id or create_project_id(),
-            "words_limit": words_limit,
-            "llm": llm,
-            "memory": memory,
-        }
-        self.todo_node = ContentNode(**node_kwargs, **kwargs) if todo_node == None else todo_node
+        self.todo_node = ContentNode(**kwargs)
 
     @property
     def root(self):

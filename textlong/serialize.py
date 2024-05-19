@@ -3,9 +3,6 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 class ContentSerialize():
     """
     支持序列化的属性存储结构
-    
-    args:
-    - project_id 项目的ID，在对多个项目同时操作时，
     """
 
     def __init__(
@@ -18,7 +15,7 @@ class ContentSerialize():
         """
         初始化方法
         """
-        self._project_id = project_id or "default"
+        self._project_id = project_id
         self._index = index
         self._parent = parent
 
@@ -56,7 +53,14 @@ class ContentSerialize():
         """
         return {
             "id": self.id,
-        }        
+        }
+    
+    @property
+    def prompt_templates(self) -> Dict[str, Union[str, int]]:
+        """
+        提示语模板。
+        """
+        return {}
 
     # 扁平化列表的内容列表
     @property

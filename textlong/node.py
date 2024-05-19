@@ -5,11 +5,6 @@ from langchain_core.output_parsers import JsonOutputParser
 from .serialize import ContentSerialize
 from .state import ContentState
 from .command import BaseCommand
-from .prompts import (
-    create_writing_help_prompt,
-    create_writing_init_prompt,
-    create_writing_todo_prompt,
-)
 from .ai import BaseAI
 import datetime
 import random
@@ -21,34 +16,41 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
 
     def __init__(
         self,
+        ## self
         type: str="unknown",
         words_limit: int=500,
         words_advice: int=None,
         title: str=None,
         howto: str=None,
-        summarise: str=None,
-        text: str=None,
+        ## AI
         last_ai_reply_json: Dict[str, Any]={},
-        is_draft=False,
+        is_draft: bool=False,
         llm=None,
         memory=None,
+        ## ContentState
         state=None,
+        ## 段落
+        summarise: str=None,
+        text: str=None,
+        ## prompt
+        help_prompt=None,
+        init_prompt=None,
+        outline_prompt=None,
+        paragraph_prompt=None,
+        ## project_id, index, parent 等
         **kwargs,
     ):
-        ContentSerialize.__init__(self, **kwargs)
+
         BaseCommand.__init__(self)
+        ContentSerialize.__init__(self, **kwargs)
         if state:
-            # 初始化节点时可以直接指定FSM的初始值
             ContentState.__init__(self, start_value=state)
         else:
             ContentState.__init__(self)
 
+        # self
         self.type = type
-
-        # 如果超出这个段落字数就拆分为提纲
         self.words_limit = words_limit
-
-        # 扩写指南
         self.words_advice = words_advice
         self.title = title
         self.howto = howto
@@ -56,12 +58,19 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         # 段落
         self.summarise = summarise
         self.text = text
+        
+        # prompt
+        self.help_prompt = help_prompt
+        self.init_prompt = init_prompt
+        self.outline_prompt = outline_prompt
+        self.paragraph_prompt = paragraph_prompt
 
         # 最后的AI回复
         self.last_ai_reply_json = last_ai_reply_json
-        self.is_draft: bool = is_draft
+        self.is_draft = is_draft
         self.ai = BaseAI(llm, memory)
 
+    # 指令清单
     howto_commands = ["title", "words_advice", "howto"]
     result_commands = ["summarise", "text"]
     state_commands = ["state", "memory", "ok", "todo", "modi", "task"]
@@ -121,7 +130,7 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
 
         default_task = "有哪些命令可以使用？"
 
-        prompt = create_writing_help_prompt()
+        prompt = self.help_prompt
         chat = self.ai.ask_ai(task or default_task, prompt, return_json=False)
 
         return chat
@@ -132,10 +141,10 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
         default_task = "请开始。"
 
         if self.state == "init":
-            prompt = create_writing_init_prompt()
+            prompt = self.init_prompt
 
-        elif self.state == "todo":
-            prompt = create_writing_todo_prompt(
+        elif self.state == "todo" and self.type == "outline":
+            prompt = self.outline_prompt.partial(
                 title=self.title,
                 content_type=self.type,
                 words_limit=self.words_limit,
@@ -143,7 +152,15 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
                 howto=self.howto,
                 outline_exist=self.root.get_outlines()
             )
-
+        elif self.state == "todo" and self.type == "paragraph":
+            prompt = self.paragraph_prompt.partial(
+                title=self.title,
+                content_type=self.type,
+                words_limit=self.words_limit,
+                words_advice=self.words_advice,
+                howto=self.howto,
+                outline_exist=self.root.get_outlines()
+            )
         else:
             raise NotImplementedError(f"<{self.id}> 对象在状态[{self.state}]没有指定提示语模板")
 
@@ -201,6 +218,12 @@ class ContentNode(ContentState, ContentSerialize, BaseCommand):
                         last_ai_reply_json=item,
                         is_draft=False,
                         item_class=ContentNode,
+
+                        ## 以下这些属性将会继承父节点的配置
+                        help_prompt=self.help_prompt,
+                        init_prompt=self.init_prompt,
+                        outline_prompt=self.outline_prompt,
+                        paragraph_prompt=self.paragraph_prompt,
                         llm=self.ai.llm,
                         memory=self.ai.memory,
                     )

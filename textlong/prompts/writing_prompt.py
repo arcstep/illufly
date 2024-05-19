@@ -90,7 +90,6 @@ _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT = """
 {{outline_exist}}
 """
 
-
 def create_writing_help_prompt(system_prompt:str = None):
     """咨询系统如何使用"""
 
@@ -100,41 +99,35 @@ def create_writing_help_prompt(system_prompt:str = None):
         ("human", "你的资料如下：\n{{doc}}"),
         MessagesPlaceholder(variable_name="history"),
         ("human", "{{task}}"),
-    ], template_format="jinja2").partial(
+    ], template_format="mustache").partial(
         doc=WRITING_HELP
     )
     
     return prompt
 
-def create_writing_init_prompt(main_prompt=None, task_prompt=None, output_format=None, json_instruction=None):
-
+def create_writing_init_prompt():
+    main_prompt = MAIN_PROMPT
+    task_prompt = _INIT_TASK
+    output_prompt = _INIT_FORMAT
+    json_instruction = _JSON_INSTRUCTION 
+    
     prompt = ChatPromptTemplate.from_messages([
-        ("system", main_prompt or MAIN_PROMPT),
+        ("system", main_prompt),
         ("ai", "OK"),
         MessagesPlaceholder(variable_name="history"),
         ("human", "{{task}}"),
-    ], template_format="jinja2").partial(
+    ], template_format="mustache").partial(
         # 任务指南
-        task_instruction=task_prompt or _INIT_TASK,
+        task_instruction=task_prompt,
         # 输出格式要求
-        output_format=output_format or _INIT_FORMAT,
+        output_format=output_prompt,
         # JSON严格控制
-        json_instruction=json_instruction or _JSON_INSTRUCTION,
+        json_instruction=json_instruction,
     )
 
     return prompt
 
-def create_writing_todo_prompt(
-    title: str,
-    content_type: str="paragraph",
-    words_limit: int=500,
-    words_advice: int=500,
-    howto: str=None,
-    outline_exist: List[Any]=None,
-    main_prompt: str=None,
-    auto_prompt: str=None,
-    json_instruction: str=None,
-):
+def create_writing_todo_prompt(content_type: str="paragraph"):
     main_prompt = MAIN_PROMPT
     auto_prompt = _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT
     json_instruction = _JSON_INSTRUCTION 
@@ -142,9 +135,11 @@ def create_writing_todo_prompt(
     if content_type == "outline":
         task_prompt   = _OUTLINE_TASK
         output_format = _OUTLINE_FORMAT
-    else:
+    elif content_type == "paragraph":
         task_prompt   = _PARAGRAPH_TASK
         output_format = _PARAGRAPH_FORMAT
+    else:
+        raise ValueError(f"content_type只能是 [outline|paragraph], 无法支持[{content_type}]")
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", main_prompt),
@@ -153,18 +148,9 @@ def create_writing_todo_prompt(
         ("ai", "OK"),
         MessagesPlaceholder(variable_name="history"),
         ("human", "{{task}}")
-    ], template_format="jinja2").partial(
-        # 字数限制
-        words_limit=words_limit,
-        words_advice=words_advice,
-        # 写作要求
-        title=title,
-        outline_exist=outline_exist,
+    ], template_format="mustache").partial(
         task_instruction=task_prompt,
-        howto=howto,
-        # 输出格式要求
         output_format=output_format,
-        # JSON严格控制
         json_instruction=json_instruction,
     )
 

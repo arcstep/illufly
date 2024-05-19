@@ -25,7 +25,7 @@ class BaseAI():
         else:
             self.llm = llm
 
-        self.memory = memory or ConversationBufferWindowMemory(k=20, return_messages=True)
+        self.memory = memory or ConversationBufferWindowMemory(k=10, return_messages=True)
 
         self.retry_max: int = 5
 

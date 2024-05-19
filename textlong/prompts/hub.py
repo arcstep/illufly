@@ -7,6 +7,11 @@ from langchain.prompts import (
     load_prompt as load_str_prompt,
 )
 from ..config import get_textlong_folder, _PROMPTS_FOLDER_NAME
+from .writing_prompt import (
+    create_writing_help_prompt,
+    create_writing_init_prompt,
+    create_writing_todo_prompt,
+)
 import os
 import json
 
@@ -41,11 +46,23 @@ def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(f'{v}')
 
-def load_chat_prompt(template_id: str, project_id: str, id="0"):
+def load_chat_prompt(template_id: str, project_id: str=None, id="0"):
     """
     加载提示语模板和partial变量的字符串。    
     目前不支持在partial中使用嵌套模板。
     """
+    if project_id == None:
+        if template_id == "help":
+            return create_writing_help_prompt()
+        elif template_id == "init":
+            return create_writing_init_prompt()
+        elif template_id == "outline":
+            return create_writing_todo_prompt(content_type="outline")
+        elif template_id == "paragraph":
+            return create_writing_todo_prompt(content_type="paragraph")
+        else:
+            raise ValueError(f"模板ID必须为 [init|outline|paragraph|help] 中的一个, [{template_id}]不能支持！")
+
     prompt_path = os.path.join(get_textlong_folder(), project_id, _PROMPTS_FOLDER_NAME, id, template_id)
     if not os.path.exists(prompt_path):
         raise FileNotFoundError(f"提示语模板 {template_id} 不存在")
