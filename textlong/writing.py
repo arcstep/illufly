@@ -1,15 +1,33 @@
 from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
 from .tree import ContentTree
 from .command import BaseCommand
+from .projects import (
+    create_project,
+    list_projects,
+    load_content,
+    save_content,
+    load_chat_prompt,
+    save_chat_prompt,
+)
 
 class WritingTask(BaseCommand):
     """
     长文写作任务。
     """
 
-    def __init__(self, llm=None):
+    def __init__(self, project_id: str=None, llm=None):
         self.human_input = lambda x=None : x if x != None else input("\n👤: ")
-        self.tree = ContentTree(llm=llm)
+        self.project_id = create_project(project_id)
+
+        self.tree = ContentTree(
+            project_id=self.project_id,
+            words_limit=500,
+            llm=llm,
+            help_prompt=load_chat_prompt("help"),
+            init_prompt=load_chat_prompt("init"),
+            outline_prompt=load_chat_prompt("outline"),
+            paragraph_prompt=load_chat_prompt("paragraph"),
+        )
 
     # inherit
     @property

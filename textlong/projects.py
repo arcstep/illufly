@@ -3,8 +3,17 @@ from dotenv import find_dotenv
 from .node import ContentNode
 from .serialize import ContentSerialize
 from .config import get_textlong_folder, _NODES_FOLDER_NAME
+from .prompts.hub import load_chat_prompt, save_chat_prompt
+from .prompts.writing_prompt import (
+    create_writing_help_prompt,
+    create_writing_init_prompt,
+    create_writing_todo_prompt,
+)
+
 import os
 import json
+import datetime
+import random
 
 def list_projects():
     """列举有哪些可用的project_id"""
@@ -21,7 +30,20 @@ def list_projects():
 
     return projects
 
-def load(cls, project_id: str, id="0"):
+def create_project_id():
+    now = datetime.datetime.now()
+    random_digits = random.randint(1000, 9999)
+    return now.strftime(f"TL_%Y_%m_%d_%H%M%S_{random_digits}")
+
+def create_project(project_id: str=None):
+    """
+    创建写作项目。
+    """
+    project_id = project_id or create_project_id()
+
+    return project_id
+
+def load_content(project_id: str, id="0"):
     """
     从文件存储中，加载内容及其所有子节点。
     """
@@ -51,25 +73,25 @@ def load(cls, project_id: str, id="0"):
 
             if basename == f'{id}.json':
                 # 写入根节点
-                root = cls(project_id=project_id, index=index, parent=None, **data)
+                root = ContentNode(project_id=project_id, index=index, parent=None, **data)
             elif root:
                 parent_id = '.'.join(id_parts[:-1]) if len(id_parts) > 1 else None
                 parent = root.get_item_by_id(parent_id)
 
                 # 写入子节点
-                node = cls(project_id=project_id, index=index, parent=parent, **data)
+                node = ContentNode(project_id=project_id, index=index, parent=parent, **data)
                 parent._children[index] = node
             else:
                 raise ValueError(f"根节点 {id} 还没有被创建")
 
     return root
 
-def dump(node: ContentSerialize):
+def save_content(node: ContentSerialize):
     """
     导出内容及其所有子节点，到文件存储。
     """
     if not node or len(node.all_content) == 0:
-        print("⚠️ Nothing to DUMP !!")
+        print("⚠️ Nothing to Dump !!")
         return False
 
     root_folder = get_textlong_folder()
@@ -81,7 +103,56 @@ def dump(node: ContentSerialize):
         with open(path, 'w') as f:
             json.dump(item, f, indent=4, ensure_ascii=False)
     
-    # 保存提示语模板
+    return True
+
+def load_prompts(node: ContentNode,id="0"):
+    """
+    为节点重新加载提示语模板。
+    """
+    if node._project_id:
+        for template_id in ["help", "init", "outline", "paragraph"]:
+            prompt = load_chat_prompt(template_id, project_id=node._project_id, id=id)
+            if prompt:
+                setattr(node, f'{template_id}_prompt', prompt)
+            else:
+                return False
     
     return True
+
+def save_prompts(node: ContentNode,id="0"):
+    """
+    保存提示语模板到项目目录。
+    """
+    if node._project_id:
+        save_chat_prompt(
+            create_writing_help_prompt(),
+            template_id='help',
+            project_id=node._project_id,
+            id=id
+        )
+
+        save_chat_prompt(
+            create_writing_init_prompt(),
+            template_id='init',
+            project_id=node._project_id,
+            id=id
+        )
+
+        save_chat_prompt(
+            create_writing_todo_prompt(content_type='outline'),
+            template_id='outline',
+            project_id=node._project_id,
+            id=id
+        )
+
+        save_chat_prompt(
+            create_writing_todo_prompt(content_type='paragraph'),
+            template_id='paragraph',
+            project_id=node._project_id,
+            id=id
+        )
+        
+        return True
+
+    return False
 
