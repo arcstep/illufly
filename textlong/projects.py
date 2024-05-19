@@ -43,13 +43,13 @@ def create_project(project_id: str=None):
 
     return project_id
 
-def load_content(project_id: str, id="0"):
+def load_content(project_id: str, id="0", user_id: str="default_user"):
     """
     从文件存储中，加载内容及其所有子节点。
     """
     root = None
     root_folder = get_textlong_folder()
-    contents_dir = os.path.join(root_folder, project_id, _NODES_FOLDER_NAME)
+    contents_dir = os.path.join(root_folder, user_id, project_id, _NODES_FOLDER_NAME)
 
     if not os.path.exists(contents_dir):
         raise FileNotFoundError(f"目录 {contents_dir} 不存在")
@@ -86,7 +86,7 @@ def load_content(project_id: str, id="0"):
 
     return root
 
-def save_content(node: ContentSerialize):
+def save_content(node: ContentSerialize, user_id: str="default_user"):
     """
     导出内容及其所有子节点，到文件存储。
     """
@@ -98,20 +98,20 @@ def save_content(node: ContentSerialize):
 
     # 保存内容节点
     for item in node.all_content:
-        path = os.path.join(root_folder, node._project_id, _NODES_FOLDER_NAME, item['id']) + ".json"
+        path = os.path.join(root_folder, user_id, node._project_id, _NODES_FOLDER_NAME, item['id']) + ".json"
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
             json.dump(item, f, indent=4, ensure_ascii=False)
     
     return True
 
-def load_prompts(node: ContentNode,id="0"):
+def load_prompts(node: ContentNode, id="0", user_id: str="default_user"):
     """
     为节点重新加载提示语模板。
     """
     if node._project_id:
         for template_id in ["help", "init", "outline", "paragraph"]:
-            prompt = load_chat_prompt(template_id, project_id=node._project_id, id=id)
+            prompt = load_chat_prompt(template_id, project_id=node._project_id, id=id, user_id=user_id)
             if prompt:
                 setattr(node, f'{template_id}_prompt', prompt)
             else:
@@ -119,7 +119,7 @@ def load_prompts(node: ContentNode,id="0"):
     
     return True
 
-def save_prompts(node: ContentNode,id="0"):
+def save_prompts(node: ContentNode,id="0", user_id: str="default_user"):
     """
     保存提示语模板到项目目录。
     """
@@ -128,28 +128,32 @@ def save_prompts(node: ContentNode,id="0"):
             create_writing_help_prompt(),
             template_id='help',
             project_id=node._project_id,
-            id=id
+            id=id,
+            user_id=user_id,
         )
 
         save_chat_prompt(
             create_writing_init_prompt(),
             template_id='init',
             project_id=node._project_id,
-            id=id
+            id=id,
+            user_id=user_id,
         )
 
         save_chat_prompt(
             create_writing_todo_prompt(content_type='outline'),
             template_id='outline',
             project_id=node._project_id,
-            id=id
+            id=id,
+            user_id=user_id,
         )
 
         save_chat_prompt(
             create_writing_todo_prompt(content_type='paragraph'),
             template_id='paragraph',
             project_id=node._project_id,
-            id=id
+            id=id,
+            user_id=user_id,
         )
         
         return True
