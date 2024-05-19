@@ -15,11 +15,11 @@ from .writing_prompt import (
 import os
 import json
 
-def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id: str, id="0"):
+def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id: str, id="0", user_id="default_user"):
     """
     保存提示语模板。
     """
-    prompt_path = os.path.join(get_textlong_folder(), project_id, _PROMPTS_FOLDER_NAME, id, template_id)
+    prompt_path = os.path.join(get_textlong_folder(), user_id, project_id, _PROMPTS_FOLDER_NAME, id, template_id)
 
     for i, p in enumerate(template.messages):
         if isinstance(p, SystemMessagePromptTemplate):
@@ -46,7 +46,7 @@ def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(f'{v}')
 
-def load_chat_prompt(template_id: str, project_id: str=None, id="0"):
+def load_chat_prompt(template_id: str, project_id: str=None, id="0", user_id="default_user"):
     """
     加载提示语模板和partial变量的字符串。    
     目前不支持在partial中使用嵌套模板。
@@ -63,7 +63,7 @@ def load_chat_prompt(template_id: str, project_id: str=None, id="0"):
         else:
             raise ValueError(f"模板ID必须为 [init|outline|paragraph|help] 中的一个, [{template_id}]不能支持！")
 
-    prompt_path = os.path.join(get_textlong_folder(), project_id, _PROMPTS_FOLDER_NAME, id, template_id)
+    prompt_path = os.path.join(get_textlong_folder(), user_id, project_id, _PROMPTS_FOLDER_NAME, id, template_id)
     if not os.path.exists(prompt_path):
         raise FileNotFoundError(f"提示语模板 {template_id} 不存在")
 
