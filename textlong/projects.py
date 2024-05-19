@@ -2,26 +2,18 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 from dotenv import find_dotenv
 from .node import ContentNode
 from .serialize import ContentSerialize
+from .config import get_textlong_folder, _NODES_FOLDER_NAME
 import os
 import json
-
-_NODES_FOLDER_NAME = "__NODES__"
-_TEMPLATES_FOLDER_NAME = "__TEMPLATES__"
-_CONTENTS_FOLDER_NAME = "__CONTENTS__"
-_PROMPTS_FOLDER_NAME = "__PROMPTS__"
-
-def get_project_folder():
-    """从环境变量中获得项目的存储目录"""
-    return os.getenv("TEXTLONG_FOLDER") or "textlong_data"
 
 def list_projects():
     """列举有哪些可用的project_id"""
     projects = []
-    project_folder = get_project_folder()
-    all_items = os.listdir(project_folder)
+    root_folder = get_textlong_folder()
+    all_items = os.listdir(root_folder)
 
     for item in all_items:
-        item_path = os.path.join(project_folder, item)
+        item_path = os.path.join(root_folder, item)
         if os.path.isdir(item_path) and not item.startswith('.'):
             contents_dir = os.path.join(item_path, _NODES_FOLDER_NAME)
             if os.path.exists(contents_dir):
@@ -31,12 +23,11 @@ def list_projects():
 
 def load(cls, project_id: str, id="0"):
     """
-    加载内容及其所有子节点。
-    load操作被设计为类方法，而对应的dump被设计为实例方法。
+    从文件存储中，加载内容及其所有子节点。
     """
     root = None
-    project_folder = get_project_folder()
-    contents_dir = os.path.join(project_folder, project_id, _NODES_FOLDER_NAME)
+    root_folder = get_textlong_folder()
+    contents_dir = os.path.join(root_folder, project_id, _NODES_FOLDER_NAME)
 
     if not os.path.exists(contents_dir):
         raise FileNotFoundError(f"目录 {contents_dir} 不存在")
@@ -75,20 +66,22 @@ def load(cls, project_id: str, id="0"):
 
 def dump(node: ContentSerialize):
     """
-    导出内容及其所有子节点。
-    dump被设计为实例方法，这会更方便操作。
+    导出内容及其所有子节点，到文件存储。
     """
     if not node or len(node.all_content) == 0:
         print("⚠️ Nothing to DUMP !!")
         return False
 
-    project_folder = get_project_folder()
+    root_folder = get_textlong_folder()
 
+    # 保存内容节点
     for item in node.all_content:
-        path = os.path.join(project_folder, node._project_id, _NODES_FOLDER_NAME, item['id']) + ".json"
+        path = os.path.join(root_folder, node._project_id, _NODES_FOLDER_NAME, item['id']) + ".json"
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
             json.dump(item, f, indent=4, ensure_ascii=False)
+    
+    # 保存提示语模板
     
     return True
 
