@@ -35,10 +35,11 @@ def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id:
                     json.dump(p.prompt.dict(), f, indent=4, ensure_ascii=False)
 
     for k, v in template.partial_variables.items():
-        path = os.path.join(prompt_path, f"var_{k}.txt")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(v)
+        if v != None:
+            path = os.path.join(prompt_path, f"var_{k}.md")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(f'{v}')
 
 def load_chat_prompt(template_id: str, project_id: str, id="0"):
     """
@@ -55,6 +56,7 @@ def load_chat_prompt(template_id: str, project_id: str, id="0"):
     for filename in sorted(os.listdir(prompt_path)):
         path = os.path.join(prompt_path, filename)
 
+        message = None
         if filename.endswith('_system.json'):
             prompt = load_str_prompt(path)
             message = SystemMessagePromptTemplate.from_template(prompt.template)
@@ -68,11 +70,11 @@ def load_chat_prompt(template_id: str, project_id: str, id="0"):
             with open(path, 'r') as f:
                 data = json.load(f)
                 message = MessagesPlaceholder(**data)
-        elif filename.startswith('var_'):
+        elif filename.startswith('var_') and filename.endswith('.md'):
             with open(path, 'r') as f:
                 text = f.read()
-                var_name = filename[4:-4]
-                partial_variables[var_name] = text
+                var_name = filename[4:-3]
+                partial_variables[var_name] = int(text) if text.isdigit() else text
         else:
             continue
 
