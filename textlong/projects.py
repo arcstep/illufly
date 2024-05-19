@@ -2,7 +2,12 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 from dotenv import find_dotenv
 from .node import ContentNode
 from .serialize import ContentSerialize
-from .config import get_textlong_folder, _NODES_FOLDER_NAME
+from .config import (
+    get_textlong_folder,
+    _NODES_FOLDER_NAME,
+    _PROMPTS_FOLDER_NAME,
+    _CONTENTS_FOLDER_NAME,
+)
 from .prompts.hub import load_chat_prompt, save_chat_prompt
 from .prompts.writing_prompt import (
     create_writing_help_prompt,
@@ -42,6 +47,24 @@ def create_project(project_id: str=None):
     project_id = project_id or create_project_id()
 
     return project_id
+
+def is_content_exist(project_id: str, user_id: str="default_user"):
+    """
+    判断项目文件夹是否存在。
+    """
+    root_folder = get_textlong_folder()
+    contents_dir = os.path.join(root_folder, user_id, project_id, _NODES_FOLDER_NAME)
+    
+    return os.path.exists(contents_dir)
+
+def is_prompts_exist(project_id: str, user_id: str="default_user"):
+    """
+    判断项目文件夹是否存在。
+    """
+    root_folder = get_textlong_folder()
+    prompt_dir = os.path.join(get_textlong_folder(), user_id, project_id, _PROMPTS_FOLDER_NAME)
+    
+    return os.path.exists(prompt_dir)
 
 def load_content(project_id: str, id="0", user_id: str="default_user"):
     """
@@ -86,12 +109,22 @@ def load_content(project_id: str, id="0", user_id: str="default_user"):
 
     return root
 
-def save_content(node: ContentSerialize, user_id: str="default_user"):
+def save_content(node: Union[ContentSerialize, "ContentTree", "WritingTask"], user_id: str="default_user"):
     """
     导出内容及其所有子节点，到文件存储。
     """
-    if not node or len(node.all_content) == 0:
-        print("⚠️ Nothing to Dump !!")
+    if not node:
+        print("⚠️ Nothing content to save !!")
+        return False
+
+    if type(node).__name__ == "NodeTree":
+        node = node.root
+
+    if type(node).__name__ == "WritingTask":
+        node = node.tree.root
+        
+    if len(node.all_content) == 0:
+        print("⚠️ Can't save when all_content is zero !!")
         return False
 
     root_folder = get_textlong_folder()
@@ -105,10 +138,19 @@ def save_content(node: ContentSerialize, user_id: str="default_user"):
     
     return True
 
-def load_prompts(node: ContentNode, id="0", user_id: str="default_user"):
+def load_prompts(node: Union[ContentSerialize, "ContentTree", "WritingTask"], id="0", user_id: str="default_user"):
     """
     为节点重新加载提示语模板。
     """
+    if node == None:
+        raise ValueError("⚠️ Nothing for prompts to load !!")
+
+    if type(node).__name__ == "NodeTree":
+        node = node.root
+
+    if type(node).__name__ == "WritingTask":
+        node = node.tree.root
+
     if node._project_id:
         for template_id in ["help", "init", "outline", "paragraph"]:
             prompt = load_chat_prompt(template_id, project_id=node._project_id, id=id, user_id=user_id)
@@ -119,10 +161,19 @@ def load_prompts(node: ContentNode, id="0", user_id: str="default_user"):
     
     return True
 
-def save_prompts(node: ContentNode,id="0", user_id: str="default_user"):
+def save_prompts(node: Union[ContentSerialize, "ContentTree", "WritingTask"], id="0", user_id: str="default_user"):
     """
     保存提示语模板到项目目录。
     """
+    if node == None:
+        raise ValueError("⚠️ Nothing for prompts to save !!")
+
+    if type(node).__name__ == "NodeTree":
+        node = node.root
+
+    if type(node).__name__ == "WritingTask":
+        node = node.tree.root
+
     if node._project_id:
         save_chat_prompt(
             create_writing_help_prompt(),

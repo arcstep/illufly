@@ -5,9 +5,12 @@ from .command import BaseCommand
 class ContentTree(BaseCommand):
     """内容管理树。"""
 
-    def __init__(self, **kwargs):
+    def __init__(self, node=None, **kwargs):
         BaseCommand.__init__(self)
-        self.todo_node = ContentNode(**kwargs)
+        if node:
+            self.todo_node = node
+        else:
+            self.todo_node = ContentNode(**kwargs)
 
     @property
     def root(self):
