@@ -4,31 +4,44 @@ from .command import BaseCommand
 from .projects import (
     create_project,
     list_projects,
+    is_content_exist,
+    is_prompts_exist,
     load_content,
     save_content,
-    load_chat_prompt,
-    save_chat_prompt,
+    load_prompts,
+    save_prompts,
 )
+from .prompts.hub import load_chat_prompt, save_chat_prompt
 
 class WritingTask(BaseCommand):
     """
     长文写作任务。
     """
 
-    def __init__(self, project_id: str=None, llm=None):
+    def __init__(self, project_id: str=None, llm=None, user_id="default_user"):
+        #
+        self.user_id = user_id
         self.human_input = lambda x=None : x if x != None else input("\n👤: ")
         self.project_id = create_project(project_id)
 
-        self.tree = ContentTree(
-            project_id=self.project_id,
-            words_limit=500,
-            llm=llm,
-            help_prompt=load_chat_prompt("help"),
-            init_prompt=load_chat_prompt("init"),
-            outline_prompt=load_chat_prompt("outline"),
-            paragraph_prompt=load_chat_prompt("paragraph"),
-        )
-
+        if project_id and is_content_exist(project_id, user_id):
+            # 加载内容节点
+            self.tree = ContentTree(node=load_content(project_id=project_id, user_id=user_id))
+            # 加载提示语模板
+            if is_prompts_exist(project_id, user_id):
+                load_prompts(self.tree.root, user_id=user_id)
+        else:
+            # 创建新的树结构
+            self.tree = ContentTree(
+                project_id=self.project_id,
+                words_limit=500,
+                llm=llm,
+                help_prompt=load_chat_prompt("help"),
+                init_prompt=load_chat_prompt("init"),
+                outline_prompt=load_chat_prompt("outline"),
+                paragraph_prompt=load_chat_prompt("paragraph"),
+            )
+    
     # inherit
     @property
     def default_command(self) -> str:
