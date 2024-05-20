@@ -66,20 +66,15 @@ class WithMemoryBinding(RunnableBindingBase):
         history_messages_key: Optional[str] = "history",
         **kwargs: Any,
     ) -> None:
-        # 提取记忆 _enter_memory / _aenter_memory
-        history_chain: Runnable = RunnableLambda(
-            self._enter_memory, self._aenter_memory
-        ).with_config(run_name="load_history")
-        messages_key = history_messages_key or input_messages_key
-        if messages_key:
-            history_chain = RunnablePassthrough.assign(
-                **{messages_key: history_chain}
-            ).with_config(run_name="insert_history")
+        # 提取记忆 _current_history / _acurrent_history
+        history_chain = RunnablePassthrough.assign(
+            **{history_messages_key: RunnableLambda(self._current_history, self._acurrent_history)}
+        ).with_config(run_name="insert_history")
 
-        # 写入记忆 _exit_memory
+        # 写入记忆 _update_history
         bound = (
-            history_chain | runnable.with_listeners(on_end=self._exit_memory)
-        ).with_config(run_name="WithMemoryBinding")
+            history_chain | runnable
+        ).with_listeners(on_end=self._update_history)
 
         # 构造 config.configurable 中的参数，可以被 Runnable 自举
         _config_specs = [
@@ -119,16 +114,10 @@ class WithMemoryBinding(RunnableBindingBase):
         ):
             from langchain_core.messages import BaseMessage
 
-            fields: Dict = {}
-            if self.input_messages_key and self.history_messages_key:
-                fields[self.input_messages_key] = (
-                    Union[str, BaseMessage, Sequence[BaseMessage]],
-                    ...,
-                )
-            elif self.input_messages_key:
-                fields[self.input_messages_key] = (Sequence[BaseMessage], ...)
-            else:
-                fields["__root__"] = (Sequence[BaseMessage], ...)
+            fields = {self.input_messages_key: (
+                Union[str, BaseMessage, Sequence[BaseMessage]],
+                ...,
+            )}
             return create_model(
                 "RunnableWithChatHistoryInput",
                 **fields,
@@ -139,6 +128,7 @@ class WithMemoryBinding(RunnableBindingBase):
     def _get_input_messages(
         self, input_val: Union[str, BaseMessage, Sequence[BaseMessage]]
     ) -> List[BaseMessage]:
+        """从Runnable的输入中，提取要保存的部份"""
         from langchain_core.messages import BaseMessage
 
         if isinstance(input_val, str):
@@ -158,59 +148,57 @@ class WithMemoryBinding(RunnableBindingBase):
     def _get_output_messages(
         self, output_val: Union[str, BaseMessage, Sequence[BaseMessage], dict]
     ) -> List[BaseMessage]:
+        """从Runnable的输出中，提取要保存的部份"""
         from langchain_core.messages import BaseMessage
 
-        # 如果output_val是字典就取其中的output键或指定名字的键
+        # 对于AgentExcutor
         if isinstance(output_val, dict):
             output_val = output_val[self.output_messages_key or "output"]
 
+        # 对于字符串
         if isinstance(output_val, str):
             from langchain_core.messages import AIMessage
 
             return [AIMessage(content=output_val)]
+        
+        # 对于BaseMessage
         elif isinstance(output_val, BaseMessage):
             return [output_val]
+
+        # 对于字符串列表、包含字符串的元组
         elif isinstance(output_val, (list, tuple)):
             return list(output_val)
+
         else:
             raise ValueError()
 
-    def _enter_memory(self, input: Any, config: RunnableConfig) -> List[BaseMessage]:
+    def _current_history(self, input: Any, config: RunnableConfig) -> List[BaseMessage]:
         memory = config["configurable"]["memory"]
-        # 提取记忆中应当插入到提示语中的部份
-        if self.history_messages_key:
-            return memory.buffer_as_messages
-        else:
-            input_val = (
-                input if not self.input_messages_key else input[self.input_messages_key]
-            )
-            return memory.buffer_as_messages + self._get_input_messages(input_val)
+        return memory.buffer_as_messages
 
-    async def _aenter_memory(
+    async def _acurrent_history(
         self, input: Dict[str, Any], config: RunnableConfig
     ) -> List[BaseMessage]:
-        return await run_in_executor(config, self._enter_memory, input, config)
+        return await run_in_executor(config, self._current_history, input, config)
 
-    def _exit_memory(self, run: Run, config: RunnableConfig) -> None:
+    def _update_history(self, run: Run, config: RunnableConfig) -> None:
+        """
+        退出时，将输入和输出通过chat_memory保存。
+        """
         memory = config["configurable"]["memory"]
-        hist = memory.chat_memory
+        store = memory.chat_memory
 
-        # Get the input messages
-        inputs = load(run.inputs)
-        input_val = inputs[self.input_messages_key or "input"]
+        # 获得输入
+        inputs = run.inputs
+        input_val = inputs[self.input_messages_key]
         input_messages = self._get_input_messages(input_val)
+        print("input_messages:", input_messages)
 
-        # If historic messages were prepended to the input messages, remove them to
-        # avoid adding duplicate messages to history.
-        if not self.history_messages_key:
-            input_messages = input_messages[len(hist.messages) :]
-
-        # Get the output messages
-        output_val = load(run.outputs)
+        # 获得输出
+        output_val = run.outputs
         output_messages = self._get_output_messages(output_val)
-        hist.add_messages(input_messages + output_messages)
-        
-        # print("_exit_memory", hist)
+        store.add_messages(input_messages + output_messages)
+        print("store:", store)
 
     def _merge_configs(self, *configs: Optional[RunnableConfig]) -> RunnableConfig:
         config = super()._merge_configs(*configs)
@@ -233,32 +221,8 @@ class WithMemoryBinding(RunnableBindingBase):
                 f"e.g., chain.invoke({example_input}, {example_config})"
             )
 
-        parameter_names = _get_parameter_names(self.memory_manager.get_longterm_memory_factory)
-
-        if len(expected_keys) == 1:
-            # 如果configurable中只有一个参数，无论其是否session_id，都当作位置参数传递给记忆体
-            # 所有记忆体的实现中，都应当将第1个位置参数当作session_id使用
-            memory = self.memory_manager.get_shorterm_memory(configurable[expected_keys[0]])
-        else:
-            # 如果有configurable中有多个参数，就当作键值参数传递给记忆体
-            # 在记忆体的实现中，都应当支持按匹配的键值参数来保存和提取记忆历史
-            # 这在一定程度上提供了定制记忆体的可能性
-            if set(expected_keys) != set(parameter_names):
-                raise ValueError(
-                    f"Expected keys {sorted(expected_keys)} do not match parameter "
-                    f"names {sorted(parameter_names)} of memory_writing."
-                )
-
-            memory = self.memory_manager.get_shorterm_memory(
-                **{key: configurable[key] for key in expected_keys}
-            )
+        memory = self.memory_manager.get_memory_factory(configurable["session_id"])
         config["configurable"]["memory"] = memory
         # print("_merge_configs:", memory)
         
         return config
-
-
-def _get_parameter_names(callable_: GetSessionHistoryCallable) -> List[str]:
-    """提取 callable_ 的键值参数"""
-    sig = inspect.signature(callable_)
-    return list(sig.parameters.keys())
