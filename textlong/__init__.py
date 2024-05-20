@@ -1,6 +1,7 @@
-from textlong.document_loaders.base import (
+from textlong.document_loaders import (
     LocalFilesLoader,
-    LocalFilesQALoader,
+    QAExcelsLoader,
+    QAMarkdownLoader,
 )
 
 from textlong.retrievers.base import (

@@ -6,6 +6,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_community.document_loaders import UnstructuredMarkdownLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
+from ..config import get_textlong_folder, _DOCS_FOLDER_NAME
 
 import os
 import re
@@ -71,48 +72,22 @@ class LocalFilesLoader(BaseLoader):
     - 路径过滤：由 path_regex 指定，应当是正则表达式，通常作为文件的过滤规则使用
     - 扩展名过滤：由 extensions 指定，即文件 xxx.ext 的末尾 ext
     """
-    
-    # support types
-    extensions: List[str] = ["docx", "pdf", "md", "txt", "xlsx"]
-    
-    # 希望入库到知识库的本地文件夹根目录
-    _documents_folder: str = "./documents"
-    
-    @property
-    def documents_folder(self):
-        return self._documents_folder
-
-    @documents_folder.setter
-    def documents_folder(self, value):
-        self._documents_folder = os.path.abspath(value)
-
-    # 按照该字符串（正则表达式）筛出将被入库到知识库的本地文档
-    path_regex: str = ".*"
-
-    # 只要本地文件夹的路径、子文件夹以这些列表中的字符串开头，就被入库到知识库
-    included_prefixes: List[str] = []
-
-    # 只要本地文件夹的路径、子文件夹以这些列表中的字符串开头，就被排除，不会入库到知识库
-    excluded_prefixes: List[str] = []
 
     def __init__(
         self,
-        documents_folder: str = None,
+        user_id: str=None,
+        path_regex: str=None,
+        included_prefixes: List[str] = [],
+        excluded_prefixes: List[str] = [],
+        extensions: List[str] = [],
         *args, **kwargs
     ):
-        """Initialize with API token and the URLs to scrape"""
-        if(documents_folder is None):
-            _documents_folder = os.getenv("LANGCHAIN_CHINESE_DOCUMENTS_FOLDER")
-            if(_documents_folder is not None):
-                self.documents_folder = _documents_folder
-            else:
-                self.documents_folder = "./documents"
-        else:
-            self.documents_folder = documents_folder
-
-        for key in ["extensions", "included_prefixes", "excluded_prefixes", "path_regex"]:
-            if(kwargs.get(key) is not None):
-                setattr(self, key, kwargs.get(key))
+        self.user_id = user_id or "public"
+        self.path_regex = path_regex or ".*"
+        self.included_prefixes = included_prefixes
+        self.excluded_prefixes = excluded_prefixes
+        self.extensions = extensions or ["docx", "pdf", "md", "txt", "xlsx"]
+        self.documents_folder = os.path.join(get_textlong_folder(), self.user_id, _DOCS_FOLDER_NAME)
 
     def get_files(self) -> list[str]:
         """List All Files with Extension"""
@@ -152,76 +127,3 @@ class LocalFilesLoader(BaseLoader):
     def load(self) -> List[Document]:
         """Load Documents from All Files."""
         return list(self.lazy_load())
-
-class LocalFilesQALoader(LocalFilesLoader):
-    """
-    指定引用源过滤，就可以实现QA对分离的知识查询：
-      即根据问题的文本相似度查询文档中的Question部份，
-      但根据Question结果的source部份查询匹配的Anwser，作为LLM的参考结果。
-    """
-    
-    # 根据知识库查询结果的文件来源匹配关联文件，该参数可以指定这些关联文件的名称
-    answer_filenames: str = ["answer.md", "example.md"]
-
-    def __init__(
-        self,
-        documents_folder: str = None,
-        *args, **kwargs
-    ):
-        super().__init__(documents_folder, *args, **kwargs)
-
-        for key in ["answer_filenames"]:
-            if(kwargs.get(key) is not None):
-                setattr(self, key, kwargs.get(key)) 
-
-    def get_answer(self, doc: Union[str, Document]):
-        """
-        根据Q文档中Document.meatadata['source']部份的路径，获得匹配的A文档。
-        """
-        if isinstance(doc, str):
-            dirpath = os.path.dirname(doc)
-        elif isinstance(doc, Document):
-            dirpath = os.path.dirname(doc.metadata['source'])
-        else:
-            raise TypeError("doc must be a str or a Document")
-
-        answers = {}
-        for answer_file in self.answer_filenames:
-            target = os.path.join(dirpath, answer_file)
-            if os.path.exists(target):
-                answer_key = self._get_answer_key(answer_file)
-                answer_content = [doc.page_content for doc in self.load_docs(target)]
-                answers[answer_key] = answer_content
-        return answers
-    
-    def get_answers(self, docs: List[Union[str, Document]], answer_keys: List[str] = None):
-        """
-        按照Q文档查询结果和指定的keys清单，生成匹配的A文档。
-        """
-        all_answers = [self.get_answer(doc) for doc in docs]
-        answer_file_keys = [self._get_answer_key(f) for f in self.answer_filenames]
-        
-        # 如果没有指定answer_keys就使用answer_filenames生成
-        if answer_keys:
-            answer_keys = [k for k in answer_keys if k in answer_file_keys]
-        else:
-            answer_keys = answer_file_keys
-
-        # 如连answer_filenames也没有指定，就直接返回{}
-        if answer_keys:
-            expected_answers = {}
-            for k in answer_keys:
-                expected_answers.update({k: a[k] for a in all_answers if k in a})
-            return expected_answers
-        else:
-            return {}
-    
-    # 重载加载文档内容：排除 answer_filenames
-    def get_files(self) -> list[str]:
-        """List All Files with Extension"""
-        files = super().get_files()
-        files = [f for f in files if os.path.basename(f) not in self.answer_filenames]
-        return files
-    
-    def _get_answer_key(self, answer_file: str):
-        return os.path.splitext(answer_file)[0]
