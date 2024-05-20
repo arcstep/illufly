@@ -14,20 +14,22 @@ from langchain_core.messages import (
     messages_to_dict,
 )
 
-def create_session_id(user_id: str = "default"):
+from ..config import get_textlong_folder, _HISTORY_FOLDER_NAME
+
+def create_session_id(user_id: str = "default_user"):
     now = datetime.datetime.now()
     random_digits = random.randint(1000, 9999)  # 生成一个四位的随机数
-    return now.strftime(f"%Y_%m_%d_%H%M%S_{user_id}_{random_digits}")    
+    return now.strftime(f"%Y-%m-%d-%H%M%S-{random_digits}-{user_id}")
 
 def parse_session_id(session_id: str):
     try:
-        year, month, day, _time_str, user_id, _random_digits = session_id.split('_')
+        year, month, day, _time_str, _random_digits, user_id = session_id.split('-')
         parsed = {
             "year": int(year),
             "month": int(month),
             "day": int(day),
-            "user_id": user_id,
             "session_id": session_id,
+            "user_id": user_id
         }
         if None in parsed.values():
             raise ValueError(f"None value found in parsed session_id: {session_id}")
@@ -42,9 +44,6 @@ class LocalFileMessageHistory(BaseChatMessageHistory):
     Args:
         file_path: path of the local file to store the messages.
     """
-    
-    # 希望入库到知识库的本地文件夹根目录
-    _history_folder: str = "./history"
     
     @property
     def history_folder(self):
@@ -63,34 +62,16 @@ class LocalFileMessageHistory(BaseChatMessageHistory):
             parsed['session_id'])
         return Path(f"{path}.json")
 
-    @history_folder.setter
-    def history_folder(self, value):
-        self._history_folder = os.path.abspath(value)
-
     def __init__(
         self,
         session_id: str = None,
         history_folder: str = None,
         user_id: str = None,
     ):
-        if user_id is None:
-            self.user_id = "default"
-        else:
-            self.user_id = user_id
 
-        if session_id is None:
-            self.session_id = create_session_id(self.user_id)
-        else:
-            self.session_id = session_id
-
-        if history_folder is None:
-            _history_folder = os.getenv("LANGCHAIN_CHINESE_HISTORY_FOLDER")
-            if _history_folder is not None:
-                self.history_folder = _history_folder
-            else:
-                self.history_folder = "./history"
-        else:
-            self.history_folder = history_folder
+        self.user_id = user_id or "default_user"
+        self.session_id = session_id or create_session_id(self.user_id)
+        self.history_folder = history_folder or os.path.join(get_textlong_folder(), self.user_id, _HISTORY_FOLDER_NAME)
 
     @property
     def messages(self) -> List[BaseMessage]:  # type: ignore
