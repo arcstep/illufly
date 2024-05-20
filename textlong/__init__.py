@@ -15,6 +15,11 @@ from textlong.agents.base import (
     create_reason_agent,
 )
 
+from textlong.memory import (
+    MemoryManager,
+    WithMemoryBinding,
+)
+
 from textlong.writing import WritingTask
 
 from .projects import (
