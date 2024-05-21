@@ -41,30 +41,34 @@ def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(f'{v}')
 
-def load_chat_prompt(template_id: str, project_id: str="default", id="0", user_id="public"):
+def load_chat_prompt(template_id: str, project_id: str="default", id: str="0", user_id: str="public", in_memory: bool=True):
     """
     加载提示语模板和partial变量的字符串。    
     目前不支持在partial中使用嵌套模板。
     """
     prompt_path = os.path.join(get_textlong_folder(), user_id, project_id, _PROMPTS_FOLDER_NAME, id, template_id)
-    if not os.path.exists(prompt_path):
+    if in_memory or not os.path.exists(prompt_path):
         if template_id == "qa":
             from .qa_prompt import create_qa_prompt
-            return create_qa_prompt()
+            template = create_qa_prompt()
         elif template_id == "help":
             from .writing_prompt import create_writing_help_prompt
-            return create_writing_help_prompt()
+            template = create_writing_help_prompt()
         elif template_id == "init":
             from .writing_prompt import create_writing_init_prompt
-            return create_writing_init_prompt()
+            template = create_writing_init_prompt()
         elif template_id == "outline":
             from .writing_prompt import create_writing_todo_prompt
-            return create_writing_todo_prompt(content_type="outline")
+            template = create_writing_todo_prompt(content_type="outline")
         elif template_id == "paragraph":
             from .writing_prompt import create_writing_todo_prompt
-            return create_writing_todo_prompt(content_type="paragraph")
+            template = create_writing_todo_prompt(content_type="paragraph")
         else:
             raise ValueError(f"模板ID[{template_id}]不能支持！")
+        
+        if not in_memory:
+            save_chat_prompt(template, template_id, project_id, id, user_id)
+        return template
 
     messages = []
     partial_variables = {}

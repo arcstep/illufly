@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "textlong"
-version = "0.1.7"
+version = "0.1.8"
 description = "A framework designed to produce long-texts with GPT or other large language models."
 authors = ["arcstep <43801@qq.com>"]
 homepage = "https://github.com/arcstep/textlong"
