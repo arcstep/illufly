@@ -90,16 +90,17 @@ _AUTO_OUTLINE_OR_PARAGRAPH_PROMPT = """
 {{outline_exist}}
 """
 
-def create_writing_help_prompt(system_prompt:str = None):
+def create_writing_help_prompt():
     """咨询系统如何使用"""
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt or HELP_SYSTEM_PROMPT),
+        ("system", "{{task_instruction}}"),
         ("ai", "我有哪些资料可以参考？"),
         ("human", "你的资料如下：\n{{doc}}"),
         MessagesPlaceholder(variable_name="history"),
         ("human", "{{task}}"),
     ], template_format="mustache").partial(
+        task_instruction=HELP_SYSTEM_PROMPT,
         doc=WRITING_HELP
     )
     
@@ -117,11 +118,8 @@ def create_writing_init_prompt():
         MessagesPlaceholder(variable_name="history"),
         ("human", "{{task}}"),
     ], template_format="mustache").partial(
-        # 任务指南
         task_instruction=task_prompt,
-        # 输出格式要求
         output_format=output_prompt,
-        # JSON严格控制
         json_instruction=json_instruction,
     )
 

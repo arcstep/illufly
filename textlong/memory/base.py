@@ -192,13 +192,11 @@ class WithMemoryBinding(RunnableBindingBase):
         inputs = run.inputs
         input_val = inputs[self.input_messages_key]
         input_messages = self._get_input_messages(input_val)
-        print("input_messages:", input_messages)
 
         # 获得输出
         output_val = run.outputs
         output_messages = self._get_output_messages(output_val)
         store.add_messages(input_messages + output_messages)
-        print("store:", store)
 
     def _merge_configs(self, *configs: Optional[RunnableConfig]) -> RunnableConfig:
         config = super()._merge_configs(*configs)
@@ -223,6 +221,5 @@ class WithMemoryBinding(RunnableBindingBase):
 
         memory = self.memory_manager.get_memory_factory(configurable["session_id"])
         config["configurable"]["memory"] = memory
-        # print("_merge_configs:", memory)
         
         return config

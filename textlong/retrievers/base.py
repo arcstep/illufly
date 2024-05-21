@@ -21,8 +21,11 @@ DEFAULT_QA_CHAIN_PROMPT = """
 问题: {question}
 """
 
-def format_docs(docs: List[str]) -> str:
-    return "\n\n".join([d.page_content for d in docs])
+def format_qa_docs(docs: List[str]) -> str:
+    """
+    如果 Document 中包含的 metadata['answer'] 属性就优先采纳。
+    """
+    return "\n\n".join([d.metadata['answer'] or d.page_content for d in docs])
 
 def convert_message_to_str(message: Union[BaseMessage, str]) -> str:
     if isinstance(message, BaseMessage):
@@ -34,16 +37,16 @@ def create_qa_chain(llm: Runnable, retriever: Callable, prompt: str = DEFAULT_QA
     """
     使用 create_qa_chain 构建的LCEL链时，参数应当是一个消息。
     
-    例如：    
+    例如：
     chain = creat_qa_chain(llm, rectriever)
-    chain.invoke("langchain_chinese是啥？")
+    chain.invoke("textlong是啥？")
     """
 
     _prompt = ChatPromptTemplate.from_template(prompt)
 
     return (
         {
-            "context": (lambda x: convert_message_to_str(x)) | retriever | format_docs,
+            "context": (lambda x: convert_message_to_str(x)) | retriever | format_qa_docs,
             "question": lambda x: convert_message_to_str(x) ,
         }
         | _prompt
