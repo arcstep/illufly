@@ -6,6 +6,7 @@ from textlong.document_loaders import (
 
 from textlong.retrievers.base import (
     AskDocumentTool,
+    format_qa_docs,
     create_qa_chain,
     create_qa_toolkits,
 )
