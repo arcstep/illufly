@@ -3,11 +3,8 @@ from typing import List, Union
 from langchain_core.documents import Document
 
 class TreeDocuments():
-    def __init__(self, doc_str: str, start_id = None, doc_type="md"):
-        if doc_type == "md":
-            self.documents = self.parse_markdown(doc_str)
-        elif doc_type == "html":
-            self.documents = self.parse_html(doc_str)
+    def __init__(self, doc_str: str, start_id = "1"):
+        self.documents = self.parse_markdown(doc_str)
         
         if self.documents:
             self.build_index(start_id)
@@ -42,47 +39,14 @@ class TreeDocuments():
 
         return documents
 
-    def parse_html(self, html_document: str) -> List[Document]:
-        from bs4 import BeautifulSoup, NavigableString
-
-        soup = BeautifulSoup(html_document, 'html.parser')
-
-        documents = []
-        indices = {'H1': 0, 'H2': 0, 'H3': 0, 'H4': 0, 'H5': 0, 'H6': 0, 'paragraph': 0}
-        current_indices = {'H1': 0, 'H2': 0, 'H3': 0, 'H4': 0, 'H5': 0, 'H6': 0, 'paragraph': 0}
-
-        def parse_node(node, parent_type=None):
-            nonlocal indices, current_indices
-            if isinstance(node, NavigableString):
-                if node.strip():
-                    type_ = 'paragraph'
-                    indices[type_] += 1
-                    current_indices[type_] = indices[type_]
-                    id_ = '.'.join(str(current_indices[t]) for t in ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'paragraph'] if current_indices[t] > 0)
-                    documents.append(Document(page_content=node.strip(), metadata={'type': type_, 'id': id_}))
-                return
-            if node.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p']:
-                type_ = 'H' + node.name[1] if node.name[0] == 'h' else 'paragraph'
-                indices[type_] += 1
-                current_indices[type_] = indices[type_]
-                if type_ in ['H1', 'H2', 'H3', 'H4', 'H5', 'H6']:
-                    indices = {key: (0 if key > type_ else value) for key, value in indices.items()}
-                id_ = '.'.join(str(current_indices[t]) for t in ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'paragraph'] if current_indices[t] > 0)
-                documents.append(Document(page_content=node.text, metadata={'type': type_, 'id': id_}))
-            elif node.name == 'div':
-                for child in node.children:
-                    parse_node(child, parent_type)
-
-        for child in soup.body.children:
-            parse_node(child)
-
-        return documents
-
-    def build_index(self, start_id: str=None):
+    def build_index(self, start_id: str="1"):
         indices = {f'H{i}': 0 for i in range(1, 9)}
         indices['paragraph'] = 0
         last_heading = None
-        prefix = start_id if start_id else ""
+
+        start_ids = start_id.split(".")
+        prefix = ".".join(start_ids[:-1])
+        start_int = int(start_ids[-1]) if start_ids[-1].isdigit() else 0
 
         for doc in self.documents:
             type_ = doc.metadata.get('type')
@@ -95,7 +59,13 @@ class TreeDocuments():
                     last_heading = type_
                 elif type_ == 'paragraph' and last_heading:
                     indices['paragraph'] += 1
-            doc.metadata['id'] = prefix + ('' if prefix == "" else '.') + '.'.join(str(indices[f'H{i}']) for i in range(1, int(last_heading[1:]) + 1)) + ('.' + str(indices['paragraph']) if type_ == 'paragraph' else '')
+
+            if last_heading:
+                tail_ids = ('.'.join(str(indices[f'H{i}']) for i in range(1, int(last_heading[1:]))) + \
+                    ('.' + str(indices['paragraph']) if type_ == 'paragraph' else '')).split(".")
+                middle = f"{(int(tail_ids[0]) if tail_ids[0] != '' else 0) + start_int}"
+                tail = ".".join(tail_ids[1:])
+                doc.metadata['id'] = ".".join([e for e in [prefix, middle, tail] if e != ""])
 
     def get_documents(self, id: Union[str, List[str]]="1", node_type: Union[str, List[str]]=None):
         """获得文档子树"""
