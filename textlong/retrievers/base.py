@@ -25,7 +25,10 @@ def format_qa_docs(docs: List[str]) -> str:
     """
     如果 Document 中包含的 metadata['answer'] 属性就优先采纳。
     """
-    return "\n\n".join([d.metadata['answer'] or d.page_content for d in docs])
+    return "\n\n".join([
+        d.metadata['answer'] if 'answer' in d.metadata else d.page_content
+        for d in docs
+    ])
 
 def convert_message_to_str(message: Union[BaseMessage, str]) -> str:
     if isinstance(message, BaseMessage):
@@ -46,8 +49,8 @@ def create_qa_chain(llm: Runnable, retriever: Callable, prompt: str = DEFAULT_QA
 
     return (
         {
-            "context": (lambda x: convert_message_to_str(x)) | retriever | format_qa_docs,
-            "question": lambda x: convert_message_to_str(x) ,
+            "context": (lambda x: convert_message_to_str(x['query'])) | retriever | format_qa_docs,
+            "question": lambda x: convert_message_to_str(x['query']) ,
         }
         | _prompt
         | llm
@@ -76,7 +79,6 @@ class AskDocumentTool(BaseTool):
     args:
     - query 类型是str, 用户问题的文字描述的字符串
     """
-    args_schema: Type[BaseModel] = SearchInput
     qa_chain: Runnable = Field(...)
 
     def _run(
@@ -84,9 +86,7 @@ class AskDocumentTool(BaseTool):
     ) -> str:
         """Use the tool."""
         
-        if isinstance(query, str):
-            query = [query]
-        return self.qa_chain.invoke([convert_message_to_str(q) for q in query])
+        return self.qa_chain.invoke(query)
 
 def create_qa_toolkits(qa_chain: Runnable, name: str = None, description: str = None) -> List[AskDocumentTool]:
     return [AskDocumentTool(qa_chain, name, description)]

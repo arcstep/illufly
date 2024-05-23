@@ -34,3 +34,5 @@ from .projects import (
     load_chat_prompt,
     save_chat_prompt,
 )
+
+from textlong.tree_documents import TreeDocuments
