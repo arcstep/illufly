@@ -10,6 +10,11 @@ class TreeDocuments():
             self.build_index(start_id)
 
     def parse_markdown(self, doc_str: str) -> List[Document]:
+        """
+        解析 Markdown 文件。
+        给定的 Markdown 中的第一个标题应当是最大的标题。
+        """
+
         # Step 1: Replace the content in ``` <<content>> ``` with a special marker
         pattern = r'```.*?```'
         matches = re.findall(pattern, doc_str, re.DOTALL)
@@ -47,18 +52,20 @@ class TreeDocuments():
         return documents
 
     def build_index(self, start_id: str="1.1"):
+        """构建层级编号"""
+
         indices = {f'H{i}': 0 for i in range(1, 9)}  # Initialize all indices to 0
         indices['paragraph'] = 0
         last_heading = None
         last_index = 0
 
         start_ids = start_id.split(".")
-        prefix = ".".join(start_ids[:-1])
         start_int = int(start_ids[-1]) if start_ids[-1].isdigit() else 0
+        prefix = ".".join(start_ids[:-1])
 
         tail_ids = []
-        middle = ""
         tail = ""
+        middle = ""
 
         for doc in self.documents:
             type_ = doc.metadata.get('type')
@@ -83,7 +90,9 @@ class TreeDocuments():
                     indices['paragraph'] = 0
                     # Update tail_ids and doc.metadata['id']
                     tail_ids.append(str(indices['paragraph']))
-                    doc.metadata['id'] = ".".join([e for e in [prefix, middle, ".".join(tail_ids)] if e != ""])
+                    tail = ".".join(tail_ids[1:])
+                    doc.metadata['id'] = ".".join([e for e in [prefix, middle, tail] if e != ""])
+                    # print(f"{prefix or 'EMPTY'}-{middle}-{tail_ids}")
                     tail_ids.pop()
 
     def get_documents(self, id: Union[str, List[str]]="1", node_type: Union[str, List[str]]=None):
@@ -94,19 +103,21 @@ class TreeDocuments():
         if isinstance(node_type, str):
             node_type = [node_type]
         if node_type == None:
-            node_type = ['H', 'p'] # [H1,H2,...H6, paragraph]
+            node_type = ['H', 'par'] # [H1,H2,...H6, paragraph]
+
         return [
             doc
             for doc in self.documents
-            if doc.metadata 
-            and 'id' in doc.metadata 
-            and any(doc.metadata['id'].startswith(i) for i in id) 
-            and 'type' in doc.metadata 
+            if doc.metadata
+            and 'id' in doc.metadata
+            and any(doc.metadata['id'].startswith(i) for i in id)
+            and 'type' in doc.metadata
             and any(doc.metadata['type'].startswith(i) for i in node_type)
         ]
 
     def replace_documents(self, node_id: str, documents: List[Document], sorting=True):
-        """在指定位置替换子树"""
+        """在指定位置替换文档子树"""
+
         self.remove_documents(node_id, sorting=False)
         self.insert_documents(node_id, documents, sorting=False)
         if sorting:
@@ -116,6 +127,7 @@ class TreeDocuments():
 
     def insert_documents(self, node_id: str, documents: List[Document], sorting=True):
         """添加子树，并按照 Document.metadata['id'] 重新排序"""
+
         if node_id is None:
             self.documents.extend(documents)
         else:
@@ -132,6 +144,7 @@ class TreeDocuments():
 
     def remove_documents(self, node_id: str, sorting = True):
         """删除指定的子树"""
+
         indices = [i for i, doc in enumerate(self.documents) if doc.metadata['id'].startswith(node_id)]
         if indices:
             for index in reversed(indices):
@@ -173,6 +186,10 @@ class TreeDocuments():
         return header
 
     def get_markdown(self, id: Union[str, List[str]]=None, node_type: Union[str, List[str]]=None, with_number: bool=True):
+        """
+        导出 Markdown 文本。
+        """
+
         docs = self.documents if id == None else self.get_documents(id)
         md = ""
         
