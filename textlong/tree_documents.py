@@ -40,7 +40,7 @@ class TreeDocuments():
                 doc.page_content = doc.page_content.replace(f'CODEBLOCK{i}', code_block)
 
         # Step 4: Check the first document's type
-        print('H' + str(max_heading))
+        # print('H' + str(max_heading))
         if documents and max_heading != 999 and (documents[0].metadata['type'] != f'H{max_heading}'):
             documents.insert(0, Document(page_content='<<TITLE>>', metadata={'type': f'H{max_heading}'}))
 
@@ -76,7 +76,7 @@ class TreeDocuments():
                     tail_ids = [str(indices[f'H{i}']) if i < int(last_heading[1]) else str(last_index) for i in range(1, int(last_heading[1]) + 1)]
                     middle = f"{int(tail_ids[0]) - 1 + start_int}"
                     tail = ".".join(tail_ids[1:])
-                    print(f'{prefix or "<EMPTY>"}-{middle}({tail_ids[0]}/{start_int})-{tail}')
+                    # print(f'{prefix or "<EMPTY>"}-{middle}({tail_ids[0]}/{start_int})-{tail}')
                     doc.metadata['id'] = ".".join([e for e in [prefix, middle, tail] if e != ""])
                 elif type_ == 'paragraph' and last_heading:
                     # Set the paragraph index to 0
@@ -140,3 +140,49 @@ class TreeDocuments():
                 self.documents.sort(key=lambda doc: doc.metadata['id'])
 
         return self.documents
+
+    def get_markdown_header(self, document: Document=None, with_number: bool=True):
+        if document == None:
+            return ''
+        
+        id = ''
+        type = ''
+        if document.metadata:
+            id = (document.metadata['id'] + " ") if with_number else ""
+            type = document.metadata['type']
+
+        if type == "H1":
+            header = f'# {id}'
+        elif type == "H2":
+            header = f'## {id}'
+        elif type == "H3":
+            header = f'### {id}'
+        elif type == "H4":
+            header = f'#### {id}'
+        elif type == "H5":
+            header = f'##### {id}'
+        elif type == "H6":
+            header = f'###### {id}'
+        elif type == "H7":
+            header = f'####### {id}'
+        elif type == "H8":
+            header = f'####### {id}'
+        else:
+            header = ''
+        
+        return header
+
+    def get_markdown(self, id: Union[str, List[str]]=None, node_type: Union[str, List[str]]=None, with_number: bool=True):
+        docs = self.documents if id == None else self.get_documents(id)
+        md = ""
+        
+        for doc in docs:
+            if doc.metadata:
+                if doc.metadata['type'] and doc.metadata['type'].startswith("H"):
+                    md += "\n" \
+                        + self.get_markdown_header(doc, with_number) + doc.page_content \
+                        + "\n\n"
+                else:
+                    md += doc.page_content + "\n"
+        
+        return md
