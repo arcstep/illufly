@@ -28,7 +28,7 @@ def create_tool(prompt:str, name: str, description: str):
     """
 
     return StructuredTool.from_function(
-        func=lambda input: call_chain(_get_chain(prompt), input),
+        func=lambda **kwargs: call_chain(_get_chain(prompt), kwargs),
         name=name,
         description=description,
     )
