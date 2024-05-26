@@ -6,7 +6,7 @@ from langchain.agents.format_scratchpad import format_log_to_str
 from langchain.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
 from langchain.tools.render import render_text_description
-from .prompt import PROMPT_COT, PROMPT_REACT
+from .prompt import PROMPT_COT
 
 class Action(BaseModel):
     name: str = Field(
@@ -21,8 +21,9 @@ class Action(BaseModel):
 _action_output_parser = PydanticOutputParser(pydantic_object=Action)
 _action_parser_format = _action_output_parser.get_format_instructions()
 
-class ReasonOutputParser(AgentOutputParser):
-    """解析单个动作的智能体action和输入参数。
+class AgentOutputParser(AgentOutputParser):
+    """
+    解析单个动作的智能体action和输入参数。
     """
 
     def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
@@ -40,7 +41,7 @@ class ReasonOutputParser(AgentOutputParser):
     def _type(self) -> str:
         return "Chain-of-Thought"
 
-def _prompt_creator(prompt: str) -> Callable[[List[str]], str]:
+def _prompt_factory(prompt: str) -> Callable[[List[str]], str]:
     def creator(tools: List[str]) -> str:
         # 请注意，智谱AI等国内大模型对于pydantic的参数解析并不友好，使用JSON描述参数时会误读
         # 因此，不要使用 render_text_description_and_args 来生成工具描述
@@ -54,19 +55,19 @@ def _prompt_creator(prompt: str) -> Callable[[List[str]], str]:
 
     return creator
 
-# 基于 ReAct / CoT 的智能体
-def create_reason_agent(llm: Any, prompt: Optional[str] = None, tools: List[str] = []) -> Any:
-    prompt_creator = _prompt_creator(PROMPT_COT)
+# 智能体
+def create_agent(llm: Any, prompt: Optional[str] = None, tools: List[str] = []) -> Any:
+    prompt_factory = _prompt_factory(PROMPT_COT)
     if prompt is not None:
-        prompt_creator = _prompt_creator(prompt)
+        prompt_factory = _prompt_factory(prompt)
 
     agent = (
         RunnablePassthrough.assign(
             agent_scratchpad=lambda x: format_log_to_str(x["intermediate_steps"])
         )
-        | prompt_creator(tools)
+        | prompt_factory(tools)
         | llm
-        | ReasonOutputParser()
+        | AgentOutputParser()
     )
 
     return agent
