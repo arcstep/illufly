@@ -47,7 +47,7 @@ def load_chat_prompt(template_id: str, project_id: str="default", id: str="0", u
     目前不支持在partial中使用嵌套模板。
     """
     prompt_path = os.path.join(get_textlong_folder(), user_id, project_id, _PROMPTS_FOLDER_NAME, id, template_id)
-    if in_memory or not os.path.exists(prompt_path):
+    if in_memory and not os.path.exists(prompt_path):
         if template_id == "qa":
             from .qa import create_qa_prompt
             template = create_qa_prompt()
@@ -66,8 +66,6 @@ def load_chat_prompt(template_id: str, project_id: str="default", id: str="0", u
         else:
             raise ValueError(f"模板ID[{template_id}]不能支持！")
         
-        if not in_memory:
-            save_chat_prompt(template, template_id, project_id, id, user_id)
         return template
 
     messages = []
