@@ -37,17 +37,13 @@ def parse_session_id(session_id: str):
     except ValueError:
         raise ValueError(f"Unable to parse session_id: {session_id}")
 
-class LocalFileMessageHistory(BaseChatMessageHistory):
+class LocalFileStore(BaseChatMessageHistory):
     """
     Chat message history that stores history in a local file.
 
     Args:
         file_path: path of the local file to store the messages.
     """
-    
-    @property
-    def history_folder(self):
-        return self._history_folder
     
     @property
     def file_path(self):
@@ -86,7 +82,7 @@ class LocalFileMessageHistory(BaseChatMessageHistory):
         """Append the message to the record in the local file"""
         all_messages = messages_to_dict(self.messages)
         all_messages.append(messages_to_dict([message])[0])
-        
+
         # 如果不存在就创建文件
         file_path = self.file_path
         if not file_path.parent.exists():

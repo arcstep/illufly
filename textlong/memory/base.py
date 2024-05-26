@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from langchain_core.runnables.config import RunnableConfig
     from langchain_core.tracers.schemas import Run
 
-
 MessagesOrDictWithMessages = Union[Sequence["BaseMessage"], Dict[str, Any]]
 GetSessionHistoryCallable = Callable[..., BaseChatMessageHistory]
 
