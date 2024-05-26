@@ -9,9 +9,6 @@ PROMPT_TASK_WRITING = """
 4. 如果你已经完成所有任务,确保以"FINISH"指令结束。
 5. 确保你生成的动作是可以精确执行的,动作做中可以包括具体方法和目标输出。
 
-你的写作任务是:
-{task}
-
 你有非常优秀的逻辑分析能力,可以通过因果关系找到最优的解决方案。
 
 你要参考之前的思考记录:
@@ -26,7 +23,7 @@ PROMPT_TASK_WRITING = """
 {detail}
 
 >>>>>>>
-如果你必须选择工具才能完成任务,可以使用以下工具之一,它们又称为动作或actions:
+你可以使用以下工具之一,它们又称为动作或actions:
 {tools}
 
 你必须根据以下格式说明,输出你的思考过程:
@@ -45,3 +42,12 @@ PROMPT_TASK_WRITING = """
 你必须根据以下格式说明,输出所选择执行的动作/工具/指令:
 {action_format_instructions}
 """
+
+def create_task_manage_prompt(instruction: str):
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "{instruction}"),
+        ("human", "你的写作任务是：\n{task}")
+    ]).partial(
+        instruction=instruction
+    )
+    return(prompt)

@@ -1,15 +1,13 @@
+from langchain_core.runnables import Runnable
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.tools import StructuredTool
 
-def _get_chain(prompt):
-    _prompt = ChatPromptTemplate.from_messages([
-        ("system", f"{prompt}"),
-        ("human", "{task}")
-    ])
-    
-    from langchain_zhipu import ChatZhipuAI
-    llm = ChatZhipuAI()
-    chain = _prompt | llm
+def _get_chain(prompt, llm: Runnable=None):
+    if llm == None:
+        from langchain_zhipu import ChatZhipuAI
+        llm = ChatZhipuAI()
+
+    chain = prompt | llm
 
     return chain
 
@@ -22,7 +20,7 @@ def call_chain(chain, input):
     print(f"\n\n实际字数: {len(text)}")
     return text
 
-def create_tool(prompt:str, name: str, description: str):
+def create_tool(prompt, name: str, description: str):
     """
     创建写作工具。
     """
@@ -33,7 +31,7 @@ def create_tool(prompt:str, name: str, description: str):
         description=description,
     )
 
-def create_chain(prompt:str, name: str):
+def create_chain(prompt, name: str):
     """
     创建写作链。
     """

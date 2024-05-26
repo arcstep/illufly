@@ -12,7 +12,15 @@ import json
 
 def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id: str="default", id="0", user_id="public"):
     """
-    保存提示语模板。
+    保存对话风格的提示语模板。
+
+    提示语模板中的每一段对话和局部变量都会被保存为独立的`json`格式。
+    具体规则如下：
+        - 系统提示，`{对话序号}_system.json`
+        - 大模型消息，`{对话序号}_ai.json`
+        - 人类消息，`{对话序号}_human.json`
+        - 占位消息，`{对话序号}_placeholder.json`
+        - `partial`变量，`var_{变量名}.md`
     """
     prompt_path = os.path.join(get_textlong_folder(), user_id, project_id, _PROMPTS_FOLDER_NAME, id, template_id)
 
@@ -64,7 +72,7 @@ def load_chat_prompt(template_id: str, project_id: str="default", id: str="0", u
             from .tree import create_writing_todo_prompt
             template = create_writing_todo_prompt(content_type="paragraph")
         else:
-            raise ValueError(f"模板ID[{template_id}]不能支持！")
+            raise ValueError(f"模板ID[{template_id}]不是内置模板！")
         
         return template
 
