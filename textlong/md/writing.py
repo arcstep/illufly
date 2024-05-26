@@ -1,3 +1,5 @@
+from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from .tools import create_tool, create_chain
 
 详细任务指引 = """
@@ -60,6 +62,15 @@ MUST 对于保留的提纲结构，应当保留提纲名称和字数约束。
 {outline}
 """
 
+def create_md_prompt(instruction: str):
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "{instruction}"),
+        ("human", "{task}")
+    ]).partial(
+        instruction=instruction
+    )
+    return(prompt)
+
 all_tools = [
     {
         "name": "detail",
@@ -67,7 +78,7 @@ all_tools = [
             ("task", "[str] 扩写目标"),
             ("title", "[str] 扩写起点的标题名称, 例如 x.x.x TITLE"),
         ],
-        "prompt": 详细任务指引 + 内容格式输出,
+        "prompt": create_md_prompt(详细任务指引 + 内容格式输出),
         "description": "按要求创作详细的文字内容"
     },
     {
@@ -75,7 +86,7 @@ all_tools = [
         "args": [
             ("task", "[str] 写作目标"),
         ],
-        "prompt": 提纲任务指引 + 提纲格式输出,
+        "prompt": create_md_prompt(提纲任务指引 + 提纲格式输出),
         "description": "给出一个符合创作要求的写作大纲"
     },
     {
@@ -84,7 +95,7 @@ all_tools = [
             ("task", "[str] 写作目标"),
             ("title", "[str] 扩写起点的标题名称, 例如 x.x.x TITLE"),
         ],
-        "prompt": 详细任务指引 + 提纲扩写补充要求 + 内容格式输出,
+        "prompt": create_md_prompt(详细任务指引 + 提纲扩写补充要求 + 内容格式输出),
         "description": "根据写作大纲细化详细内容文字内容"
     },
     {
@@ -93,7 +104,7 @@ all_tools = [
             ("task", "[str] 写作目标"),
             ("title", "[str] 扩写起点的标题名称, 例如 x.x.x TITLE"),
         ],
-        "prompt": 提纲任务指引 + 提纲扩写补充要求 + 提纲格式输出,
+        "prompt": create_md_prompt(提纲任务指引 + 提纲扩写补充要求 + 提纲格式输出),
         "description": "根据写作大纲细化写作大纲"
     },
 ]
