@@ -31,7 +31,7 @@ load_dotenv(find_dotenv(), override=True)
 **2. 创建`WritingTask`实例：**
 
 ```python
-from textlong import WritingTask
+from textlong.tree import WritingTask
 from langchain_openai import ChatOpenAI
 
 task = WritingTask(llm=ChatOpenAI())
