@@ -1,126 +1,62 @@
-from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from .tools import create_tool, create_chain
+from .documents import IntelliDocuments
+from .tools import create_outline_chain, create_detail_chain
 
-详细任务指引 = """
-你是一位专业作者，负责创作写作的详细内容，确保符合下面要求。
+def call_chain(chain, input):
+    text = ""
+    for chunk in chain.stream(input):
+        text += chunk.content
+        print(chunk.content, end="")
+    
+    print(f"\n\n实际字数: {len(text)}")
+    return text
 
-MUST 按照markdown格式输出，直接输出你的结果，不要评论，不要啰嗦。
-MUST 输出的markdown内容使用`>->>>`和`<<<-<`包围。
-"""
+class Writing():
+    def __init__(self, outline=None, detail=None, llm=None):
+        # 源文档，适合仿写、改写、翻译等功能
+        self.source_outline = IntelliDocuments(doc_str=outline, llm=llm)
+        self.source_detail = IntelliDocuments(doc_str=outline, llm=llm)
+        # 目标文档
+        self.target_outline = IntelliDocuments(llm=llm)
+        self.target_detail = IntelliDocuments(llm=llm)
 
-提纲任务指引 = """
-你是一位专业作者，负责创作写作的详细内容，确保符合下面要求。
+    def outline(self, task: str):
+        """
+        从零开始创建写作大纲。
+        """
+        chain = create_outline_chain(self.llm)
+        self.target_outline.documents = call_chain(chain, {"task": task})
+        self.target_outline.build_index("1")
+        return self.target_outline.documents
 
-MUST 每一个标题都应当是可以进一步独立扩写的段落。
-MUST 你只能使用标题语法（n个`#`）表示提纲。
-MUST 提纲中包括扩写要求，包括创意要点、创作思路、创作中涉及到的实体名称等。
-MUST 你只能输出提纲，不要输出具体内容。
-MUST 必须在标题中增加字数估计，并且注意所有段落字数总和符合对总字数的预期。
-MUST 按照markdown格式输出，直接输出你的结果，不要评论，不要啰嗦。
-MUST 输出的markdown内容使用`>->>>`和`<<<-<`包围。
-"""
+    def detail(self, task: str):
+        """
+        根据提纲扩写细节。
+        """
+        chain = create_detail_chain(self.llm)
+        self.target_detail.documents = call_chain(chain, {"task": task})
+        self.target_detail.build_index("1")
+        return self.target_detail.documents
 
-提纲格式输出 = """
-输出例子:
->->>>
-# xxx
-## XXXX（300字）
-扩写要求：
-- xxx
-- xxx
-## XXXX（200字）
-扩写要求：
-- xxx
-- xxx
-<<<-<
-"""
+    def refine(self):
+        """
+        优化文字内容。
+        """
+        chain = create_detail_chain(self.llm)
 
-内容格式输出 = """
-输出例子（一定不要在标题中带有“第一章”、“第一节”、“1.1“等编号）:
->->>>
-# xxx
-## XXXX
-xxxx
-## XXXX
-xxxx
-<<<-<
-"""
+    def refine_outline(self):
+        """
+        优化写作提纲。
+        """
+        chain = create_detail_chain(self.llm)
+    
+    def rewrite(self):
+        """
+        根据已有文字内容仿写。
+        """
+        chain = create_detail_chain(self.llm)
 
-详细扩写补充要求 = """
-MUST 扩写时必须保留提纲中原有的标题名称，但要去除“第一段”、“约200字”等不必要的修饰词，也可以根据实际情况修改编号。
-
-你的扩写依据如下：
-{outline}
-"""
-
-提纲扩写补充要求 = """
-MUST 你要么保留已有提纲结构，要么对已有提纲标题进一步增加层次，创作更深层次的提纲结构。
-MUST 对于保留的提纲结构，应当保留提纲名称和字数约束。
-
-你的扩写依据如下：
-{outline}
-"""
-
-def create_md_prompt(instruction: str):
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "{instruction}"),
-        ("human", "{task}")
-    ]).partial(
-        instruction=instruction
-    )
-    return(prompt)
-
-all_tools = [
-    {
-        "name": "detail",
-        "args": [
-            ("task", "[str] 扩写目标"),
-            ("title", "[str] 扩写起点的标题名称, 例如 x.x.x TITLE"),
-        ],
-        "prompt": create_md_prompt(详细任务指引 + 内容格式输出),
-        "description": "按要求创作详细的文字内容"
-    },
-    {
-        "name": "outline",
-        "args": [
-            ("task", "[str] 写作目标"),
-        ],
-        "prompt": create_md_prompt(提纲任务指引 + 提纲格式输出),
-        "description": "给出一个符合创作要求的写作大纲"
-    },
-    {
-        "name": "expand_detail",
-        "args": [
-            ("task", "[str] 写作目标"),
-            ("title", "[str] 扩写起点的标题名称, 例如 x.x.x TITLE"),
-        ],
-        "prompt": create_md_prompt(详细任务指引 + 提纲扩写补充要求 + 内容格式输出),
-        "description": "根据写作大纲细化详细内容文字内容"
-    },
-    {
-        "name": "expand_outline",
-        "args": [
-            ("task", "[str] 写作目标"),
-            ("title", "[str] 扩写起点的标题名称, 例如 x.x.x TITLE"),
-        ],
-        "prompt": create_md_prompt(提纲任务指引 + 提纲扩写补充要求 + 提纲格式输出),
-        "description": "根据写作大纲细化写作大纲"
-    },
-]
-
-toolkits = [
-    create_tool(
-        name=item['name'],
-        prompt=item['prompt'],
-        description=item['description'] \
-            + "(kwargs: " \
-            + ";".join([f'{arg} {desc}' for arg, desc in item['args']]) \
-            + ")",
-    ) for item in all_tools
-]
-
-chains = {}
-
-for item in all_tools:
-    chains.update(create_chain(item['prompt'], item['name']))
+    def translate(self):
+        """
+        根据已有文字内容翻译。
+        """
+        chain = create_detail_chain(self.llm)    
