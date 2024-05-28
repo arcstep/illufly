@@ -2,12 +2,14 @@ import re
 from typing import List, Union
 from langchain_core.documents import Document
 
-class TreeDocuments():
-    def __init__(self, doc_str: str, start_id = "1"):
-        self.documents = self.parse_markdown(doc_str)
-        
-        if self.documents:
-            self.build_index(start_id)
+class IntelliDocuments():
+    def __init__(self, doc_str: str=None, start_id="1", llm=None):
+        self.llm = llm
+        if doc_str != None:
+            self.documents = self.parse_markdown(doc_str)
+            
+            if self.documents:
+                self.build_index(start_id)
 
     def parse_markdown(self, doc_str: str) -> List[Document]:
         """
@@ -203,3 +205,4 @@ class TreeDocuments():
                     md += doc.page_content + "\n"
         
         return md
+
