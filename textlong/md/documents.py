@@ -5,13 +5,23 @@ from langchain_core.documents import Document
 class IntelliDocuments():
     def __init__(self, doc_str: str=None, start_id="1", llm=None):
         self.llm = llm
+        self.documents = []
+        self.import_markdown(doc_str, start_id)
+
+    def import_markdown(self, doc_str: str=None, start_id="1"):
+        """
+        导入Markdown文档。
+        """
         if doc_str != None:
             self.documents = self.parse_markdown(doc_str)
             
             if self.documents:
                 self.build_index(start_id)
+        
+        return self.documents
 
-    def parse_markdown(self, doc_str: str) -> List[Document]:
+    @classmethod
+    def parse_markdown(cls, doc_str: str) -> List[Document]:
         """
         解析 Markdown 文件。
         给定的 Markdown 中的第一个标题应当是最大的标题。
@@ -187,7 +197,7 @@ class IntelliDocuments():
         
         return header
 
-    def get_markdown(self, id: Union[str, List[str]]=None, node_type: Union[str, List[str]]=None, with_number: bool=True):
+    def get_markdown(self, id: Union[str, List[str]]=None, node_type: Union[str, List[str]]=None, with_number: bool=False):
         """
         导出 Markdown 文本。
         """
@@ -206,3 +216,39 @@ class IntelliDocuments():
         
         return md
 
+    def get_outline_tail(self):
+        """获得叶子提纲"""
+        pass
+
+    def get_outline_relevant(self):
+        """获得精简提纲"""
+        pass
+
+    def get_markdown_prev(self, to_id="9999999", k=500, with_number: bool=False):
+        """
+        获得最新进展。
+        """
+        md = ""
+        
+        for doc in self.documents:
+            if doc.metadata and is_prev_id(doc.metadata['id'], to_id):
+                if doc.metadata['id']:
+                    md += "\n" \
+                        + self.get_markdown_header(doc, with_number) + doc.page_content \
+                        + "\n\n"
+                else:
+                    md += doc.page_content + "\n"
+        
+        if len(md) > k:
+            return "(省略前文）\n...\n" + md[-k:]
+        else:
+            return md[-k:]
+
+def is_prev_id(id1, id2):
+    """
+    比较两个形如 "2.3.4" 的 ID，如果 id1 小于 id2，返回 True，否则返回 False。
+    """
+    list1 = list(map(int, id1.split('.')))
+    list2 = list(map(int, id2.split('.')))
+
+    return list1 < list2
