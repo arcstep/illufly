@@ -13,7 +13,7 @@ class IntelliDocuments():
         导入Markdown文档。
         """
         if doc_str != None:
-            self.documents = self.parse_markdown(doc_str)
+            self.documents += self.parse_markdown(doc_str)
             
             if self.documents:
                 self.build_index(start_id)
@@ -202,47 +202,81 @@ class IntelliDocuments():
         导出 Markdown 文本。
         """
 
-        docs = self.documents if id == None else self.get_documents(id)
+        docs = self.get_documents(node_type=node_type) if id == None else self.get_documents(id, node_type=node_type)
         md = ""
         
         for doc in docs:
-            if doc.metadata:
-                if doc.metadata['type'] and doc.metadata['type'].startswith("H"):
-                    md += "\n" \
-                        + self.get_markdown_header(doc, with_number) + doc.page_content \
-                        + "\n\n"
-                else:
-                    md += doc.page_content + "\n"
+            md += self._get_text(doc, with_number)
         
         return md
 
-    def get_outline_tail(self):
-        """获得叶子提纲"""
-        pass
+    def get_todo_ids(self, start_id="1"):
+        """获得提纲任务"""
+        tasks = []
+        docs = self.get_documents(id=start_id, node_type="H")
+        len_docs = len(docs)
+        for i, doc in enumerate(docs):
+            if doc.metadata and doc.metadata['id']:
+                # 检查是否有子标题
+                if i + 1 < len_docs and not docs[i + 1].metadata['id'].startswith(doc.metadata['id'] + "."):
+                    tasks.append(doc.metadata['id'])
+                elif i + 1 == len_docs:
+                    tasks.append(doc.metadata['id'])
 
-    def get_outline_relevant(self):
-        """获得精简提纲"""
-        pass
+        return tasks
+    
+    def _get_text(self, document: Document=None, with_number: bool=False):
+        if document and document.metadata and document.page_content:
+            if document.metadata['type'] and document.metadata['type'].startswith("H"):
+                return "\n" \
+                    + self.get_markdown_header(document, with_number) + document.page_content \
+                    + "\n\n"
+            else:
+                return document.page_content + "\n"
+        return ""
 
-    def get_markdown_prev(self, to_id="9999999", k=500, with_number: bool=False):
+    def get_relevant_documents(self, to_id="9999999", with_number: bool=False):
+        """获得相关性较强的文档"""
+        md = ""
+
+        ancestor_ids = to_id.split('.')[:-1]
+        for doc in self.documents:
+            if doc.metadata and doc.metadata['id']:
+                # 如果 ID 以 '.0' 结尾，就去掉 '.0'
+                id = doc.metadata['id'][:-2] if doc.metadata['id'].endswith('.0') else doc.metadata['id']
+
+                # 检查是否是兄弟节点或祖先节点
+                id_parts = id.split('.')
+                ancestor_id = ".".join(ancestor_ids)
+                parent_id = ".".join(id_parts[:-1])
+                to_compare = parent_id if len(id_parts)==len(ancestor_ids) + 1 else id
+                if ancestor_id.startswith(to_compare):
+                    md += self._get_text(doc, True)
+        
+        return md
+
+    def get_prev_markdown(self, to_id="9999999", k=1500, with_number: bool=False):
         """
-        获得最新进展。
+        获得已完成的最新扩写。
         """
         md = ""
-        
-        for doc in self.documents:
-            if doc.metadata and is_prev_id(doc.metadata['id'], to_id):
-                if doc.metadata['id']:
-                    md += "\n" \
-                        + self.get_markdown_header(doc, with_number) + doc.page_content \
-                        + "\n\n"
-                else:
-                    md += doc.page_content + "\n"
-        
-        if len(md) > k:
-            return "(省略前文）\n...\n" + md[-k:]
+        length = 0
+
+        # 从后往前遍历文档列表
+        for doc in reversed(self.documents):
+            if is_prev_id(doc.metadata['id'], to_id):
+                text = self._get_text(doc, with_number)
+                length += len(text)
+                md = text + md
+
+                # 如果累积长度超过 k，就终止
+                if length > k:
+                    break
+
+        if length > k:
+            return "(省略前文）\n...\n" + md
         else:
-            return md[-k:]
+            return md
 
 def is_prev_id(id1, id2):
     """
