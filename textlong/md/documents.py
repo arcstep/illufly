@@ -120,7 +120,7 @@ class IntelliDocuments():
             for i, doc in enumerate(self.documents):
                 print(i, doc)
                 with_header = doc.metadata['type'].startswith("H")
-                if doc.page_content.startswith(title):
+                if start_index == None and doc.page_content.startswith(title):
                     start_index = i
                     end_index = i
                     if with_header:
@@ -168,78 +168,77 @@ class IntelliDocuments():
             self.documents = self.documents[:start_index] + self.documents[end_index:]
         return self.documents
 
-    def get_markdown_header(self, document: Document=None, with_number: bool=True):
+    def get_markdown_header(self, document: Document=None):
         if document == None:
             return ''
         
-        id = ''
-        type = ''
-        if document.metadata:
-            id = (document.metadata['id'] + " ") if with_number else ""
-            type = document.metadata['type']
+        prefix = ''
+        type = document.metadata['type'] if document.metadata and 'type' in document.metadata else ''
 
         if type == "H1":
-            header = f'# {id}'
+            header = f'# {prefix}'
         elif type == "H2":
-            header = f'## {id}'
+            header = f'## {prefix}'
         elif type == "H3":
-            header = f'### {id}'
+            header = f'### {prefix}'
         elif type == "H4":
-            header = f'#### {id}'
+            header = f'#### {prefix}'
         elif type == "H5":
-            header = f'##### {id}'
+            header = f'##### {prefix}'
         elif type == "H6":
-            header = f'###### {id}'
+            header = f'###### {prefix}'
         elif type == "H7":
-            header = f'####### {id}'
+            header = f'####### {prefix}'
         elif type == "H8":
-            header = f'####### {id}'
+            header = f'######## {prefix}'
         else:
             header = ''
         
         return header
 
-    def get_markdown(self, title: Union[str, List[str]]=[], node_type: Union[str, List[str]]=None, with_number: bool=False):
-        """
-        导出 Markdown 文本。
-        """
-
-        docs = self.get_documents(node_type=node_type) if title == None else self.get_documents(title, node_type=node_type)
-        md = ""
-        
-        for doc in docs:
-            md += self.get_node_text(doc, with_number)
-        
-        return md
-
-    def get_trunk_and_leaf_nodes(self, start_id=[]):
-        """获得提纲任务"""
-        trunk_nodes = []
-        leaf_nodes = []
-        docs = self.get_documents(id=start_id, node_type="H")
-        len_docs = len(docs)
-        for i, doc in enumerate(docs):
-            if doc.metadata and doc.metadata['id']:
-                # 检查是否有子标题
-                if i + 1 < len_docs and not docs[i + 1].metadata['id'].startswith(doc.metadata['id'] + "."):
-                    leaf_nodes.append(doc)
-                elif i + 1 == len_docs:
-                    leaf_nodes.append(doc)
-                else:
-                    trunk_nodes.append(doc)
-
-        return trunk_nodes, leaf_nodes
-    
-    def get_node_text(self, document: Document=None, with_number: bool=False):
-        if document and document.metadata and document.page_content:
-            if document.metadata['type'] and document.metadata['type'].startswith("H"):
+    def get_node_text(self, document: Document=None):
+        if document and document.page_content:
+            if document.metadata and document.metadata['type'] and document.metadata['type'].startswith("H"):
                 return "\n" \
-                    + self.get_markdown_header(document, with_number) + document.page_content \
+                    + self.get_markdown_header(document) + document.page_content \
                     + "\n\n"
             else:
                 return document.page_content + "\n"
         return ""
 
+    def get_markdown(self, title: str=None, node_type: Union[str, List[str]]=None):
+        """
+        导出 Markdown 文本。
+        """
+
+        docs = self.get_documents(title, node_type)
+        md = ""
+        
+        for doc in docs:
+            md += self.get_node_text(doc)
+        
+        return md
+
+    def get_leaf_nodes(self):
+        """获得提纲任务"""
+        leaf_nodes = []
+
+        last_header_doc = None
+        for i, doc in enumerate(self.documents):
+            # print(i, doc, last_header_doc.metadata['type'] if last_header_doc else '')
+            if doc.metadata['type'].startswith("H"):
+                if last_header_doc == None:
+                    last_header_doc = doc
+                    continue
+                if doc.metadata['type'] <= last_header_doc.metadata['type']:
+                    leaf_nodes.append(last_header_doc)
+                last_header_doc = doc
+
+        if last_header_doc:
+            leaf_nodes.append(last_header_doc)
+
+        return leaf_nodes
+    
     def get_relevant_documents(self, to_id="9999999", with_number: bool=False):
         """获得相关性较强的文档"""
         md = ""
