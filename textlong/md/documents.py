@@ -4,22 +4,18 @@ from langchain_core.documents import Document
 import copy
 
 class IntelliDocuments():
-    def __init__(self, doc_str: str=None, start_id="1", llm=None):
+    def __init__(self, doc_str: str=None, llm=None):
         self.llm = llm
         self.documents = []
+        self.import_markdown(doc_str)
 
-        if doc_str != None:
-            documents = self.parse_markdown(doc_str)
-            self.documents.extend(documents)
-            # self.insert_documents(documents, start_id)
-
-    def import_markdown(self, doc_str: str=None, to_id="99999"):
+    def import_markdown(self, doc_str: str=None):
         """
         导入Markdown文档。
         """
         if doc_str != None:
-            document = self.parse_markdown(doc_str)
-            self.replace_documents(document, to_id)
+            documents = self.parse_markdown(doc_str)
+            self.insert_documents(documents, title=None)
             
         return self.documents
 
@@ -62,16 +58,13 @@ class IntelliDocuments():
             for doc in documents:
                 doc.page_content = doc.page_content.replace(f'CODEBLOCK{i}', code_block)
 
-        # Step 4: Check the first document's type
-        # print('H' + str(max_heading))
-        # if documents and (documents[0].metadata['type'] != f'H{max_heading}'):
-        #     documents.insert(0, Document(page_content='<<TITLE>>', metadata={'type': f'H{max_heading}'}))
-
         return documents
 
     @classmethod
     def build_index(self, documents: List[Document], start_id: str="1"):
-        """构建层级编号"""
+        """
+        构建层级编号。
+        """
 
         indices = {f'H{i}': 0 for i in range(1, 9)}  # Initialize all indices to 0
         indices['paragraph'] = 0
@@ -113,6 +106,10 @@ class IntelliDocuments():
         return documents
 
     def get_documents_range(self, title: str=None):
+        """
+        获得文档筛查的索引范围。
+        """
+
         start_index = None
         end_index = None
         if title != None:
@@ -137,12 +134,17 @@ class IntelliDocuments():
         return (start_index, end_index if start_index != end_index else None)
 
     def get_documents(self, title: str=None, node_type: Union[str, List[str]]=None):
-        """获得文档子树"""
+        """
+        获得文档子树。
+        """
+
         start_index, end_index = self.get_documents_range(title)
         return self.documents[start_index:end_index]
     
     def replace_documents(self, new_docs: List[Document], title: str=None):
-        """在指定位置替换文档子树"""
+        """
+        在指定位置替换文档子树。
+        """
         
         start_index, end_index = self.get_documents_range(title)
         if start_index == None or end_index == None:
@@ -152,7 +154,9 @@ class IntelliDocuments():
         return self.documents
 
     def insert_documents(self, new_docs: List[Document], title: str=None):
-        """插入文档到指定位置"""
+        """
+        插入文档到指定位置。
+        """
 
         start_index, end_index = self.get_documents_range(title)
         if start_index == None or end_index == None:
@@ -162,7 +166,10 @@ class IntelliDocuments():
         return self.documents
 
     def remove_documents(self, title: str):
-        """删除指定的子树"""
+        """
+        删除指定的子树。
+        """
+
         start_index, end_index = self.get_documents_range(title)
         if start_index and end_index:
             self.documents = self.documents[:start_index] + self.documents[end_index:]
@@ -220,10 +227,13 @@ class IntelliDocuments():
         return md
 
     def get_leaf_nodes(self):
-        """获得提纲任务"""
-        leaf_nodes = []
+        """
+        获得提纲任务。
+        """
 
+        leaf_nodes = []
         last_header_doc = None
+
         for i, doc in enumerate(self.documents):
             # print(i, doc, last_header_doc.metadata['type'] if last_header_doc else '')
             if doc.metadata['type'].startswith("H"):
@@ -239,11 +249,15 @@ class IntelliDocuments():
 
         return leaf_nodes
     
-    def get_relevant_documents(self, to_id="9999999", with_number: bool=False):
-        """获得相关性较强的文档"""
-        md = ""
+    def get_relevant_documents(self, title: str=None):
+        """
+        获得相关性较强的大纲结构文档。
+        TODO
+        """
 
+        md = ""
         ancestor_ids = to_id.split('.')[:-1]
+
         for doc in self.documents:
             if doc.metadata and doc.metadata['id']:
                 # 如果 ID 以 '.0' 结尾，就去掉 '.0'
@@ -253,10 +267,12 @@ class IntelliDocuments():
 
         return md
 
-    def get_prev_markdown(self, to_id="9999999", k=1500, with_number: bool=False):
+    def get_prev_markdown(self, title: str=None, k=1000):
         """
         获得已完成的最新扩写。
+        TODO
         """
+
         md = ""
         length = 0
 
