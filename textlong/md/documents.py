@@ -115,7 +115,7 @@ class IntelliDocuments():
         if title != None:
             last_header_doc = None
             for i, doc in enumerate(self.documents):
-                print(i, doc)
+                # print(i, doc)
                 with_header = doc.metadata['type'].startswith("H")
                 if start_index == None and doc.page_content.startswith(title):
                     start_index = i
@@ -224,26 +224,25 @@ class IntelliDocuments():
                 return document.page_content + "\n"
         return ""
 
-    def get_markdown(self, title: str=None, node_type: Union[str, List[str]]=None):
+    def get_markdown(self, docs: List[Document]=None, node_type: Union[str, List[str]]=None):
         """
         导出 Markdown 文本。
         """
 
-        docs = self.get_documents(title, node_type)
         md = ""
-        
-        for doc in docs:
+        all_docs = docs or self.documents
+        for doc in all_docs:
             md += self.get_node_text(doc)
         
         return md
 
-    def get_leaf_nodes(self):
+    def get_leaf_outline(self):
         """
         获得叶子节点上的提纲任务清单。
         适合主从双线任务写作，在“主文档”中提取任务，获得任务列表，在一个循环中执行“从文档”任务。
         """
 
-        leaf_nodes = []
+        leaf_documents = []
         last_header_doc = None
 
         for i, doc in enumerate(self.documents):
@@ -253,72 +252,69 @@ class IntelliDocuments():
                     last_header_doc = doc
                     continue
                 if doc.metadata['type'] <= last_header_doc.metadata['type']:
-                    leaf_nodes.append(last_header_doc)
+                    leaf_documents.append(last_header_doc)
                 last_header_doc = doc
 
         if last_header_doc:
-            leaf_nodes.append(last_header_doc)
+            leaf_documents.append(last_header_doc)
 
-        return leaf_nodes
+        return leaf_documents
 
-    def get_branch_nodes(self, header="H1"):
+    def get_branch_outline(self, header="H1"):
         """
         获得主干节点上的提纲任务清单。
         默认提取第一层级内容。
         """
-        
+
         return self.get_documents(node_type=header)
     
     def get_relevant_documents(self, title: str=None):
-        """
-        获得相关性较强的大纲结构文档。
-        TODO
-        """
+        if title is None:
+            return []
 
-        md = ""
-        ancestor_ids = to_id.split('.')[:-1]
+        documents = []
+        found_doc = []
+        found_header = None
 
-        for doc in self.documents:
-            if doc.metadata and doc.metadata['id']:
-                # 如果 ID 以 '.0' 结尾，就去掉 '.0'
-                id = doc.metadata['id'][:-2] if doc.metadata['id'].endswith('.0') else doc.metadata['id']
-                if to_id.startswith(id):
-                    md += self.get_node_text(doc, True)
+        for doc in self.documents[::-1]:
+            found_doc.append(doc)
+            doc_type = doc.metadata['type']
+            doc_is_header = doc_type.startswith('H')
 
-        return md
+            if not documents and doc.page_content.startswith(title):
+                # 找到匹配文档
+                documents += found_doc
+                if doc_type and doc_is_header:
+                    found_header = doc_type
+                    found_doc = []
+            elif documents:
+                # 查找关联文档
+                if not found_header or (doc_is_header and doc_type < found_header):
+                    documents += found_doc
+                    found_header = doc_type
 
-    def get_prev_markdown(self, title: str=None, k=1000):
+            if doc_is_header:
+                found_doc = []
+
+        return documents[::-1]
+
+    def get_prev_documents(self, title: str=None, k=1000):
         """
         获得已完成的最新扩写。
         """
 
+        documents = []
+        found = False
+
         md = ""
-        length = 0
-
-        count = len(self.documents)
-        start_index, end_index = self.get_documents_range(title)
-        index = count - 1 if start_index == None else start_index - 1
-        
-        if index >= 0 and index < count:
-            while(index >= 0):
-                text = self.get_node_text(self.documents[index])
-                md = text + md
-                length = len(md)
-                index -= 1
-
-                if length > k:
+        for doc in self.documents[::-1]:
+            if not documents and doc.page_content.startswith(title):
+                found = True
+                continue
+            if found:
+                documents.append(doc)
+                md = self.get_node_text(doc) + md
+                if len(md) > k:
                     break
 
-        if length > k:
-            return "(省略前文）\n...\n" + md
-        else:
-            return md
-
-def is_prev_id(id1, id2):
-    """
-    比较两个形如 "2.3.4" 的 ID，如果 id1 小于 id2，返回 True，否则返回 False。
-    """
-    list1 = list(map(int, id1.split('.')))
-    list2 = list(map(int, id2.split('.')))
-
-    return list1 < list2
+        return documents[::-1]
