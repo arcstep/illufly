@@ -1,9 +1,20 @@
 from typing import Union, List
-from .documents import IntelliDocuments
-from .tools import create_outline_chain, create_detail_chain
-from .output_parser import MarkdownOutputParser
 from abc import ABC, abstractclassmethod
 import copy
+
+from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
+
+from .documents import IntelliDocuments
+from .prompt import (
+    PROMPT_OUTLINE_WRITING,
+    PROMPT_OUTLINE_REWRITING,
+    PROMPT_DETAIL_WRITING,
+)
+from .output_parser import MarkdownOutputParser
+
+def create_chain(llm, prompt_template, **kwargs):
+    prompt = PromptTemplate.from_template(prompt_template).partial(**kwargs)
+    return prompt | llm
 
 def call_markdown_chain(chain, input):
     text = ""
@@ -14,7 +25,7 @@ def call_markdown_chain(chain, input):
     print(f"\n\n实际字数: {len(text)}")
     return MarkdownOutputParser().invoke(text)[0]
 
-class BaseWriting(ABC):
+class Writing(ABC):
     """
     写作任务。
     - outline 构思大纲
@@ -28,7 +39,6 @@ class BaseWriting(ABC):
 
     def __init__(self, document: Union[str, IntelliDocuments]=None, llm=None, **kwargs):
         self.llm = llm
-        self.chain = create_outline_chain(self.llm)
         
         if isinstance(document, str):
             self.todo_docs = IntelliDocuments(doc_str=document)
@@ -37,10 +47,58 @@ class BaseWriting(ABC):
         else:
             self.todo_docs = IntelliDocuments()
     
-    @abstractclassmethod
     def write(self, task: str):
-        """写作任务"""
-        pass
+        """
+        创作提纲。
+        - task 主题和创作要求
+        """
+
+        chain = create_chain(
+            self.llm,
+            PROMPT_OUTLINE_WRITING
+        )
+
+        resp_md = call_markdown_chain(chain, {"task": task})
+        
+        self.todo_docs.documents = []
+        self.todo_docs.import_markdown(resp_md)
+
+        return self.todo_docs.documents
+    
+    def rewrite(self, title: str, task: str=None):
+        """
+        局部重写。
+        - title 要修改的标题或文字开头部份
+        - task 补充的修改意见
+        """
+
+        docs = self.todo_docs.get_documents(title)
+        if not docs:
+            raise ValueError("No title match in documents !")
+        
+        md_existing = IntelliDocuments.get_markdown(docs)
+        chain = create_chain(
+            self.llm,
+            PROMPT_OUTLINE_REWRITING,
+            outline=self.markdown,
+            to_rewrite=md_existing
+        )
+
+        task_confirm = f" {task or ''}\n只针对明确要求重写的这部份重写。"
+
+        self.print_prompt(chain, task=task_confirm)
+
+        resp_md = call_markdown_chain(chain, {"task": task_confirm})
+        reply_docs = IntelliDocuments.parse_markdown(resp_md)
+
+        self.todo_docs.replace_documents(new_docs=reply_docs, title=title)
+        
+        return reply_docs
+    
+    def print_prompt(self, chain, **kwargs):
+        print("#"*20, "PROMPT BEGIN", "#"*20)
+        print(chain.get_prompts()[0].format(**kwargs))
+        print("#"*20, "PROMPT  END ", "#"*20)
 
     @property
     def documents(self):
@@ -50,51 +108,14 @@ class BaseWriting(ABC):
     def markdown(self):
         return IntelliDocuments.get_markdown(self.documents)
 
-    def fetch_outline(self):
-        """
-        从文字中提取大纲。
-        """
-        chain = create_detail_chain(self.llm)
-
-    def refine_detail(self):
-        """
-        优化文字内容。
-        """
-        chain = create_detail_chain(self.llm)
-
-    def refine_outline(self):
-        """
-        优化写作提纲。
-        """
-        chain = create_detail_chain(self.llm)
     
-    def rewrite(self):
-        """
-        根据已有文字内容仿写。
-        """
-        chain = create_detail_chain(self.llm)
-
-    def translate(self):
-        """
-        根据已有文字内容翻译。
-        """
-        chain = create_detail_chain(self.llm)    
-
-class Writing(BaseWriting):
-    """创作提纲"""
-
-    def write(self, task: str):
-        text = call_markdown_chain(self.chain, {"task": task})
-        self.todo_docs.import_markdown(text)
-        return self.todo_docs
-    
-class Outlining(BaseWriting):
+class Outlining(Writing):
     """扩写"""
 
-    def __init__(self, outline: Union[str, IntelliDocuments, BaseWriting], detail=True, **kwargs):
+    def __init__(self, outline: Union[str, IntelliDocuments, Writing], **kwargs):
         if isinstance(outline, str):
             self.outline_docs = IntelliDocuments(doc_str=outline)
-        elif isinstance(outline, BaseWriting):
+        elif isinstance(outline, Writing):
             self.outline_docs = copy.deepcopy(outline.todo_docs)
             if 'llm' not in kwargs:
                 kwargs['llm'] = outline.llm
@@ -103,13 +124,14 @@ class Outlining(BaseWriting):
         else:
             self.outline_docs = IntelliDocuments()
 
-        super().__init__(**kwargs)
-        
-        # 如果detail为False，就使用默认的大纲扩展
-        if detail:
-            self.chain = create_detail_chain(self.llm)
+        super().__init__(**kwargs)        
 
     def write(self, task: str=None):
+        """
+        根据提纲扩写。
+        - task 补充的扩写意见
+        """
+
         if not self.outline_docs.documents:
             raise ValueError("MUST supply outline for Outlining")
         
@@ -119,26 +141,56 @@ class Outlining(BaseWriting):
         # 批量扩写任务
         for node in task_nodes:
             task_title = node.page_content
-            task_docs = self.outline_docs.get_documents(task_title)
-            task = f"请根据提纲要求完成续写，标题和要求为：\n{IntelliDocuments.get_markdown(task_docs)}"
-            outline_relv_docs = self.outline_docs.get_relevant_documents(task_title)
-            detail_prev_docs = self.todo_docs.get_prev_documents(task_title)
-            print("#"*20, "PROMPT BEGIN", "#"*20)
-            print(self.chain.get_prompts()[0].format(
-                task=task,
-                outline=IntelliDocuments.get_markdown(outline_relv_docs),
-                detail=IntelliDocuments.get_markdown(detail_prev_docs),
-            ))
-            print("#"*20, "PROMPT  END ", "#"*20)
-            resp_md = call_markdown_chain(
-                self.chain,
-                {
-                    "task": task,
-                    "outline": IntelliDocuments.get_markdown(outline_relv_docs),
-                    "detail": IntelliDocuments.get_markdown(detail_prev_docs),
-                }
+
+            outline_relv_docs = IntelliDocuments.get_markdown(self.outline_docs.get_relevant_documents(task_title))
+            detail_prev_docs = IntelliDocuments.get_markdown(self.todo_docs.get_prev_documents(task_title))
+            chain = create_chain(
+                self.llm, PROMPT_DETAIL_WRITING,
+                outline=outline_relv_docs,
+                detail=detail_prev_docs
             )
-            reply_md = IntelliDocuments.parse_markdown(resp_md)
-            self.todo_docs.replace_documents(new_docs=reply_md, title=task_title)
+
+            task_md = IntelliDocuments.get_markdown(self.outline_docs.get_documents(task_title))
+            task_confirm = f"{task or ''}\n请根据提纲要求完成续写。标题和要求为：\n{task_md}"
+
+            self.print_prompt(chain, task=task_confirm)
+
+            resp_md = call_markdown_chain(chain, {"task": task_confirm})
+            reply_docs = IntelliDocuments.parse_markdown(resp_md)
+
+            self.todo_docs.replace_documents(new_docs=reply_docs, title=task_title)
 
         return self.todo_docs.documents
+
+    def rewrite(self, title: str, task: str=None):
+        """
+        局部重写。
+        - title 要修改的标题或文字开头部份
+        - task 补充的修改意见
+        """
+
+        docs = self.todo_docs.get_documents(title)
+        if not docs:
+            raise ValueError("No title match in documents !")
+
+        outline_relv = IntelliDocuments.get_markdown(self.outline_docs.get_relevant_documents(title))
+        detail_prev = IntelliDocuments.get_markdown(self.todo_docs.get_prev_documents(title))
+        md_existing = IntelliDocuments.get_markdown(docs)
+        chain = create_chain(
+            self.llm,
+            PROMPT_OUTLINE_REWRITING,
+            outline=outline_relv,
+            detail=detail_prev,
+            to_rewrite=md_existing
+        )
+
+        task_confirm = f" {task or ''}\n只重写上次续写的这部份。"
+
+        self.print_prompt(chain, task=task_confirm)
+
+        resp_md = call_markdown_chain(chain, {"task": task_confirm})
+        reply_docs = IntelliDocuments.parse_markdown(resp_md)
+
+        self.todo_docs.replace_documents(new_docs=reply_docs, title=title)
+        
+        return reply_docs
