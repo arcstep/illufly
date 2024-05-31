@@ -22,6 +22,7 @@ class Writing():
     - rewrite 重写
     - translate 翻译
     """
+
     def __init__(self, outline=None, detail=None, llm=None):
         self.llm = llm
         # 源文档，适合仿写、改写、翻译等功能
@@ -37,23 +38,52 @@ class Writing():
         """
         chain = create_outline_chain(self.llm)
         text = call_markdown_chain(chain, {"task": task})
-        return self.target_outline.import_markdown(text)
+        self.target_outline.import_markdown(text)
+        return self.target_outline.documents
 
-    def detail(self, task: str):
+    def detail(self):
         """
         根据提纲扩写细节。
         """
         chain = create_detail_chain(self.llm)
-        text = call_markdown_chain(chain, {"task": task})
-        return self.target_detail.import_markdown(text)
 
-    def fetch(self):
+        task_nodes = self.target_outline.get_leaf_outline()
+        self.target_detail.documents = self.target_outline.documents
+
+        # 批量扩写任务
+        for node in task_nodes:
+            task_title = node.page_content
+            task_docs = self.target_outline.get_documents(task_title)
+            task = f"请根据提纲要求完成续写，标题和要求为：\n{IntelliDocuments.get_markdown(task_docs)}"
+            outline_docs = self.target_outline.get_relevant_documents(task_title)
+            detail_prev_docs = self.target_detail.get_prev_documents(task_title)
+            print("#"*20, "PROMPT BEGIN", "#"*20)
+            print(chain.get_prompts()[0].format(
+                task=task,
+                outline=IntelliDocuments.get_markdown(outline_docs),
+                detail=IntelliDocuments.get_markdown(detail_prev_docs),
+            ))
+            print("#"*20, "PROMPT  END ", "#"*20)
+            resp_md = call_markdown_chain(
+                chain,
+                {
+                    "task": task,
+                    "outline": IntelliDocuments.get_markdown(outline_docs),
+                    "detail": IntelliDocuments.get_markdown(detail_prev_docs),
+                }
+            )
+            resp_docs = IntelliDocuments.parse_markdown(resp_md)
+            self.target_detail.replace_documents(new_docs=resp_docs, title=task_title)
+
+        return self.target_detail.documents
+
+    def fetch_outline(self):
         """
         从文字中提取大纲。
         """
         chain = create_detail_chain(self.llm)
 
-    def refine(self):
+    def refine_detail(self):
         """
         优化文字内容。
         """
