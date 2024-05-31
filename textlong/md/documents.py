@@ -16,7 +16,7 @@ class IntelliDocuments():
         if doc_str != None:
             documents = self.parse_markdown(doc_str)
             self.insert_documents(documents, title=None)
-            
+
         return self.documents
 
     @classmethod
@@ -91,14 +91,12 @@ class IntelliDocuments():
                     tail_ids = [str(indices[f'H{i}']) if i < int(last_heading[1]) else str(last_index) for i in range(1, int(last_heading[1]) + 1)]
                     middle = f"{int(tail_ids[0]) - 1 + start_int}"
                     tail = ".".join(tail_ids[1:])
-                    # print(f'{prefix or "<EMPTY>"}-{middle}({tail_ids[0]}/{start_int})-{tail}')
                     doc.metadata['id'] = ".".join([e for e in [prefix, middle, tail] if e != ""])
                 elif type_ == 'paragraph' and last_heading:
                     indices['paragraph'] = 0
                     tail_ids.append(str(indices['paragraph']))
                     tail = ".".join(tail_ids[1:])
                     doc.metadata['id'] = ".".join([e for e in [prefix, middle, tail] if e != ""])
-                    # print(f"{prefix or 'EMPTY'}-{middle}-{tail_ids}")
                     tail_ids.pop()
                 else:
                     doc.metadata['id'] = '0'
@@ -116,15 +114,16 @@ class IntelliDocuments():
             last_header_doc = None
             for i, doc in enumerate(self.documents):
                 # print(i, doc)
-                with_header = doc.metadata['type'].startswith("H")
+                doc_type = doc.metadata['type']
+                with_header = doc_type.startswith("H")
                 if start_index == None and doc.page_content.startswith(title):
                     start_index = i
                     end_index = i
                     if with_header:
                         last_header_doc = doc
                     continue
-                if last_header_doc:
-                    if with_header and doc.metadata['type'] > last_header_doc.metadata['type']:
+                if start_index != None and last_header_doc:
+                    if with_header and doc_type > last_header_doc.metadata['type']:
                         continue
                     elif not with_header:
                         continue
@@ -148,7 +147,7 @@ class IntelliDocuments():
             raise(ValueError(f"Invalid node_type: {node_type}"))
 
         pattern = re.compile(r'(' + '|'.join(types) + ')')
-
+        
         start_index, end_index = self.get_documents_range(title)
         return [d for d in self.documents[start_index:end_index] if pattern.match(d.metadata['type'])]
 
@@ -157,23 +156,37 @@ class IntelliDocuments():
         在指定位置替换文档子树。
         """
         
-        start_index, end_index = self.get_documents_range(title)
-        if start_index == None or end_index == None:
-            self.documents = self.documents + new_docs
+        if title == None:
+            self.documents += new_docs
         else:
-            self.documents = self.documents[:start_index] + new_docs + self.documents[end_index:None]
+            start_index, end_index = self.get_documents_range(title)
+
+            if start_index == None and end_index == None:
+                self.documents = new_docs
+            elif start_index == None and end_index != None:
+                self.documents = new_docs + self.documents[end_index:None]
+            elif start_index != None and end_index == None:
+                self.documents = self.documents[:start_index] + new_docs
+            else:
+                self.documents = self.documents[:start_index] + new_docs + self.documents[end_index:None]
+
         return self.documents
 
     def insert_documents(self, new_docs: List[Document], title: str=None):
         """
         插入文档到指定位置。
         """
-
-        start_index, end_index = self.get_documents_range(title)
-        if start_index == None or end_index == None:
-            self.documents = self.documents + new_docs
+        
+        if title == None:
+            self.documents += new_docs
         else:
-            self.documents = self.documents[:start_index] + new_docs + self.documents[start_index:]
+            start_index, end_index = self.get_documents_range(title)
+
+            if start_index == None and end_index != None:
+                self.documents = self.documents[:end_index] + new_docs + self.documents[end_index:None]
+            elif start_index != None:
+                self.documents = self.documents[:start_index] + new_docs + self.documents[start_index:None]
+
         return self.documents
 
     def remove_documents(self, title: str):
@@ -186,7 +199,8 @@ class IntelliDocuments():
             self.documents = self.documents[:start_index] + self.documents[end_index:]
         return self.documents
 
-    def get_markdown_header(self, document: Document=None):
+    @classmethod
+    def get_markdown_header(cls, document: Document=None):
         if document == None:
             return ''
         
@@ -214,25 +228,31 @@ class IntelliDocuments():
         
         return header
 
-    def get_node_text(self, document: Document=None):
+    @classmethod
+    def get_node_text(cls, document: Document=None):
         if document and document.page_content:
             if document.metadata and document.metadata['type'] and document.metadata['type'].startswith("H"):
                 return "\n" \
-                    + self.get_markdown_header(document) + document.page_content \
+                    + cls.get_markdown_header(document) + document.page_content \
                     + "\n\n"
             else:
                 return document.page_content + "\n"
         return ""
+    
+    @property
+    def markdown(self):
+        return self.__class__.get_markdown(self.documents)
 
-    def get_markdown(self, docs: List[Document]=None, node_type: Union[str, List[str]]=None):
+    @classmethod
+    def get_markdown(cls, docs: List[Document]=None):
         """
         导出 Markdown 文本。
         """
 
         md = ""
-        all_docs = docs or self.documents
-        for doc in all_docs:
-            md += self.get_node_text(doc)
+        if docs:
+            for doc in docs:
+                md += cls.get_node_text(doc)
         
         return md
 
