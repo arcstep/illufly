@@ -137,10 +137,21 @@ class IntelliDocuments():
         """
         获得文档子树。
         """
+        
+        if node_type == None:
+            types = ['H', 'para']
+        elif isinstance(node_type, str):
+            types = [node_type]
+        elif isinstance(node_type, List):
+            types = node_type
+        else:
+            raise(ValueError(f"Invalid node_type: {node_type}"))
+
+        pattern = re.compile(r'(' + '|'.join(types) + ')')
 
         start_index, end_index = self.get_documents_range(title)
-        return self.documents[start_index:end_index]
-    
+        return [d for d in self.documents[start_index:end_index] if pattern.match(d.metadata['type'])]
+
     def replace_documents(self, new_docs: List[Document], title: str=None):
         """
         在指定位置替换文档子树。
@@ -248,6 +259,14 @@ class IntelliDocuments():
             leaf_nodes.append(last_header_doc)
 
         return leaf_nodes
+
+    def get_branch_nodes(self, header="H1"):
+        """
+        获得主干提纲任务。
+        默认提取第一层级内容。
+        """
+        
+        return self.get_documents(node_type=header)
     
     def get_relevant_documents(self, title: str=None):
         """
