@@ -239,7 +239,8 @@ class IntelliDocuments():
 
     def get_leaf_nodes(self):
         """
-        获得提纲任务。
+        获得叶子节点上的提纲任务清单。
+        适合主从双线任务写作，在“主文档”中提取任务，获得任务列表，在一个循环中执行“从文档”任务。
         """
 
         leaf_nodes = []
@@ -262,7 +263,7 @@ class IntelliDocuments():
 
     def get_branch_nodes(self, header="H1"):
         """
-        获得主干提纲任务。
+        获得主干节点上的提纲任务清单。
         默认提取第一层级内容。
         """
         
@@ -289,20 +290,22 @@ class IntelliDocuments():
     def get_prev_markdown(self, title: str=None, k=1000):
         """
         获得已完成的最新扩写。
-        TODO
         """
 
         md = ""
         length = 0
 
-        # 从后往前遍历文档列表
-        for doc in reversed(self.documents):
-            if is_prev_id(doc.metadata['id'], to_id):
-                text = self.get_node_text(doc, with_number)
-                length += len(text)
+        count = len(self.documents)
+        start_index, end_index = self.get_documents_range(title)
+        index = count - 1 if start_index == None else start_index - 1
+        
+        if index >= 0 and index < count:
+            while(index >= 0):
+                text = self.get_node_text(self.documents[index])
                 md = text + md
+                length = len(md)
+                index -= 1
 
-                # 如果累积长度超过 k，就终止
                 if length > k:
                     break
 
