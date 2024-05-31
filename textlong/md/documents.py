@@ -4,8 +4,7 @@ from langchain_core.documents import Document
 import copy
 
 class IntelliDocuments():
-    def __init__(self, doc_str: str=None, llm=None):
-        self.llm = llm
+    def __init__(self, doc_str: str=None):
         self.documents = []
         self.import_markdown(doc_str)
 
