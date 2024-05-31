@@ -38,7 +38,10 @@ class Writing(ABC):
     """
 
     def __init__(self, document: Union[str, IntelliDocuments]=None, llm=None, **kwargs):
+
         self.llm = llm
+        
+        self.last_rewrite_title = None
         
         if isinstance(document, str):
             self.todo_docs = IntelliDocuments(doc_str=document)
@@ -65,14 +68,20 @@ class Writing(ABC):
 
         return self.todo_docs.documents
     
-    def rewrite(self, title: str, task: str=None):
+    def rewrite(self, task: str=None, title: str=None):
         """
         局部重写。
         - title 要修改的标题或文字开头部份
         - task 补充的修改意见
         """
+        
+        if title and self.last_rewrite_title:
+            raise ValueError("title can't be None !")
 
-        docs = self.todo_docs.get_documents(title)
+        if title:
+            self.last_rewrite_title = title
+
+        docs = self.todo_docs.get_documents(title or self.last_rewrite_title)
         if not docs:
             raise ValueError("No title match in documents !")
         
@@ -162,14 +171,20 @@ class Outlining(Writing):
 
         return self.todo_docs.documents
 
-    def rewrite(self, title: str, task: str=None):
+    def rewrite(self, task: str=None, title: str=None):
         """
         局部重写。
         - title 要修改的标题或文字开头部份
         - task 补充的修改意见
         """
 
-        docs = self.todo_docs.get_documents(title)
+        if title and self.last_rewrite_title:
+            raise ValueError("title can't be None !")
+
+        if title:
+            self.last_rewrite_title = title
+
+        docs = self.todo_docs.get_documents(title or self.last_rewrite_title)
         if not docs:
             raise ValueError("No title match in documents !")
 
