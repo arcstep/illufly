@@ -66,12 +66,12 @@ PROMPT_OUTLINE_WRITING = """
 
 输出例子:
 >->>>
-# 1 xxx
-## 1.1 XXXX（300字）
+# xxx
+## XXXX（300字）
 扩写要求：
 - xxx
 - xxx
-## 1.2 XXXX（200字）
+## XXXX（200字）
 扩写要求：
 - xxx
 - xxx
@@ -106,7 +106,7 @@ PROMPT_DETAIL_WRITING = """
 
 输出例子:
 >->>>
-## 3.2 你的标题
+## 你的标题
 你的详细扩写内容
 <<<-<
 
