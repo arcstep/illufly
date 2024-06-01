@@ -8,13 +8,14 @@ class IntelliDocuments():
         self.documents = []
         self.import_markdown(doc_str)
 
-    def import_markdown(self, doc_str: str=None):
+    def import_markdown(self, doc_str: str=None, action: str="import"):
         """
         导入Markdown文档。
         """
         if doc_str != None:
             documents = self.parse_markdown(doc_str)
             self.insert_documents(documents, title=None)
+            IntelliDocuments.update_action(self.documents, action)
 
         return self.documents
 
@@ -153,11 +154,13 @@ class IntelliDocuments():
         start_index, end_index = self.get_documents_range(title)
         return [d for d in self.documents[start_index:end_index] if pattern.match(d.metadata['type'])]
 
-    def replace_documents(self, new_docs: List[Document], title: str=None):
+    def replace_documents(self, new_docs: List[Document], title: str=None, action="replace"):
         """
         在指定位置替换文档子树。
         """
         
+        IntelliDocuments.update_action(new_docs, action)
+
         if title == None:
             self.documents += new_docs
         else:
@@ -174,11 +177,13 @@ class IntelliDocuments():
 
         return self.documents
 
-    def insert_documents(self, new_docs: List[Document], title: str=None):
+    def insert_documents(self, new_docs: List[Document], title: str=None, action="insert"):
         """
         插入文档到指定位置。
         """
         
+        IntelliDocuments.update_action(new_docs, action)
+
         if title == None:
             self.documents += new_docs
         else:
@@ -200,6 +205,11 @@ class IntelliDocuments():
         if start_index and end_index:
             self.documents = self.documents[:start_index] + self.documents[end_index:]
         return self.documents
+
+    @classmethod
+    def update_action(cls, docs, action: str):
+        for d in docs:
+            d.metadata['action'] = action
 
     @classmethod
     def get_markdown_header(cls, document: Document=None):
