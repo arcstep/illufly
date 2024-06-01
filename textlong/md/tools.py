@@ -2,7 +2,6 @@ from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
 from langchain_core.runnables import Runnable
 from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 from langchain.tools import StructuredTool
-from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 from .prompt import PROMPT_OUTLINE_WRITING, PROMPT_DETAIL_WRITING
 
 def call_chain(chain, input):
