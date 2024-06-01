@@ -129,6 +129,9 @@ class IntelliDocuments():
                     # 标题已入栈且未找到更深标题或段落时退出
                     end_index = i
                     break
+            if start_index == None:
+                raise ValueError("Can't find title: ", title)
+        
         return (start_index, end_index if start_index != end_index else None)
 
     def get_documents(self, title: str=None, node_type: Union[str, List[str]]=None):
