@@ -6,14 +6,20 @@ from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceh
 
 from .documents import IntelliDocuments
 from .prompt import (
+    # 提纲
     PROMPT_OUTLINE_WRITING,
     PROMPT_OUTLINE_REWRITING,
+    # 扩写
     PROMPT_DETAIL_WRITING,
     PROMPT_DETAIL_REWRITING,
+    # 提取大纲
     PROMPT_FETCH_OUTLINE,
     PROMPT_REFETCH_OUTLINE,
+    # 翻译
     PROMPT_TRANSLATE,
     PROMPT_RE_TRANSLATE,
+    # 读取技术方案
+    PROMPT_TECH_READING,
 )
 from .output_parser import MarkdownOutputParser
 
@@ -288,3 +294,27 @@ class Translate(Detail):
             howto=task_howto,
             action="translate"
         )
+
+class Summarise(Detail):
+    """
+    摘要任务。
+    """
+
+    def write(self, task: str=None):
+        """
+        提取摘要。
+        - task 主题和创作要求
+        """
+
+        chain = create_chain(
+            self.llm,
+            PROMPT_TECH_READING
+        )
+
+        info = self.source_docs.markdown
+        resp_md = call_markdown_chain(chain, {"task": task or "按要求做摘要。", "info": info})
+        
+        self.todo_docs.documents = []
+        self.todo_docs.import_markdown(resp_md, action="summarise")
+
+        return self.todo_docs.documents
