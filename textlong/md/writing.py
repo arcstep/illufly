@@ -24,11 +24,12 @@ from .prompt import (
 from .output_parser import MarkdownOutputParser
 
 def create_chain(llm, prompt_template, **kwargs):
+    if llm:
+        raise ValueError("LLM can't be None !")
     prompt = PromptTemplate.from_template(prompt_template).partial(**kwargs)
     return prompt | llm
 
 def call_markdown_chain(chain, input):
-    
     if get_verbose():
         print("#"*20, "PROMPT BEGIN", "#"*20)
         print(chain.get_prompts()[0].format(**input))
