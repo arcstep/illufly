@@ -1,3 +1,3 @@
 from .agent import create_agent
 from .documents import IntelliDocuments
-from .writing import BaseWriting, Outline, Detail, Fetch, Translate
+from .writing import BaseWriting, Outline, Detail, Fetch, Translate, Summarise
