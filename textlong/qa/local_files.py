@@ -8,17 +8,13 @@ from langchain_community.document_loaders import (
 )
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
-from ..config import get_textlong_folder, _DOCS_FOLDER_NAME
+from ..config import get_textlong_folder, get_textlong_doc, _DOCS_FOLDER_NAME
+from ..utils import raise_not_install
 
 import os
 import re
 import sys
 # import subprocess
-
-def raise_not_install(packages):
-    print(f"please install package: '{packages}' with pip or poetry")
-    # auto install package
-    # subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
 
 def get_file_extension(filename: str) -> str:
     """Get File Extension"""
