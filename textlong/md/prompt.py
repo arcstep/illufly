@@ -42,6 +42,24 @@ PROMPT_TASK_WRITING = """
 {action_format_instructions}
 """
 
+PROMPT_BASE_WRITING = """
+你必须遵循以下约束来完成任务:
+1. 按照markdown格式输出，直接输出你的结果，不要评论，不要啰嗦。
+2. 输出的markdown内容使用`>->>>`和`<<<-<`包围。
+
+你的任务是:
+>->>>
+{task}
+<<<-<
+
+输出例子:
+>->>>
+你的markdown输出
+<<<-<
+
+你的输出:
+"""
+
 PROMPT_OUTLINE_WRITING = """
 你是强大的写作助手,可以根据任务需求创作写作提纲。
 
@@ -320,7 +338,7 @@ PROMPT_RE_TRANSLATE = """
 你的输出:
 """
 
-PROMPT_TECH_READING = """
+PROMPT_TECH_SUMMARISE = """
 你擅长提炼文字摘要。
 
 你必须遵循以下约束来完成任务:
