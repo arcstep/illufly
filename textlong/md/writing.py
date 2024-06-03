@@ -6,6 +6,8 @@ from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceh
 
 from .documents import IntelliDocuments
 from .prompt import (
+    # 基本写作
+    PROMPT_BASE_WRITING,
     # 提纲
     PROMPT_OUTLINE_WRITING,
     PROMPT_OUTLINE_REWRITING,
@@ -18,13 +20,13 @@ from .prompt import (
     # 翻译
     PROMPT_TRANSLATE,
     PROMPT_RE_TRANSLATE,
-    # 读取技术方案
-    PROMPT_TECH_READING,
+    # 对技术方案摘要
+    PROMPT_TECH_SUMMARISE,
 )
 from .output_parser import MarkdownOutputParser
 
 def create_chain(llm, prompt_template, **kwargs):
-    if llm:
+    if not llm:
         raise ValueError("LLM can't be None !")
     prompt = PromptTemplate.from_template(prompt_template).partial(**kwargs)
     return prompt | llm
@@ -68,13 +70,22 @@ class BaseWriting(ABC):
     def markdown(self):
         return IntelliDocuments.get_markdown(self.documents)
 
-    @abstractclassmethod
     def write(self, task: str):
         """
         创作提纲。
         - task 主题和创作要求
         """
-        pass
+        chain = create_chain(
+            self.llm,
+            PROMPT_BASE_WRITING
+        )
+
+        resp_md = call_markdown_chain(chain, {"task": task})
+        
+        self.todo_docs.documents = []
+        self.todo_docs.import_markdown(resp_md, action="basic")
+
+        return self.todo_docs.documents
     
     def rewrite(self, task: str=None, title: str=None):
         """
@@ -309,7 +320,7 @@ class Summarise(Detail):
 
         chain = create_chain(
             self.llm,
-            PROMPT_TECH_READING
+            PROMPT_TECH_SUMMARISE
         )
 
         info = self.source_docs.markdown
