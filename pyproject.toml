@@ -16,6 +16,7 @@ python-dotenv = "^1.0.1"
 python-statemachine = "^2.2.0"
 pydot = "^2.0.0"
 langchain-community = ">=0.0.38,<0.3.0"
+mistune = "^3.0.2"
 
 [tool.poetry.group.dev.dependencies]
 asyncio = "^3.4.3"

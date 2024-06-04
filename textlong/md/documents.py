@@ -3,6 +3,7 @@ import copy
 import os
 from typing import List, Union
 from langchain_core.documents import Document
+from ..parser import parse_markdown
 from ..utils import raise_not_install
 from ..config import get_textlong_folder, get_textlong_doc, _TEMP_FOLDER_NAME
 
@@ -17,135 +18,21 @@ class IntelliDocuments():
         """
         
         filename = doc_str
-        if filename:
-            if os.path.exists(doc_str):
-                if filename.endswith(".md") or filename.endswith(".MD"):
-                    file_path = filename
-                elif filename.endswith(".docx"):
-                    file_path = self.parse_docx(filename)
+        if filename and os.path.isfile(filename) and os.path.exists(doc_str):
+            if filename.endswith(".md") or filename.endswith(".MD"):
+                file_path = filename
+            elif filename.endswith(".docx"):
+                file_path = self.parse_docx(filename)
 
-                with open(file_path, 'r') as file:
-                    doc_str = file.read()
+            with open(file_path, 'r') as file:
+                doc_str = file.read()
 
         if doc_str:
-            documents = self.parse_markdown(doc_str)
+            documents = parse_markdown(doc_str)
             self.insert_documents(documents, title=None)
             IntelliDocuments.update_action(self.documents, action)
 
         return self.documents
-
-    @classmethod
-    def parse_markdown(cls, doc_str: str) -> List[Document]:
-        """
-        解析 Markdown 文件。
-        给定的 Markdown 中的第一个标题应当是最大的标题。
-        """
-
-        if not isinstance(doc_str, str):
-            raise ValueError("parse_markdown: doc_str ONLY accept str !")
-
-        # Step 1: Replace the content in ``` <<content>> ``` with a special marker
-        pattern = r'```.*?```'
-        matches = re.findall(pattern, doc_str, re.DOTALL)
-        code_blocks = matches.copy()  # Save the code block content
-        for i, match in enumerate(matches):
-            doc_str = doc_str.replace(match, f'CODEBLOCK{i}')
-
-        # Step 2: Parse the markdown document as before
-        pattern = r'(#{1,3})\s*(.*?)\n|((?:(?<=\n)|^)(?!\s*#).*?(?=\n\s*#|$))'
-        matches = re.findall(pattern, doc_str, re.DOTALL)
-        documents = []
-        max_heading = 9999
-        for match in matches:
-            if match[0]:  # This is a title
-                type_ = 'H' + str(len(match[0]))
-                content = match[1]
-                max_heading = min(max_heading, len(match[0]))
-            else:  # This is a paragraph
-                type_ = 'paragraph'
-                content = match[2]
-            content = content.strip()
-            if content:  # Ignore empty content
-                documents.append(Document(page_content=content, metadata={'type': type_}))
-
-        # Step 3: Replace the special markers with the original content
-        for i, code_block in enumerate(code_blocks):
-            for doc in documents:
-                doc.page_content = doc.page_content.replace(f'CODEBLOCK{i}', code_block)
-
-        return documents
-
-    @classmethod
-    def parse_docx(cls, doc_path):
-        try:
-            from docx import Document as DocDocument
-            from tabulate import tabulate
-        except BaseException as e:
-            raise_not_install("You must install 'python-docx' and 'tabulate' !")
-
-        doc = DocDocument(doc_path)
-        markdown_str = ""
-        for element in doc.element.body:
-            if element.tag.endswith('tbl'):
-                table = Table(element, doc)
-                data = [[cell.text for cell in row.cells] for row in table.rows]
-                markdown_str += "\n" + tabulate(data, tablefmt="pipe")
-            elif element.tag.endswith('p'):
-                paragraph = Paragraph(element, doc)
-                style_name = paragraph.style.name
-                if style_name.startswith('Heading') or style_name.startswith('标题'):
-                    markdown_str += "\n" + "#" * int(re.findall(r'\d+', paragraph.style.name)[0]) + " " + paragraph.text
-                else:
-                    markdown_str += "\n" + paragraph.text
-
-        md_file_path = os.path.splitext(doc_path)[0] + ".md"
-        with open(md_file_path, 'w') as md_file:
-            md_file.write(markdown_str)
-
-        return md_file_path
-
-    @classmethod
-    def build_index(self, documents: List[Document], start_id: str="1"):
-        """
-        构建层级编号。
-        """
-
-        indices = {f'H{i}': 0 for i in range(1, 9)}  # Initialize all indices to 0
-        indices['paragraph'] = 0
-        last_heading = None
-        last_index = 0
-
-        start_ids = start_id.split(".")
-        start_int = int(start_ids[-1]) if start_ids[-1].isdigit() else 0
-        prefix = ".".join(start_ids[:-1])
-
-        tail_ids = []
-        tail = ""
-        middle = ""
-
-        for doc in documents:
-            type_ = doc.metadata.get('type')
-            if type_ in indices:
-                if type_.startswith('H'):
-                    indices[type_] += 1
-                    last_index = indices[type_]
-                    for lower_type in [f'H{i}' for i in range(int(type_[1:]) + 1, 9)] + ['paragraph']:
-                        indices[lower_type] = 0
-                    last_heading = type_
-                    tail_ids = [str(indices[f'H{i}']) if i < int(last_heading[1]) else str(last_index) for i in range(1, int(last_heading[1]) + 1)]
-                    middle = f"{int(tail_ids[0]) - 1 + start_int}"
-                    tail = ".".join(tail_ids[1:])
-                    doc.metadata['id'] = ".".join([e for e in [prefix, middle, tail] if e != ""])
-                elif type_ == 'paragraph' and last_heading:
-                    indices['paragraph'] = 0
-                    tail_ids.append(str(indices['paragraph']))
-                    tail = ".".join(tail_ids[1:])
-                    doc.metadata['id'] = ".".join([e for e in [prefix, middle, tail] if e != ""])
-                    tail_ids.pop()
-                else:
-                    doc.metadata['id'] = '0'
-
-        return documents
 
     def get_documents_range(self, title: str=None):
         """
@@ -159,17 +46,17 @@ class IntelliDocuments():
             for i, doc in enumerate(self.documents):
                 # print(i, doc)
                 doc_type = doc.metadata['type']
-                with_header = doc_type.startswith("H")
+                doc_level = doc.metadata['attrs']['level']
                 if start_index == None and doc.page_content.startswith(title):
                     start_index = i
                     end_index = i
-                    if with_header:
+                    if doc_type == 'heading':
                         last_header_doc = doc
                     continue
                 if start_index != None and last_header_doc:
-                    if with_header and doc_type > last_header_doc.metadata['type']:
+                    if doc_type == 'heading' and doc_level > last_header_doc.metadata['attrs']['level']:
                         continue
-                    elif not with_header:
+                    elif doc_type != 'heading':
                         continue
                     # 标题已入栈且未找到更深标题或段落时退出
                     end_index = i
