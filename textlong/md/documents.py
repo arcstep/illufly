@@ -20,16 +20,13 @@ class IntelliDocuments():
         filename = doc_str
         if filename and os.path.isfile(filename) and os.path.exists(doc_str):
             if filename.endswith(".md") or filename.endswith(".MD"):
-                file_path = filename
-            elif filename.endswith(".docx"):
-                file_path = self.parse_docx(filename)
+                md_file = filename
 
-            with open(file_path, 'r') as file:
-                doc_str = file.read()
+                with open(md_file, 'r') as file:
+                    doc_str = file.read()
 
         if doc_str:
-            documents = parse_markdown(doc_str)
-            self.insert_documents(documents, title=None)
+            self.documents = parse_markdown(doc_str)
             IntelliDocuments.update_action(self.documents, action)
 
         return self.documents
