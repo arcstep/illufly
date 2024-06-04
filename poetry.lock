@@ -1142,6 +1142,17 @@ files = [
 traitlets = "*"
 
 [[package]]
+name = "mistune"
+version = "3.0.2"
+description = "A sane and fast Markdown parser with useful plugins and renderers"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "mistune-3.0.2-py3-none-any.whl", hash = "sha256:71481854c30fdbc938963d3605b72501f5c10a9320ecd412c121c163a1c7d205"},
+    {file = "mistune-3.0.2.tar.gz", hash = "sha256:fc7f93ded930c92394ef2cb6f04a8aabab4117a91449e72dcc8dfa646a508be8"},
+]
+
+[[package]]
 name = "multidict"
 version = "6.0.5"
 description = "multidict implementation"
@@ -2518,4 +2529,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "jaraco.test", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<3.12"
-content-hash = "142c381d2f92759cd6d79173c0e62d791acf83b2c345ecf641a98f2b5d43f72f"
+content-hash = "bfe19f57469ae2ed68bfb9614cb8222a31ad34d9e4532e0c6046950c3e0632e5"

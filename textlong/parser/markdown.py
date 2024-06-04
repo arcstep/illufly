@@ -7,18 +7,7 @@ from langchain_core.documents import Document
 
 class SegmentsRenderer(MarkdownRenderer):
     def create_document(self, content, type, attrs=None):
-        if '<TEXTLONG-OUTLINE>' in content and '</TEXTLONG-OUTLINE>' in content:
-            outline_content = re.search('<TEXTLONG-OUTLINE>(.*?)</TEXTLONG-OUTLINE>', content, re.DOTALL).group(1)
-            doc = Document(page_content=outline_content, metadata={"type": 'TEXTLONG-OUTLINE'})
-            yield doc
-            content = content.replace(f'<TEXTLONG-OUTLINE>{outline_content}</TEXTLONG-OUTLINE>', '')
-            # Split the remaining content into two parts
-            content_parts = content.split('\n', 1)
-            for part in content_parts:
-                if part:
-                    doc = Document(page_content=part, metadata={"type": type, "attrs": attrs})
-                    yield doc
-        elif content:
+        if content:
             doc = Document(page_content=content, metadata={"type": type, "attrs": attrs})
             yield doc
 
@@ -37,4 +26,17 @@ class SegmentsRenderer(MarkdownRenderer):
         return documents
 
 def parse_markdown(text):
-    return markdown(text, renderer=SegmentsRenderer())
+    pattern = re.compile(r'(.*?)(<TEXTLONG-OUTLINE>(.*?)</TEXTLONG-OUTLINE>)(.*)', re.DOTALL)
+    documents = []
+    while '<TEXTLONG-OUTLINE>' in text and '</TEXTLONG-OUTLINE>' in text:
+        match = pattern.match(text)
+        if match:
+            before, outline, outline_content, after = match.groups()
+            if before:
+                documents.extend(markdown(before, renderer=SegmentsRenderer()))
+            doc = Document(page_content=outline_content, metadata={"type": 'TEXTLONG-OUTLINE'})
+            documents.append(doc)
+            text = after
+    if text:
+        documents.extend(markdown(text, renderer=SegmentsRenderer()))
+    return documents
