@@ -18,7 +18,7 @@ class SegmentsRenderer(MarkdownRenderer):
             if tok['type'] in ['heading', 'block_code', 'image']:
                 documents.extend(self.create_document(out, 'text'))
                 out = self.render_token(tok, state)
-                documents.extend(self.create_document(out, tok['type'], tok['attrs']))
+                documents.extend(self.create_document(out, tok['type'], tok['attrs'] if 'attrs' in tok else None))
                 out = ""
             else:
                 out += self.render_token(tok, state)
