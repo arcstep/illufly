@@ -1,42 +1,45 @@
 from typing import Iterable, Dict, Any
 import re
+import time
 from mistune import markdown
 from mistune.renderers.markdown import MarkdownRenderer
 from mistune.core import BlockState
 from langchain_core.documents import Document
 
 class SegmentsRenderer(MarkdownRenderer):
-    def create_document(self, content, type, attrs=None):
-        if content:
-            doc = Document(page_content=content, metadata={"type": type, "attrs": attrs})
-            yield doc
+    def __init__(self, doc_id_generator):
+        super().__init__()
+        self.doc_id_generator = doc_id_generator
 
     def __call__(self, tokens: Iterable[Dict[str, Any]], state: BlockState) -> str:
         documents = []
-        out = ""
         for tok in tokens:
-            if tok['type'] in ['heading', 'block_code', 'image']:
-                documents.extend(self.create_document(out, 'text'))
-                out = self.render_token(tok, state)
-                documents.extend(self.create_document(out, tok['type'], tok['attrs'] if 'attrs' in tok else None))
-                out = ""
-            else:
-                out += self.render_token(tok, state)
-        documents.extend(self.create_document(out, 'text'))
+            md = self.render_token(tok, state)
+            doc_id = next(self.doc_id_generator)
+            tok.update({"id": doc_id})
+            documents.append(Document(page_content=md, metadata=tok))
         return documents
 
 def parse_markdown(text):
-    pattern = re.compile(r'(.*?)(<TEXTLONG-OUTLINE>(.*?)</TEXTLONG-OUTLINE>)(.*)', re.DOTALL)
+    doc_id_generator = get_document_id()
+    pattern = re.compile(r'(.*?)(<OUTLINE>(.*?)</OUTLINE>)(.*)', re.DOTALL)
     documents = []
-    while '<TEXTLONG-OUTLINE>' in text and '</TEXTLONG-OUTLINE>' in text:
+    while '<OUTLINE>' in text and '</OUTLINE>' in text:
         match = pattern.match(text)
         if match:
             before, outline, outline_content, after = match.groups()
             if before:
-                documents.extend(markdown(before, renderer=SegmentsRenderer()))
-            doc = Document(page_content=outline_content, metadata={"type": 'TEXTLONG-OUTLINE'})
+                documents.extend(markdown(before, renderer=SegmentsRenderer(doc_id_generator)))
+            doc_id = next(doc_id_generator)
+            doc = Document(page_content=outline_content, metadata={"id":doc_id, "type": 'OUTLINE'})
             documents.append(doc)
             text = after
     if text:
-        documents.extend(markdown(text, renderer=SegmentsRenderer()))
+        documents.extend(markdown(text, renderer=SegmentsRenderer(doc_id_generator)))
     return documents
+
+def get_document_id():
+    counter = 0
+    while True:
+        yield f'{int(time.time())}-{counter}'
+        counter += 1
