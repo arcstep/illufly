@@ -12,7 +12,7 @@ class IntelliDocuments():
         self.documents = []
         self.import_markdown(doc_str)
 
-    def import_markdown(self, doc_str: str=None, action: str="import"):
+    def import_markdown(self, doc_str: str=None):
         """
         导入Markdown文档。
         """
@@ -27,7 +27,6 @@ class IntelliDocuments():
 
         if doc_str:
             self.documents = parse_markdown(doc_str)
-            IntelliDocuments.update_action(self.documents, action)
 
         return self.documents
 
@@ -43,7 +42,6 @@ class IntelliDocuments():
             for i, doc in enumerate(self.documents):
                 # print(i, doc)
                 doc_type = doc.metadata['type']
-                doc_level = doc.metadata['attrs']['level']
                 if start_index == None and doc.page_content.startswith(title):
                     start_index = i
                     end_index = i
@@ -51,7 +49,9 @@ class IntelliDocuments():
                         last_header_doc = doc
                     continue
                 if start_index != None and last_header_doc:
-                    if doc_type == 'heading' and doc_level > last_header_doc.metadata['attrs']['level']:
+                    doc_level = doc.metadata['attrs']['level'] if 'attrs' in doc.metadata and 'level' in doc.metadata['attrs'] else None
+                    last_header_doc_level = last_header_doc.metadata['attrs']['level'] if 'attrs' in last_header_doc.metadata and 'level' in last_header_doc.metadata['attrs'] else None
+                    if doc_type == 'heading' and doc_level and last_header_doc_level and doc_level > last_header_doc_level:
                         continue
                     elif doc_type != 'heading':
                         continue
@@ -82,12 +82,12 @@ class IntelliDocuments():
         start_index, end_index = self.get_documents_range(title)
         return [d for d in self.documents[start_index:end_index] if pattern.match(d.metadata['type'])]
 
-    def replace_documents(self, new_docs: List[Document], title: str=None, action="replace"):
+    def replace_documents(self, new_docs: List[Document], title: str=None,):
         """
         在指定位置替换文档子树。
         """
         
-        IntelliDocuments.update_action(new_docs, action)
+        IntelliDocuments.update_action(new_docs)
 
         if title == None:
             self.documents += new_docs
@@ -105,12 +105,12 @@ class IntelliDocuments():
 
         return self.documents
 
-    def insert_documents(self, new_docs: List[Document], title: str=None, action="insert"):
+    def insert_documents(self, new_docs: List[Document], title: str=None):
         """
         插入文档到指定位置。
         """
         
-        IntelliDocuments.update_action(new_docs, action)
+        IntelliDocuments.update_action(new_docs)
 
         if title == None:
             self.documents += new_docs
@@ -134,129 +134,47 @@ class IntelliDocuments():
             self.documents = self.documents[:start_index] + self.documents[end_index:]
         return self.documents
 
-    @classmethod
-    def update_action(cls, docs, action: str):
-        for d in docs:
-            d.metadata['action'] = action
-
-    @classmethod
-    def get_markdown_header(cls, document: Document=None):
-        if document == None:
-            return ''
-        
-        prefix = ''
-        type = document.metadata['type'] if document.metadata and 'type' in document.metadata else ''
-
-        if type == "H1":
-            header = f'# {prefix}'
-        elif type == "H2":
-            header = f'## {prefix}'
-        elif type == "H3":
-            header = f'### {prefix}'
-        elif type == "H4":
-            header = f'#### {prefix}'
-        elif type == "H5":
-            header = f'##### {prefix}'
-        elif type == "H6":
-            header = f'###### {prefix}'
-        elif type == "H7":
-            header = f'####### {prefix}'
-        elif type == "H8":
-            header = f'######## {prefix}'
-        else:
-            header = ''
-        
-        return header
-
-    @classmethod
-    def get_node_text(cls, document: Document=None):
-        if document and document.page_content:
-            if document.metadata and document.metadata['type'] and document.metadata['type'].startswith("H"):
-                return "\n" \
-                    + cls.get_markdown_header(document) + document.page_content \
-                    + "\n\n"
-            else:
-                return document.page_content + "\n"
-        return ""
-    
     @property
     def markdown(self):
-        return self.__class__.get_markdown(self.documents)
+        return "".join([d.page_content for d in self.documents if d.metadata['type'] != "OUTLINE"])
 
-    @classmethod
-    def get_markdown(cls, docs: List[Document]=None):
+    def get_outline_task(self):
         """
-        导出 Markdown 文本。
-        """
-
-        md = ""
-        if docs:
-            for doc in docs:
-                md += cls.get_node_text(doc)
-        
-        return md
-
-    def get_leaf_outline(self):
-        """
-        获得叶子节点上的提纲任务清单。
-        适合主从双线任务写作，在“主文档”中提取任务，获得任务列表，在一个循环中执行“从文档”任务。
+        获得OUTLINE扩写任务清单。
+        如果没有指定title，就返回所有任务，否则返回匹配到的任务。
         """
 
-        leaf_documents = []
-        last_header_doc = None
-
-        for i, doc in enumerate(self.documents):
-            # print(i, doc, last_header_doc.metadata['type'] if last_header_doc else '')
-            if doc.metadata['type'].startswith("H"):
-                if last_header_doc == None:
-                    last_header_doc = doc
-                    continue
-                if doc.metadata['type'] <= last_header_doc.metadata['type']:
-                    leaf_documents.append(last_header_doc)
-                last_header_doc = doc
-
-        if last_header_doc:
-            leaf_documents.append(last_header_doc)
-
-        return leaf_documents
-
-    def get_branch_outline(self, header="H1"):
-        """
-        获得主干节点上的提纲任务清单。
-        默认提取第一层级内容。
-        """
-
-        return self.get_documents(node_type=header)
+        return [d.page_content for d in self.documents if d.metadata['type'] == "OUTLINE"]
     
-    def get_relevant_documents(self, title: str=None):
-        if title is None:
+    def get_relevant_documents(self, task_doc: Document=None):
+        if doc is None:
             return []
 
-        documents = []
+        docs = []
         found_doc = []
         found_header = None
 
         for doc in self.documents[::-1]:
             found_doc.append(doc)
-            doc_type = doc.metadata['type']
-            doc_is_header = doc_type.startswith('H')
+            doc_is_header = doc.metadata['type'] == "heading"
+            doc_level = doc.metadata['attrs']['level'] if 'attrs' in doc.metadata and 'level' in doc.metadata['attrs'] else None
 
-            if not documents and doc.page_content.startswith(title):
+            if docs and doc.metadata['id'] == task_doc.metadata['id']:
                 # 找到匹配文档
-                documents += found_doc
-                if doc_type and doc_is_header:
-                    found_header = doc_type
+                docs += found_doc
+                if doc_is_header:
+                    found_header = doc_level
                     found_doc = []
-            elif documents:
+            elif docs:
                 # 查找关联文档
-                if not found_header or (doc_is_header and doc_type < found_header):
-                    documents += found_doc
+                if found_header != None or (doc_is_header and doc_level < found_header):
+                    docs += found_doc
                     found_header = doc_type
 
             if doc_is_header:
                 found_doc = []
 
-        return documents[::-1]
+        return docs[::-1]
 
     def get_prev_documents(self, title: str=None, k=1000):
         """
