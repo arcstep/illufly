@@ -76,10 +76,9 @@ class IntelliDocuments():
 
         return self.documents
 
-    def get_relevant_documents(self, index_doc: Union[str, Document]=None, k=1000):
+    def get_prev_documents(self, index_doc: Union[str, Document]=None, k=800):
         """
-        获得与扩写强关联的文档。
-        为了保持扩写任务的上下文连续，这包括扩写位置所有的前序兄弟标题和祖先标题，并在token可承受的范围内尽量包含前文。
+        获得向前关联文档。
         """
         if index_doc is None:
             return []
@@ -88,7 +87,6 @@ class IntelliDocuments():
 
         md = ""
         found_task = False
-        not_over_k = True
         last_header_level = None
         docs = []
 
@@ -98,14 +96,13 @@ class IntelliDocuments():
                     found_task = True
                 continue
 
-            # 在token可承受范围内优先前文，无论是何种样式
-            if not_over_k:
+            # 在token数量可承受范围内优先前文
+            if doc.metadata['type'] != 'OUTLINE':
                 md = doc.page_content + md
                 if len(md) > k:
-                    not_over_k = False
+                    break
                 else:
-                    if doc.metadata['type'] != 'OUTLINE':
-                        docs.append(doc)
+                    docs.append(doc)
                     continue
             
             # 补充所有祖先标题
@@ -117,3 +114,31 @@ class IntelliDocuments():
                     last_header_level = doc_level
 
         return docs[::-1]
+
+    def get_next_documents(self, index_doc: Union[str, Document]=None, k=500):
+        """
+        获得向后关联文档。
+        """
+        if index_doc is None:
+            return []
+
+        task_id = index_doc.metadata['id'] if isinstance(index_doc, Document) else index_doc
+
+        md = ""
+        found_task = False
+        docs = []
+
+        for doc in self.documents:
+            if not found_task:
+                if doc.metadata['id'] == task_id:
+                    found_task = True
+                continue
+
+            if doc.metadata['type'] != 'OUTLINE':
+                md = doc.page_content + md
+                if len(md) > k:
+                    break
+                else:
+                    docs.append(doc)
+
+        return docs
