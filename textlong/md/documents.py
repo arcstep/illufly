@@ -42,36 +42,49 @@ class IntelliDocuments():
 
         return [d for d in self.documents if d.metadata['type'] == "OUTLINE"]
     
-    def get_task_index(self, task_doc: Union[str, Document]):
+    def get_task_index(self, index_doc: Union[str, Document]):
         """
         获得任务索引。
         """
-        task_id = task_doc.metadata['id'] if isinstance(task_doc, Document) else task_doc
+        task_id = index_doc.metadata['id'] if isinstance(index_doc, Document) else index_doc
         for i, doc in enumerate(self.documents):
             if doc.metadata['id'] == task_id:
                 return i
 
         return None
 
-    def insert_documents(self, task_doc: Union[str, Document]=None, docs: List[Document]=None):
+    def insert_documents(self, index_doc: Union[str, Document]=None, docs: Union[str, List[Document]]=None):
         """
-        插入文档对象列表。
+        插入文档对象。
         """
-        index = self.get_task_index(task_doc)
+        return self._replace_documents(index_doc, docs, reserve=True)
+
+    def replace_documents(self, index_doc: Union[str, Document]=None, docs: Union[str, List[Document]]=None):
+        """
+        替换文档对象。
+        """
+        return self._replace_documents(index_doc, docs, reserve=False)
+
+    def _replace_documents(self, index_doc: Union[str, Document]=None, docs: Union[str, List[Document]]=None, reserve = False):
+        to_insert = parse_markdown(docs) if isinstance(docs, str) else docs
+        index = self.get_task_index(index_doc)
         if index != None:
-            self.documents = self.documents[:index] + docs + self.documents[index+1:]
+            self.documents = self.documents[:index] + to_insert + self.documents[index + (1 if reserve else 0):]
+        else:
+            info = index_doc.page_content if isinstance(index_doc, Document) else index_doc
+            raise ValueError(f"Not Found: {info}")
 
         return self.documents
-    
-    def get_relevant_documents(self, task_doc: Union[str, Document]=None, k=1000):
+
+    def get_relevant_documents(self, index_doc: Union[str, Document]=None, k=1000):
         """
         获得与扩写强关联的文档。
         为了保持扩写任务的上下文连续，这包括扩写位置所有的前序兄弟标题和祖先标题，并在token可承受的范围内尽量包含前文。
         """
-        if task_doc is None:
+        if index_doc is None:
             return []
 
-        task_id = task_doc.metadata['id'] if isinstance(task_doc, Document) else task_doc
+        task_id = index_doc.metadata['id'] if isinstance(index_doc, Document) else index_doc
 
         md = ""
         found_task = False
