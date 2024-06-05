@@ -1,4 +1,4 @@
-from importlib.resources import read_text
+from importlib.resources import read_text, is_resource
 from langchain.prompts import (
     PromptTemplate,
     ChatPromptTemplate,
@@ -12,9 +12,34 @@ from .config import get_textlong_folder, _PROMPTS_FOLDER_NAME
 import os
 import json
 
-def load_prompt(template_id: str, project_id: str="default"):
-    prompt_str = read_text(f'textlong.prompts.{project_id}', f'{template_id}.txt')
-    return PromptTemplate.from_template(prompt_str)
+def load_prompt(task: str, template_id: str):
+    """
+    task:
+        - batch
+        - summarise
+        - write
+        - ...
+    template_id:
+        - 扩写
+        - 提纲
+        - ...
+    """
+    resource_file = 'main.txt'
+    resource_folder = f'textlong.prompts.{task}.{template_id}'
+    if not is_resource(resource_folder, resource_file):
+        resource_folder = f'textlong.prompts.{task}'
+    
+    prompt_str = read_text(resource_folder, resource_file)
+    template = PromptTemplate.from_template(prompt_str)
+
+    kwargs = {}
+    for key in template.input_variables:
+        resource_file = f'{key}.txt'
+        resource_folder = f'textlong.prompts.{task}.{template_id}'
+        if is_resource(resource_folder, resource_file):
+            kwargs[key] = read_text(resource_folder, resource_file)
+
+    return template.partial(**kwargs)
 
 def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id: str="default", id="0", user_id="public"):
     """
