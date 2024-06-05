@@ -25,6 +25,7 @@ from .prompt import (
     PROMPT_TECH_SUMMARISE,
 )
 from .output_parser import MarkdownOutputParser
+from ..parser import parse_markdown
 from ..hub import load_prompt
 
 def create_chain(llm, prompt_template, **kwargs):
@@ -49,7 +50,7 @@ def call_markdown_chain(chain, input):
 
 class BaseWriting(ABC):
     """
-    写作任务。
+    基本写作。
     """
 
     def __init__(self, document: Union[str, IntelliDocuments]=None, llm=None, **kwargs):
@@ -72,28 +73,40 @@ class BaseWriting(ABC):
     def markdown(self):
         return self.todo_docs.markdown
 
-    def write(self, task: str, prompt_name: str=None):
+    def write(self, task: str, prompt_name: str=None, example: str=None):
         """
         创作提纲。
         - task 主题和创作要求
         """
         prompt = load_prompt(prompt_name or "_PROMPT_WRITING_BASE")
+        example = example or "你的markdown输出"
+
         chain = create_chain(self.llm, prompt)
 
         resp_md = call_markdown_chain(chain, {"task": task})
-
-        self.todo_docs.documents = []
         self.todo_docs.import_markdown(resp_md)
 
         return self.todo_docs.documents
     
-    def rewrite(self, task: str=None, task_doc: Union[str, Document]=None):
+    def rewrite(self, task: str=None, index_doc: Union[str, Document]=None, prompt_name: str=None):
         """
         局部重写。
-        - title 要修改的标题或文字开头部份
         - task 补充的修改意见
+        - index_doc 要修改的文档
         """
-        raise NotImplementedError("method `rewrite` not implementd yet.")
+        prompt = load_prompt(prompt_name or "_PROMPT_WRITING_BASE_RE")
+        relevant = self.todo_docs.get_relevant_documents(index_doc)
+        chain = create_chain(
+            self.llm,
+            prompt,
+            relevant="".join([d.page_content for d in relevant]),
+            to_rewrite=index_doc.page_content
+        )
+
+        resp_md = call_markdown_chain(chain, {"task": task})
+        self.todo_docs.replace_documents(index_doc, docs=resp_md)
+
+        return self.todo_docs.documents
     
     def check_rewrite_title(self, title):
         if title and self.last_rewrite_title:
@@ -108,15 +121,18 @@ class BaseWriting(ABC):
         return docs
 
 class Outline(BaseWriting):
-    """提纲。"""
+    """创作提纲。"""
 
-    def write(self, task: str, prompt_name: str=None):
+    def write(self, task: str, prompt_name: str=None, example: str=None):
         return super().write(task, prompt_name or "_PROMPT_OUTLINE_WRITING")
-    
+
+    def rewrite(self, task: str=None, index_doc: Union[str, Document]=None, prompt_name: str=None):
+        return super().rewrite(task, index_doc, prompt_name or "_PROMPT_OUTLINE_WRITING")
+
 class Detail(BaseWriting):
     """
-    扩写。
-    - 将 self.source_docs 作为大纲，扩写到 self.todo_docs
+    根据提纲扩写。
+    - 根据提纲 source_docs 扩写 todo_docs
     """
 
     def __init__(self, source: Union[str, IntelliDocuments, BaseWriting], **kwargs):
@@ -136,59 +152,40 @@ class Detail(BaseWriting):
         # 如果不是提前加载扩写内容（这种情况通常是从持久化中恢复任务），就从扩写依据的大纲中提取
         if not self.todo_docs.documents:
             self.todo_docs.documents = copy.deepcopy(self.source_docs.documents)
-            IntelliDocuments.update_action(self.todo_docs.documents, "outline")
     
     def write(self, task: str=None):
         task_howto = f"{task or ''}\n请根据提纲要求完成续写。标题和要求为："
-        return self._write(
-            prompt_str=PROMPT_DETAIL_WRITING,
-            howto=task_howto,
-            action="detail"
-        )
+        prompt = load_prompt("_PROMPT_DETAIL_WRITING")
+        return self._write(prompt, task_howto)
 
-    def _write(self, prompt_str: str, howto: str, action: str):
+    def _write(self, prompt_str: str, howto: str):
         if not self.source_docs.documents:
             raise ValueError("MUST contain some documents from source!")
 
-        task_nodes = self.source_docs.get_leaf_outline()
+        task_nodes = self.source_docs.get_outline_task()
 
         # 批量扩写任务
         for node in task_nodes:
-            task_title = node.page_content
-            outline_relv_docs = IntelliDocuments.get_markdown(
-                self.source_docs.get_relevant_documents(task_title)
-            )
-            detail_prev_docs = IntelliDocuments.get_markdown(
-                self.todo_docs.get_prev_documents(task_title)
-            )
+            rel_docs = "".join([d.page_content for d in self.todo_docs.get_relevant_documents(node)])
+            chain = create_chain(self.llm, prompt_str, relevant=rel_docs, to_write=node.page_content)
 
-            chain = create_chain(
-                self.llm,
-                prompt_str,
-                outline=outline_relv_docs,
-                detail=detail_prev_docs
-            )
-
-            task_md = IntelliDocuments.get_markdown(
-                self.source_docs.get_documents(task_title)
-            )
-            resp_md = call_markdown_chain(chain, {"task": f"{howto}\n{task_md}"})
-
-            reply_docs = IntelliDocuments.parse_markdown(resp_md)
-            self.todo_docs.replace_documents(new_docs=reply_docs, title=task_title, action=action)
+            resp_md = call_markdown_chain(chain, {"task": f"{howto}\n{node.page_content}"})
+            reply_docs = parse_markdown(resp_md)
+            self.todo_docs.replace_documents(index_doc=node, docs=reply_docs)
 
         return self.todo_docs.documents
     
-    def rewrite(self, task: str=None, title: str=None):
+    def rewrite(self, task: str=None, index_doc: Union[str, Document]=None, prompt_name: str=None):
         task_howto = f" {task or ''}\n只重写上次续写的这部份。"
+        prompt = load_prompt("_PROMPT_DETAIL_WRITING_RE")
         return self._rewrite(
-            title=title,
+            index_doc=index_doc,
             prompt_str=PROMPT_DETAIL_REWRITING,
             howto=task_howto,
             action="detail"
         )
 
-    def _rewrite(self, title: str, prompt_str: str, howto: str, action: str):
+    def _rewrite(self, title: str, prompt_str: str, howto: str):
         if not self.source_docs.documents:
             raise ValueError("MUST contain some documents from source!")
 
@@ -214,7 +211,7 @@ class Detail(BaseWriting):
 
         resp_md = call_markdown_chain(chain, {"task": howto})
         reply_docs = IntelliDocuments.parse_markdown(resp_md)
-        self.todo_docs.replace_documents(new_docs=reply_docs, title=task_title, action=action)
+        self.todo_docs.replace_documents(new_docs=reply_docs, title=task_title)
         
         # 将新内容的标题作为重写标题
         self.last_rewrite_title = reply_docs[0].page_content
