@@ -1,6 +1,7 @@
 from typing import Union, List
 from abc import ABC, abstractclassmethod
 import copy
+from langchain_core.documents import Document
 from langchain.globals import set_verbose, get_verbose
 from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 
@@ -24,11 +25,12 @@ from .prompt import (
     PROMPT_TECH_SUMMARISE,
 )
 from .output_parser import MarkdownOutputParser
+from ..hub import load_prompt
 
 def create_chain(llm, prompt_template, **kwargs):
     if not llm:
         raise ValueError("LLM can't be None !")
-    prompt = PromptTemplate.from_template(prompt_template).partial(**kwargs)
+    prompt = prompt_template.partial(**kwargs)
     return prompt | llm
 
 def call_markdown_chain(chain, input):
@@ -68,26 +70,24 @@ class BaseWriting(ABC):
 
     @property
     def markdown(self):
-        return IntelliDocuments.get_markdown(self.documents)
+        return self.todo_docs.markdown
 
-    def write(self, task: str):
+    def write(self, task: str, prompt_name: str=None):
         """
         创作提纲。
         - task 主题和创作要求
         """
-        chain = create_chain(
-            self.llm,
-            PROMPT_BASE_WRITING
-        )
+        prompt = load_prompt(prompt_name or "_PROMPT_WRITING_BASE")
+        chain = create_chain(self.llm, prompt)
 
         resp_md = call_markdown_chain(chain, {"task": task})
-        
+
         self.todo_docs.documents = []
-        self.todo_docs.import_markdown(resp_md, action="basic")
+        self.todo_docs.import_markdown(resp_md)
 
         return self.todo_docs.documents
     
-    def rewrite(self, task: str=None, title: str=None):
+    def rewrite(self, task: str=None, task_doc: Union[str, Document]=None):
         """
         局部重写。
         - title 要修改的标题或文字开头部份
@@ -110,44 +110,8 @@ class BaseWriting(ABC):
 class Outline(BaseWriting):
     """提纲。"""
 
-    def write(self, task: str):
-
-        chain = create_chain(
-            self.llm,
-            PROMPT_OUTLINE_WRITING
-        )
-
-        resp_md = call_markdown_chain(chain, {"task": task})
-        
-        self.todo_docs.documents = []
-        self.todo_docs.import_markdown(resp_md, action="outline")
-
-        return self.todo_docs.documents
-    
-    def rewrite(self, task: str=None, title: str=None):
-        
-        self.check_rewrite_title(title)
-        task_title = self.last_rewrite_title
-
-        docs = self.get_todo_documents(task_title)        
-        md_existing = IntelliDocuments.get_markdown(docs)
-        chain = create_chain(
-            self.llm,
-            PROMPT_OUTLINE_REWRITING,
-            outline=self.markdown,
-            to_rewrite=md_existing
-        )
-
-        task_howto = f" {task or ''}\n只针对明确要求重写的这部份重写。"
-        resp_md = call_markdown_chain(chain, {"task": task_howto})
-
-        reply_docs = IntelliDocuments.parse_markdown(resp_md)
-        self.todo_docs.replace_documents(new_docs=reply_docs, title=task_title)
-
-        # 将新内容的标题作为重写标题
-        self.last_rewrite_title = reply_docs[0].page_content
-        
-        return reply_docs
+    def write(self, task: str, prompt_name: str=None):
+        return super().write(task, prompt_name or "_PROMPT_OUTLINE_WRITING")
     
 class Detail(BaseWriting):
     """

@@ -1,4 +1,6 @@
+from importlib.resources import read_text
 from langchain.prompts import (
+    PromptTemplate,
     ChatPromptTemplate,
     MessagesPlaceholder,
     SystemMessagePromptTemplate,
@@ -9,6 +11,10 @@ from langchain.prompts import (
 from .config import get_textlong_folder, _PROMPTS_FOLDER_NAME
 import os
 import json
+
+def load_prompt(template_id: str, project_id: str="default"):
+    prompt_str = read_text(f'textlong.prompts.{project_id}', f'{template_id}.txt')
+    return PromptTemplate.from_template(prompt_str)
 
 def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id: str="default", id="0", user_id="public"):
     """
