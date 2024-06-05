@@ -26,12 +26,12 @@ def parse_markdown(text, start_tag='<OUTLINE>', end_tag='</OUTLINE>'):
     默认为 <OUTLINE> ... </OUTLINE> 的形式。
     """
     doc_id_generator = get_document_id()
-    pattern = re.compile(r'(.*?)(%s(.*?)%s)(.*)' % (re.escape(start_tag), re.escape(end_tag)), re.DOTALL)
+    pattern = re.compile(r'(.*?)(%s.*?%s)(.*)' % (re.escape(start_tag), re.escape(end_tag)), re.DOTALL)
     documents = []
     while start_tag in text and end_tag in text:
         match = pattern.match(text)
         if match:
-            before, outline, outline_content, after = match.groups()
+            before, outline_content, after = match.groups()
             if before:
                 documents.extend(markdown(before, renderer=SegmentsRenderer(doc_id_generator)))
             doc_id = next(doc_id_generator)
