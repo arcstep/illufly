@@ -30,110 +30,6 @@ class IntelliDocuments():
 
         return self.documents
 
-    def get_documents_range(self, title: str=None):
-        """
-        获得文档筛查的索引范围。
-        """
-
-        start_index = None
-        end_index = None
-        if title != None:
-            last_header_doc = None
-            for i, doc in enumerate(self.documents):
-                # print(i, doc)
-                doc_type = doc.metadata['type']
-                if start_index == None and doc.page_content.startswith(title):
-                    start_index = i
-                    end_index = i
-                    if doc_type == 'heading':
-                        last_header_doc = doc
-                    continue
-                if start_index != None and last_header_doc:
-                    doc_level = doc.metadata['attrs']['level'] if 'attrs' in doc.metadata and 'level' in doc.metadata['attrs'] else None
-                    last_header_doc_level = last_header_doc.metadata['attrs']['level'] if 'attrs' in last_header_doc.metadata and 'level' in last_header_doc.metadata['attrs'] else None
-                    if doc_type == 'heading' and doc_level and last_header_doc_level and doc_level > last_header_doc_level:
-                        continue
-                    elif doc_type != 'heading':
-                        continue
-                    # 标题已入栈且未找到更深标题或段落时退出
-                    end_index = i
-                    break
-            if start_index == None:
-                raise ValueError("Can't find title: ", title)
-        
-        return (start_index, end_index if start_index != end_index else None)
-
-    def get_documents(self, title: str=None, node_type: Union[str, List[str]]=None):
-        """
-        获得文档子树。
-        """
-        
-        if node_type == None:
-            types = ['H', 'para']
-        elif isinstance(node_type, str):
-            types = [node_type]
-        elif isinstance(node_type, List):
-            types = node_type
-        else:
-            raise(ValueError(f"Invalid node_type: {node_type}"))
-
-        pattern = re.compile(r'(' + '|'.join(types) + ')')
-        
-        start_index, end_index = self.get_documents_range(title)
-        return [d for d in self.documents[start_index:end_index] if pattern.match(d.metadata['type'])]
-
-    def replace_documents(self, new_docs: List[Document], title: str=None,):
-        """
-        在指定位置替换文档子树。
-        """
-        
-        IntelliDocuments.update_action(new_docs)
-
-        if title == None:
-            self.documents += new_docs
-        else:
-            start_index, end_index = self.get_documents_range(title)
-
-            if start_index == None and end_index == None:
-                self.documents = new_docs
-            elif start_index == None and end_index != None:
-                self.documents = new_docs + self.documents[end_index:None]
-            elif start_index != None and end_index == None:
-                self.documents = self.documents[:start_index] + new_docs
-            else:
-                self.documents = self.documents[:start_index] + new_docs + self.documents[end_index:None]
-
-        return self.documents
-
-    def insert_documents(self, new_docs: List[Document], title: str=None):
-        """
-        插入文档到指定位置。
-        """
-        
-        IntelliDocuments.update_action(new_docs)
-
-        if title == None:
-            self.documents += new_docs
-        else:
-            start_index, end_index = self.get_documents_range(title)
-
-            if start_index == None and end_index != None:
-                self.documents = self.documents[:end_index] + new_docs + self.documents[end_index:None]
-            elif start_index != None:
-                self.documents = self.documents[:start_index] + new_docs + self.documents[start_index:None]
-
-        return self.documents
-
-    def remove_documents(self, title: str):
-        """
-        删除指定的子树。
-        """
-
-        start_index, end_index = self.get_documents_range(title)
-        if start_index and end_index:
-            self.documents = self.documents[:start_index] + self.documents[end_index:]
-        return self.documents
-
     @property
     def markdown(self):
         return "".join([d.page_content for d in self.documents if d.metadata['type'] != "OUTLINE"])
@@ -144,55 +40,67 @@ class IntelliDocuments():
         如果没有指定title，就返回所有任务，否则返回匹配到的任务。
         """
 
-        return [d.page_content for d in self.documents if d.metadata['type'] == "OUTLINE"]
+        return [d for d in self.documents if d.metadata['type'] == "OUTLINE"]
     
-    def get_relevant_documents(self, task_doc: Document=None):
-        if doc is None:
+    def get_task_index(self, task_doc: Union[str, Document]):
+        """
+        获得任务索引。
+        """
+        task_id = task_doc.metadata['id'] if isinstance(task_doc, Document) else task_doc
+        for i, doc in enumerate(self.documents):
+            if doc.metadata['id'] == task_id:
+                return i
+
+        return None
+
+    def insert_documents(self, task_doc: Union[str, Document]=None, docs: List[Document]=None):
+        """
+        插入文档对象列表。
+        """
+        index = self.get_task_index(task_doc)
+        if index != None:
+            self.documents = self.documents[:index] + docs + self.documents[index+1:]
+
+        return self.documents
+    
+    def get_relevant_documents(self, task_doc: Union[str, Document]=None, k=1000):
+        """
+        获得与扩写强关联的文档。
+        为了保持扩写任务的上下文连续，这包括扩写位置所有的前序兄弟标题和祖先标题，并在token可承受的范围内尽量包含前文。
+        """
+        if task_doc is None:
             return []
 
-        docs = []
-        found_doc = []
-        found_header = None
-
-        for doc in self.documents[::-1]:
-            found_doc.append(doc)
-            doc_is_header = doc.metadata['type'] == "heading"
-            doc_level = doc.metadata['attrs']['level'] if 'attrs' in doc.metadata and 'level' in doc.metadata['attrs'] else None
-
-            if docs and doc.metadata['id'] == task_doc.metadata['id']:
-                # 找到匹配文档
-                docs += found_doc
-                if doc_is_header:
-                    found_header = doc_level
-                    found_doc = []
-            elif docs:
-                # 查找关联文档
-                if found_header != None or (doc_is_header and doc_level < found_header):
-                    docs += found_doc
-                    found_header = doc_type
-
-            if doc_is_header:
-                found_doc = []
-
-        return docs[::-1]
-
-    def get_prev_documents(self, title: str=None, k=1000):
-        """
-        获得已完成的最新扩写。
-        """
-
-        documents = []
-        found = False
+        task_id = task_doc.metadata['id'] if isinstance(task_doc, Document) else task_doc
 
         md = ""
-        for doc in self.documents[::-1]:
-            if not documents and doc.page_content.startswith(title):
-                found = True
-                continue
-            if found:
-                documents.append(doc)
-                md = self.get_node_text(doc) + md
-                if len(md) > k:
-                    break
+        found_task = False
+        not_over_k = True
+        last_header_level = None
+        docs = []
 
-        return documents[::-1]
+        for doc in self.documents[::-1]:
+            if not found_task:
+                if doc.metadata['id'] == task_id:
+                    found_task = True
+                continue
+
+            # 在token可承受范围内优先前文，无论是何种样式
+            if not_over_k:
+                md = doc.page_content + md
+                if len(md) > k:
+                    not_over_k = False
+                else:
+                    if doc.metadata['type'] != 'OUTLINE':
+                        docs.append(doc)
+                    continue
+            
+            # 补充所有祖先标题
+            doc_is_header = doc.metadata['type'] == "heading"
+            if doc_is_header:
+                doc_level = doc.metadata['attrs']['level']
+                if last_header_level == None or doc_level <= last_header_level:
+                    docs.append(doc)
+                    last_header_level = doc_level
+
+        return docs[::-1]
