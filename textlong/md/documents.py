@@ -4,7 +4,7 @@ import os
 from typing import List, Union
 from langchain_core.documents import Document
 from ..parser import parse_markdown
-from ..utils import raise_not_install
+from ..utils import raise_not_install, markdown
 from ..config import get_textlong_folder, get_textlong_doc, _TEMP_FOLDER_NAME
 
 class IntelliDocuments():
@@ -32,7 +32,7 @@ class IntelliDocuments():
 
     @property
     def markdown(self):
-        return "".join([d.page_content for d in self.documents if d.metadata['type'] != "OUTLINE"])
+        return markdown(self.documents)
 
     def get_outline_task(self):
         """
@@ -97,13 +97,10 @@ class IntelliDocuments():
                 continue
 
             # 在token数量可承受范围内优先前文
-            if doc.metadata['type'] != 'OUTLINE':
-                md = doc.page_content + md
-                if len(md) > k:
-                    break
-                else:
-                    docs.append(doc)
-                    continue
+            md = doc.page_content + md
+            if len(md) <= k:
+                docs.append(doc)
+                continue
             
             # 补充所有祖先标题
             doc_is_header = doc.metadata['type'] == "heading"
@@ -134,11 +131,10 @@ class IntelliDocuments():
                     found_task = True
                 continue
 
-            if doc.metadata['type'] != 'OUTLINE':
-                md = doc.page_content + md
-                if len(md) > k:
-                    break
-                else:
-                    docs.append(doc)
+            md = doc.page_content + md
+            if len(md) <= k:
+                docs.append(doc)
+            else:
+                break
 
         return docs
