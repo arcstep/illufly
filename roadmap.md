@@ -7,12 +7,13 @@
 
 **变量：**
 
-- 指导原则
-- 知识
-- 上文
-- 任务
-- 下文
-- 例子
+- 指导原则 @instruction
+- 知识 @knowledge
+- 上文 prev_doc
+- 当前 todo_doc
+- 下文 next_doc
+- 任务 @task
+- 例子 @example
 
 **方法：**
 
