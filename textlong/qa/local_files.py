@@ -8,7 +8,7 @@ from langchain_community.document_loaders import (
 )
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
-from ..config import get_textlong_folder, get_textlong_doc, _DOCS_FOLDER_NAME
+from ..config import get_textlong_folder, get_textlong_doc, get_default_public, _DOCS_FOLDER_NAME
 from ..utils import raise_not_install
 
 import os
@@ -80,7 +80,7 @@ class LocalFilesLoader(BaseLoader):
         extensions: List[str] = [],
         *args, **kwargs
     ):
-        self.user_id = user_id or "public"
+        self.user_id = user_id or get_default_public()
         self.path_regex = path_regex or ".*"
         self.included_prefixes = included_prefixes
         self.excluded_prefixes = excluded_prefixes

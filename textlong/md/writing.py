@@ -72,6 +72,7 @@ class Writing():
         返回一个新的对象，并确保所有对象都已经深度拷贝。
         
         如果不指定 new_document_id 就仅克隆到内存。
+        TODO:
         """
         pass
 
