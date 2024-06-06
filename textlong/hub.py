@@ -36,8 +36,7 @@ def load_prompt(task: str, template_id: str):
     for key in template.input_variables:
         resource_file = f'{key}.txt'
         resource_folder = f'textlong.prompts.{task}.{template_id}'
-        if is_resource(resource_folder, resource_file):
-            kwargs[key] = read_text(resource_folder, resource_file)
+        kwargs[key] = read_text(resource_folder, resource_file) if is_resource(resource_folder, resource_file) else ''
 
     return template.partial(**kwargs)
 
