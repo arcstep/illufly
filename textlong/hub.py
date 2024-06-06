@@ -12,7 +12,7 @@ from .config import get_textlong_folder, _PROMPTS_FOLDER_NAME
 import os
 import json
 
-def load_prompt(task: str, template_id: str):
+def load_prompt(template_id: str):
     """
     task:
         - batch
@@ -25,9 +25,9 @@ def load_prompt(task: str, template_id: str):
         - ...
     """
     resource_file = 'main.txt'
-    resource_folder = f'textlong.prompts.{task}.{template_id}'
+    resource_folder = f'textlong.prompts.{template_id}'
     if not is_resource(resource_folder, resource_file):
-        resource_folder = f'textlong.prompts.{task}'
+        resource_folder = f'textlong.prompts'
     
     prompt_str = read_text(resource_folder, resource_file)
     template = PromptTemplate.from_template(prompt_str)
@@ -35,7 +35,7 @@ def load_prompt(task: str, template_id: str):
     kwargs = {}
     for key in template.input_variables:
         resource_file = f'{key}.txt'
-        resource_folder = f'textlong.prompts.{task}.{template_id}'
+        resource_folder = f'textlong.prompts.{template_id}'
         kwargs[key] = read_text(resource_folder, resource_file) if is_resource(resource_folder, resource_file) else ''
 
     return template.partial(**kwargs)

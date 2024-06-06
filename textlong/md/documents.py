@@ -69,7 +69,7 @@ class IntelliDocuments():
         to_insert = parse_markdown(docs) if isinstance(docs, str) else docs
         index = self.get_task_index(index_doc)
         if index != None:
-            self.documents = self.documents[:index] + to_insert + self.documents[index + (1 if reserve else 0):]
+            self.documents = self.documents[:index] + to_insert + self.documents[index + (0 if reserve else 1):]
         else:
             info = index_doc.page_content if isinstance(index_doc, Document) else index_doc
             raise ValueError(f"Not Found: {info}")
