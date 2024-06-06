@@ -118,14 +118,8 @@ class Writing(ABC):
 
 
     def fetch(self, task: str, template_id: str=None):
-        return self.idea(task, template_id or "提纲")
-    
-    def summarise(self):
-        pass
-    
-    def batch(self):
-        pass
-    
-    def refine(self):
+        return self.idea(task, template_id or "摘要")
+        
+    def translate(self):
         pass
 
