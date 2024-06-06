@@ -9,6 +9,7 @@ from .documents import IntelliDocuments
 from .output_parser import MarkdownOutputParser
 from ..parser import parse_markdown
 from ..hub import load_prompt
+from ..utils import markdown
 
 def create_chain(llm, prompt_template, **kwargs):
     if not llm:
@@ -123,8 +124,8 @@ class Detail(BatchWriting):
 
         # 批量扩写任务
         for doc in self.source_docs.get_outline_task():
-            prev_doc = "".join([d.page_content for d in self.todo_docs.get_prev_documents(doc)])
-            next_doc = "".join([d.page_content for d in self.todo_docs.get_next_documents(doc)])
+            prev_doc = markdown(self.todo_docs.get_prev_documents(doc))
+            next_doc = markdown(self.todo_docs.get_next_documents(doc))
             chain = create_chain(
                 self.llm,
                 prompt,
