@@ -124,14 +124,19 @@ class Writing():
 
         return self.todo_docs.documents
     
-    def outline(self, task: str, template_id: str=None):
+    def outline(self, task: str=None, template_id: str=None):
         """
         提纲
         TODO: 当存在ref_docs时，针对扩写要求放大提纲
         TODO: 当指定局部修改时
         TODO: 根据任务要求推理，选择不同模板
         """
-        return self.idea(task, template_id or "提纲")
+        if self.ref_docs.documents:
+            return self.detail(task, template_id or "扩写提纲")
+        else:
+            if not task:
+                raise ValueError("必须提供《提纲》的任务描述")
+            return self.idea(task, template_id or "提纲")
 
     def detail(self, task: str=None, template_id: str=None):
         """
