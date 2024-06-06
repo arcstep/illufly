@@ -27,23 +27,22 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(), override=True)
 ```
 
-## 二、创作长文当
+## 二、长文本创作：根据提纲扩写
 
-**`Outline` 创作提纲：**
+**创作提纲：**
 
 ```python
 from textlong import Writing
 from langchain_zhipu import ChatZhipuAI
 
-ol = Writing(llm=ChatZhipuAI())
-ol.outline("请帮我创作500字的修仙小说，大女主设定，请给出主角的具体名字")
+w = Writing(llm=ChatZhipuAI())
+w.outline("请帮我创作500字的修仙小说，大女主设定，请给出主角的具体名字")
 ```
 
-**`Detail` 依据提纲扩写：**
+**根据提纲扩写：**
 
 ```python
-from textlong.md import Detail
-
-detail = Detail(ref_docs=ol, llm=ChatZhipuAI())
-detail.detail()
+w.save_as_ref()
+w.detail()
+print(w.markdown)
 ```
