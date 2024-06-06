@@ -114,11 +114,11 @@ class Writing():
     def idea(self, task: str, template_id: str=None):
         """
         创意
-        TODO: 当存在ref_docs时，参考已有文档修改
         TODO: 根据任务要求推理，选择不同模板
         """
         prompt = load_prompt(template_id or "创意")
-        chain = create_chain(self.llm, prompt)
+        doc = f'你已经完成的创意如下：\n{self.ref_docs.markdown}' if self.ref_docs != None else ''
+        chain = create_chain(self.llm, prompt, todo_doc=doc)
         resp_md = call_markdown_chain(chain, {"task": task})
         self.todo_docs.import_markdown(resp_md)
 
