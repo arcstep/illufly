@@ -32,7 +32,7 @@ def call_markdown_chain(chain, input):
 
 class Writing():
     """
-    基本写作。
+    写作。
     """
 
     def __init__(
@@ -44,6 +44,9 @@ class Writing():
     ):
 
         self.llm = llm
+
+        self.knowledge = {}
+        self.save_path = ""
 
         if isinstance(ref_docs, str) or ref_docs == None:
             self.ref_docs = IntelliDocuments(doc_str=ref_docs)
@@ -114,10 +117,12 @@ class Writing():
     def idea(self, task: str, template_id: str=None):
         """
         创意
-        TODO: 根据任务要求推理，选择不同模板
+        
+        - 当存在ref_docs时，将其作为创意参考。
+        - TODO: 根据任务要求推理，选择不同模板
         """
         prompt = load_prompt(template_id or "创意")
-        doc = f'你已经完成的创意如下：\n{self.ref_docs.markdown}' if self.ref_docs != None else ''
+        doc = f'你已经完成的创作如下：\n{self.ref_docs.markdown}' if self.ref_docs != None else ''
         chain = create_chain(self.llm, prompt, todo_doc=doc)
         resp_md = call_markdown_chain(chain, {"task": task})
         self.todo_docs.import_markdown(resp_md)
@@ -127,25 +132,28 @@ class Writing():
     def outline(self, task: str=None, template_id: str=None):
         """
         提纲
-        TODO: 当存在ref_docs时，针对扩写要求放大提纲
-        TODO: 当指定局部修改时
-        TODO: 根据任务要求推理，选择不同模板
+        
+        - 当存在ref_docs时，针对扩写要求放大提纲。
+        - TODO: 当指定局部修改时
+        - TODO: 根据任务要求推理，选择不同模板
         """
         if self.ref_docs.documents:
             return self.detail(task, template_id or "扩写提纲")
         else:
             if not task:
-                raise ValueError("必须提供《提纲》的任务描述")
+                raise ValueError("必须提供`task`作为任务描述")
             return self.idea(task, template_id or "提纲")
 
     def detail(self, task: str=None, template_id: str=None):
         """
         扩写
-        TODO: 当指定局部修改时
-        TODO: 根据任务要求推理，选择不同模板
+        
+        - 必须提供《参考提纲》作为扩写依据。
+        - TODO: 当指定局部修改时
+        - TODO: 根据任务要求推理，选择不同模板
         """
         if not self.ref_docs.documents:
-            raise ValueError("必须提供《参考提纲》作为扩写依据")
+            raise ValueError("必须提供`ref_docs`作为扩写依据")
 
         self.todo_docs = copy.deepcopy(self.ref_docs)
         prompt = load_prompt(template_id or "扩写")
@@ -168,17 +176,23 @@ class Writing():
 
         return self.todo_docs.documents
 
-
-    def fetch(self, task: str, template_id: str=None):
+    def fetch(self, task: str=None, template_id: str=None):
         """
         提取
-        TODO: 将提取出的结果放入 knowledge 字典，供模板变量引用
-        TODO: 按提取意图和滚动上下文窗口提取长文档
-        TODO: 当指定局部修改时
-        TODO: 默认提取摘要，通过任务意图指定其他提取目标（知识三元组、人物、工作流程等）
-        TODO: 根据任务要求推理，选择不同模板
+
+        - 按任务意图提取文档
+        - TODO: 默认提取摘要，通过任务意图指定其他提取目标（知识三元组、人物、工作流程等）
+        - TODO: 根据任务要求推理，选择不同模板
         """
-        return self.idea(task, template_id or "摘要")
+        if not self.ref_docs.documents:
+            raise ValueError("必须提供`ref_docs`作为提取目标")
+
+        prompt = load_prompt(template_id or "摘要")
+        chain = create_chain(self.llm, prompt, todo_doc=self.ref_docs.markdown)
+        resp_md = call_markdown_chain(chain, {"task": task})
+        self.todo_docs.import_markdown(resp_md)
+
+        return self.todo_docs.documents
         
     def translate(self, task: str=None, from_lang: str="中文", to_lang: str="英文", template_id: str=None):
         """
@@ -190,32 +204,36 @@ class Writing():
     def refine(self, task: str, template_id: str=None):
         """
         修改
-        TODO: 按修改意图和滚动上下文窗口修改长文档，例如替换文中的产品名称
-        TODO: 当指定局部修改时
+
+        - TODO: 按修改意图和滚动上下文窗口修改长文档，例如替换文中的产品名称
+        - TODO: 当指定局部修改时
         """
         pass
 
     def embedding(self):
         """
         向量编码
-        TODO: 对todo_docs做向量编码，并保存到向量数据库
-        TODO: 按 Document 缓存编码结果
+
+        - TODO: 对todo_docs做向量编码，并保存到向量数据库
+        - TODO: 按 Document 缓存编码结果
         """
         pass
 
     def search(self):
         """
         相似性查询
-        TODO: 对文档列表做向量相似性查询
-        TODO: 将本地文档文件资料作为向量相似性查询依据
-        TODO: 将查询结果作为创作依据(knowledge变量)
+
+        - TODO: 对文档列表做向量相似性查询
+        - TODO: 将本地文档文件资料作为向量相似性查询依据
+        - TODO: 将查询结果作为创作依据(knowledge变量)
         """
         pass
 
     def chat(self):
         """
         对话
-        TODO: RAG对话
+
+        - TODO: RAG对话
         """
         pass
 
