@@ -51,7 +51,7 @@ class Writing():
             self.ref_docs = docs
         else:
             raise ValueError("ref_docs MUST be str or IntelliDocuments")
-        
+
         if isinstance(todo_docs, str) or todo_docs == None:
             self.todo_docs = IntelliDocuments(doc_str=todo_docs)
         elif isinstance(todo_docs, IntelliDocuments):
@@ -67,6 +67,14 @@ class Writing():
     def markdown(self):
         return self.todo_docs.markdown
 
+    def clone(self, new_document_id: str=None):
+        """
+        返回一个新的对象，并确保所有对象都已经深度拷贝。
+        
+        如果不指定 new_document_id 就仅克隆到内存。
+        """
+        pass
+
     def save_as_ref(self):
         """
         将 todo_docs 保存为 ref_docs
@@ -75,7 +83,7 @@ class Writing():
         """
         self.ref_docs = copy.deepcopy(self.todo_docs)
         return self.ref_docs.documents
-    
+
     def save(self):
         """
         保存
@@ -85,7 +93,7 @@ class Writing():
         """
         pass
 
-    def load(self):
+    def load(self, document_id: str=None):
         """
         加载
         TODO: 支持按用户
@@ -166,15 +174,14 @@ class Writing():
         """
         return self.idea(task, template_id or "摘要")
         
-    def translate(self):
+    def translate(self, task: str=None, from_lang: str="中文", to_lang: str="英文", template_id: str=None):
         """
         翻译
-        TODO: 按翻译意图和滚动上下文窗口翻译长文档
-        TODO: 当指定局部修改时
         """
-        pass
+        refine_task = f'请帮我翻译，从{from_lang}到{to_lang}。{task or ""}'
+        return refine(refine_task, template_id)
 
-    def refine(self):
+    def refine(self, task: str, template_id: str=None):
         """
         修改
         TODO: 按修改意图和滚动上下文窗口修改长文档，例如替换文中的产品名称
