@@ -68,6 +68,15 @@ class Writing(ABC):
     def markdown(self):
         return self.todo_docs.markdown
 
+    def save_as_ref(self):
+        """
+        将 todo_docs 保存为 ref_docs
+        
+        常用于先创作提纲，再进行扩写的场景。
+        """
+        self.ref_docs = copy.deepcopy(self.todo_docs)
+        return self.ref_docs.documents
+
     def idea(self, task: str, template_id: str=None):
         """创意"""
         prompt = load_prompt(template_id or "创意")
