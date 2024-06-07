@@ -18,16 +18,16 @@ def create_chain(llm, prompt_template, **kwargs):
 
 def call_markdown_chain(chain, input):
     if get_verbose():
-        print("#"*20, "PROMPT BEGIN", "#"*20)
+        print("\033[34m" + "#"*20, "PROMPT BEGIN", "#"*20)  # 蓝色
         print(chain.get_prompts()[0].format(**input))
-        print("#"*20, "PROMPT  END ", "#"*20)
+        print("#"*20, "PROMPT END ", "#"*20 + "\033[0m")  # 重置颜色
 
     text = ""
     for chunk in chain.stream(input):
         text += chunk.content
         print(chunk.content, end="")
 
-    print(f"\n\n实际字数: {len(text)}")
+    print("\033[32m" + f"\n\n实际字数: {len(text)}" + "\033[0m")  # 绿色
     return MarkdownOutputParser().invoke(text)[0]
 
 class Writing():
@@ -127,7 +127,7 @@ class Writing():
         resp_md = call_markdown_chain(chain, {"task": task})
         self.todo_docs.import_markdown(resp_md)
 
-        return self.todo_docs.documents
+        return self.todo_docs
     
     def outline(self, task: str, template_id: str=None):
         """
@@ -170,15 +170,15 @@ class Writing():
                 prompt,
                 prev_doc=prev_doc,
                 next_doc=next_doc,
-                todo_doc=f'>->>>{doc.page_content}<-<<<'
+                todo_doc=f'>->>>\n{doc.page_content}\n<-<<<'
             )
 
-            task_howto = f"{task or ''}\n请根据提纲要求完成扩写，扩写依据是上述`>->>>`和`<-<<<`包围的部份：\n{doc.page_content}"
+            task_howto = f"{task or ''}\n请仅针对上述`>->>>`和`<-<<<`包围的部份扩写。"
             resp_md = call_markdown_chain(chain, {"task": task_howto})
             reply_docs = parse_markdown(resp_md)
             self.todo_docs.replace_documents(index_doc=doc, docs=reply_docs)
 
-        return self.todo_docs.documents
+        return self.todo_docs
 
     def fetch(self, task: str=None, template_id: str=None):
         """
@@ -196,14 +196,14 @@ class Writing():
         resp_md = call_markdown_chain(chain, {"task": task})
         self.todo_docs.import_markdown(resp_md)
 
-        return self.todo_docs.documents
+        return self.todo_docs
         
-    def translate(self, task: str=None, from_lang: str="中文", to_lang: str="英文", template_id: str=None):
+    def translate(self, task: str=None, from_lang: str="中文", to_lang: str="英文", template_id: str=None, k: int=1000):
         """
         翻译
         """
         refine_task = f'请帮我翻译，从{from_lang}到{to_lang}。{task or ""}'
-        return refine(refine_task, template_id)
+        return self.refine(refine_task, template_id or "TRANSLATE", k)
 
     def refine(self, task: str, template_id: str=None, k: int=1000):
         """
@@ -227,22 +227,24 @@ class Writing():
                 todo_doc = f'>->>>\n{md}\n<-<<<'
                 prev_doc = markdown(self.ref_docs.get_prev_documents(docs[0]))
                 chain = create_chain(self.llm, prompt, prev_doc=prev_doc, todo_doc=todo_doc)
-                task_howto = f"{task or ''}\n请根据要求重写，重写内容就是上述`>->>>`和`<-<<<`包围的部份：\n{md}\n"
+                task_howto = f"{task or ''}\n请针对`>->>>`和`<-<<<`包围的部份重写。"
                 return call_markdown_chain(chain, {"task": task_howto})
             else:
                 return ""
 
         for doc in self.ref_docs.documents:
             md_len += len(doc.page_content)
+            task_docs.append(doc)
             if md_len <= k:
-                task_docs.append(doc)
                 continue
 
             resp_md += create_md(task_docs) + "\n\n"
             md_len = 0
             task_docs = []
 
-        resp_md += create_md(task_docs)
+        if task_docs:
+            resp_md += create_md(task_docs)
+
         self.todo_docs.import_markdown(resp_md)
         return self.todo_docs
 

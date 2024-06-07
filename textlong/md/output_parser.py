@@ -51,7 +51,7 @@ class MarkdownOutputParser(AgentOutputParser):
         """
         pattern = r'>->>>\n(.*?)\n<<<-<'
         matches = re.findall(pattern, text, re.DOTALL)
-        return matches if matches else [""]
+        return (matches or [""])
 
     @property
     def _type(self) -> str:

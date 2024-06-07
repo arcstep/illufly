@@ -76,7 +76,7 @@ class IntelliDocuments():
 
         return self.documents
 
-    def get_prev_documents(self, index_doc: Union[str, Document]=None, k: int=1000):
+    def get_prev_documents(self, index_doc: Union[str, Document]=None, k: int=800):
         """
         获得向前关联文档。
         """
@@ -112,7 +112,7 @@ class IntelliDocuments():
 
         return docs[::-1]
 
-    def get_next_documents(self, index_doc: Union[str, Document]=None, k:int =500):
+    def get_next_documents(self, index_doc: Union[str, Document]=None, k:int =200):
         """
         获得向后关联文档。
         """
