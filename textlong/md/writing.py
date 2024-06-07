@@ -121,7 +121,7 @@ class Writing():
         - 当存在ref_docs时，将其作为创意参考。
         - TODO: 根据任务要求推理，选择不同模板
         """
-        prompt = load_prompt(template_id or "创意")
+        prompt = load_prompt(template_id or "IDEA")
         doc = f'你已经完成的创作如下：\n{self.ref_docs.markdown}' if self.ref_docs != None else ''
         chain = create_chain(self.llm, prompt, todo_doc=doc)
         resp_md = call_markdown_chain(chain, {"task": task})
@@ -129,7 +129,13 @@ class Writing():
 
         return self.todo_docs.documents
     
-    def outline(self, task: str=None, template_id: str=None):
+    def outline(self, task: str, template_id: str=None):
+        """
+        提纲
+        """
+        return self.idea(task, template_id or "OUTLINE")
+
+    def outline_self(self, task: str=None, template_id: str=None):
         """
         提纲
         
@@ -137,12 +143,10 @@ class Writing():
         - TODO: 当指定局部修改时
         - TODO: 根据任务要求推理，选择不同模板
         """
-        if self.ref_docs.documents:
-            return self.detail(task, template_id or "扩写提纲")
-        else:
-            if not task:
-                raise ValueError("必须提供`task`作为任务描述")
-            return self.idea(task, template_id or "提纲")
+        if not self.ref_docs.documents:
+            raise ValueError("必须提供`ref_docs`作为扩写依据")
+
+        return self.detail(task, template_id or "OUTLINE_SELF")
 
     def detail(self, task: str=None, template_id: str=None):
         """
@@ -156,7 +160,7 @@ class Writing():
             raise ValueError("必须提供`ref_docs`作为扩写依据")
 
         self.todo_docs = copy.deepcopy(self.ref_docs)
-        prompt = load_prompt(template_id or "扩写")
+        prompt = load_prompt(template_id or "OUTLINE_DETAIL")
 
         for doc in self.todo_docs.get_outline_task():
             prev_doc = markdown(self.todo_docs.get_prev_documents(doc))
@@ -166,10 +170,10 @@ class Writing():
                 prompt,
                 prev_doc=prev_doc,
                 next_doc=next_doc,
-                todo_doc=doc.page_content
+                todo_doc=f'>->>>{doc.page_content}<-<<<'
             )
 
-            task_howto = f"{task or ''}\n请根据提纲要求完成扩写。标题和要求为：\n{doc.page_content}"
+            task_howto = f"{task or ''}\n请根据提纲要求完成扩写，扩写依据是上述`>->>>`和`<-<<<`包围的部份：\n{doc.page_content}"
             resp_md = call_markdown_chain(chain, {"task": task_howto})
             reply_docs = parse_markdown(resp_md)
             self.todo_docs.replace_documents(index_doc=doc, docs=reply_docs)
@@ -181,13 +185,13 @@ class Writing():
         提取
 
         - 按任务意图提取文档
-        - TODO: 默认提取摘要，通过任务意图指定其他提取目标（知识三元组、人物、工作流程等）
+        - 默认提取`摘要`，可以通过`task`指定知识三元组、人物、工作流程等具体要求
         - TODO: 根据任务要求推理，选择不同模板
         """
         if not self.ref_docs.documents:
             raise ValueError("必须提供`ref_docs`作为提取目标")
 
-        prompt = load_prompt(template_id or "摘要")
+        prompt = load_prompt(template_id or "SUMMARISE")
         chain = create_chain(self.llm, prompt, todo_doc=self.ref_docs.markdown)
         resp_md = call_markdown_chain(chain, {"task": task})
         self.todo_docs.import_markdown(resp_md)
@@ -201,14 +205,46 @@ class Writing():
         refine_task = f'请帮我翻译，从{from_lang}到{to_lang}。{task or ""}'
         return refine(refine_task, template_id)
 
-    def refine(self, task: str, template_id: str=None):
+    def refine(self, task: str, template_id: str=None, k: int=1000):
         """
         修改
 
-        - TODO: 按修改意图和滚动上下文窗口修改长文档，例如替换文中的产品名称
+        - 按修改意图和滚动上下文窗口修改长文档，例如替换文中的产品名称
         - TODO: 当指定局部修改时
         """
-        pass
+        if not self.ref_docs.documents:
+            raise ValueError("必须提供`ref_docs`作为修改目标")
+
+        prompt = load_prompt(template_id or "REFINE")
+
+        resp_md = ""
+        task_docs = []
+        md_len = 0
+        
+        def create_md(docs):
+            md = markdown(docs)
+            if len(md):
+                todo_doc = f'>->>>\n{md}\n<-<<<'
+                prev_doc = markdown(self.ref_docs.get_prev_documents(docs[0]))
+                chain = create_chain(self.llm, prompt, prev_doc=prev_doc, todo_doc=todo_doc)
+                task_howto = f"{task or ''}\n请根据要求重写，重写内容就是上述`>->>>`和`<-<<<`包围的部份：\n{md}\n"
+                return call_markdown_chain(chain, {"task": task_howto})
+            else:
+                return ""
+
+        for doc in self.ref_docs.documents:
+            md_len += len(doc.page_content)
+            if md_len <= k:
+                task_docs.append(doc)
+                continue
+
+            resp_md += create_md(task_docs) + "\n\n"
+            md_len = 0
+            task_docs = []
+
+        resp_md += create_md(task_docs)
+        self.todo_docs.import_markdown(resp_md)
+        return self.todo_docs
 
     def embedding(self):
         """

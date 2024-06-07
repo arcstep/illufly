@@ -16,7 +16,7 @@ class IntelliDocuments():
         """
         导入Markdown文档。
         """
-        
+
         filename = doc_str
         if filename and os.path.isfile(filename) and os.path.exists(doc_str):
             if filename.endswith(".md") or filename.endswith(".MD"):
@@ -76,7 +76,7 @@ class IntelliDocuments():
 
         return self.documents
 
-    def get_prev_documents(self, index_doc: Union[str, Document]=None, k=800):
+    def get_prev_documents(self, index_doc: Union[str, Document]=None, k: int=1000):
         """
         获得向前关联文档。
         """
@@ -101,7 +101,7 @@ class IntelliDocuments():
             if len(md) <= k:
                 docs.append(doc)
                 continue
-            
+
             # 补充所有祖先标题
             doc_is_header = doc.metadata['type'] == "heading"
             if doc_is_header:
@@ -112,7 +112,7 @@ class IntelliDocuments():
 
         return docs[::-1]
 
-    def get_next_documents(self, index_doc: Union[str, Document]=None, k=500):
+    def get_next_documents(self, index_doc: Union[str, Document]=None, k:int =500):
         """
         获得向后关联文档。
         """
