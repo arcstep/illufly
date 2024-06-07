@@ -64,10 +64,10 @@ def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str
             prompt,
             prev_doc=prev_doc,
             next_doc=next_doc,
-            todo_doc=f'>->>>\n{doc.page_content}<-<<<\n\n'
+            todo_doc=f'>->>>\n{doc.page_content}<<<-<\n\n'
         )
 
-        task_howto = f"请仅针对上述`>->>>`和`<-<<<`包围的部份扩写。{task or ''}"
+        task_howto = f"请仅针对上述`>->>>`和`<<<-<`包围的部份扩写。{task or ''}"
         resp_md = call_markdown_chain(chain, {"task": task_howto})
         reply_docs = parse_markdown(resp_md)
         todo_docs.replace_documents(index_doc=doc, docs=reply_docs)
@@ -110,11 +110,10 @@ def rewrite(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, 
     def create_md(docs):
         md = markdown(docs)
         if len(md):
-            todo_doc = f'>->>>\n{md}\n<-<<<'
+            todo_doc = f'>->>>\n{md}\n<<<-<'
             prev_doc = markdown(ref_docs.get_prev_documents(docs[0]))
             chain = create_chain(llm, prompt, prev_doc=prev_doc, todo_doc=todo_doc)
-            task_howto = f"请针对`>->>>`和`<-<<<`包围的部份重写。{task or ''}"
-            return call_markdown_chain(chain, {"task": task_howto})
+            return call_markdown_chain(chain, {"task": task or ''})
         else:
             return ""
 
