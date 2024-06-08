@@ -1,6 +1,7 @@
 import copy
 from typing import Union, List
-from langchain_core.runnables import Runnable
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import Runnable, RunnableGenerator
 from langchain_core.documents import Document
 from langchain.globals import set_verbose, get_verbose
 from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
@@ -10,6 +11,7 @@ from .output_parser import MarkdownOutputParser
 from ..parser import parse_markdown
 from ..hub import load_prompt
 from ..utils import markdown
+
 
 def create_chain(llm, prompt_template, **kwargs):
     if not llm:
@@ -31,6 +33,35 @@ def call_markdown_chain(chain, input):
     print("\033[32m" + f"\n\n生成{len(text)}字。" + "\033[0m")  # 绿色
     return MarkdownOutputParser().invoke(text)[0]
 
+def _call_markdown_chain(chain, input):
+    if get_verbose():
+        print("\033[34m" + "#"*20, "PROMPT BEGIN", "#"*20)  # 蓝色
+        print(chain.get_prompts()[0].format(**input))
+        print("#"*20, "PROMPT END ", "#"*20 + "\033[0m")  # 重置颜色
+
+    buffer = ""
+    start_index = -1
+    for chunk in chain.stream(input):
+        buffer += chunk.content
+        if start_index == -1:
+            start_index = buffer.find('>->>>')
+            if start_index != -1:
+                yield buffer[start_index+5:]
+                buffer = ""
+        else:
+            if any([buffer.endswith(s) for s in ['<', '<<', '<<<', '<<<-']]):
+                if buffer.endswith('<<<-<'):
+                    yield buffer[:-5]
+                    break
+                else:
+                    continue
+            if buffer.find('<<<-<') !=-1:
+                yield buffer[:-5]
+                break
+            else:
+                yield buffer
+                buffer = ""
+
 def idea(task: str, llm: Runnable, template_id: str=None, ref_doc: str=None):
     """
     创意
@@ -38,9 +69,10 @@ def idea(task: str, llm: Runnable, template_id: str=None, ref_doc: str=None):
     prompt = load_prompt(template_id or "IDEA")
     doc = f'你已经完成的创作如下：\n{ref_doc}' if ref_doc != None else ''
     chain = create_chain(llm, prompt, todo_doc=doc)
-    resp_md = call_markdown_chain(chain, {"task": task})
 
-    return resp_md
+    resp_md = _call_markdown_chain(chain, {"task": task})
+    for chunk in resp_md:
+        yield chunk
 
 def outline(task: str, llm: Runnable, template_id: str=None, ref_doc: str=None):
     """
