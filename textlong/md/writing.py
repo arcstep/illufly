@@ -70,9 +70,8 @@ def idea(task: str, llm: Runnable, template_id: str=None, ref_doc: str=None):
     doc = f'你已经完成的创作如下：\n{ref_doc}' if ref_doc != None else ''
     chain = create_chain(llm, prompt, todo_doc=doc)
 
-    resp_md = _call_markdown_chain(chain, {"task": task})
-    for chunk in resp_md:
-        yield chunk
+    for delta in _call_markdown_chain(chain, {"task": task}):
+        yield delta
 
 def outline(task: str, llm: Runnable, template_id: str=None, ref_doc: str=None):
     """
@@ -88,7 +87,13 @@ def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str
     todo_docs = IntelliDocuments(ref_doc)
     prompt = load_prompt(template_id or "OUTLINE_DETAIL")
 
-    for doc in todo_docs.get_outline_task():
+    last_index = None
+    for (doc, index) in todo_docs.get_outline_task():
+        # 生成<OUTLINE/>之前的部份
+        yield markdown(todo_docs.documents[last_index:index])
+        last_index = index
+
+        # 生成匹配的<OUTLINE/>所在的部份
         prev_doc = markdown(todo_docs.get_prev_documents(doc))
         next_doc = markdown(todo_docs.get_next_documents(doc))
         chain = create_chain(
@@ -100,11 +105,16 @@ def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str
         )
 
         task_howto = f"请仅针对上述`>->>>`和`<<<-<`包围的部份扩写。{task or ''}"
-        resp_md = call_markdown_chain(chain, {"task": task_howto})
+        resp_md = ""
+        for delta in _call_markdown_chain(chain, {"task": task_howto}):
+            yield delta
+            resp_md += delta
         reply_docs = parse_markdown(resp_md)
         todo_docs.replace_documents(index_doc=doc, docs=reply_docs)
 
-    return todo_docs.markdown
+    # 生成最后一个<OUTLINE/>之后的部份
+    yield markdown(todo_docs.documents[last_index:None])
+
 
 def outline_self(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None):
     """
@@ -124,7 +134,8 @@ def fetch(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, k:
     prompt = load_prompt(template_id or "SUMMARISE")
     chain = create_chain(llm, prompt, todo_doc=ref_doc)
     resp_md = call_markdown_chain(chain, {"task": task})
-    return resp_md
+    for chunk in resp_md:
+        yield chunk
 
 def rewrite(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000):
     """
@@ -170,4 +181,4 @@ def translate(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None
     """
     _template_id = template_id or "TRANSLATE"
     _task = task or "如果原文为英文，就翻译为中文；如果原文为中文，就翻译为英文。"
-    return refine(ref_doc, llm, _template_id, _task, k)
+    return rewrite(ref_doc, llm, _template_id, _task, k)
