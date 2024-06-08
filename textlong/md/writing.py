@@ -13,25 +13,11 @@ from ..hub import load_prompt
 from ..utils import markdown
 
 
-def create_chain(llm, prompt_template, **kwargs):
+def _create_chain(llm, prompt_template, **kwargs):
     if not llm:
         raise ValueError("LLM can't be None !")
     prompt = prompt_template.partial(**kwargs)
     return prompt | llm
-
-def call_markdown_chain(chain, input):
-    if get_verbose():
-        print("\033[34m" + "#"*20, "PROMPT BEGIN", "#"*20)  # 蓝色
-        print(chain.get_prompts()[0].format(**input))
-        print("#"*20, "PROMPT END ", "#"*20 + "\033[0m")  # 重置颜色
-
-    text = ""
-    for chunk in chain.stream(input):
-        text += chunk.content
-        print(chunk.content, end="")
-
-    print("\033[32m" + f"\n\n生成{len(text)}字。" + "\033[0m")  # 绿色
-    return MarkdownOutputParser().invoke(text)[0]
 
 def _call_markdown_chain(chain, input):
     if get_verbose():
@@ -68,7 +54,7 @@ def idea(task: str, llm: Runnable, template_id: str=None, ref_doc: str=None):
     """
     prompt = load_prompt(template_id or "IDEA")
     doc = f'你已经完成的创作如下：\n{ref_doc}' if ref_doc != None else ''
-    chain = create_chain(llm, prompt, todo_doc=doc)
+    chain = _create_chain(llm, prompt, todo_doc=doc)
 
     for delta in _call_markdown_chain(chain, {"task": task}):
         yield delta
@@ -96,7 +82,7 @@ def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str
         # 生成匹配的<OUTLINE/>所在的部份
         prev_doc = markdown(todo_docs.get_prev_documents(doc))
         next_doc = markdown(todo_docs.get_next_documents(doc))
-        chain = create_chain(
+        chain = _create_chain(
             llm,
             prompt,
             prev_doc=prev_doc,
@@ -132,8 +118,8 @@ def fetch(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, k:
     """
 
     prompt = load_prompt(template_id or "SUMMARISE")
-    chain = create_chain(llm, prompt, todo_doc=ref_doc)
-    resp_md = call_markdown_chain(chain, {"task": task})
+    chain = _create_chain(llm, prompt, todo_doc=ref_doc)
+    resp_md = _call_markdown_chain(chain, {"task": task})
     for chunk in resp_md:
         yield chunk
 
@@ -155,10 +141,11 @@ def rewrite(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, 
         if len(md):
             todo_doc = f'>->>>\n{md}\n<<<-<'
             prev_doc = markdown(ref_docs.get_prev_documents(docs[0]))
-            chain = create_chain(llm, prompt, prev_doc=prev_doc, todo_doc=todo_doc)
-            return call_markdown_chain(chain, {"task": task or ''})
+            chain = _create_chain(llm, prompt, prev_doc=prev_doc, todo_doc=todo_doc)
+            for chunk in _call_markdown_chain(chain, {"task": task or ''}):
+                yield chunk
         else:
-            return ""
+            yield ""
 
     for doc in ref_docs.documents:
         md_len += len(doc.page_content)
@@ -166,14 +153,14 @@ def rewrite(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, 
         if md_len <= k:
             continue
 
-        resp_md += create_md(task_docs) + "\n\n"
+        for delta in create_md(task_docs):
+            yield delta
         md_len = 0
         task_docs = []
 
     if task_docs:
-        resp_md += create_md(task_docs)
-
-    return resp_md
+        for delta in create_md(task_docs):
+            yield delta
 
 def translate(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000):
     """
