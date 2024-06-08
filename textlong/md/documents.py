@@ -40,7 +40,11 @@ class IntelliDocuments():
         如果没有指定title，就返回所有任务，否则返回匹配到的任务。
         """
 
-        return [d for d in self.documents if d.metadata['type'] == "OUTLINE"]
+        return [
+            (d, i)
+            for i, d in enumerate(self.documents) 
+            if d.metadata['type'] == "OUTLINE"
+        ]
     
     def get_task_index(self, index_doc: Union[str, Document]):
         """
