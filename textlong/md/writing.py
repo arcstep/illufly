@@ -74,10 +74,13 @@ def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str
     prompt = load_prompt(template_id or "OUTLINE_DETAIL")
 
     last_index = None
-    for (doc, index) in todo_docs.get_outline_task():
+    outline_docs = copy.deepcopy(todo_docs.documents)
+    for doc, index in todo_docs.get_outline_task():
         # 生成<OUTLINE/>之前的部份
-        yield markdown(todo_docs.documents[last_index:index])
-        last_index = index
+        if last_index != None:
+            yield "\n"
+        yield markdown(outline_docs[last_index:index])
+        last_index = index + 1
 
         # 生成匹配的<OUTLINE/>所在的部份
         prev_doc = markdown(todo_docs.get_prev_documents(doc))
@@ -99,7 +102,7 @@ def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str
         todo_docs.replace_documents(index_doc=doc, docs=reply_docs)
 
     # 生成最后一个<OUTLINE/>之后的部份
-    yield markdown(todo_docs.documents[last_index:None])
+    yield markdown(outline_docs[last_index:None])
 
 
 def outline_self(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None):
