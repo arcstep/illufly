@@ -1,12 +1,14 @@
-提纲标题XXX
 <OUTLINE>
+扩写摘要...
+
 扩写要求：
 - xxx
 - xxx
 </OUTLINE>
 
-提纲标题XXX
 <OUTLINE>
+扩写摘要...
+
 扩写要求：
 - xxx
 - xxx
