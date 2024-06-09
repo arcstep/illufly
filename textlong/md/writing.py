@@ -47,7 +47,7 @@ def _call_markdown_chain(chain, input):
                 yield buffer
                 buffer = ""
 
-def idea(task: str, llm: Runnable, prompt_id: str=None, input_doc: str=None, **kwargs):
+def idea(llm: Runnable, task: str=None, prompt_id: str=None, input_doc: str=None, **kwargs):
     """
     创意
     """
@@ -58,14 +58,14 @@ def idea(task: str, llm: Runnable, prompt_id: str=None, input_doc: str=None, **k
     for delta in _call_markdown_chain(chain, {"task": task}):
         yield delta
 
-def outline(task: str, llm: Runnable, prompt_id: str=None, input_doc: str=None, **kwargs):
+def outline(llm: Runnable, task: str=None, prompt_id: str=None, input_doc: str=None, **kwargs):
     """
     提纲
     """
     _prompt_id = prompt_id or "OUTLINE"
-    return idea(task=task, llm=llm, prompt_id=_prompt_id, input_doc=input_doc, **kwargs)
+    return idea(llm, task, _prompt_id, input_doc, **kwargs)
 
-def outline_detail(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, **kwargs):
+def outline_detail(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, **kwargs):
     """
     扩写
     """
@@ -98,14 +98,14 @@ def outline_detail(input_doc: str, llm: Runnable, prompt_id: str=None, task: str
     # 生成最后一个<OUTLINE/>之后的部份
     yield markdown(outline_docs[last_index:None])
 
-def outline_self(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, **kwargs):
+def outline_self(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, **kwargs):
     """
     丰富提纲
     """
     _prompt_id = prompt_id or "OUTLINE_SELF"
-    return outline_detail(input_doc, llm, _prompt_id, task, **kwargs)
+    return outline_detail(llm, input_doc, _prompt_id, task, **kwargs)
 
-def fetch(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, k: int=1000, **kwargs):
+def fetch(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, k: int=1000, **kwargs):
     """
     提取
 
@@ -119,7 +119,7 @@ def fetch(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, k:
     for chunk in resp_md:
         yield chunk
 
-def rewrite(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, k: int=1000, **kwargs):
+def rewrite(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, k: int=1000, **kwargs):
     """
     修改
 
@@ -158,10 +158,10 @@ def rewrite(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, 
         for delta in create_md(task_docs):
             yield delta
 
-def translate(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, k: int=1000, **kwargs):
+def translate(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, k: int=1000, **kwargs):
     """
     翻译
     """
     _prompt_id = prompt_id or "TRANSLATE"
     _task = task or "如果原文为英文，就翻译为中文；如果原文为中文，就翻译为英文。"
-    return rewrite(input_doc, llm, _prompt_id, _task, k, **kwargs)
+    return rewrite(llm, input_doc, _prompt_id, _task, k, **kwargs)
