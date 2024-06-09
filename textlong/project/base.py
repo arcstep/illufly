@@ -37,26 +37,28 @@ class Project():
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(txt)
 
-    def load(self, filename: str, default_txt: str=None):
+    def load(self, filename: str=None, txt: str=None):
         """
         从文件加载文本。
         """
 
-        txt = default_txt
-        if filename:
-            path = self.get_filepath(filename)
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    txt = f.read()
+        if txt:
+            return txt
+        else:
+            if filename:
+                path = self.get_filepath(filename)
+                if os.path.exists(path):
+                    with open(path, 'r', encoding='utf-8') as f:
+                        txt = f.read()
         return txt
     
-    def idea(self, task: str, filename: str=None, template_id: str=None, ref_doc: str=None):
+    def idea(self, task: str, filename: str=None, template_id: str=None, ref_file: str=None, ref_doc: str=None):
         resp_md = ""
         for x in idea(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_doc)
+            ref_doc=self.load(ref_file, ref_doc)
         ):
             resp_md += x
             print(x, end="")
@@ -64,13 +66,13 @@ class Project():
         if filename:
             self.save(filename, resp_md)
 
-    def outline(self, task: str, filename: str=None, template_id: str=None, ref_doc: str=None):
+    def outline(self, task: str, filename: str=None, template_id: str=None, ref_file: str=None, ref_doc: str=None):
         resp_md = ""
         for x in outline(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_doc)
+            ref_doc=self.load(ref_file, ref_doc)
         ):
             resp_md += x
             print(x, end="")
@@ -78,13 +80,13 @@ class Project():
         if filename:
             self.save(filename, resp_md)
 
-    def rewrite(self, ref_doc: str, filename: str=None, template_id: str=None, task: str=None):
+    def rewrite(self, ref_doc: str=None, ref_file: str=None, filename: str=None, template_id: str=None, task: str=None):
         resp_md = ""
         for x in rewrite(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_doc)
+            ref_doc=self.load(ref_file, ref_doc)
         ):
             resp_md += x
             print(x, end="")
@@ -92,13 +94,13 @@ class Project():
         if filename:
             self.save(filename, resp_md)
 
-    def fetch(self, ref_doc: str, filename: str=None, template_id: str=None, task: str=None):
+    def fetch(self, ref_doc: str=None, ref_file: str=None, filename: str=None, template_id: str=None, task: str=None):
         resp_md = ""
         for x in fetch(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_doc)
+            ref_doc=self.load(ref_file, ref_doc)
         ):
             resp_md += x
             print(x, end="")
@@ -106,13 +108,13 @@ class Project():
         if filename:
             self.save(filename, resp_md)
 
-    def translate(self, ref_doc: str, filename: str=None, template_id: str=None, task: str=None):
+    def translate(self, ref_doc: str=None, ref_file: str=None, filename: str=None, template_id: str=None, task: str=None):
         resp_md = ""
         for x in translate(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_doc)
+            ref_doc=self.load(ref_file, ref_doc)
         ):
             resp_md += x
             print(x, end="")
@@ -120,13 +122,13 @@ class Project():
         if filename:
             self.save(filename, resp_md)
 
-    def outline_detail(self, ref_doc: str, filename: str=None, template_id: str=None, task: str=None):
+    def outline_detail(self, ref_doc: str=None, ref_file: str=None, filename: str=None, template_id: str=None, task: str=None):
         resp_md = ""
         for x in outline_detail(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_doc)
+            ref_doc=self.load(ref_file, ref_doc)
         ):
             resp_md += x
             print(x, end="")
@@ -134,13 +136,13 @@ class Project():
         if filename:
             self.save(filename, resp_md)
 
-    def outline_self(self, ref_doc: str, filename: str=None, template_id: str=None, task: str=None):
+    def outline_self(self, ref_doc: str=None, ref_file: str=None, filename: str=None, template_id: str=None, task: str=None):
         resp_md = ""
         for x in outline_self(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_doc)
+            ref_doc=self.load(ref_file, ref_doc)
         ):
             resp_md += x
             print(x, end="")
