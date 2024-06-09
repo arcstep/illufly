@@ -9,7 +9,7 @@ from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceh
 from .documents import IntelliDocuments
 from .output_parser import MarkdownOutputParser
 from ..parser import parse_markdown
-from ..hub import load_prompt
+from ..hub import load_resource_prompt
 from ..utils import markdown
 
 def _create_chain(llm, prompt_template, **kwargs):
@@ -51,7 +51,7 @@ def idea(task: str, llm: Runnable, template_id: str=None, ref_doc: str=None):
     """
     创意
     """
-    prompt = load_prompt(template_id or "IDEA")
+    prompt = load_resource_prompt(template_id or "IDEA")
     doc = f'你已经完成的创作如下：\n{ref_doc}' if ref_doc != None else ''
     chain = _create_chain(llm, prompt, todo_doc=doc)
 
@@ -70,7 +70,7 @@ def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str
     扩写
     """
     todo_docs = IntelliDocuments(ref_doc)
-    prompt = load_prompt(template_id or "OUTLINE_DETAIL")
+    prompt = load_resource_prompt(template_id or "OUTLINE_DETAIL")
 
     last_index = None
     outline_docs = copy.deepcopy(todo_docs.documents)
@@ -118,7 +118,7 @@ def fetch(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, k:
     - 默认提取`摘要`，可以通过`task`指定知识三元组、人物、工作流程等具体要求
     """
 
-    prompt = load_prompt(template_id or "SUMMARISE")
+    prompt = load_resource_prompt(template_id or "SUMMARISE")
     chain = _create_chain(llm, prompt, todo_doc=ref_doc)
     resp_md = _call_markdown_chain(chain, {"task": task})
     for chunk in resp_md:
@@ -131,7 +131,7 @@ def rewrite(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, 
     - 按修改意图和滚动上下文窗口修改长文档，例如替换文中的产品名称
     """
     ref_docs = IntelliDocuments(ref_doc)
-    prompt = load_prompt(template_id or "REWRITE")
+    prompt = load_resource_prompt(template_id or "REWRITE")
 
     resp_md = ""
     task_docs = []
