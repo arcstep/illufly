@@ -4,8 +4,7 @@ import os
 from typing import List, Union
 from langchain_core.documents import Document
 from ..parser import parse_markdown
-from ..utils import raise_not_install, markdown
-from ..config import get_textlong_folder, get_textlong_doc, _TEMP_FOLDER_NAME
+from ..utils import markdown
 
 class IntelliDocuments():
     def __init__(self, doc_str: str=None):
