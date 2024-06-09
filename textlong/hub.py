@@ -8,21 +8,20 @@ from langchain.prompts import (
     HumanMessagePromptTemplate,
     load_prompt as load_str_prompt,
 )
-from .config import get_textlong_folder, _PROMPTS_FOLDER_NAME
+from .config import (
+    get_textlong_folder,
+    get_default_public,
+    _PROMPTS_STRING_FOLDER_NAME,
+    _PROMPTS_CHAT_FOLDER_NAME,
+)
 import os
 import json
 
-def load_prompt(template_id: str):
+def load_resource_prompt(template_id: str):
     """
-    task:
-        - batch
-        - summarise
-        - write
-        - ...
-    template_id:
-        - 扩写
-        - 提纲
-        - ...
+    从python包资源文件夹加载提示语模板。
+    
+    template_id: OUTLINE | OUTLINE_DETAIL
     """
     resource_file = 'main.txt'
     resource_folder = f'textlong.prompts.{template_id}'
@@ -40,7 +39,108 @@ def load_prompt(template_id: str):
 
     return template.partial(**kwargs)
 
-def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id: str="default", id="0", user_id="public"):
+def load_string_prompt(template_id: str, user_id: str=None):
+    """
+    从文件夹加载提示语模板。
+    """
+    prompt_folder = os.path.join(
+        get_textlong_folder(),
+        user_id or get_default_public(),
+        _PROMPTS_CHAT_FOLDER_NAME,
+        template_id
+    )
+    
+    main_prompt = os.path.join(prompt_folder, 'main.txt')
+    if os.path.exists(main_prompt):
+        with open(main_prompt, 'r') as f:
+            prompt_str = f.read()
+            template = PromptTemplate.from_template(prompt_str)
+
+            kwargs = {}
+            for key in template.input_variables:
+                var_prompt = os.path.join(prompt_folder, f'{key}.txt')
+                prompt_str_var = ''
+                with open(var_prompt, 'r') as var:
+                    prompt_str_var = var.read()
+                kwargs[key] = prompt_str_var
+
+            return template.partial(**kwargs)
+
+    return load_resource_prompt(template_id)
+
+def save_string_prompt(template: PromptTemplate, template_id: str, user_id: str=None):
+    """
+    保存提示语模板到文件夹。
+    """
+    prompt_folder = os.path.join(
+        get_textlong_folder(),
+        user_id or get_default_public(),
+        _PROMPTS_CHAT_FOLDER_NAME,
+        template_id
+    )
+    os.makedirs(prompt_folder, exist_ok=True)
+    
+    main_prompt = os.path.join(prompt_folder, 'main.txt')
+    if main_prompt:
+        with open(main_prompt, 'w', encoding='utf-8') as f:
+            f.write(template.template)
+
+    for k, v in template.partial_variables.items():
+        if v != None:
+            path = os.path.join(prompt_path, f"var_{k}.txt")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(v)
+
+def load_chat_prompt(template: ChatPromptTemplate, template_id: str, user_id=None):
+    """
+    加载提示语模板和partial变量的字符串。    
+    目前不支持在partial中使用嵌套模板。
+    """
+    prompt_path = os.path.join(
+        get_textlong_folder(),
+        user_id or get_default_public(),
+        _PROMPTS_CHAT_FOLDER_NAME,
+        template_id
+    )
+
+    messages = []
+    partial_variables = {}
+
+    # 'f-string' or 'mustache'
+    template_format = 'f-string' 
+
+    for filename in sorted(os.listdir(prompt_path)):
+        path = os.path.join(prompt_path, filename)
+
+        message = None
+        if filename.endswith('_system.json'):
+            prompt = load_str_prompt(path)
+            message = SystemMessagePromptTemplate.from_template(prompt.template, template_format=template_format)
+        elif filename.endswith('_ai.json'):
+            prompt = load_str_prompt(path)
+            message = AIMessagePromptTemplate.from_template(prompt.template, template_format=template_format)
+        elif filename.endswith('_human.json'):
+            prompt = load_str_prompt(path)
+            message = HumanMessagePromptTemplate.from_template(prompt.template, template_format=template_format)
+        elif filename.endswith('_placeholder.json'):
+            with open(path, 'r') as f:
+                data = json.load(f)
+                message = MessagesPlaceholder(**data)
+        elif filename.startswith('var_') and filename.endswith('.md'):
+            with open(path, 'r') as f:
+                text = f.read()
+                var_name = filename[4:-3]
+                partial_variables[var_name] = int(text) if text.isdigit() else text
+        else:
+            continue
+
+        if message:
+            messages.append(message)
+
+    return ChatPromptTemplate.from_messages(messages=messages).partial(**partial_variables)
+
+def save_chat_prompt(template: ChatPromptTemplate, template_id: str, user_id=None):
     """
     保存对话风格的提示语模板。
 
@@ -52,7 +152,12 @@ def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id:
         - 占位消息，`{对话序号}_placeholder.json`
         - `partial`变量，`var_{变量名}.md`
     """
-    prompt_path = os.path.join(get_textlong_folder(), user_id, project_id, _PROMPTS_FOLDER_NAME, id, template_id)
+    prompt_path = os.path.join(
+        get_textlong_folder(),
+        user_id or get_default_public(),
+        _PROMPTS_FOLDER_NAME,
+        template_id
+    )
 
     for i, p in enumerate(template.messages):
         if isinstance(p, SystemMessagePromptTemplate):
@@ -78,63 +183,3 @@ def save_chat_prompt(template: ChatPromptTemplate, template_id: str, project_id:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(f'{v}')
-
-def load_chat_prompt(template_id: str, project_id: str="default", id: str="0", user_id: str="public", in_memory: bool=True):
-    """
-    加载提示语模板和partial变量的字符串。    
-    目前不支持在partial中使用嵌套模板。
-    """
-    prompt_path = os.path.join(get_textlong_folder(), user_id, project_id, _PROMPTS_FOLDER_NAME, id, template_id)
-    if in_memory and not os.path.exists(prompt_path):
-        if template_id == "qa":
-            from .qa import create_qa_prompt
-            template = create_qa_prompt()
-        elif template_id == "help":
-            from .tree import create_writing_help_prompt
-            template = create_writing_help_prompt()
-        elif template_id == "init":
-            from .tree import create_writing_init_prompt
-            template = create_writing_init_prompt()
-        elif template_id == "outline":
-            from .tree import create_writing_todo_prompt
-            template = create_writing_todo_prompt(content_type="outline")
-        elif template_id == "paragraph":
-            from .tree import create_writing_todo_prompt
-            template = create_writing_todo_prompt(content_type="paragraph")
-        else:
-            raise ValueError(f"模板ID[{template_id}]不是内置模板！")
-        
-        return template
-
-    messages = []
-    partial_variables = {}
-
-    for filename in sorted(os.listdir(prompt_path)):
-        path = os.path.join(prompt_path, filename)
-
-        message = None
-        if filename.endswith('_system.json'):
-            prompt = load_str_prompt(path)
-            message = SystemMessagePromptTemplate.from_template(prompt.template, template_format='mustache')
-        elif filename.endswith('_ai.json'):
-            prompt = load_str_prompt(path)
-            message = AIMessagePromptTemplate.from_template(prompt.template, template_format='mustache')
-        elif filename.endswith('_human.json'):
-            prompt = load_str_prompt(path)
-            message = HumanMessagePromptTemplate.from_template(prompt.template, template_format='mustache')
-        elif filename.endswith('_placeholder.json'):
-            with open(path, 'r') as f:
-                data = json.load(f)
-                message = MessagesPlaceholder(**data)
-        elif filename.startswith('var_') and filename.endswith('.md'):
-            with open(path, 'r') as f:
-                text = f.read()
-                var_name = filename[4:-3]
-                partial_variables[var_name] = int(text) if text.isdigit() else text
-        else:
-            continue
-
-        if message:
-            messages.append(message)
-
-    return ChatPromptTemplate.from_messages(messages=messages).partial(**partial_variables)
