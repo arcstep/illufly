@@ -12,7 +12,6 @@ from ..parser import parse_markdown
 from ..hub import load_prompt
 from ..utils import markdown
 
-
 def _create_chain(llm, prompt_template, **kwargs):
     if not llm:
         raise ValueError("LLM can't be None !")
@@ -103,7 +102,6 @@ def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str
 
     # 生成最后一个<OUTLINE/>之后的部份
     yield markdown(outline_docs[last_index:None])
-
 
 def outline_self(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None):
     """
