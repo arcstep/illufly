@@ -44,7 +44,7 @@ task = """
 """
 
 md_outline = ""
-for x in outline(task, llm):
+for x in outline(llm, task):
     md_outline += x
     print(x, end="")
 
@@ -79,7 +79,7 @@ for x in outline(task, llm):
 
 ```python
 md = ""
-for x in outline_detail(md_outline, llm):
+for x in outline_detail(llm, md_outline):
     md += x
     print(x, end="")
 ```
@@ -100,7 +100,7 @@ for x in outline_detail(md_outline, llm):
 **翻译：`translate`**
 
 ```python
-for x in translate(md, llm, k=120, task="翻译为英文"):
+for x in translate(llm, md, task="翻译为英文", k=120):
     print(x, end="")
 ```
 
