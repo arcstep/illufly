@@ -26,6 +26,7 @@ def get_textlong_folder():
     """从环境变量中获得项目的存储目录"""
     return os.getenv("TEXTLONG_FOLDER") or "data"
 
-def get_textlong_doc(filename: str, folder_name: str = ""):
-    return os.path.join(get_textlong_folder(), folder_name, filename)
+def get_textlong_project(filename: str, project: str=None):
+    _project = project or get_default_public()
+    return os.path.join(get_textlong_folder(), _project, filename)
 
