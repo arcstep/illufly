@@ -47,30 +47,30 @@ def _call_markdown_chain(chain, input):
                 yield buffer
                 buffer = ""
 
-def idea(task: str, llm: Runnable, template_id: str=None, input_doc: str=None, **kwargs):
+def idea(task: str, llm: Runnable, prompt_id: str=None, input_doc: str=None, **kwargs):
     """
     创意
     """
-    prompt = load_resource_prompt(template_id or "IDEA")
+    prompt = load_resource_prompt(prompt_id or "IDEA")
     knowledge = f'你已经完成的创作如下：\n{input_doc}' if input_doc != None else ''
     chain = _create_chain(llm, prompt, knowledge=knowledge, **kwargs)
 
     for delta in _call_markdown_chain(chain, {"task": task}):
         yield delta
 
-def outline(task: str, llm: Runnable, template_id: str=None, input_doc: str=None, **kwargs):
+def outline(task: str, llm: Runnable, prompt_id: str=None, input_doc: str=None, **kwargs):
     """
     提纲
     """
-    _template_id = template_id or "OUTLINE"
-    return idea(task=task, llm=llm, template_id=_template_id, input_doc=input_doc, **kwargs)
+    _prompt_id = prompt_id or "OUTLINE"
+    return idea(task=task, llm=llm, prompt_id=_prompt_id, input_doc=input_doc, **kwargs)
 
-def outline_detail(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, **kwargs):
+def outline_detail(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, **kwargs):
     """
     扩写
     """
     todo_docs = IntelliDocuments(input_doc)
-    prompt = load_resource_prompt(template_id or "OUTLINE_DETAIL")
+    prompt = load_resource_prompt(prompt_id or "OUTLINE_DETAIL")
 
     last_index = None
     outline_docs = copy.deepcopy(todo_docs.documents)
@@ -98,14 +98,14 @@ def outline_detail(input_doc: str, llm: Runnable, template_id: str=None, task: s
     # 生成最后一个<OUTLINE/>之后的部份
     yield markdown(outline_docs[last_index:None])
 
-def outline_self(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, **kwargs):
+def outline_self(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, **kwargs):
     """
     丰富提纲
     """
-    _template_id = template_id or "OUTLINE_SELF"
-    return outline_detail(input_doc, llm, _template_id, task, **kwargs)
+    _prompt_id = prompt_id or "OUTLINE_SELF"
+    return outline_detail(input_doc, llm, _prompt_id, task, **kwargs)
 
-def fetch(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000, **kwargs):
+def fetch(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, k: int=1000, **kwargs):
     """
     提取
 
@@ -113,20 +113,20 @@ def fetch(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, 
     - 默认提取`摘要`，可以通过`task`指定知识三元组、人物、工作流程等具体要求
     """
 
-    prompt = load_resource_prompt(template_id or "SUMMARISE")
+    prompt = load_resource_prompt(prompt_id or "SUMMARISE")
     chain = _create_chain(llm, prompt, knowledge=input_doc, **kwargs)
     resp_md = _call_markdown_chain(chain, {"task": task})
     for chunk in resp_md:
         yield chunk
 
-def rewrite(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000, **kwargs):
+def rewrite(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, k: int=1000, **kwargs):
     """
     修改
 
     - 按修改意图和滚动上下文窗口修改长文档，例如替换文中的产品名称
     """
     ref_docs = IntelliDocuments(input_doc)
-    prompt = load_resource_prompt(template_id or "REWRITE")
+    prompt = load_resource_prompt(prompt_id or "REWRITE")
 
     resp_md = ""
     task_docs = []
@@ -158,10 +158,10 @@ def rewrite(input_doc: str, llm: Runnable, template_id: str=None, task: str=None
         for delta in create_md(task_docs):
             yield delta
 
-def translate(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000, **kwargs):
+def translate(input_doc: str, llm: Runnable, prompt_id: str=None, task: str=None, k: int=1000, **kwargs):
     """
     翻译
     """
-    _template_id = template_id or "TRANSLATE"
+    _prompt_id = prompt_id or "TRANSLATE"
     _task = task or "如果原文为英文，就翻译为中文；如果原文为中文，就翻译为英文。"
-    return rewrite(input_doc, llm, _template_id, _task, k, **kwargs)
+    return rewrite(input_doc, llm, _prompt_id, _task, k, **kwargs)
