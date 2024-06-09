@@ -17,14 +17,14 @@ from .config import (
 import os
 import json
 
-def load_resource_prompt(template_id: str):
+def load_resource_prompt(prompt_id: str):
     """
     从python包资源文件夹加载提示语模板。
     
-    template_id: OUTLINE | OUTLINE_DETAIL
+    prompt_id: OUTLINE | OUTLINE_DETAIL
     """
     resource_file = 'main.txt'
-    resource_folder = f'textlong.prompts.{template_id}'
+    resource_folder = f'textlong.prompts.{prompt_id}'
     if not is_resource(resource_folder, resource_file):
         resource_folder = f'textlong.prompts'
     
@@ -34,12 +34,12 @@ def load_resource_prompt(template_id: str):
     kwargs = {}
     for key in template.input_variables:
         resource_file = f'{key}.txt'
-        resource_folder = f'textlong.prompts.{template_id}'
+        resource_folder = f'textlong.prompts.{prompt_id}'
         kwargs[key] = read_text(resource_folder, resource_file) if is_resource(resource_folder, resource_file) else ''
 
     return template.partial(**kwargs)
 
-def load_string_prompt(template_id: str, user_id: str=None):
+def load_string_prompt(prompt_id: str, user_id: str=None):
     """
     从文件夹加载提示语模板。
     """
@@ -47,7 +47,7 @@ def load_string_prompt(template_id: str, user_id: str=None):
         get_textlong_folder(),
         user_id or get_default_public(),
         _PROMPTS_CHAT_FOLDER_NAME,
-        template_id
+        prompt_id
     )
     
     main_prompt = os.path.join(prompt_folder, 'main.txt')
@@ -66,9 +66,9 @@ def load_string_prompt(template_id: str, user_id: str=None):
 
             return template.partial(**kwargs)
 
-    return load_resource_prompt(template_id)
+    return load_resource_prompt(prompt_id)
 
-def save_string_prompt(template: PromptTemplate, template_id: str, user_id: str=None):
+def save_string_prompt(template: PromptTemplate, prompt_id: str, user_id: str=None):
     """
     保存提示语模板到文件夹。
     """
@@ -76,7 +76,7 @@ def save_string_prompt(template: PromptTemplate, template_id: str, user_id: str=
         get_textlong_folder(),
         user_id or get_default_public(),
         _PROMPTS_CHAT_FOLDER_NAME,
-        template_id
+        prompt_id
     )
     os.makedirs(prompt_folder, exist_ok=True)
     
@@ -92,7 +92,7 @@ def save_string_prompt(template: PromptTemplate, template_id: str, user_id: str=
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(v)
 
-def load_chat_prompt(template: ChatPromptTemplate, template_id: str, user_id=None):
+def load_chat_prompt(template: ChatPromptTemplate, prompt_id: str, user_id=None):
     """
     加载提示语模板和partial变量的字符串。    
     目前不支持在partial中使用嵌套模板。
@@ -101,7 +101,7 @@ def load_chat_prompt(template: ChatPromptTemplate, template_id: str, user_id=Non
         get_textlong_folder(),
         user_id or get_default_public(),
         _PROMPTS_CHAT_FOLDER_NAME,
-        template_id
+        prompt_id
     )
 
     messages = []
@@ -140,7 +140,7 @@ def load_chat_prompt(template: ChatPromptTemplate, template_id: str, user_id=Non
 
     return ChatPromptTemplate.from_messages(messages=messages).partial(**partial_variables)
 
-def save_chat_prompt(template: ChatPromptTemplate, template_id: str, user_id=None):
+def save_chat_prompt(template: ChatPromptTemplate, prompt_id: str, user_id=None):
     """
     保存对话风格的提示语模板。
 
@@ -156,7 +156,7 @@ def save_chat_prompt(template: ChatPromptTemplate, template_id: str, user_id=Non
         get_textlong_folder(),
         user_id or get_default_public(),
         _PROMPTS_FOLDER_NAME,
-        template_id
+        prompt_id
     )
 
     for i, p in enumerate(template.messages):

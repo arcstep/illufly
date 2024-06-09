@@ -50,12 +50,12 @@ class Project():
                     txt = f.read()
         return txt
     
-    def idea(self, task: str, output_file: str=None, template_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
+    def idea(self, task: str, output_file: str=None, prompt_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
         resp_md = ""
         for x in idea(
             task=task,
             llm=self.llm,
-            template_id=template_id,
+            prompt_id=prompt_id,
             input_doc=self.load(input_file, input_doc),
             **kwargs
         ):
@@ -65,12 +65,12 @@ class Project():
         if output_file:
             self.save(output_file, resp_md)
 
-    def outline(self, task: str, output_file: str=None, template_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
+    def outline(self, task: str, output_file: str=None, prompt_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
         resp_md = ""
         for x in outline(
             task=task,
             llm=self.llm,
-            template_id=template_id,
+            prompt_id=prompt_id,
             input_doc=self.load(input_file, input_doc),
             **kwargs
         ):
@@ -80,13 +80,13 @@ class Project():
         if output_file:
             self.save(output_file, resp_md)
 
-    def rewrite(self, input_doc: str=None, output_file: str=None, template_id: str=None, task: str=None, input_file: str=None, **kwargs):
+    def rewrite(self, input_doc: str=None, output_file: str=None, prompt_id: str=None, task: str=None, input_file: str=None, **kwargs):
         resp_md = ""
         _input_doc = input_doc or self.load(input_file)
         for x in rewrite(
             task=task,
             llm=self.llm,
-            template_id=template_id,
+            prompt_id=prompt_id,
             input_doc=_input_doc,
             **kwargs
         ):
@@ -96,13 +96,13 @@ class Project():
         if output_file:
             self.save(output_file, resp_md)
 
-    def fetch(self, input_doc: str=None, output_file: str=None, template_id: str=None, task: str=None, input_file: str=None, **kwargs):
+    def fetch(self, input_doc: str=None, output_file: str=None, prompt_id: str=None, task: str=None, input_file: str=None, **kwargs):
         resp_md = ""
         _input_doc = input_doc or self.load(input_file)
         for x in fetch(
             task=task,
             llm=self.llm,
-            template_id=template_id,
+            prompt_id=prompt_id,
             input_doc=_input_doc,
             **kwargs
         ):
@@ -112,13 +112,13 @@ class Project():
         if output_file:
             self.save(output_file, resp_md)
 
-    def translate(self, input_doc: str=None, output_file: str=None, template_id: str=None, task: str=None, input_file: str=None, **kwargs):
+    def translate(self, input_doc: str=None, output_file: str=None, prompt_id: str=None, task: str=None, input_file: str=None, **kwargs):
         resp_md = ""
         _input_doc = input_doc or self.load(input_file)
         for x in translate(
             task=task,
             llm=self.llm,
-            template_id=template_id,
+            prompt_id=prompt_id,
             input_doc=_input_doc,
             **kwargs
         ):
@@ -128,13 +128,13 @@ class Project():
         if output_file:
             self.save(output_file, resp_md)
 
-    def outline_detail(self, input_doc: str=None, output_file: str=None, template_id: str=None, task: str=None, input_file: str=None, **kwargs):
+    def outline_detail(self, input_doc: str=None, output_file: str=None, prompt_id: str=None, task: str=None, input_file: str=None, **kwargs):
         resp_md = ""
         _input_doc = input_doc or self.load(input_file)
         for x in outline_detail(
             task=task,
             llm=self.llm,
-            template_id=template_id,
+            prompt_id=prompt_id,
             input_doc=_input_doc,
             **kwargs
         ):
@@ -144,13 +144,13 @@ class Project():
         if output_file:
             self.save(output_file, resp_md)
 
-    def outline_self(self, input_doc: str=None, output_file: str=None, template_id: str=None, task: str=None, input_file: str=None, **kwargs):
+    def outline_self(self, input_doc: str=None, output_file: str=None, prompt_id: str=None, task: str=None, input_file: str=None, **kwargs):
         resp_md = ""
         _input_doc = input_doc or self.load(input_file)
         for x in outline_self(
             task=task,
             llm=self.llm,
-            template_id=template_id,
+            prompt_id=prompt_id,
             input_doc=_input_doc,
             **kwargs
         ):
