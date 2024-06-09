@@ -26,7 +26,7 @@ class Project():
             os.makedirs(os.path.dirname(path), exist_ok=True)
 
         return path
-    
+
     def save(self, filename: str, txt: str):
         """
         保存文本到文件。
@@ -37,115 +37,125 @@ class Project():
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(txt)
 
-    def load(self, filename: str=None, txt: str=None):
+    def load(self, filename: str=None):
         """
         从文件加载文本。
         """
 
-        if txt:
-            return txt
-        else:
-            if filename:
-                path = self.get_filepath(filename)
-                if os.path.exists(path):
-                    with open(path, 'r', encoding='utf-8') as f:
-                        txt = f.read()
+        txt = None
+        if filename:
+            path = self.get_filepath(filename)
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    txt = f.read()
         return txt
     
-    def idea(self, task: str, filename: str=None, template_id: str=None, ref_file: str=None, ref_doc: str=None):
+    def idea(self, task: str, output_file: str=None, template_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
         resp_md = ""
         for x in idea(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_file, ref_doc)
+            input_doc=self.load(input_file, input_doc),
+            **kwargs
         ):
             resp_md += x
             print(x, end="")
         
-        if filename:
-            self.save(filename, resp_md)
+        if output_file:
+            self.save(output_file, resp_md)
 
-    def outline(self, task: str, filename: str=None, template_id: str=None, ref_file: str=None, ref_doc: str=None):
+    def outline(self, task: str, output_file: str=None, template_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
         resp_md = ""
         for x in outline(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_file, ref_doc)
+            input_doc=self.load(input_file, input_doc),
+            **kwargs
         ):
             resp_md += x
             print(x, end="")
 
-        if filename:
-            self.save(filename, resp_md)
+        if output_file:
+            self.save(output_file, resp_md)
 
-    def rewrite(self, ref_doc: str=None, ref_file: str=None, filename: str=None, template_id: str=None, task: str=None):
+    def rewrite(self, input_doc: str=None, output_file: str=None, template_id: str=None, task: str=None, input_file: str=None, **kwargs):
         resp_md = ""
+        _input_doc = input_doc or self.load(input_file)
         for x in rewrite(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_file, ref_doc)
+            input_doc=_input_doc,
+            **kwargs
         ):
             resp_md += x
             print(x, end="")
         
-        if filename:
-            self.save(filename, resp_md)
+        if output_file:
+            self.save(output_file, resp_md)
 
-    def fetch(self, ref_doc: str=None, ref_file: str=None, filename: str=None, template_id: str=None, task: str=None):
+    def fetch(self, input_doc: str=None, output_file: str=None, template_id: str=None, task: str=None, input_file: str=None, **kwargs):
         resp_md = ""
+        _input_doc = input_doc or self.load(input_file)
         for x in fetch(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_file, ref_doc)
+            input_doc=_input_doc,
+            **kwargs
         ):
             resp_md += x
             print(x, end="")
         
-        if filename:
-            self.save(filename, resp_md)
+        if output_file:
+            self.save(output_file, resp_md)
 
-    def translate(self, ref_doc: str=None, ref_file: str=None, filename: str=None, template_id: str=None, task: str=None):
+    def translate(self, input_doc: str=None, output_file: str=None, template_id: str=None, task: str=None, input_file: str=None, **kwargs):
         resp_md = ""
+        _input_doc = input_doc or self.load(input_file)
         for x in translate(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_file, ref_doc)
+            input_doc=_input_doc,
+            **kwargs
         ):
             resp_md += x
             print(x, end="")
         
-        if filename:
-            self.save(filename, resp_md)
+        if output_file:
+            self.save(output_file, resp_md)
 
-    def outline_detail(self, ref_doc: str=None, ref_file: str=None, filename: str=None, template_id: str=None, task: str=None):
+    def outline_detail(self, input_doc: str=None, output_file: str=None, template_id: str=None, task: str=None, input_file: str=None, **kwargs):
         resp_md = ""
+        _input_doc = input_doc or self.load(input_file)
         for x in outline_detail(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_file, ref_doc)
+            input_doc=_input_doc,
+            **kwargs
         ):
             resp_md += x
             print(x, end="")
         
-        if filename:
-            self.save(filename, resp_md)
+        if output_file:
+            self.save(output_file, resp_md)
 
-    def outline_self(self, ref_doc: str=None, ref_file: str=None, filename: str=None, template_id: str=None, task: str=None):
+    def outline_self(self, input_doc: str=None, output_file: str=None, template_id: str=None, task: str=None, input_file: str=None, **kwargs):
         resp_md = ""
+        _input_doc = input_doc or self.load(input_file)
         for x in outline_self(
             task=task,
             llm=self.llm,
             template_id=template_id,
-            ref_doc=self.load(ref_file, ref_doc)
+            input_doc=_input_doc,
+            **kwargs
         ):
             resp_md += x
             print(x, end="")
         
-        if filename:
-            self.save(filename, resp_md)
+        if output_file:
+            self.save(output_file, resp_md)

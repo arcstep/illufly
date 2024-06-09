@@ -47,29 +47,29 @@ def _call_markdown_chain(chain, input):
                 yield buffer
                 buffer = ""
 
-def idea(task: str, llm: Runnable, template_id: str=None, ref_doc: str=None):
+def idea(task: str, llm: Runnable, template_id: str=None, input_doc: str=None, **kwargs):
     """
     创意
     """
     prompt = load_resource_prompt(template_id or "IDEA")
-    doc = f'你已经完成的创作如下：\n{ref_doc}' if ref_doc != None else ''
-    chain = _create_chain(llm, prompt, todo_doc=doc)
+    knowledge = f'你已经完成的创作如下：\n{input_doc}' if input_doc != None else ''
+    chain = _create_chain(llm, prompt, knowledge=knowledge, **kwargs)
 
     for delta in _call_markdown_chain(chain, {"task": task}):
         yield delta
 
-def outline(task: str, llm: Runnable, template_id: str=None, ref_doc: str=None):
+def outline(task: str, llm: Runnable, template_id: str=None, input_doc: str=None, **kwargs):
     """
     提纲
     """
     _template_id = template_id or "OUTLINE"
-    return idea(task=task, llm=llm, template_id=_template_id, ref_doc=ref_doc)
+    return idea(task=task, llm=llm, template_id=_template_id, input_doc=input_doc, **kwargs)
 
-def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None):
+def outline_detail(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, **kwargs):
     """
     扩写
     """
-    todo_docs = IntelliDocuments(ref_doc)
+    todo_docs = IntelliDocuments(input_doc)
     prompt = load_resource_prompt(template_id or "OUTLINE_DETAIL")
 
     last_index = None
@@ -84,16 +84,11 @@ def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str
         # 生成匹配的<OUTLINE/>所在的部份
         prev_doc = markdown(todo_docs.get_prev_documents(doc))
         next_doc = markdown(todo_docs.get_next_documents(doc))
-        chain = _create_chain(
-            llm,
-            prompt,
-            prev_doc=prev_doc,
-            next_doc=next_doc,
-            todo_doc=f'>->>>\n{doc.page_content}<<<-<\n\n'
-        )
+        knowledge = f'{prev_doc}>->>>\n{doc.page_content}<<<-<\n\n{next_doc}'
+        chain = _create_chain(llm, prompt, knowledge=knowledge, **kwargs)
 
-        task_howto = f"请仅针对上述`>->>>`和`<<<-<`包围的部份扩写。{task or ''}"
         resp_md = ""
+        task_howto = f"请仅针对上述`>->>>`和`<<<-<`包围的部份扩写。{task or ''}"
         for delta in _call_markdown_chain(chain, {"task": task_howto}):
             yield delta
             resp_md += delta
@@ -103,14 +98,14 @@ def outline_detail(ref_doc: str, llm: Runnable, template_id: str=None, task: str
     # 生成最后一个<OUTLINE/>之后的部份
     yield markdown(outline_docs[last_index:None])
 
-def outline_self(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None):
+def outline_self(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, **kwargs):
     """
     丰富提纲
     """
     _template_id = template_id or "OUTLINE_SELF"
-    return outline_detail(ref_doc, llm, _template_id, task)
+    return outline_detail(input_doc, llm, _template_id, task, **kwargs)
 
-def fetch(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000):
+def fetch(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000, **kwargs):
     """
     提取
 
@@ -119,18 +114,18 @@ def fetch(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, k:
     """
 
     prompt = load_resource_prompt(template_id or "SUMMARISE")
-    chain = _create_chain(llm, prompt, todo_doc=ref_doc)
+    chain = _create_chain(llm, prompt, knowledge=input_doc, **kwargs)
     resp_md = _call_markdown_chain(chain, {"task": task})
     for chunk in resp_md:
         yield chunk
 
-def rewrite(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000):
+def rewrite(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000, **kwargs):
     """
     修改
 
     - 按修改意图和滚动上下文窗口修改长文档，例如替换文中的产品名称
     """
-    ref_docs = IntelliDocuments(ref_doc)
+    ref_docs = IntelliDocuments(input_doc)
     prompt = load_resource_prompt(template_id or "REWRITE")
 
     resp_md = ""
@@ -140,9 +135,9 @@ def rewrite(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, 
     def create_md(docs):
         md = markdown(docs)
         if len(md):
-            todo_doc = f'>->>>\n{md}\n<<<-<'
             prev_doc = markdown(ref_docs.get_prev_documents(docs[0]))
-            chain = _create_chain(llm, prompt, prev_doc=prev_doc, todo_doc=todo_doc)
+            knowledge = f'{prev_doc}>->>>\n{md}\n<<<-<'
+            chain = _create_chain(llm, prompt, knowledge=knowledge, **kwargs)
             for chunk in _call_markdown_chain(chain, {"task": task or ''}):
                 yield chunk
         else:
@@ -163,10 +158,10 @@ def rewrite(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, 
         for delta in create_md(task_docs):
             yield delta
 
-def translate(ref_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000):
+def translate(input_doc: str, llm: Runnable, template_id: str=None, task: str=None, k: int=1000, **kwargs):
     """
     翻译
     """
     _template_id = template_id or "TRANSLATE"
     _task = task or "如果原文为英文，就翻译为中文；如果原文为中文，就翻译为英文。"
-    return rewrite(ref_doc, llm, _template_id, _task, k)
+    return rewrite(input_doc, llm, _template_id, _task, k, **kwargs)
