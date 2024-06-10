@@ -100,7 +100,7 @@ def load_string_prompt(action: str, prompt_id: str, user_id: str=None):
 
             return template.partial(**kwargs)
 
-    return load_resource_prompt(prompt_id)
+    return load_resource_prompt(action, prompt_id)
 
 def save_string_prompt(template: PromptTemplate, action: str, prompt_id: str, user_id: str=None):
     """
