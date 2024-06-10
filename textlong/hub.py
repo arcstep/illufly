@@ -17,11 +17,44 @@ from .config import (
 import os
 import json
 
+def find_resource_promopt():
+    """
+    列举包内的所有提示语模板的资源类型、适用方法和名称。
+    
+    如果要将包内提示语模板保存到本地，可以向这样使用：
+    ```python
+    prompt = load_resource_prompt("IDEA)
+    save_string_template(prompt, "MY_IDEA")
+    ```
+    """
+    return {
+        "idea": [
+            ("string_template", "IDEA")
+        ],
+        "outline": [
+            ("string_template", "OUTLINE")
+        ],
+        "outline_detail": [
+            ("string_template", "OUTLINE_DETAIL")
+        ],
+        "outline_self": [
+            ("string_template", "OUTLINE_SELF")
+        ],
+        "rewrite": [
+            ("string_template", "REWRITE")
+        ],
+        "translate": [
+            ("string_template", "TRANSLATE")
+        ],
+        "summarise": [
+            ("string_template", "SUMMARISE"),
+            ("string_template", "SUMMARISE_TECH"),
+        ],
+    }
+
 def load_resource_prompt(prompt_id: str):
     """
     从python包资源文件夹加载提示语模板。
-    
-    prompt_id: OUTLINE | OUTLINE_DETAIL
     """
     resource_file = 'main.txt'
     resource_folder = f'textlong.prompts.{prompt_id}'
@@ -39,7 +72,7 @@ def load_resource_prompt(prompt_id: str):
 
     return template.partial(**kwargs)
 
-def load_string_prompt(prompt_id: str, user_id: str=None):
+def load_string_prompt(method: str, prompt_id: str, user_id: str=None):
     """
     从文件夹加载提示语模板。
     """
