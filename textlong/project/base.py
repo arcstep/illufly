@@ -4,7 +4,7 @@ from typing import Union, List, Dict, Any
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
 
-from ..md import idea, rewrite, fetch, translate, outline, outline_self, outline_detail
+from ..writing import idea, rewrite, fetch, translate, outline, outline_self, outline_detail
 from ..config import get_textlong_project
 from ..parser import parse_markdown
 

@@ -1,7 +1,7 @@
 from .utils import markdown
 from .hub import load_resource_prompt
 
-from .md import idea, rewrite, fetch, translate, outline, outline_self, outline_detail
+from .writing import idea, rewrite, fetch, translate, outline, outline_self, outline_detail
 from .project import Project
 
 __all__ = [
