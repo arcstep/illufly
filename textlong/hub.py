@@ -29,26 +29,26 @@ def find_resource_promopt():
     """
     return {
         "idea": [
-            ("string_template", "IDEA")
+            ("STRING_TEMPLATE", "IDEA")
         ],
         "outline": [
-            ("string_template", "OUTLINE")
+            ("STRING_TEMPLATE", "OUTLINE")
         ],
         "outline_detail": [
-            ("string_template", "OUTLINE_DETAIL")
+            ("STRING_TEMPLATE", "OUTLINE_DETAIL")
         ],
         "outline_self": [
-            ("string_template", "OUTLINE_SELF")
+            ("STRING_TEMPLATE", "OUTLINE_SELF")
         ],
         "rewrite": [
-            ("string_template", "REWRITE")
+            ("STRING_TEMPLATE", "REWRITE")
         ],
         "translate": [
-            ("string_template", "TRANSLATE")
+            ("STRING_TEMPLATE", "TRANSLATE")
         ],
         "summarise": [
-            ("string_template", "SUMMARISE"),
-            ("string_template", "SUMMARISE_TECH"),
+            ("STRING_TEMPLATE", "SUMMARISE"),
+            ("STRING_TEMPLATE", "SUMMARISE_TECH"),
         ],
     }
 
@@ -72,14 +72,14 @@ def load_resource_prompt(prompt_id: str):
 
     return template.partial(**kwargs)
 
-def load_string_prompt(method: str, prompt_id: str, user_id: str=None):
+def load_string_prompt(action: str, prompt_id: str, user_id: str=None):
     """
     从文件夹加载提示语模板。
     """
     prompt_folder = os.path.join(
         get_textlong_folder(),
         user_id or get_default_public(),
-        _PROMPTS_CHAT_FOLDER_NAME,
+        _PROMPTS_STRING_FOLDER_NAME.format(action=action),
         prompt_id
     )
     
@@ -91,24 +91,25 @@ def load_string_prompt(method: str, prompt_id: str, user_id: str=None):
 
             kwargs = {}
             for key in template.input_variables:
-                var_prompt = os.path.join(prompt_folder, f'{key}.txt')
-                prompt_str_var = ''
-                with open(var_prompt, 'r') as var:
-                    prompt_str_var = var.read()
-                kwargs[key] = prompt_str_var
+                var_prompt_path = os.path.join(prompt_folder, f'{key}.txt')
+                prompt_var = ''
+                if os.path.exists(var_prompt_path):
+                    with open(var_prompt_path, 'r') as var:
+                        prompt_var = var.read()
+                kwargs[key] = prompt_var
 
             return template.partial(**kwargs)
 
     return load_resource_prompt(prompt_id)
 
-def save_string_prompt(template: PromptTemplate, prompt_id: str, user_id: str=None):
+def save_string_prompt(template: PromptTemplate, action: str, prompt_id: str, user_id: str=None):
     """
     保存提示语模板到文件夹。
     """
     prompt_folder = os.path.join(
         get_textlong_folder(),
         user_id or get_default_public(),
-        _PROMPTS_CHAT_FOLDER_NAME,
+        _PROMPTS_STRING_FOLDER_NAME.format(action=action),
         prompt_id
     )
     os.makedirs(prompt_folder, exist_ok=True)
@@ -119,8 +120,8 @@ def save_string_prompt(template: PromptTemplate, prompt_id: str, user_id: str=No
             f.write(template.template)
 
     for k, v in template.partial_variables.items():
-        if v != None:
-            path = os.path.join(prompt_path, f"var_{k}.txt")
+        if v != None and len(v) > 0:
+            path = os.path.join(prompt_folder, f"{k}.txt")
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(v)
