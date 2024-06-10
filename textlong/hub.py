@@ -52,12 +52,12 @@ def find_resource_promopt():
         ],
     }
 
-def load_resource_prompt(prompt_id: str):
+def load_resource_prompt(action: str, prompt_id: str):
     """
     从python包资源文件夹加载提示语模板。
     """
     resource_file = 'main.txt'
-    resource_folder = f'textlong.prompts.{prompt_id}'
+    resource_folder = f'textlong.prompts.{action}.{prompt_id}'
     if not is_resource(resource_folder, resource_file):
         resource_folder = f'textlong.prompts'
     
@@ -67,7 +67,7 @@ def load_resource_prompt(prompt_id: str):
     kwargs = {}
     for key in template.input_variables:
         resource_file = f'{key}.txt'
-        resource_folder = f'textlong.prompts.{prompt_id}'
+        resource_folder = f'textlong.prompts.{action}.{prompt_id}'
         kwargs[key] = read_text(resource_folder, resource_file) if is_resource(resource_folder, resource_file) else ''
 
     return template.partial(**kwargs)
@@ -125,8 +125,10 @@ def save_string_prompt(template: PromptTemplate, action: str, prompt_id: str, us
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(v)
+    
+    return True
 
-def load_chat_prompt(template: ChatPromptTemplate, prompt_id: str, user_id=None):
+def load_chat_prompt(action: str, prompt_id: str, user_id=None):
     """
     加载提示语模板和partial变量的字符串。    
     目前不支持在partial中使用嵌套模板。
@@ -134,7 +136,7 @@ def load_chat_prompt(template: ChatPromptTemplate, prompt_id: str, user_id=None)
     prompt_path = os.path.join(
         get_textlong_folder(),
         user_id or get_default_public(),
-        _PROMPTS_CHAT_FOLDER_NAME,
+        _PROMPTS_CHAT_FOLDER_NAME.format(action=action),
         prompt_id
     )
 
@@ -161,10 +163,10 @@ def load_chat_prompt(template: ChatPromptTemplate, prompt_id: str, user_id=None)
             with open(path, 'r') as f:
                 data = json.load(f)
                 message = MessagesPlaceholder(**data)
-        elif filename.startswith('var_') and filename.endswith('.md'):
+        elif filename.endswith('.txt'):
             with open(path, 'r') as f:
                 text = f.read()
-                var_name = filename[4:-3]
+                var_name = filename[:-3]
                 partial_variables[var_name] = int(text) if text.isdigit() else text
         else:
             continue
@@ -174,7 +176,7 @@ def load_chat_prompt(template: ChatPromptTemplate, prompt_id: str, user_id=None)
 
     return ChatPromptTemplate.from_messages(messages=messages).partial(**partial_variables)
 
-def save_chat_prompt(template: ChatPromptTemplate, prompt_id: str, user_id=None):
+def save_chat_prompt(template: ChatPromptTemplate, action: str, prompt_id: str, user_id=None):
     """
     保存对话风格的提示语模板。
 
@@ -189,7 +191,7 @@ def save_chat_prompt(template: ChatPromptTemplate, prompt_id: str, user_id=None)
     prompt_path = os.path.join(
         get_textlong_folder(),
         user_id or get_default_public(),
-        _PROMPTS_FOLDER_NAME,
+        _PROMPTS_CHAT_FOLDER_NAME.format(action=action),
         prompt_id
     )
 
@@ -211,9 +213,9 @@ def save_chat_prompt(template: ChatPromptTemplate, prompt_id: str, user_id=None)
                 else:
                     json.dump(p.prompt.dict(), f, indent=4, ensure_ascii=False)
 
-    for k, v in template.partial_variables.items():
-        if v != None:
-            path = os.path.join(prompt_path, f"var_{k}.md")
+    for key, var in template.partial_variables.items():
+        if var != None:
+            path = os.path.join(prompt_path, f"{key}.txt")
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w', encoding='utf-8') as f:
-                f.write(f'{v}')
+                f.write(var)
