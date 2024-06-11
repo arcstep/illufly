@@ -7,6 +7,8 @@ from langchain_core.runnables import Runnable
 from ..writing import from_idea, from_chunk, from_outline, extract
 from ..config import get_textlong_project
 from ..parser import parse_markdown
+from ..exporter import export_jupyter, save_markdown
+from ..importer import load_markdown
 
 class Command():
     def __init__(self, command: str, kwargs: Dict[str, Any], output: str):
@@ -27,43 +29,23 @@ class Project():
     def get_filepath(self, filename):
         return get_textlong_project(filename, self.project_folder_name)
     
-    def confirm_filepath(self, filename):
-        path = self.get_filepath(filename)
-        if not os.path.exists(path):
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-
-        return path
-
     def push_history(self, command: str, kwargs: Dict[str, Any], output: str):
         cmd = Command(command, kwargs, output)
         self.history.append(cmd)
-
-    def save_markdown(self, filename: str, txt: str):
-        """
-        保存文本到文件。
-        """
-
-        if filename and txt:
-            path = self.confirm_filepath(filename)
-            with open(path, 'w', encoding='utf-8') as f:
-                f.write(txt)
-
-    def load_markdown(self, filename: str=None):
-        """
-        从文件加载文本。
-        """
-
-        txt = None
-        if filename:
-            path = self.get_filepath(filename)
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    txt = f.read()
-        return txt
+    
+    def export_jupyter(self, input_file, output_file):
+        input_path = self.get_filepath(input_file)
+        output_path = self.get_filepath(output_file)
+        return export_jupyter(input_path, output_path)
 
     def execute_task(self, task_func, task: str=None, output_file: str=None, prompt_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
+        """
+        通用任务执行框架。
+        """
+        path = self.get_filepath(input_file)
+        _input_doc = input_doc or load_markdown(path)
+
         resp_md = ""
-        _input_doc = input_doc or self.load_markdown(input_file)
         for x in task_func(
             llm=self.llm,
             prompt_id=prompt_id,
@@ -87,7 +69,8 @@ class Project():
         self.push_history(cmd_name, cmd_kwargs, resp_md)
         
         if output_file:
-            self.save_markdown(output_file, resp_md)
+            path = self.get_filepath(output_file)
+            save_markdown(path, resp_md)
         
     def valid_not_none(self, a, b):
         if a == None and b == None:
