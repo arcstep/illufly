@@ -12,6 +12,9 @@ def save_markdown(self, filepath: str, txt: str):
     """
 
     if filepath and txt:
+        filepath = filepath if filepath.endswith(".md") else filepath + ".md"
         confirm_filepath(filepath)
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(txt)
+
+    return True
