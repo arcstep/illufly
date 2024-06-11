@@ -28,25 +28,19 @@ def find_resource_promopt():
     ```
     """
     return {
-        "idea": [
-            ("STRING_TEMPLATE", "IDEA")
-        ],
-        "outline": [
+        "from_idea": [
+            ("STRING_TEMPLATE", "IDEA"),
             ("STRING_TEMPLATE", "OUTLINE")
         ],
-        "outline_detail": [
-            ("STRING_TEMPLATE", "OUTLINE_DETAIL")
-        ],
-        "outline_self": [
+        "from_outline": [
+            ("STRING_TEMPLATE", "OUTLINE_DETAIL"),
             ("STRING_TEMPLATE", "OUTLINE_SELF")
         ],
-        "rewrite": [
-            ("STRING_TEMPLATE", "REWRITE")
-        ],
-        "translate": [
+        "from_chunk": [
+            ("STRING_TEMPLATE", "REWRITE"),
             ("STRING_TEMPLATE", "TRANSLATE")
         ],
-        "summarise": [
+        "extract": [
             ("STRING_TEMPLATE", "SUMMARISE"),
             ("STRING_TEMPLATE", "SUMMARISE_TECH"),
         ],
