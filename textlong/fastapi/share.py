@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException
-from starlette.responses import HTMLResponse
 import mistune
 import os
 from ..config import get_default_html_share
 
 def create_app():
+    from fastapi import FastAPI, HTTPException
+    from starlette.responses import HTMLResponse
+
     """
     ```python
     import uvicorn
