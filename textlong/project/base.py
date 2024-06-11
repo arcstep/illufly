@@ -21,18 +21,18 @@ class Project():
         self.project_folder_name = project_folder
         self.llm = llm
         self.history: List[Command] = []
-    
+
     @property
     def project_path(self):
         return self.get_filepath("")
-    
+
     def get_filepath(self, filename):
         return get_textlong_project(filename, self.project_folder_name)
-    
+
     def push_history(self, command: str, kwargs: Dict[str, Any], output: str):
         cmd = Command(command, kwargs, output)
         self.history.append(cmd)
-    
+
     def export_jupyter(self, input_file, output_file):
         input_path = self.get_filepath(input_file)
         output_path = self.get_filepath(output_file)
@@ -67,11 +67,11 @@ class Project():
         }
  
         self.push_history(cmd_name, cmd_kwargs, resp_md)
-        
+
         if output_file:
             path = self.get_filepath(output_file)
             save_markdown(path, resp_md)
-        
+
     def valid_not_none(self, a, b):
         if a == None and b == None:
             raise ValueError("input doc or file MUST exist one!")

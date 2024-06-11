@@ -15,7 +15,6 @@ class IntelliDocuments():
         """
         导入Markdown文档。
         """
-
         filename = doc_str
         if filename and os.path.isfile(filename) and os.path.exists(doc_str):
             if filename.endswith(".md") or filename.endswith(".MD"):
@@ -38,7 +37,6 @@ class IntelliDocuments():
         获得OUTLINE扩写任务清单。
         如果没有指定title，就返回所有任务，否则返回匹配到的任务。
         """
-
         return [
             (d, i)
             for i, d in enumerate(self.documents) 
