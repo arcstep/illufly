@@ -30,3 +30,6 @@ def get_textlong_project(filename: str, project: str=None):
     _project = project or get_default_public()
     return os.path.join(get_textlong_folder(), _project, filename)
 
+def get_default_html_share():
+    """默认的网页分享目录"""
+    return os.getenv("TEXTLONG_DEFAULT_HTML_SHARE") or "html-share"
