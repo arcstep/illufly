@@ -4,7 +4,7 @@ from typing import Union, List, Dict, Any
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
 
-from ..writing import idea, rewrite, fetch, translate, outline, outline_self, outline_detail
+from ..writing import from_idea, from_chunk, from_outline, extract
 from ..config import get_textlong_project
 from ..parser import parse_markdown
 
@@ -89,32 +89,21 @@ class Project():
         if output_file:
             self.save_markdown(output_file, resp_md)
         
-    def valid_input(self, a, b):
+    def valid_not_none(self, a, b):
         if a == None and b == None:
             raise ValueError("input doc or file MUST exist one!")
 
-    def idea(self, task: str, output_file: str=None, **kwargs):
-        self.execute_task(idea, task=task, output_file=output_file, **kwargs)
+    def from_idea(self, task: str, output_file: str=None, **kwargs):
+        self.execute_task(from_idea, task=task, output_file=output_file, **kwargs)
 
-    def outline(self, task: str, output_file: str=None, **kwargs):
-        self.execute_task(outline, task=task, output_file=output_file, **kwargs)
+    def from_outline(self, task: str, output_file: str=None, **kwargs):
+        self.execute_task(from_outline, task=task, output_file=output_file, **kwargs)
 
-    def rewrite(self, input_file: str=None, output_file: str=None, input_doc: str=None, **kwargs):
-        self.valid_input(input_file, input_doc)
-        self.execute_task(rewrite, input_file=input_file, output_file=output_file, input_doc=input_doc, **kwargs)
+    def from_chunk(self, input_file: str=None, output_file: str=None, input_doc: str=None, **kwargs):
+        self.valid_not_none(input_file, input_doc)
+        self.execute_task(from_chunk, input_file=input_file, output_file=output_file, input_doc=input_doc, **kwargs)
 
-    def fetch(self, input_file: str=None, output_file: str=None, input_doc: str=None, **kwargs):
-        self.valid_input(input_file, input_doc)
-        self.execute_task(fetch, input_file=input_file, output_file=output_file, input_doc=input_doc, **kwargs)
+    def extract(self, input_file: str=None, output_file: str=None, input_doc: str=None, **kwargs):
+        self.valid_not_none(input_file, input_doc)
+        self.execute_task(extract, input_file=input_file, output_file=output_file, input_doc=input_doc, **kwargs)
 
-    def translate(self, input_file: str=None, output_file: str=None, input_doc: str=None, **kwargs):
-        self.valid_input(input_file, input_doc)
-        self.execute_task(translate, input_file=input_file, output_file=output_file, input_doc=input_doc, **kwargs)
-
-    def outline_detail(self, input_file: str=None, output_file: str=None, input_doc: str=None, **kwargs):
-        self.valid_input(input_file, input_doc)
-        self.execute_task(outline_detail, input_file=input_file, output_file=output_file, input_doc=input_doc, **kwargs)
-
-    def outline_self(self, input_file: str=None, output_file: str=None, input_doc: str=None, **kwargs):
-        self.valid_input(input_file, input_doc)
-        self.execute_task(outline_self, input_file=input_file, output_file=output_file, input_doc=input_doc, **kwargs)

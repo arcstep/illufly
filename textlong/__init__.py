@@ -1,16 +1,14 @@
 from .utils import markdown
 from .hub import load_resource_prompt
 
-from .writing import idea, rewrite, fetch, translate, outline, outline_self, outline_detail
+from .writing import from_idea, from_chunk, from_outline, extract
 from .project import Project
 
 __all__ = [
-  "idea",
-  "rewrite",
-  "fetch",
-  "translate",
-  "outline",
-  "outline_self",
-  "outline_detail",
+  "from_idea",
+  "from_chunk",
+  "from_outline",
+  "extract",
+  
   "Project",
 ]
