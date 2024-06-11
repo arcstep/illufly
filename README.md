@@ -32,7 +32,7 @@ load_dotenv(find_dotenv(), override=True)
 **创作提纲：`outline`**
 
 ```python
-from textlong import outline, outline_detail
+from textlong import from_idea, from_outline
 from langchain_zhipu import ChatZhipuAI
 
 llm=ChatZhipuAI(model="glm-4")
@@ -44,7 +44,7 @@ task = """
 """
 
 md_outline = ""
-for x in outline(llm, task):
+for x in from_idea(llm, task, prompt_id="OUTLINE"):
     md_outline += x
     print(x, end="")
 
@@ -79,7 +79,7 @@ for x in outline(llm, task):
 
 ```python
 md = ""
-for x in outline_detail(llm, md_outline):
+for x in from_outline(llm, md_outline):
     md += x
     print(x, end="")
 ```
@@ -100,7 +100,7 @@ for x in outline_detail(llm, md_outline):
 **翻译：`translate`**
 
 ```python
-for x in translate(llm, md, task="翻译为英文", k=120):
+for x in from_chunk(llm, md, task="翻译为英文", prompt_id="TRANSLATE", k=120):
     print(x, end="")
 ```
 
