@@ -51,9 +51,9 @@ def load_resource_prompt(action: str, prompt_id: str):
     从python包资源文件夹加载提示语模板。
     """
     resource_file = 'main.txt'
-    resource_folder = f'textlong.prompts.{action}.{prompt_id}'
+    resource_folder = f'textlong.__PROMPTS__.{action}.{prompt_id}'
     if not is_resource(resource_folder, resource_file):
-        resource_folder = f'textlong.prompts'
+        resource_folder = f'textlong.__PROMPTS__'
     
     prompt_str = read_text(resource_folder, resource_file)
     template = PromptTemplate.from_template(prompt_str)
@@ -61,7 +61,7 @@ def load_resource_prompt(action: str, prompt_id: str):
     kwargs = {}
     for key in template.input_variables:
         resource_file = f'{key}.txt'
-        resource_folder = f'textlong.prompts.{action}.{prompt_id}'
+        resource_folder = f'textlong.__PROMPTS__.{action}.{prompt_id}'
         kwargs[key] = read_text(resource_folder, resource_file) if is_resource(resource_folder, resource_file) else ''
 
     return template.partial(**kwargs)
