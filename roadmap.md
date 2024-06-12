@@ -1,35 +1,39 @@
 # 一、开发计划
 
-**任务：**
+## 1. 创作方法
 
-- 批量任务
-- 单项任务
+- 提取 extract
+- 创意 from_idea
+- 分段 from_chunk
+- 扩写 from_outline
 
-**变量：**
+## 2. 持久化
 
-- 指导原则 @instruction
-- 知识 @knowledge
-- 上文 prev_doc
-- 当前 todo_doc
-- 下文 next_doc
-- 任务 @task
-- 例子 @example
+- 保存 Markdown
+- 加载 Markdown
+- 保存 StringTemplate
+- 加载 StringTemplate
 
-**方法：**
+- 导出 Jupyter Note
+- 导出 Word
+- 导出 HTML
 
-- 创意 idea
-- 提纲 outline
-- 提取 fetch
-- 扩写 detail
-- 续写 complete
-- 重写 refine
-- 翻译 translate
-- 仿写 clone
+## 3. 项目
 
-**1. 创文创作**
+- 项目位置
+- 创作输出
 
-**2. 长文翻译**
+## 4. FastAPI 分享
 
-**3. 长文续写**
+- 项目列表
+- 分享网页
 
-**4. 长文翻译**
+## 5. QA
+
+- 加载 本地文件：docx / pdf /md / txt
+- 加载 QA-Excel
+
+## 6. Agent
+
+- 工具：查询QA / 查询创作成果
+- 智能体：RAG查询
