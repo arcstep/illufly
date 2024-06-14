@@ -6,7 +6,7 @@ def confirm_filepath(path):
 
     return path
 
-def save_markdown(self, filepath: str, txt: str):
+def save_markdown(filepath: str, txt: str):
     """
     保存文本到文件。
     """

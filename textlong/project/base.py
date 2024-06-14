@@ -5,51 +5,88 @@ from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
 
 from ..writing import from_idea, from_chunk, from_outline, extract
-from ..config import get_textlong_project
+from ..config import get_textlong_folder, get_default_public
 from ..parser import parse_markdown
 from ..exporter import export_jupyter, save_markdown
 from ..importer import load_markdown
+from ..utils import raise_not_supply_all
 
 class Command():
-    def __init__(self, command: str, kwargs: Dict[str, Any], output: str):
-        self.command = command
-        self.kwargs = kwargs
-        self.output = output
+    """
+    长文生成指令。
+    """
+    def __init__(self, cmd_name: str, cmd_kwargs: Dict[str, Any], output_text: str):
+        self.cmd_name = cmd_name
+        self.cmd_kwargs = cmd_kwargs
+        self.output_text = output_text
+
+class History():
+    """
+    指令历史。
+    """
+    def __init__(self):
+        self.history: List[Command] = []
+    
+    def append(self, cmd: Command):
+        self.history.append(cmd)
 
 class Project():
-    def __init__(self, project_folder: str=None, llm: Runnable=None):
-        self.project_folder_name = project_folder
+    """
+    本地项目管理。
+
+    - {project_folder}
+    - <textlong_folder>/{user_id}/{project_id}
+    - <textlong_folder>/{user_id}/{project_id}/{file_path}
+    """
+    def __init__(self, llm: Runnable=None, project_folder: str=None, project_id: str=None, user_id: str=None, title: str=None):
+        raise_not_supply_all("Project对象至少提供project_folder或project_id", project_folder, project_id)
+
+        self.title = title
         self.llm = llm
-        self.history: List[Command] = []
+        self.project_folder = project_folder
+        self.user_id = user_id or get_default_public()
+        self.project_id = project_id
+        self.output_files: Dict[str, History] = {}
+
+    def __str__(self):
+        return "\n".join([
+            self.__repr__()
+        ])
+
+    def __repr__(self):
+        project_folder = self.project_folder or os.path.join('PROJECT_BASE', self.user_id, self.project_id)
+        return f"Project<llm: {self.llm._llm_type}/{self.llm.model}, project_folder: {project_folder}, title: {self.title}>"
 
     @property
     def project_path(self):
         return self.get_filepath("")
 
     def get_filepath(self, filename):
-        return get_textlong_project(filename, self.project_folder_name)
+        folder_path = self.project_folder or os.path.join(get_textlong_folder(), self.user_id, self.project_id)
+        return os.path.join(folder_path, filename)
 
-    def push_history(self, command: str, kwargs: Dict[str, Any], output: str):
-        cmd = Command(command, kwargs, output)
-        self.history.append(cmd)
+    def push_history(self, ouput_file: str, cmd_name: str, cmd_kwargs: Dict[str, Any], output_text: str):
+        cmd = Command(cmd_name, cmd_kwargs, output_text)
+        history = self.output_files[ouput_file] if 'output_file' in self.output_files else History()
+        history.append(cmd)
 
     def export_jupyter(self, input_file, output_file):
         input_path = self.get_filepath(input_file)
         output_path = self.get_filepath(output_file)
         return export_jupyter(input_path, output_path)
 
-    def execute_task(self, task_func, task: str=None, output_file: str=None, prompt_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
+    def execute_task(self, task_func, output_file, task: str=None, prompt_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
         """
         通用任务执行框架。
         """
-        path = self.get_filepath(input_file)
-        _input_doc = input_doc or load_markdown(path)
+        if input_file:
+            input_doc = load_markdown(self.get_filepath(input_file))
 
         resp_md = ""
         for x in task_func(
-            llm=self.llm,
+            self.llm,
             prompt_id=prompt_id,
-            input_doc=_input_doc,
+            input_doc=input_doc,
             task=task,
             **kwargs
         ):
@@ -66,27 +103,23 @@ class Project():
             **kwargs
         }
  
-        self.push_history(cmd_name, cmd_kwargs, resp_md)
+        self.push_history(output_file, cmd_name, cmd_kwargs, resp_md)
 
         if output_file:
             path = self.get_filepath(output_file)
             save_markdown(path, resp_md)
 
-    def valid_not_none(self, a, b):
-        if a == None and b == None:
-            raise ValueError("input doc or file MUST exist one!")
+    def from_idea(self, output_file: str, task: str, **kwargs):
+        self.execute_task(from_idea, output_file=output_file, task=task, **kwargs)
 
-    def from_idea(self, task: str, output_file: str=None, **kwargs):
-        self.execute_task(from_idea, task=task, output_file=output_file, **kwargs)
+    def from_outline(self, output_file: str, task: str, **kwargs):
+        self.execute_task(from_outline, output_file=output_file, task=task, **kwargs)
 
-    def from_outline(self, task: str, output_file: str=None, **kwargs):
-        self.execute_task(from_outline, task=task, output_file=output_file, **kwargs)
+    def from_chunk(self, output_file: str, input_file: str=None, input_doc: str=None, **kwargs):
+        raise_not_supply_all("from_chunk至少提供input_file或input_doc", input_file, input_doc)
+        self.execute_task(from_chunk, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
 
-    def from_chunk(self, input_file: str=None, output_file: str=None, input_doc: str=None, **kwargs):
-        self.valid_not_none(input_file, input_doc)
-        self.execute_task(from_chunk, input_file=input_file, output_file=output_file, input_doc=input_doc, **kwargs)
-
-    def extract(self, input_file: str=None, output_file: str=None, input_doc: str=None, **kwargs):
-        self.valid_not_none(input_file, input_doc)
-        self.execute_task(extract, input_file=input_file, output_file=output_file, input_doc=input_doc, **kwargs)
+    def extract(self, output_file: str, input_file: str=None, input_doc: str=None, **kwargs):
+        raise_not_supply_all("extract至少提供input_file或input_doc", input_file, input_doc)
+        self.execute_task(extract, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
 

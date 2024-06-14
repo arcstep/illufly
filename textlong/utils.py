@@ -6,5 +6,9 @@ def raise_not_install(packages):
     # auto install package
     # subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
 
+def raise_not_supply_all(info: str, *args):
+    if all(arg is None for arg in args):
+        raise ValueError(info)
+
 def markdown(docs: List[Document], sep: str=""):
     return sep.join([d.page_content for d in docs])
