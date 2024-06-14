@@ -1,5 +1,6 @@
 import os
 import copy
+from datetime import datetime
 from typing import Union, List, Dict, Any
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
@@ -19,16 +20,26 @@ class Command():
         self.cmd_name = cmd_name
         self.cmd_kwargs = cmd_kwargs
         self.output_text = output_text
+        self.modified_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 class History():
     """
     指令历史。
     """
     def __init__(self):
-        self.history: List[Command] = []
+        self.commands: List[Command] = []
     
     def append(self, cmd: Command):
-        self.history.append(cmd)
+        self.commands.append(cmd)
+    
+    def __str__(self):
+        return "\n".join([
+            self.__repr__()
+        ])
+
+    def __repr__(self):
+        cmds = ", ".join([f'{cmd.cmd_name}' for cmd in self.history])
+        return f"History<commands: [{cmds}]"
 
 class Project():
     """
@@ -65,9 +76,13 @@ class Project():
         folder_path = self.project_folder or os.path.join(get_textlong_folder(), self.user_id, self.project_id)
         return os.path.join(folder_path, filename)
 
-    def push_history(self, ouput_file: str, cmd_name: str, cmd_kwargs: Dict[str, Any], output_text: str):
+    def push_history(self, output_file: str, cmd_name: str, cmd_kwargs: Dict[str, Any], output_text: str):
         cmd = Command(cmd_name, cmd_kwargs, output_text)
-        history = self.output_files[ouput_file] if 'output_file' in self.output_files else History()
+        if output_file in self.output_files:
+            history = self.output_files[output_file]
+        else:
+            history = History()
+            self.output_files[output_file] = history
         history.append(cmd)
 
     def export_jupyter(self, input_file, output_file):
