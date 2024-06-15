@@ -38,7 +38,7 @@ class History():
         ])
 
     def __repr__(self):
-        cmds = ", ".join([f'{cmd.cmd_name}' for cmd in self.history])
+        cmds = ", ".join([f'{cmd.cmd_name}' for cmd in self.commands])
         return f"History<commands: [{cmds}]"
 
 class Project():
@@ -127,8 +127,9 @@ class Project():
     def from_idea(self, output_file: str, task: str, **kwargs):
         self.execute_task(from_idea, output_file=output_file, task=task, **kwargs)
 
-    def from_outline(self, output_file: str, task: str, **kwargs):
-        self.execute_task(from_outline, output_file=output_file, task=task, **kwargs)
+    def from_outline(self, output_file: str, input_file: str=None, input_doc: str=None, **kwargs):
+        raise_not_supply_all("from_outline至少提供input_file或input_doc", input_file, input_doc)
+        self.execute_task(from_outline, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
 
     def from_chunk(self, output_file: str, input_file: str=None, input_doc: str=None, **kwargs):
         raise_not_supply_all("from_chunk至少提供input_file或input_doc", input_file, input_doc)

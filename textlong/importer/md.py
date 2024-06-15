@@ -1,13 +1,13 @@
 import os
 
-def load_markdown(filename: str=None):
+def load_markdown(file_path: str=None):
     """
     从文件加载文本。
     """
 
     txt = None
-    if filename:
-        if os.path.exists(path):
-            with open(path, 'r', encoding='utf-8') as f:
+    if file_path:
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as f:
                 txt = f.read()
     return txt
