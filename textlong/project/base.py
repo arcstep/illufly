@@ -110,8 +110,10 @@ class Project():
             'project_folder': self.project_folder,
             'output_files': self.output_files,
         }
+        os.makedirs(os.path.dirname(self.project_config_path), exist_ok=True)
         with open(self.project_config_path, 'w') as f:
             yaml.safe_dump(data, f, allow_unicode=True)
+        return True
     
     def get_output_history_path(self, output_file):
         return self.get_filepath(get_default_project_logs(), output_file) + ".yml"
