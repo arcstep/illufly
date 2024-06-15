@@ -1,6 +1,7 @@
 from typing import Iterable, Dict, Any
 import re
 import time
+import yaml
 from mistune import markdown
 from mistune.renderers.markdown import MarkdownRenderer
 from mistune.core import BlockState
@@ -27,7 +28,20 @@ def parse_markdown(text, start_tag='<OUTLINE>', end_tag='</OUTLINE>'):
     """
     doc_id_generator = get_document_id()
     pattern = re.compile(r'(.*?)(%s.*?%s)(.*)' % (re.escape(start_tag), re.escape(end_tag)), re.DOTALL)
+    yaml_pattern = re.compile(r'\n*---\n(.*?)\n---\n', re.DOTALL)
     documents = []
+
+    # 提取 YAML Front Matter
+    yaml_match = yaml_pattern.match(text)
+    if yaml_match:
+        yaml_front_matter = yaml_match.group(1)
+        metadata = yaml.safe_load(yaml_front_matter)
+        doc_id = next(doc_id_generator)
+        metadata.update({"id": doc_id, "type": "front_matter"})
+        doc = Document(page_content='', metadata=metadata)
+        documents.append(doc)
+        text = text[yaml_match.end():]
+
     while start_tag in text and end_tag in text:
         match = pattern.match(text)
         if match:
