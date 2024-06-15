@@ -162,3 +162,11 @@ cython_debug/
 notes/documents
 notes/history
 notes/data
+notes/*.yml
+notes/*.md
+notes/*/__logs__
+notes/*/*.yml
+notes/*/*.md
+notes/*/*/__logs__
+notes/*/*/*.yml
+notes/*/*/*.md
