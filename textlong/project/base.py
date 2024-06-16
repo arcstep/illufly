@@ -80,7 +80,7 @@ class Project():
         if os.path.exists(self.project_config_path):
             data = self.load_project(self.project_config_path)
             if 'output_files' in data:
-                self.output_files = data['output_files']
+                self.output_files = data['output_files'] or []
 
     def __str__(self):
         return "\n".join([
@@ -110,7 +110,7 @@ class Project():
         """
 
         if filepath and txt:
-            _confirm_filepath(filepath)
+            self._confirm_filepath(filepath)
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(txt)
 
@@ -130,15 +130,9 @@ class Project():
         """
         保存项目。
         """
-        data = {
-            'user_id': self.user_id,
-            'project_id': self.project_id,
-            'project_folder': self.project_folder,
-            'output_files': self.output_files,
-        }
         os.makedirs(os.path.dirname(self.project_config_path), exist_ok=True)
         with open(self.project_config_path, 'w') as f:
-            yaml.safe_dump(data, f, allow_unicode=True)
+            yaml.safe_dump(self.to_dict(), f, allow_unicode=True)
         return True
     
     def _get_output_history_path(self, output_file):
@@ -206,7 +200,7 @@ class Project():
 
         if input_file:
             docs = load_markdown(self._get_filepath(input_file))
-            input_doc = docs.markdown()
+            input_doc = docs.markdown
 
         resp_md = ""
         for x in task_func(
@@ -223,7 +217,7 @@ class Project():
 
         # 保存生成结果
         resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + resp_md
-        save_markdown(self._get_filepath(output_file), resp_md)
+        self.save_markdown(self._get_filepath(output_file), resp_md)
 
         # 保存生成历史
         self.save_output_history(output_file, cmd)

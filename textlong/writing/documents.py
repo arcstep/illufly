@@ -5,7 +5,6 @@ import yaml
 from typing import List, Union
 from langchain_core.documents import Document
 from ..parser import parse_markdown
-from ..utils import markdown
 
 class MarkdownDocuments():
     def __init__(self, doc_str: str=None):
