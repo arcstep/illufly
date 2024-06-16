@@ -14,7 +14,7 @@ from ..config import (
     get_default_project_logs,
 )
 from ..parser import parse_markdown
-from ..exporter import export_jupyter, save_markdown
+from ..exporter import export_jupyter
 from ..importer import load_markdown
 from ..utils import raise_not_supply_all
 
@@ -96,7 +96,26 @@ class Project():
     
     @property
     def project_config_path(self):
-        return self.get_filepath(get_default_project_config())
+        return self._get_filepath(get_default_project_config())
+
+    def _confirm_filepath(self, path):
+        if not os.path.exists(path):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        return path
+
+    def save_markdown(self, filepath: str, txt: str):
+        """
+        保存文本到markdown文件。
+        """
+
+        if filepath and txt:
+            _confirm_filepath(filepath)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(txt)
+
+        return True
+
 
     def load_project(self, config_path: str):
         """
@@ -122,14 +141,14 @@ class Project():
             yaml.safe_dump(data, f, allow_unicode=True)
         return True
     
-    def get_output_history_path(self, output_file):
-        return self.get_filepath(get_default_project_logs(), output_file) + ".yml"
+    def _get_output_history_path(self, output_file):
+        return self._get_filepath(get_default_project_logs(), output_file) + ".yml"
     
     def load_history(self, output_file):
         """
         查看命令生成历史。
         """
-        path = self.get_output_history_path(output_file)
+        path = self._get_output_history_path(output_file)
         return self._load_output_history(path)
 
     def _load_output_history(self, output_path):
@@ -143,7 +162,7 @@ class Project():
         """
         保存生成历史。
         """
-        path = self.get_output_history_path(output_file)
+        path = self._get_output_history_path(output_file)
         history = self._load_output_history(path)
 
         history.append(command.to_dict())
@@ -152,7 +171,7 @@ class Project():
         with open(path, 'w') as f:
             yaml.safe_dump(history, f)
 
-    def get_filepath(self, *path):
+    def _get_filepath(self, *path):
         folder_path = self.project_folder or os.path.join(get_textlong_folder(), self.user_id, self.project_id)
         return os.path.join(folder_path, *path)
     
@@ -164,20 +183,17 @@ class Project():
         output_text = history[index]['output_text']
         cmd = Command.from_dict(history[index])
         resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + output_text
-        save_markdown(self.get_filepath(save_as or output_file), resp_md)
+        self.save_markdown(self._get_filepath(save_as or output_file), resp_md)
 
     def export_jupyter(self, input_file: str, output_file: str):
         """
         导出为Jupyter笔记。
         """
-        input_path = self.get_filepath(input_file)
-        output_path = self.get_filepath(output_file)
+        input_path = self._get_filepath(input_file)
+        output_path = self._get_filepath(output_file)
         return export_jupyter(input_path, output_path)
 
-    def execute_task(self, task_func, output_file, task: str=None, prompt_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
-        """
-        通用任务执行框架。
-        """
+    def _execute_task(self, task_func, output_file, task: str=None, prompt_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
         command = task_func.__name__
         cmd_args = {
             "task": task,
@@ -189,7 +205,8 @@ class Project():
         }
 
         if input_file:
-            input_doc = load_markdown(self.get_filepath(input_file))
+            docs = load_markdown(self._get_filepath(input_file))
+            input_doc = docs.markdown()
 
         resp_md = ""
         for x in task_func(
@@ -206,7 +223,7 @@ class Project():
 
         # 保存生成结果
         resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + resp_md
-        save_markdown(self.get_filepath(output_file), resp_md)
+        save_markdown(self._get_filepath(output_file), resp_md)
 
         # 保存生成历史
         self.save_output_history(output_file, cmd)
@@ -220,26 +237,26 @@ class Project():
         """
         从一个idea开始生成。
         """
-        self.execute_task(from_idea, output_file=output_file, task=task, **kwargs)
+        self._execute_task(from_idea, output_file=output_file, task=task, **kwargs)
 
     def from_outline(self, output_file: str, input_file: str=None, input_doc: str=None, **kwargs):
         """
         从大纲开始扩写。
         """
         raise_not_supply_all("from_outline至少提供input_file或input_doc", input_file, input_doc)
-        self.execute_task(from_outline, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
+        self._execute_task(from_outline, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
 
     def from_chunk(self, output_file: str, input_file: str=None, input_doc: str=None, **kwargs):
         """
         逐段重新生成。
         """
         raise_not_supply_all("from_chunk至少提供input_file或input_doc", input_file, input_doc)
-        self.execute_task(from_chunk, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
+        self._execute_task(from_chunk, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
 
     def extract(self, output_file: str, input_file: str=None, input_doc: str=None, **kwargs):
         """
         整体提取。
         """
         raise_not_supply_all("extract至少提供input_file或input_doc", input_file, input_doc)
-        self.execute_task(extract, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
+        self._execute_task(extract, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
 
