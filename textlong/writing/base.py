@@ -6,12 +6,10 @@ from langchain_core.documents import Document
 from langchain.globals import set_verbose, get_verbose
 from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 
-from .documents import IntelliDocuments
+from .documents import MarkdownDocuments
 from .output_parser import MarkdownOutputParser
 from ..parser import parse_markdown
 from ..hub import load_string_prompt
-from ..utils import markdown
-
 def _create_chain(llm, prompt_template, **kwargs):
     if not llm:
         raise ValueError("LLM can't be None !")
@@ -62,7 +60,7 @@ def from_outline(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: 
     """
     扩写：从大纲扩充到细节。
     """
-    todo_docs = IntelliDocuments(input_doc)
+    todo_docs = MarkdownDocuments(input_doc)
     prompt = load_string_prompt("from_outline", prompt_id or "OUTLINE_DETAIL")
 
     last_index = None
@@ -71,12 +69,12 @@ def from_outline(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: 
         # 生成<OUTLINE/>之前的部份
         if last_index != None:
             yield "\n"
-        yield markdown(outline_docs[last_index:index])
+        yield MarkdownDocuments.to_markdown(outline_docs[last_index:index])
         last_index = index + 1
 
         # 生成匹配的<OUTLINE/>所在的部份
-        prev_doc = markdown(todo_docs.get_prev_documents(doc))
-        next_doc = markdown(todo_docs.get_next_documents(doc))
+        prev_doc = MarkdownDocuments.to_markdown(todo_docs.get_prev_documents(doc))
+        next_doc = MarkdownDocuments.to_markdown(todo_docs.get_next_documents(doc))
         knowledge = f'{prev_doc}>->>>\n{doc.page_content}<<<-<\n\n{next_doc}'
         chain = _create_chain(llm, prompt, knowledge=knowledge, **kwargs)
 
@@ -89,7 +87,7 @@ def from_outline(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: 
         todo_docs.replace_documents(index_doc=doc, docs=reply_docs)
 
     # 生成最后一个<OUTLINE/>之后的部份
-    yield markdown(outline_docs[last_index:None])
+    yield MarkdownDocuments.to_markdown(outline_docs[last_index:None])
 
 def extract(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, k: int=1000, **kwargs):
     """
@@ -110,7 +108,7 @@ def from_chunk(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: st
 
     - 例如，例如替换文中的产品名称
     """
-    ref_docs = IntelliDocuments(input_doc)
+    ref_docs = MarkdownDocuments(input_doc)
     prompt = load_string_prompt("from_chunk", prompt_id or "REWRITE")
 
     resp_md = ""
@@ -118,9 +116,9 @@ def from_chunk(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: st
     md_len = 0
     
     def create_md(docs):
-        md = markdown(docs)
+        md = MarkdownDocuments.to_markdown(docs)
         if len(md):
-            prev_doc = markdown(ref_docs.get_prev_documents(docs[0]))
+            prev_doc = MarkdownDocuments.to_markdown(ref_docs.get_prev_documents(docs[0]))
             knowledge = f'{prev_doc}>->>>\n{md}\n<<<-<'
             chain = _create_chain(llm, prompt, knowledge=knowledge, **kwargs)
             for chunk in _call_markdown_chain(chain, {"task": task or ''}):

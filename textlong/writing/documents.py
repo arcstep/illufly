@@ -1,12 +1,13 @@
 import re
 import copy
 import os
+import yaml
 from typing import List, Union
 from langchain_core.documents import Document
 from ..parser import parse_markdown
 from ..utils import markdown
 
-class IntelliDocuments():
+class MarkdownDocuments():
     def __init__(self, doc_str: str=None):
         self.documents = []
         self.import_markdown(doc_str)
@@ -28,9 +29,20 @@ class IntelliDocuments():
 
         return self.documents
 
+    @classmethod
+    def to_markdown(cls, documents: List[Document], sep: str="", with_front_matter: bool=False):
+        meta0 = documents[0].metadata
+        front_matter = ''
+        if 'type' in meta0 and meta0['type'] == 'front_matter':
+            meta_display = meta0.copy()
+            meta_display.pop('id', None)
+            meta_display.pop('type', None)
+            front_matter = f'---\n{yaml.safe_dump(meta_display, allow_unicode=True)}---\n\n'
+        return front_matter + sep.join([d.page_content for d in documents])
+
     @property
     def markdown(self):
-        return markdown(self.documents)
+        return self.__class__.to_markdown(self.documents)
 
     def get_outline_task(self):
         """

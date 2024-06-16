@@ -28,7 +28,7 @@ def get_default_project_logs():
 
 def get_default_project_config():
     """默认的公共资料存储目录"""
-    return os.getenv("TEXTLONG_PROJECT_CONFIG") or "_config.yml"
+    return os.getenv("TEXTLONG_PROJECT_CONFIG") or "project_config.yml"
 
 def get_textlong_folder():
     """从环境变量中获得项目的存储目录"""

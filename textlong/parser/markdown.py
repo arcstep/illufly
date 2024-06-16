@@ -28,7 +28,7 @@ def parse_markdown(text, start_tag='<OUTLINE>', end_tag='</OUTLINE>'):
     """
     doc_id_generator = get_document_id()
     pattern = re.compile(r'(.*?)(%s.*?%s)(.*)' % (re.escape(start_tag), re.escape(end_tag)), re.DOTALL)
-    yaml_pattern = re.compile(r'\n*---\n(.*?)\n---\n', re.DOTALL)
+    yaml_pattern = re.compile(r'\n*---+\n(.*?)\n---+\n', re.DOTALL)
     documents = []
 
     # 提取 YAML Front Matter
