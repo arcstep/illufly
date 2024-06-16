@@ -187,26 +187,36 @@ class Project():
         output_path = self._get_filepath(output_file)
         return export_jupyter(input_path, output_path)
 
-    def _execute_task(self, task_func, output_file, task: str=None, prompt_id: str=None, input_file: str=None, input_doc: str=None, **kwargs):
+    def _execute_task(self, task_func, output_file, task: str=None, prompt_id: str=None, input_file: str=None, kg_files: List[str]=None, **kwargs):
         command = task_func.__name__
         cmd_args = {
             "task": task,
-            "output_file": output_file,
-            "prompt_id": prompt_id,
             "input_file": input_file,
-            "input_doc": input_doc,
+            "output_file": output_file,
+            "kg_files": kg_files,
+            "prompt_id": prompt_id,
             **kwargs
         }
 
+        input_doc = None
         if input_file:
             docs = load_markdown(self._get_filepath(input_file))
             input_doc = docs.markdown
+
+        knowledge = []
+        if kg_files:
+            if isinstance(kg_files, str):
+                kg_files = [kg_files]
+            for ref_file in kg_files:
+                d = load_markdown(self._get_filepath(ref_file))
+                knowledge.append(d.markdown)
 
         resp_md = ""
         for x in task_func(
             self.llm,
             prompt_id=prompt_id,
             input_doc=input_doc,
+            knowledge=knowledge,
             task=task,
             **kwargs
         ):
@@ -227,30 +237,27 @@ class Project():
             self.output_files.append(output_file)
             self.save_project()
 
-    def from_idea(self, output_file: str, task: str, **kwargs):
+    def from_idea(self, output_file: str, task: str, kg_files: List[str]=None, **kwargs):
         """
         从一个idea开始生成。
         """
-        self._execute_task(from_idea, output_file=output_file, task=task, **kwargs)
+        self._execute_task(from_idea, output_file=output_file, task=task, kg_files=kg_files, **kwargs)
 
-    def from_outline(self, output_file: str, input_file: str=None, input_doc: str=None, **kwargs):
+    def from_outline(self, output_file: str, input_file: str, kg_files: List[str]=None, **kwargs):
         """
         从大纲开始扩写。
         """
-        raise_not_supply_all("from_outline至少提供input_file或input_doc", input_file, input_doc)
-        self._execute_task(from_outline, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
+        self._execute_task(from_outline, output_file=output_file, input_file=input_file, kg_files=kg_files, **kwargs)
 
-    def from_chunk(self, output_file: str, input_file: str=None, input_doc: str=None, **kwargs):
+    def from_chunk(self, output_file: str, input_file: str, kg_files: List[str]=None, **kwargs):
         """
         逐段重新生成。
         """
-        raise_not_supply_all("from_chunk至少提供input_file或input_doc", input_file, input_doc)
-        self._execute_task(from_chunk, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
+        self._execute_task(from_chunk, output_file=output_file, input_file=input_file, kg_files=kg_files, **kwargs)
 
-    def extract(self, output_file: str, input_file: str=None, input_doc: str=None, **kwargs):
+    def extract(self, output_file: str, input_file: str, kg_files: List[str]=None, **kwargs):
         """
         整体提取。
         """
-        raise_not_supply_all("extract至少提供input_file或input_doc", input_file, input_doc)
-        self._execute_task(extract, output_file=output_file, input_file=input_file, input_doc=input_doc, **kwargs)
+        self._execute_task(extract, output_file=output_file, input_file=input_file, kg_files=kg_files, **kwargs)
 
