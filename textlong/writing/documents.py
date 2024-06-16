@@ -30,14 +30,23 @@ class MarkdownDocuments():
         return self.documents
 
     @classmethod
+    def to_front_matter(cls, dict_data):
+        if isinstance(dict_data, dict):
+            metadata = copy.deepcopy(dict_data)
+            if 'id' in metadata:
+                metadata.pop('id', None)
+            if 'type' in metadata:
+                metadata.pop('type', None)
+            return f'---\n{yaml.safe_dump(metadata, allow_unicode=True)}---\n\n'
+        else:
+            return ''
+
+    @classmethod
     def to_markdown(cls, documents: List[Document], sep: str="", with_front_matter: bool=False):
         meta0 = documents[0].metadata
         front_matter = ''
-        if 'type' in meta0 and meta0['type'] == 'front_matter':
-            meta_display = meta0.copy()
-            meta_display.pop('id', None)
-            meta_display.pop('type', None)
-            front_matter = f'---\n{yaml.safe_dump(meta_display, allow_unicode=True)}---\n\n'
+        if with_front_matter and 'type' in meta0 and meta0['type'] == 'front_matter':
+            front_matter = cls.to_front_matter(meta0)
         return front_matter + sep.join([d.page_content for d in documents])
 
     @property
