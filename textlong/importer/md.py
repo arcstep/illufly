@@ -1,6 +1,7 @@
 import os
+from ..writing.documents import MarkdownDocuments
 
-def load_markdown(file_path: str=None):
+def load_markdown(file_path: str=None) -> MarkdownDocuments:
     """
     从文件加载文本。
     """
@@ -10,4 +11,4 @@ def load_markdown(file_path: str=None):
         if os.path.exists(file_path):
             with open(file_path, 'r', encoding='utf-8') as f:
                 txt = f.read()
-    return txt
+    return MarkdownDocuments(txt)
