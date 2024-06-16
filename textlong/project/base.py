@@ -6,7 +6,7 @@ from typing import Union, List, Dict, Any
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
 
-from ..writing import from_idea, from_chunk, from_outline, extract
+from ..writing import from_idea, from_chunk, from_outline, extract, MarkdownDocuments
 from ..config import (
     get_textlong_folder,
     get_default_public,
@@ -22,9 +22,9 @@ class Command():
     """
     长文生成指令。
     """
-    def __init__(self, cmd_name: str, cmd_kwargs: Dict[str, Any], output_text: str, modified_at: str=None):
-        self.cmd_name = cmd_name
-        self.cmd_kwargs = cmd_kwargs
+    def __init__(self, command: str, args: Dict[str, Any], output_text: str, modified_at: str=None):
+        self.command = command
+        self.args = {k: v for k, v in args.items() if v}
         self.output_text = output_text
         self.modified_at = modified_at or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -36,17 +36,24 @@ class Command():
     def __repr__(self):
         info = "".join([
             f'({self.modified_at})',
-            self.cmd_name,
+            self.command,
             f': {self.output_text[:10]}...' if len(self.output_text) > 10 else self.output_text[:10]
         ])
         return f"Command<{info}>"
 
     def to_dict(self):
         return {
-            'cmd_kwargs': self.cmd_kwargs,
-            'cmd_name': self.cmd_name,
+            'command': self.command,
+            'args': self.args,
             'modified_at': self.modified_at,
             'output_text': self.output_text,
+        }
+    
+    def to_metadata(self):
+        return {
+            'command': self.command,
+            'args': self.args,
+            'modified_at': self.modified_at,
         }
 
     @classmethod
@@ -132,15 +139,14 @@ class Project():
                 history = yaml.safe_load(f) or []
         return history
 
-    def save_output_history(self, output_file: str, cmd_name: str, cmd_kwargs: Dict[str, Any], output_text: str):
+    def save_output_history(self, output_file: str, command: Command):
         """
         保存生成历史。
         """
         path = self.get_output_history_path(output_file)
         history = self._load_output_history(path)
 
-        cmd = Command(cmd_name, cmd_kwargs, output_text)
-        history.append(cmd.to_dict())
+        history.append(command.to_dict())
 
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
@@ -156,7 +162,9 @@ class Project():
         """
         history = self.load_history(output_file)
         output_text = history[index]['output_text']
-        save_markdown(self.get_filepath(save_as or output_file), output_text)
+        cmd = Command.from_dict(history[index])
+        resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + output_text
+        save_markdown(self.get_filepath(save_as or output_file), resp_md)
 
     def export_jupyter(self, input_file: str, output_file: str):
         """
@@ -170,6 +178,16 @@ class Project():
         """
         通用任务执行框架。
         """
+        command = task_func.__name__
+        cmd_args = {
+            "task": task,
+            "output_file": output_file,
+            "prompt_id": prompt_id,
+            "input_file": input_file,
+            "input_doc": input_doc,
+            **kwargs
+        }
+
         if input_file:
             input_doc = load_markdown(self.get_filepath(input_file))
 
@@ -184,22 +202,14 @@ class Project():
             resp_md += x
             print(x, end="")
 
+        cmd = Command(command, cmd_args, resp_md)
+
         # 保存生成结果
+        resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + resp_md
         save_markdown(self.get_filepath(output_file), resp_md)
 
-        # 保存生成日志
-        cmd_name = task_func.__name__
-        cmd_kwargs = {
-            "task": task,
-            "output_file": output_file,
-            "prompt_id": prompt_id,
-            "input_file": input_file,
-            "input_doc": input_doc,
-            **kwargs
-        }
-
         # 保存生成历史
-        self.save_output_history(output_file, cmd_name, cmd_kwargs, resp_md)
+        self.save_output_history(output_file, cmd)
 
         # 更新项目配置
         if output_file not in self.output_files:
