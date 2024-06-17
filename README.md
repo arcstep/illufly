@@ -88,22 +88,14 @@ pip install textlong==1.2.3
 
 ## 3 使用 Project 创作长文
 
-### 3.1 建议在 jupyter 环境中使用
+### 3.1 在 jupyter 环境中使用 textlong
 
-### 3.2 在 Jupyter 中导入 textlong
-
-#### 3.2.1 安装 JupyterLab
+**安装 JupyterLab**
 
 在使用 textlong 之前，首先需要确保你的环境中安装了 JupyterLab。JupyterLab 是一个交互式的开发环境，非常适合进行数据分析和机器学习项目。你可以通过以下命令安装 JupyterLab：
 
 ```sh
 pip install jupyterlab
-```
-
-如果你使用的是 conda 环境，也可以使用 conda 命令进行安装：
-
-```sh
-conda install -c conda-forge jupyterlab
 ```
 
 安装完成后，可以通过运行以下命令来启动 JupyterLab：
@@ -112,11 +104,11 @@ conda install -c conda-forge jupyterlab
 jupyter-lab
 ```
 
-#### 3.2.2 建立笔记
+**建立笔记**
 
 启动 JupyterLab 后，你将看到一个 Web 界面。点击页面右上角的`New`按钮，选择`Python 3`来创建一个新的笔记。
 
-#### 3.2.3 导入 textlong 包
+**导入 textlong 包**
 
 在新的笔记中，首先需要导入 textlong 包。在进行导入之前，请确保已经按照前面的步骤正确安装了 textlong 包。以下是如何在 Jupyter 笔记中导入 textlong 包的示例：
 
@@ -145,7 +137,7 @@ p
 
 通过上述步骤，你就可以在 JupyterLab 环境中使用 textlong 包来创作长文了。
 
-### 3.3 创作提纲
+### 3.2 创作提纲
 
 在创作长篇文章时，使用 textlong 的提纲功能可以帮助你更好地组织和规划文章结构。以下是如何使用 textlong 创作提纲的详细步骤。
 
@@ -188,7 +180,7 @@ p.from_idea("提纲.md", task, prompt_id="OUTLINE")
 ...
 ```
 
-### 3.4 文章扩写
+### 3.3 文章扩写
 
 基于提纲进行文章扩写是 textlong 的核心功能之一。它能够帮助作者根据已有的提纲框架，快速生成详细的文章内容。以下是如何使用 textlong 进行文章扩写的具体步骤。
 
@@ -235,7 +227,7 @@ p.from_outline(
 ...
 ```
 
-### 3.5 引用素材管理
+### 3.4 引用素材管理
 
 在创作长篇小说时，一个重要环节是生成和整理素材。textlong 工具提供了`from_idea`方法，可以帮助你快速生成特定主题的素材。比如，你可以通过以下代码生成关于小说人物的设定：
 
