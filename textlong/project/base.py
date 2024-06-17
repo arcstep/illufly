@@ -52,7 +52,7 @@ class Command():
     def to_metadata(self):
         return {
             'command': self.command,
-            'args': self.args,
+            'reference': {k: v for k, v in self.args.items() if v and k in ['prompt_id', 'input_file', 'kg_files']},
             'modified_at': self.modified_at,
         }
 
@@ -96,7 +96,7 @@ class Project():
     
     @property
     def project_config_path(self):
-        return self._get_filepath(get_default_project_config())
+        return self.get_path(get_default_project_config())
 
     def _confirm_filepath(self, path):
         if not os.path.exists(path):
@@ -108,14 +108,12 @@ class Project():
         """
         保存文本到markdown文件。
         """
-
         if filepath and txt:
             self._confirm_filepath(filepath)
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(txt)
 
         return True
-
 
     def load_project(self, config_path: str):
         """
@@ -136,7 +134,7 @@ class Project():
         return True
     
     def _get_output_history_path(self, output_file):
-        return self._get_filepath(get_default_project_logs(), output_file) + ".yml"
+        return self.get_path(get_default_project_logs(), output_file) + ".yml"
     
     def load_history(self, output_file):
         """
@@ -164,8 +162,11 @@ class Project():
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
             yaml.safe_dump(history, f)
-
-    def _get_filepath(self, *path):
+ 
+    def get_path(self, *path):
+        """
+        获得基于项目文件夹的文件资源路径。
+        """
         folder_path = self.project_folder or os.path.join(get_textlong_folder(), self.user_id, self.project_id)
         return os.path.join(folder_path, *path)
     
@@ -177,14 +178,14 @@ class Project():
         output_text = history[index]['output_text']
         cmd = Command.from_dict(history[index])
         resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + output_text
-        self.save_markdown(self._get_filepath(save_as or output_file), resp_md)
+        self.save_markdown(self.get_path(save_as or output_file), resp_md)
 
     def export_jupyter(self, input_file: str, output_file: str):
         """
         导出为Jupyter笔记。
         """
-        input_path = self._get_filepath(input_file)
-        output_path = self._get_filepath(output_file)
+        input_path = self.get_path(input_file)
+        output_path = self.get_path(output_file)
         return export_jupyter(input_path, output_path)
 
     def _execute_task(self, task_func, output_file, task: str=None, prompt_id: str=None, input_file: str=None, kg_files: List[str]=None, **kwargs):
@@ -200,7 +201,7 @@ class Project():
 
         input_doc = None
         if input_file:
-            docs = load_markdown(self._get_filepath(input_file))
+            docs = load_markdown(self.get_path(input_file))
             input_doc = docs.markdown
 
         knowledge = []
@@ -208,7 +209,7 @@ class Project():
             if isinstance(kg_files, str):
                 kg_files = [kg_files]
             for ref_file in kg_files:
-                d = load_markdown(self._get_filepath(ref_file))
+                d = load_markdown(self.get_path(ref_file))
                 knowledge.append(d.markdown)
 
         resp_md = ""
@@ -227,7 +228,7 @@ class Project():
 
         # 保存生成结果
         resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + resp_md
-        self.save_markdown(self._get_filepath(output_file), resp_md)
+        self.save_markdown(self.get_path(output_file), resp_md)
 
         # 保存生成历史
         self.save_output_history(output_file, cmd)

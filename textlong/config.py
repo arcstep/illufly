@@ -20,7 +20,7 @@ def get_default_user():
 
 def get_default_public():
     """默认的公共资料存储目录"""
-    return os.getenv("TEXTLONG_PUBLIC") or "public"
+    return os.getenv("TEXTLONG_PUBLIC") or ""
 
 def get_default_project_logs():
     """默认的公共资料存储目录"""
@@ -32,7 +32,7 @@ def get_default_project_config():
 
 def get_textlong_folder():
     """从环境变量中获得项目的存储目录"""
-    return os.getenv("TEXTLONG_FOLDER") or "data"
+    return os.getenv("TEXTLONG_FOLDER") or ""
 
 def get_default_html_share():
     """默认的网页分享目录"""
