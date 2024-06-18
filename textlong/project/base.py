@@ -255,6 +255,9 @@ class Project():
             "prompt_id": prompt_id,
             **kwargs
         }
+        if get_verbose():
+            print("\033[31m", f'> {command} -> {output_file} >>>')  # 红色
+            print("\033[32m", cmd_args, "\033[0m")  # 绿色，然后重置
 
         input_doc = None
         if input_file:
