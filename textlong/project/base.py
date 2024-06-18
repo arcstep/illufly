@@ -166,30 +166,32 @@ class Project():
             commands = sorted(commands, key=lambda cmd: cmd['modified_at'])
         return commands
 
-    def load_script(self):
+    def load_script(self, script_path: str=None):
         """
         加载执行脚本。
         """
         commands = []
-        if os.path.exists(self.project_script_path):
-            with open(self.project_script_path, 'r') as f:
+        path = script_path or self.project_script_path
+        if os.path.exists(path):
+            with open(path, 'r') as f:
                 commands = yaml.safe_load(f) or []
         return commands
 
-    def save_script(self):
+    def save_script(self, script_path: str=None):
         """
         保存命令执行的脚本，可用于批量自动执行。
         """
-        os.makedirs(os.path.dirname(self.project_script_path), exist_ok=True)
-        with open(self.project_script_path, 'w') as f:
+        path = script_path or self.project_script_path
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
             yaml.safe_dump(self.load_commands(), f, allow_unicode=True)
         return True
     
-    def run_script(self):
+    def run_script(self, script_path: str=None):
         """
         自动执行脚本。
         """
-        for cmd in self.load_script():
+        for cmd in self.load_script(script_path):
             if cmd['cmd'] == 'from_idea':
                 self.from_idea(**cmd['kwargs'])
             elif cmd['cmd'] == 'from_outline':
