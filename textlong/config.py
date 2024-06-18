@@ -78,6 +78,9 @@ def get_default_env(key: str=None):
         "TEXTLONG_PUBLIC": "",
     }
     if key:
-        return os.getenv(key) or default_values[key]
+        if key not in default_values:
+            raise ValueError(f"Environ Value [{key}] Not Exist !!!")
+        else:
+            return os.getenv(key) or default_values[key]
     else:
         return default_values
