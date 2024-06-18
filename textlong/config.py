@@ -1,15 +1,5 @@
 import os
 
-_NODES_FOLDER_NAME = "__NODES__"
-_TEMPLATES_FOLDER_NAME = "__TEMPLATES__"
-_CONTENTS_FOLDER_NAME = "__CONTENTS__"
-_PROMPTS_CHAT_FOLDER_NAME = "__PROMPTS__/{action}/CHAT_TEMPLATE"
-_PROMPTS_STRING_FOLDER_NAME = "__PROMPTS__/{action}/STRING_TEMPLATE"
-_HISTORY_FOLDER_NAME = "__HISTORY__"
-_QA_FOLDER_NAME = "__QA__"
-_DOCS_FOLDER_NAME = "__DOCS__"
-_TEMP_FOLDER_NAME = "__TEMP__"
-
 def get_default_session():
     """默认的用户名"""
     return os.getenv("TEXTLONG_DEFAULT_SESSION") or "default"
@@ -18,26 +8,46 @@ def get_default_user():
     """默认的用户名"""
     return os.getenv("TEXTLONG_DEFAULT_USER") or "default_user"
 
-def get_default_public():
+def get_folder_public():
     """默认的公共资料目录"""
     return os.getenv("TEXTLONG_PUBLIC") or ""
 
-def get_default_project_logs():
+def get_folder_prompts_chat(action: str):
+    return get_folder_prompts() + "/{" + action + "}/CHAT_TEMPLATE"
+
+def get_folder_prompts_string(action: str):
+    return get_folder_prompts() + "/{" + action + "}/STRING_TEMPLATE"
+
+def get_folder_prompts():
+    """默认的项目提示语目录"""
+    return os.getenv("TEXTLONG_PROMPTS") or "__PROMPTS__"
+
+def get_folder_logs():
     """默认的项目日志目录"""
-    return os.getenv("TEXTLONG_PROJECT_LOGS") or "__logs__"
+    return os.getenv("TEXTLONG_LOGS") or "__LOG__"
 
-def get_default_project_config():
+def get_project_config_file():
     """默认的项目配置文件"""
-    return os.getenv("TEXTLONG_PROJECT_CONFIG") or "project_config.yml"
+    return os.getenv("TEXTLONG_CONFIG_FILE") or "project_config.yml"
 
-def get_default_project_script():
+def get_project_script_file():
     """默认的项目脚本文件"""
-    return os.getenv("TEXTLONG_PROJECT_SCRIPT") or "project_script.yml"
+    return os.getenv("TEXTLONG_SCRIPT_FILE") or "project_script.yml"
 
-def get_textlong_folder():
+def get_folder_root():
     """从环境变量中获得项目的存储目录"""
-    return os.getenv("TEXTLONG_FOLDER") or ""
+    return os.getenv("TEXTLONG_ROOT") or ""
 
-def get_default_html_share():
-    """默认的网页分享目录"""
-    return os.getenv("TEXTLONG_DEFAULT_HTML_SHARE") or "html-share"
+def get_folder_share():
+    """默认的分享目录"""
+    return os.getenv("TEXTLONG_SHARE") or "__SHARE__"
+
+def get_folder_history():
+    """默认的分享目录"""
+    return os.getenv("TEXTLONG_MEMORY_HISTORY") or "__MEMORY_HISTORY__"
+
+def get_folder_qa():
+    return os.getenv("TEXTLONG_QA") or "__QA__"
+
+def get_folder_docs():
+    return os.getenv("TEXTLONG_DOCS") or "__DOCS__"

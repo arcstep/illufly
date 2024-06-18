@@ -9,10 +9,10 @@ from langchain.prompts import (
     load_prompt as load_str_prompt,
 )
 from .config import (
-    get_textlong_folder,
-    get_default_public,
-    _PROMPTS_STRING_FOLDER_NAME,
-    _PROMPTS_CHAT_FOLDER_NAME,
+    get_folder_root,
+    get_folder_public,
+    get_folder_prompts_string,
+    get_folder_prompts_chat,
 )
 import os
 import json
@@ -71,9 +71,9 @@ def load_string_prompt(action: str, prompt_id: str, user_id: str=None):
     从文件夹加载提示语模板。
     """
     prompt_folder = os.path.join(
-        get_textlong_folder(),
-        user_id or get_default_public(),
-        _PROMPTS_STRING_FOLDER_NAME.format(action=action),
+        get_folder_root(),
+        user_id or get_folder_public(),
+        get_folder_prompts_string(action),
         prompt_id
     )
     
@@ -101,9 +101,9 @@ def save_string_prompt(template: PromptTemplate, action: str, prompt_id: str, us
     保存提示语模板到文件夹。
     """
     prompt_folder = os.path.join(
-        get_textlong_folder(),
-        user_id or get_default_public(),
-        _PROMPTS_STRING_FOLDER_NAME.format(action=action),
+        get_folder_root(),
+        user_id or get_folder_public(),
+        get_folder_prompts_string(action),
         prompt_id
     )
     os.makedirs(prompt_folder, exist_ok=True)
@@ -128,9 +128,9 @@ def load_chat_prompt(action: str, prompt_id: str, user_id=None):
     目前不支持在partial中使用嵌套模板。
     """
     prompt_path = os.path.join(
-        get_textlong_folder(),
-        user_id or get_default_public(),
-        _PROMPTS_CHAT_FOLDER_NAME.format(action=action),
+        get_folder_root(),
+        user_id or get_folder_public(),
+        get_folder_prompts_chat(action),
         prompt_id
     )
 
@@ -183,9 +183,9 @@ def save_chat_prompt(template: ChatPromptTemplate, action: str, prompt_id: str, 
         - `partial`变量，`var_{变量名}.md`
     """
     prompt_path = os.path.join(
-        get_textlong_folder(),
-        user_id or get_default_public(),
-        _PROMPTS_CHAT_FOLDER_NAME.format(action=action),
+        get_folder_root(),
+        user_id or get_folder_public(),
+        get_folder_prompts_chat(action),
         prompt_id
     )
 
