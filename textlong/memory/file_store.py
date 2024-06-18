@@ -14,7 +14,7 @@ from langchain_core.messages import (
     messages_to_dict,
 )
 
-from ..config import get_textlong_folder, get_default_user, _HISTORY_FOLDER_NAME
+from ..config import get_folder_root, get_default_user, get_folder_history
 
 def create_session_id(user_id: str = "default_user"):
     now = datetime.datetime.now()
@@ -67,7 +67,7 @@ class LocalFileStore(BaseChatMessageHistory):
 
         self.user_id = user_id or get_default_user()
         self.session_id = session_id or create_session_id(self.user_id)
-        self.history_folder = history_folder or os.path.join(get_textlong_folder(), self.user_id, _HISTORY_FOLDER_NAME)
+        self.history_folder = history_folder or os.path.join(get_folder_root(), self.user_id, get_folder_history())
 
     @property
     def messages(self) -> List[BaseMessage]:  # type: ignore

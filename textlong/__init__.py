@@ -1,4 +1,4 @@
-from .hub import load_resource_prompt
+from .hub import load_resource_prompt, load_string_prompt, save_string_prompt
 
 from .writing import from_idea, from_chunk, from_outline, extract
 from .project import Project, list_projects, create_project, is_project_existing

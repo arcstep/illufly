@@ -8,7 +8,7 @@ from langchain_community.document_loaders import (
 )
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
-from ..config import get_textlong_folder, get_textlong_doc, get_default_public, _DOCS_FOLDER_NAME
+from ..config import get_folder_root, get_folder_public, get_folder_docs
 from ..utils import raise_not_install
 
 import os
@@ -80,12 +80,12 @@ class LocalFilesLoader(BaseLoader):
         extensions: List[str] = [],
         *args, **kwargs
     ):
-        self.user_id = user_id or get_default_public()
+        self.user_id = user_id or get_folder_public()
         self.path_regex = path_regex or ".*"
         self.included_prefixes = included_prefixes
         self.excluded_prefixes = excluded_prefixes
         self.extensions = extensions or ["docx", "pdf", "md", "txt", "xlsx"]
-        self.documents_folder = os.path.join(get_textlong_folder(), self.user_id, _DOCS_FOLDER_NAME)
+        self.documents_folder = os.path.join(get_folder_root(), self.user_id, get_folder_docs())
     
     def help(self):
         return "\n".join([

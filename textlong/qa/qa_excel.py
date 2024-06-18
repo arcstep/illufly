@@ -1,7 +1,7 @@
 from typing import Iterator, List, Union
 from langchain_core.documents import Document
 from langchain_community.document_loaders.base import BaseLoader
-from ..config import get_textlong_folder, _QA_FOLDER_NAME
+from ..config import get_folder_root, get_folder_qa
 from .local_files import LocalFilesLoader
 
 import os
@@ -20,7 +20,7 @@ class QAExcelsLoader(LocalFilesLoader):
     ):
         super().__init__(**kwargs)
         self.extensions = ["xlsx", "xls"]
-        self.documents_folder = os.path.join(get_textlong_folder(), self.user_id, _QA_FOLDER_NAME)
+        self.documents_folder = os.path.join(get_folder_root(), self.user_id, get_folder_qa())
 
     def detect_df(self, filename: str) -> tuple:
         """

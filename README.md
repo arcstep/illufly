@@ -66,7 +66,7 @@ pip install textlong
 pip install --upgrade textlong
 ```
 
-## 3 使用 Project 创作长文
+## 3 使用 textlong 创作长文
 
 ### 3.1 在 jupyter 环境中使用 textlong
 
@@ -232,13 +232,13 @@ p.save_script()
 - cmd: from_idea
   kwargs:
     output_file: 人物设定.md
-    task: 我要写一个IT职场小说，主角是夏小兰，男一号是周成，请帮我设想一下这两个人的出身，要非常悲惨。
+    task: 我要写一个修仙小说，主角是夏小兰，男一号是周成，请帮我设想一下这两个人的出身，要非常悲惨。
   modified_at: "2024-06-18 10:31:07"
 - cmd: from_idea
   kwargs:
     output_file: 写作提纲.md
     prompt_id: OUTLINE
-    task: 请帮我创作500字的职场小说，标题为《我修了个假仙》，主角是夏小兰，男一号是周成，每一个章节都适用意外、打脸的线索推动。
+    task: 请帮我创作500字的修仙小说，标题为《我修了个假仙》，主角是夏小兰，男一号是周成，每一个章节都适用意外、打脸的线索推动。
   modified_at: "2024-06-18 10:31:26"
 ```
 

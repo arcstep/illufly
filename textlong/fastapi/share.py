@@ -1,6 +1,6 @@
 import mistune
 import os
-from ..config import get_default_html_share
+from ..config import get_folder_share
 
 def create_app():
     from fastapi import FastAPI, HTTPException
@@ -19,7 +19,7 @@ def create_app():
     """
     app = FastAPI()
 
-    HTML_DIR = get_default_html_share()
+    HTML_DIR = get_folder_share()
 
     @app.post("/publish/{id}")
     async def publish(id: str, md: str):

@@ -8,11 +8,11 @@ from langchain_core.runnables import Runnable
 
 from ..writing import from_idea, from_chunk, from_outline, extract, MarkdownDocuments
 from ..config import (
-    get_textlong_folder,
-    get_default_public,
-    get_default_project_config,
-    get_default_project_script,
-    get_default_project_logs,
+    get_folder_root,
+    get_folder_public,
+    get_project_config_file,
+    get_project_script_file,
+    get_folder_logs,
 )
 from ..parser import parse_markdown
 from ..exporter import export_jupyter
@@ -65,16 +65,17 @@ class Project():
     """
     长文生成项目的文件管理。
 
-    - {project_folder}
     - <textlong_folder>/{user_id}/{project_id}
+    - <textlong_folder>/{user_id}/{project_id}/__PROMPTS__
+    - <textlong_folder>/{user_id}/{project_id}/__LOG__
     - <textlong_folder>/{user_id}/{project_id}/{file_path}
     """
-    def __init__(self, llm: Runnable=None, project_folder: str=None, project_id: str=None, user_id: str=None):
-        raise_not_supply_all("Project对象至少提供project_folder或project_id", project_folder, project_id)
+    def __init__(self, llm: Runnable, project_id: str, user_id: str=None):
+        raise_not_supply_all("Project对象必须提供llm", llm)
+        raise_not_supply_all("Project对象必须提供project_id", project_id)
 
         self.llm = llm
-        self.project_folder = project_folder
-        self.user_id = user_id or get_default_public()
+        self.user_id = user_id or get_folder_public()
         self.project_id = project_id
         self.output_files: List[str] = []
 
@@ -89,7 +90,7 @@ class Project():
         ])
 
     def __repr__(self):
-        project_folder = self.project_folder or os.path.join('PROJECT_BASE', self.user_id, self.project_id)
+        project_folder = os.path.join('{BASE_FOLDER}', self.user_id, self.project_id)
         return f"Project<llm: '{self.llm._llm_type}/{self.llm.model}', project_folder: '{project_folder}', output_files: {self.output_files}>"
 
     def to_dict(self):
@@ -97,11 +98,11 @@ class Project():
     
     @property
     def project_config_path(self):
-        return self.get_path(get_default_project_config())
+        return self.get_path(get_project_config_file())
 
     @property
     def project_script_path(self):
-        return self.get_path(get_default_project_script())
+        return self.get_path(get_project_script_file())
 
     def _confirm_filepath(self, path):
         if not os.path.exists(path):
@@ -139,7 +140,7 @@ class Project():
         return True
     
     def _get_output_history_path(self, output_file):
-        return self.get_path(get_default_project_logs(), output_file) + ".yml"
+        return self.get_path(get_folder_logs(), output_file) + ".yml"
     
     def load_history(self, output_file):
         """
@@ -217,7 +218,7 @@ class Project():
         """
         获得基于项目文件夹的文件资源路径。
         """
-        folder_path = self.project_folder or os.path.join(get_textlong_folder(), self.user_id, self.project_id)
+        folder_path = os.path.join(get_folder_root(), self.user_id, self.project_id)
         return os.path.join(folder_path, *path)
     
     def checkout(self, output_file: str, index: int=-2, save_as: str=None):
