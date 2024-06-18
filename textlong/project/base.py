@@ -11,6 +11,7 @@ from ..config import (
     get_textlong_folder,
     get_default_public,
     get_default_project_config,
+    get_default_project_script,
     get_default_project_logs,
 )
 from ..parser import parse_markdown
@@ -98,6 +99,10 @@ class Project():
     def project_config_path(self):
         return self.get_path(get_default_project_config())
 
+    @property
+    def project_script_path(self):
+        return self.get_path(get_default_project_script())
+
     def _confirm_filepath(self, path):
         if not os.path.exists(path):
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -143,6 +148,51 @@ class Project():
         path = self._get_output_history_path(output_file)
         return self._load_output_history(path)
 
+    def load_commands(self):
+        """
+        加载所有命令。
+        """
+        commands = []
+        for output_file in self.output_files:
+            hist = self.load_history(output_file)
+            commands.extend([{'cmd': cmd['command'], 'kwargs':cmd['args'],  'modified_at': cmd['modified_at']} for cmd in hist])
+        if commands:
+            commands = sorted(commands, key=lambda cmd: cmd['modified_at'])
+        return commands
+
+    def load_script(self):
+        """
+        加载执行脚本。
+        """
+        commands = []
+        if os.path.exists(self.project_script_path):
+            with open(self.project_script_path, 'r') as f:
+                commands = yaml.safe_load(f) or []
+        return commands
+
+    def save_script(self):
+        """
+        保存命令执行的脚本，可用于批量自动执行。
+        """
+        os.makedirs(os.path.dirname(self.project_script_path), exist_ok=True)
+        with open(self.project_script_path, 'w') as f:
+            yaml.safe_dump(self.load_commands(), f, allow_unicode=True)
+        return True
+    
+    def run_script(self):
+        """
+        自动执行脚本。
+        """
+        for cmd in self.load_script():
+            if cmd['cmd'] == 'from_idea':
+                self.from_idea(**cmd['kwargs'])
+            elif cmd['cmd'] == 'from_outline':
+                self.from_outline(**cmd['kwargs'])
+            elif cmd['cmd'] == 'from_chunk':
+                self.from_chunk(**cmd['kwargs'])
+            elif cmd['cmd'] == 'extract':
+                self.extract(**cmd['kwargs'])
+
     def _load_output_history(self, output_path):
         history = []
         if os.path.exists(output_path):
@@ -161,7 +211,7 @@ class Project():
 
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
-            yaml.safe_dump(history, f)
+            yaml.safe_dump(history, f, allow_unicode=False)
  
     def get_path(self, *path):
         """
@@ -261,4 +311,3 @@ class Project():
         整体提取。
         """
         self._execute_task(extract, output_file=output_file, input_file=input_file, kg_files=kg_files, **kwargs)
-
