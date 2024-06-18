@@ -105,11 +105,11 @@ from langchain_zhipu import ChatZhipuAI
 现在，你可以初始化一个 Project 对象，如下所示：
 
 ```python
-p = Project(ChatZhipuAI(model="glm-4"), project_folder="demo")
+p = Project(ChatZhipuAI(model="glm-4"), project_id="demo")
 p
 ```
 
-这里`project_folder`是你为 textlong 项目指定的唯一标识符。确保你使用的是正确的 API 模型名称和项目 ID。
+这里`project_id`是你为 textlong 项目指定的唯一标识符。确保你使用的是正确的 API 模型名称和项目 ID。
 
 恭喜你，现在可以使用 textlong 包来创作长文了！
 

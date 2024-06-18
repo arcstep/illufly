@@ -14,6 +14,7 @@ from ..config import (
     get_project_script_file,
     get_folder_logs,
 )
+from ..hub import load_string_prompt, save_string_prompt
 from ..parser import parse_markdown
 from ..exporter import export_jupyter
 from ..importer import load_markdown
@@ -104,6 +105,10 @@ class Project():
     def project_script_path(self):
         return self.get_path(get_project_script_file())
 
+    @property
+    def project_folder(self):
+        return os.path.join(get_folder_root(), self.user_id, self.project_id)
+
     def _confirm_filepath(self, path):
         if not os.path.exists(path):
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -138,7 +143,7 @@ class Project():
         with open(self.project_config_path, 'w') as f:
             yaml.safe_dump(self.to_dict(), f, allow_unicode=True)
         return True
-    
+
     def _get_output_history_path(self, output_file):
         return self.get_path(get_folder_logs(), output_file) + ".yml"
     
@@ -151,7 +156,7 @@ class Project():
 
     def load_commands(self):
         """
-        加载所有命令。
+        从日志加载所有命令。
         """
         commands = []
         for output_file in self.output_files:
@@ -218,8 +223,7 @@ class Project():
         """
         获得基于项目文件夹的文件资源路径。
         """
-        folder_path = os.path.join(get_folder_root(), self.user_id, self.project_id)
-        return os.path.join(folder_path, *path)
+        return os.path.join(self.project_folder, *path)
     
     def checkout(self, output_file: str, index: int=-2, save_as: str=None):
         """
@@ -270,6 +274,7 @@ class Project():
             input_doc=input_doc,
             knowledge=knowledge,
             task=task,
+            template_folder=self.project_folder,
             **kwargs
         ):
             resp_md += x

@@ -54,14 +54,14 @@ def gather_knowledge(knowledge: List[str]):
         kg_doc += '\n'.join([d for d in knowledge])
     return kg_doc
 
-def from_idea(llm: Runnable, task: str=None, prompt_id: str=None, input_doc: str=None, knowledge: List[str]=None, **kwargs):
+def from_idea(llm: Runnable, task: str=None, prompt_id: str=None, input_doc: str=None, knowledge: List[str]=None, template_folder: str=None, **kwargs):
     """
     创意：从一个创意开始生成长文档。
     """
     if not task:
         raise ValueError("'task' MUST NOT BE EMPTY !")
 
-    prompt = load_string_prompt("from_idea", prompt_id or "IDEA")
+    prompt = load_string_prompt("from_idea", prompt_id or "IDEA", template_folder=template_folder)
     todo_doc = f'你已经完成的创作如下：\n{input_doc}' if input_doc != None else ''
     kg = gather_knowledge(knowledge)
     chain = _create_chain(llm, prompt, todo_doc=todo_doc, knowledge=kg, **kwargs)
@@ -69,7 +69,7 @@ def from_idea(llm: Runnable, task: str=None, prompt_id: str=None, input_doc: str
     for delta in _call_markdown_chain(chain, {"task": task}):
         yield delta
 
-def from_outline(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, knowledge: List[str]=None, **kwargs):
+def from_outline(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, knowledge: List[str]=None, template_folder: str=None, **kwargs):
     """
     扩写：从大纲扩充到细节。
     """
@@ -78,7 +78,7 @@ def from_outline(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: 
 
     todo_docs = MarkdownDocuments(input_doc)
     kg = gather_knowledge(knowledge)
-    prompt = load_string_prompt("from_outline", prompt_id or "OUTLINE_DETAIL")
+    prompt = load_string_prompt("from_outline", prompt_id or "OUTLINE_DETAIL", template_folder=template_folder)
 
     last_index = None
     outline_docs = copy.deepcopy(todo_docs.documents)
@@ -106,7 +106,7 @@ def from_outline(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: 
     # 生成最后一个<OUTLINE/>之后的部份
     yield MarkdownDocuments.to_markdown(outline_docs[last_index:None])
 
-def extract(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, k: int=1000, knowledge: List[str]=None, **kwargs):
+def extract(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, k: int=1000, knowledge: List[str]=None, template_folder: str=None, **kwargs):
     """
     提取：按任务意图从长文档提取内容。
 
@@ -115,14 +115,14 @@ def extract(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=N
     if not input_doc:
         raise ValueError("'input_doc' MUST NOT BE EMPTY !")
 
-    prompt = load_string_prompt("extract", prompt_id or "SUMMARISE")
+    prompt = load_string_prompt("extract", prompt_id or "SUMMARISE", template_folder=template_folder)
     kg = gather_knowledge(knowledge)
     chain = _create_chain(llm, prompt, todo_doc=input_doc, knowledge=kg, **kwargs)
     resp_md = _call_markdown_chain(chain, {"task": task})
     for chunk in resp_md:
         yield chunk
 
-def from_chunk(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, k: int=1000, knowledge: List[str]=None, **kwargs):
+def from_chunk(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, k: int=1000, knowledge: List[str]=None, template_folder: str=None, **kwargs):
     """
     修改：从一个长文档的分段逐个进行处理。
 
@@ -132,7 +132,7 @@ def from_chunk(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: st
         raise ValueError("'input_doc' MUST NOT BE EMPTY !")
 
     ref_docs = MarkdownDocuments(input_doc)
-    prompt = load_string_prompt("from_chunk", prompt_id or "REWRITE")
+    prompt = load_string_prompt("from_chunk", prompt_id or "REWRITE", template_folder=template_folder)
     kg = gather_knowledge(knowledge)
 
     resp_md = ""

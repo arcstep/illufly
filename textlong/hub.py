@@ -66,18 +66,22 @@ def load_resource_prompt(action: str, prompt_id: str):
 
     return template.partial(**kwargs)
 
-def load_string_prompt(action: str, prompt_id: str, user_id: str=None):
+def load_string_prompt(action: str, prompt_id: str, template_folder: str=None):
     """
     从文件夹加载提示语模板。
     """
     prompt_folder = os.path.join(
         get_folder_root(),
-        user_id or get_folder_public(),
+        template_folder or "",
         get_folder_prompts_string(action),
         prompt_id
     )
     
     main_prompt = os.path.join(prompt_folder, 'main.txt')
+    if not os.path.exists(main_prompt):
+        prompt_template = load_resource_prompt(action, prompt_id)
+        save_string_prompt(prompt_template, action, prompt_id, template_folder=template_folder)
+
     if os.path.exists(main_prompt):
         with open(main_prompt, 'r') as f:
             prompt_str = f.read()
@@ -94,15 +98,15 @@ def load_string_prompt(action: str, prompt_id: str, user_id: str=None):
 
             return template.partial(**kwargs)
 
-    return load_resource_prompt(action, prompt_id)
+    raise ValueError(f'无法构建模板：{action} / {prompt_id}')
 
-def save_string_prompt(template: PromptTemplate, action: str, prompt_id: str, user_id: str=None):
+def save_string_prompt(template: PromptTemplate, action: str, prompt_id: str, template_folder: str=None):
     """
     保存提示语模板到文件夹。
     """
     prompt_folder = os.path.join(
         get_folder_root(),
-        user_id or get_folder_public(),
+        template_folder or "",
         get_folder_prompts_string(action),
         prompt_id
     )
@@ -122,14 +126,14 @@ def save_string_prompt(template: PromptTemplate, action: str, prompt_id: str, us
     
     return True
 
-def load_chat_prompt(action: str, prompt_id: str, user_id=None):
+def load_chat_prompt(action: str, prompt_id: str, template_folder: str=None):
     """
     加载提示语模板和partial变量的字符串。    
     目前不支持在partial中使用嵌套模板。
     """
     prompt_path = os.path.join(
         get_folder_root(),
-        user_id or get_folder_public(),
+        template_folder or "",
         get_folder_prompts_chat(action),
         prompt_id
     )
@@ -170,7 +174,7 @@ def load_chat_prompt(action: str, prompt_id: str, user_id=None):
 
     return ChatPromptTemplate.from_messages(messages=messages).partial(**partial_variables)
 
-def save_chat_prompt(template: ChatPromptTemplate, action: str, prompt_id: str, user_id=None):
+def save_chat_prompt(template: ChatPromptTemplate, action: str, prompt_id: str, template_folder: str=None):
     """
     保存对话风格的提示语模板。
 
@@ -184,7 +188,7 @@ def save_chat_prompt(template: ChatPromptTemplate, action: str, prompt_id: str, 
     """
     prompt_path = os.path.join(
         get_folder_root(),
-        user_id or get_folder_public(),
+        template_folder or "",
         get_folder_prompts_chat(action),
         prompt_id
     )
