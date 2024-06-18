@@ -13,14 +13,19 @@ def get_folder_public():
     return os.getenv("TEXTLONG_PUBLIC") or ""
 
 def get_folder_prompts_chat(action: str):
-    return get_folder_prompts() + "/{" + action + "}/CHAT_TEMPLATE"
+    """默认的对话提示语模板目录"""
+    return f'{get_folder_chat_prompts()}/{action}'
 
 def get_folder_prompts_string(action: str):
-    return get_folder_prompts() + "/{" + action + "}/STRING_TEMPLATE"
+    """默认的字符串提示语模板目录"""
+    return f'{get_folder_string_prompts()}/{action}'
 
-def get_folder_prompts():
+def get_folder_chat_prompts():
+    return os.getenv("TEXTLONG_CHAT_PROMPTS") or "__CHAT_PROMPTS__"
+
+def get_folder_string_prompts():
     """默认的项目提示语目录"""
-    return os.getenv("TEXTLONG_PROMPTS") or "__PROMPTS__"
+    return os.getenv("TEXTLONG_STR_PROMPTS") or "__STR_PROMPTS__"
 
 def get_folder_logs():
     """默认的项目日志目录"""
