@@ -16,6 +16,7 @@ DEFAULT_QA_CHAIN_PROMPT = """
 你要严格依据如下资料回答问题，你的回答不能与其冲突，更不要编造。
 请始终使用中文回答。
 
+你的参考资料：
 {context}
 
 问题: {question}

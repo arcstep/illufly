@@ -18,7 +18,7 @@ from ..hub import load_string_prompt, save_string_prompt
 from ..parser import parse_markdown
 from ..exporter import export_jupyter
 from ..importer import load_markdown
-from ..utils import raise_not_supply_all
+from ..utils import raise_not_supply_all, extract_text
 
 class Command():
     """
@@ -119,10 +119,11 @@ class Project():
         """
         保存文本到markdown文件。
         """
-        if filepath and txt:
+        md_text = extract_text(txt)
+        if filepath and md_text:
             self._confirm_filepath(filepath)
             with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(txt)
+                f.write(md_text)
 
         return True
 

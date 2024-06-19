@@ -4,7 +4,7 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain.agents.agent import AgentOutputParser, AgentAction, AgentFinish
 from langchain.agents.format_scratchpad import format_log_to_str
 from langchain.output_parsers import PydanticOutputParser
-import re
+from ..utils import extract_text
 
 class Action(BaseModel):
     name: str = Field(
@@ -45,13 +45,7 @@ class MarkdownOutputParser(AgentOutputParser):
     """
 
     def parse(self, text: str) -> List[str]:
-        """
-        用正则表达式匹配 >->>> 和 <<<-< 标记包围住的字符串并返回；
-        如果找到就直接返回。
-        """
-        pattern = r'>->>>\n(.*?)\n<<<-<'
-        matches = re.findall(pattern, text, re.DOTALL)
-        return (matches or [""])
+        return [extract_text(text)] or [""]
 
     @property
     def _type(self) -> str:
