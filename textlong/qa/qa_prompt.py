@@ -35,3 +35,13 @@ def create_qa_prompt():
     )
 
     return prompt
+
+def create_chat_prompt():
+    """普通对话"""
+
+    prompt = ChatPromptTemplate.from_messages([
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{question}"),
+    ])
+
+    return prompt

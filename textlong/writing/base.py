@@ -22,37 +22,17 @@ def _call_markdown_chain(chain, input):
         print(chain.get_prompts()[0].format(**input))
         print("#"*20, "PROMPT END ", "#"*20 + "\033[0m")  # 重置颜色
 
-    buffer = ""
-    start_index = -1
     for chunk in chain.stream(input):
-        buffer += chunk.content
-        if start_index == -1:
-            start_index = buffer.find('>->>>')
-            if start_index != -1:
-                yield buffer[start_index+5:]
-                buffer = ""
-        else:
-            if any([buffer.endswith(s) for s in ['<', '<<', '<<<', '<<<-']]):
-                if buffer.endswith('<<<-<'):
-                    yield buffer[:-5]
-                    break
-                else:
-                    continue
-            if buffer.find('<<<-<') !=-1:
-                yield buffer[:-5]
-                break
-            else:
-                yield buffer
-                buffer = ""
+        yield chunk.content
 
 def gather_knowledge(knowledge: List[str]):
     kg_doc = ''
     if knowledge:
         if isinstance(knowledge, str):
             knowledge = [knowledge]
-        kg_doc = '你应当知道这些知识：'
+        kg_doc = '\n>>>>>>>>> 你必须知晓：\n'
         kg_doc += '\n'.join([d for d in knowledge])
-    return kg_doc
+    return kg_doc + "<<<<<<<<<"
 
 def from_idea(llm: Runnable, task: str=None, prompt_id: str=None, input_doc: str=None, knowledge: List[str]=None, template_folder: str=None, **kwargs):
     """
@@ -62,11 +42,11 @@ def from_idea(llm: Runnable, task: str=None, prompt_id: str=None, input_doc: str
         raise ValueError("'task' MUST NOT BE EMPTY !")
 
     prompt = load_string_prompt("from_idea", prompt_id or "IDEA", template_folder=template_folder)
-    todo_doc = f'你已经完成的创作如下：\n{input_doc}' if input_doc != None else ''
+    todo_doc = f'你已经完成如下创作：\n{input_doc}' if input_doc != None else ''
     kg = gather_knowledge(knowledge)
-    chain = _create_chain(llm, prompt, todo_doc=todo_doc, knowledge=kg, **kwargs)
+    chain = _create_chain(llm, prompt, __todo_doc__=todo_doc, __knowledge__=kg, **kwargs)
 
-    for delta in _call_markdown_chain(chain, {"task": task}):
+    for delta in _call_markdown_chain(chain, {"__task__": task}):
         yield delta
 
 def from_outline(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=None, knowledge: List[str]=None, template_folder: str=None, **kwargs):
@@ -93,11 +73,11 @@ def from_outline(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: 
         prev_doc = MarkdownDocuments.to_markdown(todo_docs.get_prev_documents(doc))
         next_doc = MarkdownDocuments.to_markdown(todo_docs.get_next_documents(doc))
         todo_doc = f'{prev_doc}>->>>\n{doc.page_content}<<<-<\n\n{next_doc}'
-        chain = _create_chain(llm, prompt, todo_doc=todo_doc, knowledge=kg, **kwargs)
+        chain = _create_chain(llm, prompt, __todo_doc__=todo_doc, __knowledge__=kg, **kwargs)
 
         resp_md = ""
         task_howto = f"请仅针对上述`>->>>`和`<<<-<`包围的部份扩写。{task or ''}"
-        for delta in _call_markdown_chain(chain, {"task": task_howto}):
+        for delta in _call_markdown_chain(chain, {"__task__": task_howto}):
             yield delta
             resp_md += delta
         reply_docs = parse_markdown(resp_md)
@@ -117,8 +97,8 @@ def extract(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=N
 
     prompt = load_string_prompt("extract", prompt_id or "SUMMARISE", template_folder=template_folder)
     kg = gather_knowledge(knowledge)
-    chain = _create_chain(llm, prompt, todo_doc=input_doc, knowledge=kg, **kwargs)
-    resp_md = _call_markdown_chain(chain, {"task": task})
+    chain = _create_chain(llm, prompt, __todo_doc__=input_doc, __knowledge__=kg, **kwargs)
+    resp_md = _call_markdown_chain(chain, {"__task__": task})
     for chunk in resp_md:
         yield chunk
 
@@ -144,8 +124,8 @@ def from_chunk(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: st
         if len(md):
             prev_doc = MarkdownDocuments.to_markdown(ref_docs.get_prev_documents(docs[0]))
             todo_doc = f'{prev_doc}>->>>\n{md}\n<<<-<'
-            chain = _create_chain(llm, prompt, todo_doc=todo_doc, knowledge=kg, **kwargs)
-            for chunk in _call_markdown_chain(chain, {"task": task or ''}):
+            chain = _create_chain(llm, prompt, __todo_doc__=todo_doc, __knowledge__=kg, **kwargs)
+            for chunk in _call_markdown_chain(chain, {"__task__": task or ''}):
                 yield chunk
         else:
             yield ""
