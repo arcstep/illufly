@@ -159,16 +159,11 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-notes/*/__LOG__
-notes/*/__STR_PROMPTS__
-notes/documents
-notes/history
-notes/data
 notes/*.yml
 notes/*.md
-notes/*/__logs__
+notes/__*
+notes/*/__*
 notes/*/*.yml
 notes/*/*.md
-notes/*/*/__logs__
-notes/*/*/*.yml
-notes/*/*/*.md
+notes/*/*/
+demo*
