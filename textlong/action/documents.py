@@ -52,41 +52,98 @@ class MarkdownDocuments():
     def markdown(self):
         return self.__class__.to_markdown(self.documents)
 
-    def get_todo_documents(self, sep_mode: str="all", regex: str=None, k: n=None):
+    def get_todo_documents(self, sep_mode: Union[str, List[str]]="all", pattern: str=None, score: float=None, k: int=None):
         """
         将文档拆分为N个批次, 构建任务清单。
 
         Args:
         - sep_mode: 拆分模式
-            # 整体返回
+            # 整体返回, 返回 ('all', List[doc: Document])
             - 'all', 获得全部文档
 
-            # 从Document类型拆分
+            # 从Document类型拆分, 返回 ('document', List[index: int])
+            - 'document', 逐个文档元素
             - 'outline', 仅<OUTLINE><OUTLINE/>中的部份
-            - 'section', 将所有相邻的非标题内容连成一个批次并包括上文紧邻的标题
-            - 'no-heading', 将所有非标题内容连成一个批次
-            - 'headings', 将所有标题内容连成一个批次
-            - 'heading', 每个标题元素
-            - 'code-block', 每个代码块元素
-            - 'list', 每个列表元素
 
-            # 从文本拆分
+            # 从Document类型拆分, 返回 ('document', List[(from: int, to: int)])
+            - 'section', 将所有相邻的非标题内容连成一个批次并包括上文紧邻的标题
+            - 'not-heading', 将所有非标题内容连成一个批次
+            - 'headings', 将所有标题内容连成一个批次
+            - {元素名称}, 按标题、代码块、列表、paragraph等元素
+
+            # 从文本拆分, 返回 ('md', List[(from: int, to: int)])
             - 'chunk', 合并Document, 直到合并后的内容超过字数限制k
             - 'paragraph', 按每一个换行符
 
-        - regex: 按正则表达式匹配并过滤
+        - pattern: 按正则表达式匹配并过滤
+        - score: 按向量相似性分数过滤
+
         - k: 如果长度不超过k就合并批次
 
         Return: 拆分好的文档和插入位置的元组。
-        - [(doc: Document, index: int)]
-        - [(docs: List[Document], from: int, to: int)]
-        - [(md: str, from: int, to: int)]
+        - ('all', List[doc: Document])
+        - ('document', List[index: int])
+        - ('document', List[(from: int, to: int)])
+        - ('md', List[(from: int, to: int)])
         """
-        return [
-            (d, i)
-            for i, d in enumerate(self.documents) 
-            if d.metadata['type'] == "OUTLINE"
-        ]
+        sep_mode = sep_mode.lower()
+        pattern = pattern or '.*'
+
+        if sep_mode == 'all':
+            docs = [
+                d
+                for d in self.documents
+                if re.search(pattern, d.page_content)
+            ]
+            return ('all', docs)
+
+        elif sep_mode == 'document':
+            docs = [
+                d
+                for i, d in enumerate(self.documents) 
+                if re.search(pattern, d.page_content)
+            ]
+            return ('document', docs)
+
+        elif sep_mode in ['heading', 'list', 'block_code', 'paragraph']:
+            docs = [
+                d
+                for i, d in enumerate(self.documents) 
+                if re.search(pattern, d.page_content)
+                and d.metadata['type'] in sep_mode
+            ]
+            return ('document', docs)
+
+        elif sep_mode == 'outline':
+            docs = [
+                d
+                for i, d in enumerate(self.documents) 
+                if d.metadata['type'] == "OUTLINE"
+                and re.search(pattern, d.page_content)
+            ]
+            return ('document', docs)
+
+        elif sep_mode == 'segment':
+            docs = [
+                (d, i)
+                for i, d in enumerate(self.documents) 
+                if re.search(pattern, d.page_content)
+                and d.metadata['type'] != 'heading'
+            ]
+            segments = []
+            if docs:
+                chunk = [docs[0]]
+                for i in range(1, len(docs)):
+                    if docs[i][1] == chunk[-1][1] + 1:
+                        chunk.append(docs[i])
+                    else:
+                        segments.append([d for d, i in chunk])
+                        chunk = [docs[i]]
+                segments.append([d for d, i in chunk])
+            return ('segment', segments)
+
+        return []
+            
     
     def get_task_index(self, index_doc: Union[str, Document]):
         """
@@ -122,7 +179,7 @@ class MarkdownDocuments():
 
         return self.documents
 
-    def get_prev_documents(self, index_doc: Union[str, Document]=None, k: int=800):
+    def get_prev_documents(self, index_doc: Union[int, str, Document]=None, k: int=800):
         """
         获得向前关联文档。
         """
