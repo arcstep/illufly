@@ -9,6 +9,7 @@ from .documents import MarkdownDocuments
 from ..parser import parse_markdown
 from ..hub import load_prompt
 from ..importer import load_markdown
+from ..utils import extract_text
 
 def _create_chain(llm, prompt_template, **kwargs):
     if not llm:
@@ -16,8 +17,8 @@ def _create_chain(llm, prompt_template, **kwargs):
     prompt = prompt_template.partial(**kwargs)
     return prompt | llm
 
-def _call_markdown_chain(chain, input, fake: bool=False):
-    if get_verbose() or fake:
+def _call_markdown_chain(chain, input, fake: bool=False, verbose: bool=False):
+    if get_verbose() or fake or verbose:
         # 用蓝色表示提示语模板
         print("\033[34m" + chain.get_prompts()[0].format(**input) + "\033[0m")
 
@@ -63,6 +64,7 @@ def write(
     prompt_id: str=None,
     config: Dict[str, Any]=None,
     fake: bool=False,
+    verbose: bool=False,
     **kwargs
 ):
     """
@@ -91,7 +93,7 @@ def write(
             **kwargs
         }
         chain = _create_chain(llm, prompt, **_kwargs)
-        for delta in _call_markdown_chain(chain, {"task": task}, fake):
+        for delta in _call_markdown_chain(chain, {"task": task}, fake, verbose):
             yield delta
 
     elif task_mode == 'document':
@@ -113,11 +115,49 @@ def write(
             chain = _create_chain(llm, prompt, **_kwargs)
 
             resp_md = ""
-            for delta in _call_markdown_chain(chain, {"task": task}, fake):
+            for delta in _call_markdown_chain(chain, {"task": task}, fake, verbose):
                 yield delta
                 resp_md += delta
-            reply_docs = parse_markdown(resp_md)
+            reply_docs = parse_markdown(extract_text(resp_md))
             new_docs.replace_documents(doc, doc, reply_docs)
 
         yield MarkdownDocuments.to_markdown(old_docs.documents[last_index:None])
 
+def idea(
+    llm: Runnable,
+    task: str,
+    prompt_id: str=None,
+    **kwargs
+):
+    prompt_id = prompt_id or "IDEA"
+    md = ''
+    for chunk in write(llm, task=task, sep_mode="all", prompt_id=prompt_id, **kwargs):
+        md += chunk
+        print(chunk, end="")
+    return extract_text(md)
+
+def outline(
+    llm: Runnable,
+    task: str,
+    prompt_id: str=None,
+    **kwargs
+):
+    prompt_id = prompt_id or "OUTLINE"
+    md = ''
+    for chunk in write(llm, task=task, sep_mode="all", prompt_id=prompt_id, **kwargs):
+        md += chunk
+        print(chunk, end="")
+    return extract_text(md)
+
+def from_outline(
+    llm: Runnable,
+    input: Union[str, List[str]],
+    prompt_id: str=None,
+    **kwargs
+):
+    prompt_id = prompt_id or "OUTLINE_DETAIL"
+    md = ''
+    for chunk in write(llm, sep_mode="outline", input=input, prompt_id=prompt_id, **kwargs):
+        md += chunk
+        print(chunk, end="")
+    return extract_text(md)
