@@ -143,40 +143,37 @@ class MarkdownDocuments():
             return ('segment', segments)
 
         return []
-            
-    
-    def get_task_index(self, index_doc: Union[str, Document]):
+
+    def get_task_range(self, index_from: Union[str, Document], index_to: Union[str, Document]):
         """
         获得任务索引。
         """
-        task_id = index_doc.metadata['id'] if isinstance(index_doc, Document) else index_doc
+        index_from = index_from.metadata['id'] if isinstance(index_from, Document) else index_from
+        index_to = index_to.metadata['id'] if isinstance(index_to, Document) else index_to
+        _from = None
+        _to = None
         for i, doc in enumerate(self.documents):
-            if doc.metadata['id'] == task_id:
-                return i
+            if doc.metadata['id'] == index_from:
+                _from = i
+            if doc.metadata['id'] == index_to:
+                _to = i
+            if _from != None and _to != None:
+                return (_from, _to)
+        return (_from, _to)
 
-        return None
-
-    def insert_documents(self, index_doc: Union[str, Document]=None, docs: Union[str, List[Document]]=None):
-        """
-        插入文档对象。
-        """
-        return self._replace_documents(index_doc, docs, reserve=True)
-
-    def replace_documents(self, index_doc: Union[str, Document]=None, docs: Union[str, List[Document]]=None):
+    def replace_documents(self, index_from: Union[str, Document], index_to: Union[str, Document], docs: Union[str, List[Document]]=None):
         """
         替换文档对象。
         """
-        return self._replace_documents(index_doc, docs, reserve=False)
-
-    def _replace_documents(self, index_doc: Union[str, Document]=None, docs: Union[str, List[Document]]=None, reserve = False):
         to_insert = parse_markdown(docs) if isinstance(docs, str) else docs
-        index = self.get_task_index(index_doc)
-        if index != None:
-            self.documents = self.documents[:index] + to_insert + self.documents[index + (0 if reserve else 1):]
-        else:
-            info = index_doc.page_content if isinstance(index_doc, Document) else index_doc
-            raise ValueError(f"Not Found: {info}")
 
+        _from, _to = self.get_task_range(index_from, index_to)
+        if _from == None:
+            raise ValueError(f"{index_from} NOT FOUND!")
+        if _to == None:
+            raise ValueError(f"{index_to} NOT FOUND!")
+
+        self.documents = self.documents[:_from] + to_insert + self.documents[_to + 1:]
         return self.documents
 
     def get_prev_documents(self, index_doc: Union[int, str, Document]=None, k: int=800):
