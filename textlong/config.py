@@ -3,17 +3,8 @@ import os
 def get_folder_root():
     return get_default_env("TEXTLONG_ROOT")
 
-def get_folder_prompts_chat(action: str):
-    return f'{get_folder_chat_prompts()}/{action}'
-
-def get_folder_prompts_string(action: str):
-    return f'{get_folder_string_prompts()}/{action}'
-
-def get_folder_chat_prompts():
-    return get_default_env("TEXTLONG_CHAT_PROMPTS")
-
-def get_folder_string_prompts():
-    return get_default_env("TEXTLONG_STR_PROMPTS")
+def get_folder_prompts():
+    return get_default_env("TEXTLONG_PROMPTS")
 
 def get_folder_logs():
     return get_default_env("TEXTLONG_LOGS")
@@ -54,8 +45,7 @@ def get_default_env(key: str=None):
         "TEXTLONG_ROOT": "",
 
         # 提示语文件夹
-        "TEXTLONG_CHAT_PROMPTS": "__CHAT_PROMPTS__",
-        "TEXTLONG_STR_PROMPTS": "__STR_PROMPTS__",
+        "TEXTLONG_PROMPTS": "__PROMPTS__",
 
         # 项目文件夹
         "TEXTLONG_LOGS": "__LOG__",

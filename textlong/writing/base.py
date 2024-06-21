@@ -9,7 +9,7 @@ from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceh
 from .documents import MarkdownDocuments
 from .output_parser import MarkdownOutputParser
 from ..parser import parse_markdown
-from ..hub import load_string_prompt
+from ..hub import load_prompt
 def _create_chain(llm, prompt_template, **kwargs):
     if not llm:
         raise ValueError("LLM can't be None !")
@@ -41,7 +41,7 @@ def from_idea(llm: Runnable, task: str=None, prompt_id: str=None, input_doc: str
     if not task:
         raise ValueError("'task' MUST NOT BE EMPTY !")
 
-    prompt = load_string_prompt("from_idea", prompt_id or "IDEA", template_folder=template_folder)
+    prompt = load_prompt("from_idea", prompt_id or "IDEA", template_folder=template_folder)
     todo_doc = f'你已经完成如下创作：\n{input_doc}' if input_doc != None else ''
     kg = gather_knowledge(knowledge)
     chain = _create_chain(llm, prompt, __todo_doc__=todo_doc, __knowledge__=kg, **kwargs)
@@ -58,7 +58,7 @@ def from_outline(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: 
 
     todo_docs = MarkdownDocuments(input_doc)
     kg = gather_knowledge(knowledge)
-    prompt = load_string_prompt("from_outline", prompt_id or "OUTLINE_DETAIL", template_folder=template_folder)
+    prompt = load_prompt("from_outline", prompt_id or "OUTLINE_DETAIL", template_folder=template_folder)
 
     last_index = None
     outline_docs = copy.deepcopy(todo_docs.documents)
@@ -95,7 +95,7 @@ def extract(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: str=N
     if not input_doc:
         raise ValueError("'input_doc' MUST NOT BE EMPTY !")
 
-    prompt = load_string_prompt("extract", prompt_id or "SUMMARISE", template_folder=template_folder)
+    prompt = load_prompt("extract", prompt_id or "SUMMARISE", template_folder=template_folder)
     kg = gather_knowledge(knowledge)
     chain = _create_chain(llm, prompt, __todo_doc__=input_doc, __knowledge__=kg, **kwargs)
     resp_md = _call_markdown_chain(chain, {"__task__": task})
@@ -112,7 +112,7 @@ def from_chunk(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: st
         raise ValueError("'input_doc' MUST NOT BE EMPTY !")
 
     ref_docs = MarkdownDocuments(input_doc)
-    prompt = load_string_prompt("from_chunk", prompt_id or "REWRITE", template_folder=template_folder)
+    prompt = load_prompt("from_chunk", prompt_id or "REWRITE", template_folder=template_folder)
     kg = gather_knowledge(knowledge)
 
     resp_md = ""
