@@ -151,7 +151,7 @@ def from_chunk(llm: Runnable, input_doc: str=None, prompt_id: str=None, task: st
         for delta in create_md(task_docs):
             yield delta
 
-def gather_files_to_doc(input: Union[str, List[str]]):
+def gather_docs(input: Union[str, List[str]]):
     """
     从input收集文本，有三种情况：
     - input直接提供文本
@@ -164,8 +164,8 @@ def gather_files_to_doc(input: Union[str, List[str]]):
     if isinstance(input, str):
         if input.endswith(".md") and os.path.exists(input):
             input = [input]
-    else:
-        md = input
+        else:
+            md = input
 
     if isinstance(input, list):
         for path in input:
@@ -194,18 +194,20 @@ def write(
     config = config or {}
 
     # input
-    input_doc = gather_files_to_doc(input)
+    input_doc = gather_docs(input)
     task_mode, task_todos, old_docs = 'all', [], []
     if input_doc:
         old_docs = MarkdownDocuments(input_doc)
         task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
 
     # knowledge
-    kg_doc = '\n'.join([gather_files_to_doc(knowledge)]) if knowledge else ''
+    kg_doc = '\n'.join([gather_docs(knowledge)]) if knowledge else ''
     
     # prompt
     template_folder = config[template_folder] if 'template_folder' in config else None
     prompt = load_prompt(prompt_id or "IDEA", template_folder=template_folder)
+    
+    print(task_mode)
 
     if task_mode == 'all':
         _kwargs = {
@@ -218,8 +220,9 @@ def write(
             yield delta
 
     elif task_mode == 'document':
+        last_index = None
         new_docs = copy.deepcopy(old_docs)
-        for doc, index in task_docs:
+        for doc, index in task_todos:
             if last_index != None:
                 yield "\n"
             yield MarkdownDocuments.to_markdown(old_docs.documents[last_index:index])
@@ -241,11 +244,10 @@ def write(
             reply_docs = parse_markdown(resp_md)
             new_docs.replace_documents(doc, doc, reply_docs)
 
-        # 生成最后一个<OUTLINE/>之后的部份
-        yield MarkdownDocuments.to_markdown(old_docs[last_index:None])
+        yield MarkdownDocuments.to_markdown(old_docs.documents[last_index:None])
 
     elif task_mode == 'segment':
-        for docs in task_docs:
+        for docs in task_todos:
             todo_doc = '\n'.join([d.page_content for d in docs])
             chain = _create_chain(llm, prompt, __todo_doc__=todo_doc, __knowledge__=kg_doc, **kwargs)
             for delta in _call_markdown_chain(chain, {"task": task}):
