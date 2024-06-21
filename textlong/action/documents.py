@@ -51,6 +51,13 @@ class MarkdownDocuments():
     @property
     def markdown(self):
         return self.__class__.to_markdown(self.documents)
+    
+    @property
+    def types(self):
+        s = set()
+        for d in self.documents:
+            s.add(d.metadata['type'])
+        print(s)
 
     def get_todo_documents(self, sep_mode: Union[str, List[str]]="all", pattern: str=None, score: float=None, k: int=None):
         """
