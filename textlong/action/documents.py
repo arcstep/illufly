@@ -106,7 +106,7 @@ class MarkdownDocuments():
 
         elif sep_mode == 'document':
             docs = [
-                d
+                (d, i)
                 for i, d in enumerate(self.documents) 
                 if re.search(pattern, d.page_content)
             ]
@@ -114,7 +114,7 @@ class MarkdownDocuments():
 
         elif sep_mode in ['heading', 'list', 'block_code', 'paragraph']:
             docs = [
-                d
+                (d, i)
                 for i, d in enumerate(self.documents) 
                 if re.search(pattern, d.page_content)
                 and d.metadata['type'] in sep_mode
@@ -123,7 +123,7 @@ class MarkdownDocuments():
 
         elif sep_mode == 'outline':
             docs = [
-                d
+                (d, i)
                 for i, d in enumerate(self.documents) 
                 if d.metadata['type'] == "OUTLINE"
                 and re.search(pattern, d.page_content)

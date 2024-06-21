@@ -38,19 +38,23 @@ def load_resource_prompt(prompt_id: str):
     if prompt_id not in find_resource_promopt():
         raise ValueError(f"prompt_id {prompt_id} NOT EXIST!")
 
-    resource_folder = f'textlong.__PROMPTS__.{prompt_id}'
+    def _get_prompt_str(res_file: str):
+        if (res_folder := f'textlong.__PROMPTS__.{prompt_id}') and is_resource(res_folder, res_file):
+            return read_text(res_folder, res_file)
+        elif (res_folder := 'textlong.__PROMPTS__') and is_resource(res_folder, res_file):
+            return read_text(res_folder, res_file)
+        else:
+            return ''
 
-    resource_file = 'main.mu'
-    if is_resource(resource_folder, resource_file):
-        prompt_str = read_text(resource_folder, resource_file)
-    else:
-        prompt_str = read_text('textlong.__PROMPTS__', resource_file)
+    prompt_str = _get_prompt_str('main.mu')
 
     # 替换 {{>include_name}} 变量
     include_dict = {}
     matches = re.findall(r'{{>(.*?)}}', prompt_str)
     for part_name in matches:
-        include_dict[part_name] = read_text(resource_folder, f'{part_name.strip()}.mu')
+        prmopt_str = _get_prompt_str(f'{part_name.strip()}.mu')
+        if prmopt_str:
+            include_dict[part_name] = prmopt_str
     for part_name, part_str in include_dict.items():
         prompt_str = prompt_str.replace("{{>" + part_name + "}}", part_str)
 
