@@ -5,7 +5,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.documents import Document
 from langchain.globals import set_verbose, get_verbose
 
-from ..writing.documents import MarkdownDocuments
+from .documents import MarkdownDocuments
 from ..parser import parse_markdown
 from ..hub import load_prompt
 from ..importer import load_markdown
@@ -17,13 +17,19 @@ def _create_chain(llm, prompt_template, **kwargs):
     return prompt | llm
 
 def _call_markdown_chain(chain, input):
-    if get_verbose():
-        print("\033[34m" + "#"*20, "PROMPT BEGIN", "#"*20)  # 蓝色
-        print(chain.get_prompts()[0].format(**input))
-        print("#"*20, "PROMPT END ", "#"*20 + "\033[0m")  # 重置颜色
+    print("\033[34m" + "#"*20, "PROMPT BEGIN", "#"*20)  # 蓝色
+    print(chain.get_prompts()[0].format(**input))
+    print("#"*20, "PROMPT END ", "#"*20 + "\033[0m")
+    yield '<<<<创作结果>>>>'
 
-    for chunk in chain.stream(input):
-        yield chunk.content
+# def _call_markdown_chain(chain, input):
+#     if get_verbose():
+#         print("\033[34m" + "#"*20, "PROMPT BEGIN", "#"*20)  # 蓝色
+#         print(chain.get_prompts()[0].format(**input))
+#         print("#"*20, "PROMPT END ", "#"*20 + "\033[0m")  # 重置颜色
+
+#     for chunk in chain.stream(input):
+#         yield chunk.content
 
 def gather_knowledge(knowledge: List[str]):
     kg_doc = ''
@@ -155,13 +161,13 @@ def gather_files_to_doc(input: Union[str, List[str]]):
 
     md = ''
 
-    if isinstance(path, str):
-        if path.endswith(".md") and os.path.exists(path):
+    if isinstance(input, str):
+        if input.endswith(".md") and os.path.exists(input):
             input = [input]
     else:
         md = input
 
-    if instance(input, list):
+    if isinstance(input, list):
         for path in input:
             if isinstance(path, str) and path.endswith(".md") and os.path.exists(path):
                 d = load_markdown(path)
@@ -176,71 +182,66 @@ def write(
     task: str=None,
     input: Union[str, List[str]]=None,
     sep_mode: str='all',
+    replace: bool=True,
     knowledge: Union[str, List[str]]=None,
     prompt_id: str=None,
     config: Dict[str, Any]=None,
     **kwargs
 ):
     """
-    编写新文件。
-    
-    config{
-        prompt_folder,
-        prompt_vars,
-        k_prev,
-        k_next,
-    }
+    创作长文。
     """
-    # knowledge
-    kg_doc = '\n'.join([
-        '\n>>>>>>>>> 你必须知晓：\n',
-        gather_files_to_doc(knowledge),
-        "<<<<<<<<<"
-    ]) if not knowledge else ''
+    config = config or {}
 
     # input
     input_doc = gather_files_to_doc(input)
-    todo_doc = f'你已经完成如下创作：\n{input_doc}' if input_doc != None else ''
+    old_docs = MarkdownDocuments(input_doc)
+    task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
 
+    # knowledge
+    kg_doc = '\n'.join([gather_files_to_doc(knowledge)]) if knowledge else ''
+    
     # prompt
     template_folder = config[template_folder] if 'template_folder' in config else None
     prompt = load_prompt(prompt_id or "IDEA", template_folder=template_folder)
 
-    # config
-    chain = _create_chain(llm, prompt, __todo_doc__=todo_doc, __knowledge__=kg_doc, **kwargs)
+    if task_mode == 'all':
+        todo_doc = '\n'.join([d.page_content for d in task_todos])
+        chain = _create_chain(llm, prompt, __todo_doc__=todo_doc, __knowledge__=kg_doc, **kwargs)
+        for delta in _call_markdown_chain(chain, {"task": task}):
+            yield delta
 
-    # sep_mode
-    # all, {regex}, heading, heading-{n}, with-heading, with-heading-{n}, <OUTLINE/>
+    elif task_mode == 'document':
+        new_docs = copy.deepcopy(old_docs)
+        for doc, index in task_docs:
+            if last_index != None:
+                yield "\n"
+            yield MarkdownDocuments.to_markdown(old_docs.documents[last_index:index])
+            last_index = index + 1
 
-    for delta in _call_markdown_chain(chain, {"__task__": task}):
-        yield delta
+            partial_args = {
+                "knowledge__": kg_doc,
+                "todo_doc__": doc.page_content,
+                "prev_doc__": MarkdownDocuments.to_markdown(new_docs.get_prev_documents(doc)),
+                "next_doc__": MarkdownDocuments.to_markdown(new_docs.get_next_documents(doc)),
+                **kwargs
+            }
+            chain = _create_chain(llm, prompt, **partial_args)
 
-def replace(
-    llm: Runnable,
-    task: str=None,
-    input: Union[str, List[str]]=None,
-    sep: str=None,
-    knowledge: Union[str, List[str]]=None,
-    prompt_id: str=None,
-    config: Dict[str, Any]=None,
-    **kwargs
-):
-    """
-    替换文件。
-    """
-    pass
+            resp_md = ""
+            for delta in _call_markdown_chain(chain, {"task": task}):
+                yield delta
+                resp_md += delta
+            reply_docs = parse_markdown(resp_md)
+            new_docs.replace_documents(doc, doc, reply_docs)
 
-def split(
-    llm: Runnable,
-    task: str=None,
-    input: Union[str, List[str]]=None,
-    sep: str=None,
-    knowledge: Union[str, List[str]]=None,
-    prompt_id: str=None,
-    config: Dict[str, Any]=None,
-    **kwargs
-):
-    """
-    分割为文件。
-    """
-    pass
+        # 生成最后一个<OUTLINE/>之后的部份
+        yield MarkdownDocuments.to_markdown(old_docs[last_index:None])
+
+    elif task_mode == 'segment':
+        for docs in task_docs:
+            todo_doc = '\n'.join([d.page_content for d in docs])
+            chain = _create_chain(llm, prompt, __todo_doc__=todo_doc, __knowledge__=kg_doc, **kwargs)
+            for delta in _call_markdown_chain(chain, {"task": task}):
+                yield delta
+            
