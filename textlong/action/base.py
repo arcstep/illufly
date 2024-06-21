@@ -195,8 +195,10 @@ def write(
 
     # input
     input_doc = gather_files_to_doc(input)
-    old_docs = MarkdownDocuments(input_doc)
-    task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
+    task_mode, task_todos, old_docs = 'all', [], []
+    if input_doc:
+        old_docs = MarkdownDocuments(input_doc)
+        task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
 
     # knowledge
     kg_doc = '\n'.join([gather_files_to_doc(knowledge)]) if knowledge else ''
@@ -206,8 +208,12 @@ def write(
     prompt = load_prompt(prompt_id or "IDEA", template_folder=template_folder)
 
     if task_mode == 'all':
-        todo_doc = '\n'.join([d.page_content for d in task_todos])
-        chain = _create_chain(llm, prompt, __todo_doc__=todo_doc, __knowledge__=kg_doc, **kwargs)
+        _kwargs = {
+            "knowledge__": kg_doc,
+            "todo_doc__": '\n'.join([d.page_content for d in task_todos]),
+            **kwargs
+        }
+        chain = _create_chain(llm, prompt, **_kwargs)
         for delta in _call_markdown_chain(chain, {"task": task}):
             yield delta
 
@@ -219,14 +225,14 @@ def write(
             yield MarkdownDocuments.to_markdown(old_docs.documents[last_index:index])
             last_index = index + 1
 
-            partial_args = {
+            _kwargs = {
                 "knowledge__": kg_doc,
                 "todo_doc__": doc.page_content,
                 "prev_doc__": MarkdownDocuments.to_markdown(new_docs.get_prev_documents(doc)),
                 "next_doc__": MarkdownDocuments.to_markdown(new_docs.get_next_documents(doc)),
                 **kwargs
             }
-            chain = _create_chain(llm, prompt, **partial_args)
+            chain = _create_chain(llm, prompt, **_kwargs)
 
             resp_md = ""
             for delta in _call_markdown_chain(chain, {"task": task}):
