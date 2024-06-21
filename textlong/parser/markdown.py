@@ -49,7 +49,7 @@ def parse_markdown(text, start_tag='<OUTLINE>', end_tag='</OUTLINE>'):
             if before:
                 documents.extend(markdown(before, renderer=SegmentsRenderer(doc_id_generator)))
             doc_id = next(doc_id_generator)
-            doc = Document(page_content=outline_content, metadata={"id": doc_id, "type": 'OUTLINE'})
+            doc = Document(page_content=outline_content+"\n\n", metadata={"id": doc_id, "type": 'OUTLINE'})
             documents.append(doc)
             text = after
     if text:
