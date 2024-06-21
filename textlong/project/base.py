@@ -14,7 +14,6 @@ from ..config import (
     get_project_script_file,
     get_folder_logs,
 )
-from ..hub import load_string_prompt, save_string_prompt
 from ..parser import parse_markdown
 from ..exporter import export_jupyter
 from ..importer import load_markdown

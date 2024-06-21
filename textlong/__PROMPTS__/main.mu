@@ -3,10 +3,10 @@
 你必须遵循以下约束来完成任务:
 - 按照markdown格式输出，直接输出你的结果，不要评论，不要啰嗦
 - 输出的markdown内容使用`>->>>`和`<<<-<`包围
-{{>instruction}}{{__todo_doc__}}{{__knowledge__}}
+{{>instruction}}{{todo_doc__}}{{knowledge__}}
 
 你的任务是：
-{{__task__}}
+{{task}}
 
 输出例子:
 >->>>
