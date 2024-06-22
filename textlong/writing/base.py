@@ -205,7 +205,7 @@ def from_outline(
     **kwargs
 ):
     sep_mode = "outline"
-    prompt_id = prompt_id or "OUTLINE_DETAIL"
+    prompt_id = prompt_id or "FROM_OUTLINE"
     return collect_stream(llm, "<OUTLINE>", "</OUTLINE>", sep_mode=sep_mode, input=input, prompt_id=prompt_id, **kwargs)
 
 def outline_from_outline(
@@ -215,5 +215,5 @@ def outline_from_outline(
     **kwargs
 ):
     sep_mode = "outline"
-    prompt_id = prompt_id or "OUTLINE_SELF"
+    prompt_id = prompt_id or "OUTLINE_FROM_OUTLINE"
     return collect_stream(llm, "<OUTLINE-MORE>", "</OUTLINE-MORE>", sep_mode=sep_mode, input=input, prompt_id=prompt_id, **kwargs)
