@@ -18,6 +18,8 @@ class SegmentsRenderer(MarkdownRenderer):
             md = self.render_token(tok, state)
             doc_id = next(self.doc_id_generator)
             tok.update({"id": doc_id})
+            if tok['type'] == 'blank_line':
+                md = '\n'
             documents.append(Document(page_content=md, metadata=tok))
         return documents
 
