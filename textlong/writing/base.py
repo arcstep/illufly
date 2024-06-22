@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 from langchain.globals import set_verbose, get_verbose
 
 from .documents import MarkdownDocuments
+from .command import Command
 from ..parser import parse_markdown
 from ..hub import load_prompt
 from ..importer import load_markdown
@@ -58,7 +59,6 @@ def write(
     task: str=None,
     input: Union[str, List[str]]=None,
     sep_mode: str='all',
-    replace: bool=True,
     knowledge: Union[str, List[str]]=None,
     prompt_id: str=None,
     config: Dict[str, Any]=None,
@@ -146,6 +146,7 @@ def write(
 
 def collect_stream(
     llm: Runnable,
+    output: str=None,
     start_marker: str=None,
     end_marker: str=None,
     verbose_color=None,
@@ -155,15 +156,21 @@ def collect_stream(
 ):
     """
     打印流式日志。
+    
+    - 参数
+        output 支持f-string匹配语法，其中
+        - {input_name} 为对应的input文件名去掉扩展名，
+        - {index} 为返回值中的 index
 
-    接收的流式内容都为形如 (mode, content) 的元组，其中：
-    mode - 值为 output, collect, extract 或 log
-    content - 文本内容
+    - 返回值
+        接收的流式内容都为形如 (mode, content) 的元组，其中：
+        mode - 值为 output, collect, extract 或 log
+        content - 文本内容
 
-    log: 流式输出的中间结果，一般与collect或extract搭配使用
-    output: 原始的文本结果直接被采纳
-    collect: 流式过程的最终结果收集，过程信息在log中分次输出
-    extract: 与collect类似，但最终结果做脱壳处理，例如在扩写过程中脱去可能存在的 <OUTLINE></OUTLINE>外壳
+        log: 流式输出的中间结果，一般与collect或extract搭配使用
+        output: 原始的文本结果直接被采纳
+        collect: 流式过程的最终结果收集，过程信息在log中分次输出
+        extract: 与collect类似，但最终结果做脱壳处理，例如在扩写过程中脱去可能存在的 <OUTLINE></OUTLINE>外壳
     """
     md = ''
     for index, mode, chunk in write(llm, verbose_color=verbose_color, **kwargs):
@@ -176,7 +183,27 @@ def collect_stream(
             md += extract_text(chunk, start_marker, end_marker)
         else:
             print(color_code(log_color or '绿色') + chunk + "\033[0m", end="")
-    return md
+
+    # 将输出保存到文件
+    if output:
+        # 构建Command
+        cmd = Command({
+            "output": output,
+            "start_marker": start_marker,
+            "end_marker": end_marker,
+            "verbose_color": verbose_color,
+            "output_color": output_color,
+            "log_color": log_color,
+            **kwargs
+        })
+        md_with_front_matter = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + md
+        os.makedirs(os.path.dirname(output), exist_ok=True)
+        with open(output, 'w', encoding='utf-8') as f:
+            f.write(md_with_front_matter)
+            return True
+        raise FileExistsError("无法写入到文件: ", output)
+    else:
+        return md
 
 def idea(
     llm: Runnable,
