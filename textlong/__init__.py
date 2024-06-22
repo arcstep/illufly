@@ -1,10 +1,10 @@
-from .writing import from_idea, from_chunk, from_outline, extract
+from .writing import idea, outline, from_outline, outline_from_outline
 from .project import Project, list_projects, create_project, is_project_existing
 
 __all__ = [
-  "from_idea",
-  "from_chunk",
+  "idea",
+  "outline",
   "from_outline",
-  "extract",
+  "outline_from_outline",
   "Project",
 ]
