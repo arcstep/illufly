@@ -9,7 +9,7 @@ from .documents import MarkdownDocuments
 from ..parser import parse_markdown
 from ..hub import load_prompt
 from ..importer import load_markdown
-from ..utils import extract_text
+from ..utils import extract_text, color_code
 
 def _create_chain(llm, prompt_template, **kwargs):
     if not llm:
@@ -17,13 +17,13 @@ def _create_chain(llm, prompt_template, **kwargs):
     prompt = prompt_template.partial(**kwargs)
     return prompt | llm
 
-def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False):
+def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False, verbose_color: str=None):
     if get_verbose() or is_fake or verbose:
         # 用蓝色表示提示语模板
-        print("\033[34m" + chain.get_prompts()[0].format(**input) + "\033[0m")
+        print(color_code(verbose_color or '蓝色') + chain.get_prompts()[0].format(**input) + "\033[0m")
 
     if is_fake:
-        yield '<<<<< is_fake Content >>>>>\n'
+        yield "FAKE-CONTENT...\n"
     else:
         for chunk in chain.stream(input):
             yield chunk.content
@@ -67,6 +67,7 @@ def write(
     config: Dict[str, Any]=None,
     is_fake: bool=False,
     verbose: bool=False,
+    verbose_color: str=None,
     **kwargs
 ):
     """
@@ -102,7 +103,7 @@ def write(
         chain = _create_chain(llm, prompt, **_kwargs)
         
         resp_md = ""
-        for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
+        for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
             resp_md += delta
             yield ('log', delta)
         yield ('collect', resp_md)
@@ -128,7 +129,7 @@ def write(
                 chain = _create_chain(llm, prompt, **_kwargs)
 
                 resp_md = ""
-                for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
+                for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
                     yield ('log', delta)
                     resp_md += delta
                 yield ('extract', extract_text(resp_md))
@@ -143,30 +144,38 @@ def write(
         if old_docs.documents[last_index:None]:
             yield ('output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:None]))
 
-def collect_stream(llm: Runnable, start_marker: str=None, end_marker: str=None, **kwargs):
+def collect_stream(
+    llm: Runnable,
+    start_marker: str=None,
+    end_marker: str=None,
+    verbose_color=None,
+    output_color=None,
+    log_color=None,
+    **kwargs
+):
     """
     打印流式日志。
-    
+
     接收的流式内容都为形如 (mode, content) 的元组，其中：
     mode - 值为 output, collect, extract 或 log
     content - 文本内容
-    
+
     log: 流式输出的中间结果，一般与collect或extract搭配使用
     output: 原始的文本结果直接被采纳
     collect: 流式过程的最终结果收集，过程信息在log中分次输出
     extract: 与collect类似，但最终结果做脱壳处理，例如在扩写过程中脱去可能存在的 <OUTLINE></OUTLINE>外壳
     """
     md = ''
-    for mode, chunk in write(llm, **kwargs):
+    for mode, chunk in write(llm, verbose_color=verbose_color, **kwargs):
         if mode == 'output':
             md += chunk
-            print(chunk, end="")
+            print(color_code(output_color or '黄色') + chunk + "\033[0m", end="")
         elif mode == 'collect':
             md += chunk
         elif mode == 'extract':
             md += extract_text(chunk, start_marker, end_marker)
         else:
-            print(chunk, end="")
+            print(color_code(log_color or '绿色') + chunk + "\033[0m", end="")
     return md
 
 def idea(
@@ -197,7 +206,7 @@ def from_outline(
 ):
     sep_mode = "outline"
     prompt_id = prompt_id or "OUTLINE_DETAIL"
-    return collect_stream(llm, sep_mode=sep_mode, input=input, prompt_id=prompt_id, **kwargs)
+    return collect_stream(llm, "<OUTLINE>", "</OUTLINE>", sep_mode=sep_mode, input=input, prompt_id=prompt_id, **kwargs)
 
 def outline_from_outline(
     llm: Runnable,
