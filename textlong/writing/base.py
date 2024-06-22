@@ -19,9 +19,10 @@ def _create_chain(llm, prompt_template, **kwargs):
     return prompt | llm
 
 def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False, verbose_color: str=None):
+    verbose_color = verbose_color or '蓝色'
+
     if get_verbose() or is_fake or verbose:
-        # 用蓝色表示提示语模板
-        print(color_code(verbose_color or '蓝色') + chain.get_prompts()[0].format(**input) + "\033[0m")
+        print(color_code(verbose_color) + chain.get_prompts()[0].format(**input) + "\033[0m")
 
     if is_fake:
         yield "FAKE-CONTENT...\n"
@@ -172,21 +173,25 @@ def collect_stream(
         collect: 流式过程的最终结果收集，过程信息在log中分次输出
         extract: 与collect类似，但最终结果做脱壳处理，例如在扩写过程中脱去可能存在的 <OUTLINE></OUTLINE>外壳
     """
+    output_color = output_color or '黄色'
+    log_color = log_color or '绿色'
+
+    print(color_code(log_color) + "<Prompt ID: " + kwargs.get("prompt_id", "") + ">" + "\033[0m")
+
     md = ''
     for index, mode, chunk in write(llm, verbose_color=verbose_color, **kwargs):
         if mode == 'output':
             md += chunk
-            print(color_code(output_color or '黄色') + chunk + "\033[0m", end="")
+            print(color_code(output_color) + chunk + "\033[0m", end="")
         elif mode == 'collect':
             md += chunk
         elif mode == 'extract':
             md += extract_text(chunk, start_marker, end_marker)
         else:
-            print(color_code(log_color or '绿色') + chunk + "\033[0m", end="")
+            print(color_code(log_color) + chunk + "\033[0m", end="")
 
     # 将输出保存到文件
     if output:
-        # 构建Command
         cmd = Command({
             "output": output,
             "start_marker": start_marker,

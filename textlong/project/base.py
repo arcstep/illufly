@@ -7,6 +7,7 @@ from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
 
 from ..writing import idea, outline, from_outline, outline_from_outline, MarkdownDocuments
+from ..writing.command import Command
 from ..config import (
     get_folder_root,
     get_folder_public,
@@ -17,62 +18,15 @@ from ..config import (
 from ..parser import parse_markdown
 from ..exporter import export_jupyter
 from ..importer import load_markdown
-from ..utils import raise_not_supply_all, extract_text
-
-class Command():
-    """
-    长文生成指令。
-    """
-    def __init__(self, command: str, args: Dict[str, Any], output_text: str, modified_at: str=None):
-        self.command = command
-        self.args = {k: v for k, v in args.items() if v}
-        self.output_text = output_text
-        self.modified_at = modified_at or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-    def __str__(self):
-        return "\n".join([
-            self.__repr__()
-        ])
-
-    def __repr__(self):
-        info = "".join([
-            f'({self.modified_at})',
-            self.command,
-            f': {self.output_text[:10]}...' if len(self.output_text) > 10 else self.output_text[:10]
-        ])
-        return f"Command<{info}>"
-
-    def to_dict(self):
-        return {
-            'command': self.command,
-            'args': self.args,
-            'modified_at': self.modified_at,
-            'output_text': self.output_text,
-        }
-    
-    def to_metadata(self):
-        return {
-            'command': self.command,
-            'reference': {k: v for k, v in self.args.items() if v and k in ['prompt_id', 'input_file', 'kg_files']},
-            'modified_at': self.modified_at,
-        }
-
-    @classmethod
-    def from_dict(cls, dict_):
-        return cls(**dict_)
+from ..utils import raise_not_supply_all
 
 class Project():
     """
     长文生成项目的文件管理。
-
-    - <textlong_folder>/{user_id}/{project_id}
-    - <textlong_folder>/{user_id}/{project_id}/__PROMPTS__
-    - <textlong_folder>/{user_id}/{project_id}/__LOG__
-    - <textlong_folder>/{user_id}/{project_id}/{file_path}
     """
     def __init__(self, llm: Runnable, project_id: str, user_id: str=None):
-        raise_not_supply_all("Project对象必须提供llm", llm)
-        raise_not_supply_all("Project对象必须提供project_id", project_id)
+        raise_not_supply_all("Project 对象必须提供 llm", llm)
+        raise_not_supply_all("Project 对象必须提供 project_id", project_id)
 
         self.llm = llm
         self.user_id = user_id or get_folder_public()
@@ -108,19 +62,12 @@ class Project():
     def project_folder(self):
         return os.path.join(get_folder_root(), self.user_id, self.project_id)
 
-    def _confirm_filepath(self, path):
-        if not os.path.exists(path):
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-
-        return path
-
-    def save_markdown(self, filepath: str, txt: str):
+    def save_markdown_as(self, filepath: str, txt: str):
         """
         保存文本到markdown文件。
         """
         md_text = extract_text(txt)
         if filepath and md_text:
-            self._confirm_filepath(filepath)
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(md_text)
 
@@ -235,7 +182,7 @@ class Project():
         output_text = history[index]['output_text']
         cmd = Command.from_dict(history[index])
         resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + output_text
-        self.save_markdown(self.get_path(save_as or output_file), resp_md)
+        self.save_markdown_as(self.get_path(save_as or output_file), resp_md)
 
     def export_jupyter(self, input_file: str, output_file: str):
         """
@@ -289,7 +236,7 @@ class Project():
 
         # 保存生成结果
         resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + resp_md
-        self.save_markdown(self.get_path(output_file), resp_md)
+        self.save_markdown_as(self.get_path(output_file), resp_md)
 
         # 保存生成历史
         self.save_output_history(output_file, cmd)
