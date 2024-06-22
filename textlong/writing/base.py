@@ -28,7 +28,7 @@ def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False,
         for chunk in chain.stream(input):
             yield chunk.content
 
-def gather_docs(input: Union[str, List[str]]):
+def gather_docs(input: Union[str, List[str]]) -> List[str]:
     """
     从input收集文本，有三种情况：
     - 文本字符串
@@ -38,23 +38,20 @@ def gather_docs(input: Union[str, List[str]]):
     TODO: 支持 word、html 等其他格式
     """
 
-    md = ''
+    mds = []
 
     if isinstance(input, str):
-        if input.endswith(".md") and os.path.exists(input):
-            input = [input]
-        else:
-            md = input
+        input = [input]
 
     if isinstance(input, list):
-        for path in input:
-            if isinstance(path, str) and path.endswith(".md") and os.path.exists(path):
-                d = load_markdown(path)
-                md += "\n\n" + d.markdown
+        for s in input:
+            if isinstance(s, str) and path.endswith(".md") and os.path.exists(s):
+                d = load_markdown(s)
+                mds.add(d.markdown)
             else:
-                raise ValueError(f"Input File Not Exist: {path}")
+                mds.add(s)
 
-    return md
+    return mds
 
 def write(
     llm: Runnable,
@@ -82,11 +79,8 @@ def write(
     prompt_id = prompt_id or 'IDEA'
 
     # input
-    input_doc = gather_docs(input)
+    input_list = gather_docs(input) or ['']
     task_mode, task_todos, old_docs = 'all', [], []
-    if input_doc:
-        old_docs = MarkdownDocuments(input_doc)
-        task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
 
     # knowledge
     kg_doc = '\n'.join([gather_docs(knowledge)]) if knowledge else ''
@@ -94,55 +88,61 @@ def write(
     # prompt
     prompt = load_prompt(prompt_id, template_folder=template_folder)
 
-    if task_mode == 'all':
-        _kwargs = {
-            "knowledge__": kg_doc,
-            "todo_doc__": '\n'.join([d.page_content for d in task_todos]),
-            **kwargs
-        }
-        chain = _create_chain(llm, prompt, **_kwargs)
-        
-        resp_md = ""
-        for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
-            resp_md += delta
-            yield ('log', delta)
-        yield ('collect', resp_md)
+    for input_doc, index in enumerate(input_list):
+        if input_doc:
+            old_docs = MarkdownDocuments(input_doc)
+            task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
 
-    elif task_mode == 'document':
-        last_index = None
-        new_docs = copy.deepcopy(old_docs)
-        for doc, index in task_todos:
-            if last_index != None:
-                yield ('output', "\n")
-            if old_docs.documents[last_index:index]:
-                yield ('output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:index]))
-            last_index = index + 1
+        if task_mode == 'all':
+
+            _kwargs = {
+                "knowledge__": kg_doc,
+                "todo_doc__": '\n'.join([d.page_content for d in task_todos]),
+                **kwargs
+            }
+            chain = _create_chain(llm, prompt, **_kwargs)
             
-            if doc.page_content and doc.page_content.strip():
-                _kwargs = {
-                    "knowledge__": kg_doc,
-                    "todo_doc__": doc.page_content,
-                    "prev_doc__": MarkdownDocuments.to_markdown(new_docs.get_prev_documents(doc, prev_k)),
-                    "next_doc__": MarkdownDocuments.to_markdown(new_docs.get_next_documents(doc, next_k)),
-                    **kwargs
-                }
-                chain = _create_chain(llm, prompt, **_kwargs)
+            resp_md = ""
+            for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
+                resp_md += delta
+                yield (index, 'log', delta)
+            yield (index, 'collect', resp_md)
 
-                resp_md = ""
-                for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
-                    yield ('log', delta)
-                    resp_md += delta
-                yield ('extract', extract_text(resp_md))
-                reply_docs = parse_markdown(extract_text(resp_md))
-                new_docs.replace_documents(doc, doc, reply_docs)
+        elif task_mode == 'document':
+            last_index = None
+            new_docs = copy.deepcopy(old_docs)
+            for doc, index in task_todos:
+                if last_index != None:
+                    yield (index, 'output', "\n")
+                if old_docs.documents[last_index:index]:
+                    yield (index, 'output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:index]))
+                last_index = index + 1
+                
+                if doc.page_content and doc.page_content.strip():
+                    _kwargs = {
+                        "knowledge__": kg_doc,
+                        "todo_doc__": doc.page_content,
+                        "prev_doc__": MarkdownDocuments.to_markdown(new_docs.get_prev_documents(doc, prev_k)),
+                        "next_doc__": MarkdownDocuments.to_markdown(new_docs.get_next_documents(doc, next_k)),
+                        **kwargs
+                    }
+                    chain = _create_chain(llm, prompt, **_kwargs)
 
-            else:
-                # 如果内容是空行就不再处理
-                yield ('log', '(无需处理的空行)')
-                yield ('output', doc.page_content)
+                    resp_md = ""
+                    for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
+                        yield (index, 'log', delta)
+                        resp_md += delta
+                    yield (index, 'extract', extract_text(resp_md))
+                    reply_docs = parse_markdown(extract_text(resp_md))
+                    new_docs.replace_documents(doc, doc, reply_docs)
 
-        if old_docs.documents[last_index:None]:
-            yield ('output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:None]))
+                else:
+                    # 如果内容是空行就不再处理
+                    yield (index, 'log', '(无需处理的空行)')
+                    yield (index, 'output', doc.page_content)
+
+            if old_docs.documents[last_index:None]:
+                yield (index, 'output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:None]))
 
 def collect_stream(
     llm: Runnable,
@@ -166,7 +166,7 @@ def collect_stream(
     extract: 与collect类似，但最终结果做脱壳处理，例如在扩写过程中脱去可能存在的 <OUTLINE></OUTLINE>外壳
     """
     md = ''
-    for mode, chunk in write(llm, verbose_color=verbose_color, **kwargs):
+    for index, mode, chunk in write(llm, verbose_color=verbose_color, **kwargs):
         if mode == 'output':
             md += chunk
             print(color_code(output_color or '黄色') + chunk + "\033[0m", end="")
