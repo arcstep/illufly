@@ -42,62 +42,152 @@ class MarkdownDocuments():
 
     @classmethod
     def to_markdown(cls, documents: List[Document], sep: str="", with_front_matter: bool=False):
+        if not documents:
+            return ''
+
         meta0 = documents[0].metadata
         front_matter = ''
         if with_front_matter and 'type' in meta0 and meta0['type'] == 'front_matter':
             front_matter = cls.to_front_matter(meta0)
+
         return front_matter + sep.join([d.page_content for d in documents])
 
     @property
     def markdown(self):
         return self.__class__.to_markdown(self.documents)
-
-    def get_outline_task(self):
-        """
-        获得OUTLINE扩写任务清单。
-        如果没有指定title，就返回所有任务，否则返回匹配到的任务。
-        """
-        return [
-            (d, i)
-            for i, d in enumerate(self.documents) 
-            if d.metadata['type'] == "OUTLINE"
-        ]
     
-    def get_task_index(self, index_doc: Union[str, Document]):
+    @property
+    def types(self):
+        s = set()
+        for d in self.documents:
+            s.add(d.metadata['type'])
+        print(s)
+
+    def get_todo_documents(self, sep_mode: Union[str, List[str]]="all", pattern: str=None, score: float=None, k: int=None):
+        """
+        将文档拆分为N个批次, 构建任务清单。
+
+        Args:
+        - sep_mode: 拆分模式
+            # 整体返回, 返回 ('all', List[doc: Document])
+            - 'all', 获得全部文档
+
+            # 从Document类型拆分, 返回 ('document', List[index: int])
+            - 'document', 逐个文档元素
+            - 'outline', 仅<OUTLINE><OUTLINE/>中的部份
+
+            # 从Document类型拆分, 返回 ('document', List[(from: int, to: int)])
+            - 'section', 将所有相邻的非标题内容连成一个批次并包括上文紧邻的标题
+            - 'not-heading', 将所有非标题内容连成一个批次
+            - 'headings', 将所有标题内容连成一个批次
+            - {元素名称}, 按标题、代码块、列表、paragraph等元素
+
+            # 从文本拆分, 返回 ('md', List[(from: int, to: int)])
+            - 'chunk', 合并Document, 直到合并后的内容超过字数限制k
+            - 'paragraph', 按每一个换行符
+
+        - pattern: 按正则表达式匹配并过滤
+        - score: 按向量相似性分数过滤
+
+        - k: 如果长度不超过k就合并批次
+
+        Return: 拆分好的文档和插入位置的元组。
+        - ('all', List[doc: Document])
+        - ('document', List[index: int])
+        - ('document', List[(from: int, to: int)])
+        - ('md', List[(from: int, to: int)])
+        """
+        sep_mode = sep_mode.lower()
+        pattern = pattern or '.*'
+
+        if sep_mode == 'all':
+            docs = [
+                d
+                for d in self.documents
+                if re.search(pattern, d.page_content)
+            ]
+            return ('all', docs)
+
+        elif sep_mode == 'document':
+            docs = [
+                (d, i)
+                for i, d in enumerate(self.documents) 
+                if re.search(pattern, d.page_content)
+            ]
+            return ('document', docs)
+
+        elif sep_mode in ['heading', 'list', 'block_code', 'paragraph']:
+            docs = [
+                (d, i)
+                for i, d in enumerate(self.documents) 
+                if re.search(pattern, d.page_content)
+                and d.metadata['type'] in sep_mode
+            ]
+            return ('document', docs)
+
+        elif sep_mode == 'outline':
+            docs = [
+                (d, i)
+                for i, d in enumerate(self.documents) 
+                if d.metadata['type'] == "OUTLINE"
+                and re.search(pattern, d.page_content)
+            ]
+            return ('document', docs)
+
+        elif sep_mode == 'segment':
+            docs = [
+                (d, i)
+                for i, d in enumerate(self.documents) 
+                if re.search(pattern, d.page_content)
+                and d.metadata['type'] != 'heading'
+            ]
+            segments = []
+            if docs:
+                chunk = [docs[0]]
+                for i in range(1, len(docs)):
+                    if docs[i][1] == chunk[-1][1] + 1:
+                        chunk.append(docs[i])
+                    else:
+                        segments.append([d for d, i in chunk])
+                        chunk = [docs[i]]
+                segments.append([d for d, i in chunk])
+            return ('segment', segments)
+
+        return []
+
+    def get_task_range(self, index_from: Union[str, Document], index_to: Union[str, Document]):
         """
         获得任务索引。
         """
-        task_id = index_doc.metadata['id'] if isinstance(index_doc, Document) else index_doc
+        index_from = index_from.metadata['id'] if isinstance(index_from, Document) else index_from
+        index_to = index_to.metadata['id'] if isinstance(index_to, Document) else index_to
+        _from = None
+        _to = None
         for i, doc in enumerate(self.documents):
-            if doc.metadata['id'] == task_id:
-                return i
+            if doc.metadata['id'] == index_from:
+                _from = i
+            if doc.metadata['id'] == index_to:
+                _to = i
+            if _from != None and _to != None:
+                return (_from, _to)
+        return (_from, _to)
 
-        return None
-
-    def insert_documents(self, index_doc: Union[str, Document]=None, docs: Union[str, List[Document]]=None):
-        """
-        插入文档对象。
-        """
-        return self._replace_documents(index_doc, docs, reserve=True)
-
-    def replace_documents(self, index_doc: Union[str, Document]=None, docs: Union[str, List[Document]]=None):
+    def replace_documents(self, index_from: Union[str, Document], index_to: Union[str, Document], docs: Union[str, List[Document]]=None):
         """
         替换文档对象。
         """
-        return self._replace_documents(index_doc, docs, reserve=False)
-
-    def _replace_documents(self, index_doc: Union[str, Document]=None, docs: Union[str, List[Document]]=None, reserve = False):
         to_insert = parse_markdown(docs) if isinstance(docs, str) else docs
-        index = self.get_task_index(index_doc)
-        if index != None:
-            self.documents = self.documents[:index] + to_insert + self.documents[index + (0 if reserve else 1):]
-        else:
-            info = index_doc.page_content if isinstance(index_doc, Document) else index_doc
-            raise ValueError(f"Not Found: {info}")
 
+        _from, _to = self.get_task_range(index_from, index_to)
+        if _from == None:
+            raise ValueError(f"{index_from} NOT FOUND!")
+        if _to == None:
+            raise ValueError(f"{index_to} NOT FOUND!")
+
+        self.documents = self.documents[:_from] + to_insert + self.documents[_to + 1:]
         return self.documents
 
-    def get_prev_documents(self, index_doc: Union[str, Document]=None, k: int=800):
+    def get_prev_documents(self, index_doc: Union[int, str, Document]=None, k: int=800):
         """
         获得向前关联文档。
         """
