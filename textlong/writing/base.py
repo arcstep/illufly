@@ -30,10 +30,11 @@ def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False,
         for chunk in chain.stream(input):
             yield chunk.content
 
-def gather_docs(input: Union[str, List[str]]) -> List[str]:
+def gather_docs(input: Union[str, List[str]]) -> str:
     """
-    从input收集文本，有三种情况：
+    从input收集文本，有如下情况：
     - 文本字符串
+    - 文本字符串列表
     - 一个包含文本的文件，一般为md格式
     - 一组包含文本的文件，一般为md格式
     
@@ -47,13 +48,13 @@ def gather_docs(input: Union[str, List[str]]) -> List[str]:
 
     if isinstance(input, list):
         for s in input:
-            if isinstance(s, str) and path.endswith(".md") and os.path.exists(s):
+            if isinstance(s, str) and s.endswith(".md") and os.path.exists(s):
                 d = load_markdown(s)
-                mds.add(d.markdown)
+                mds.append(d.markdown)
             else:
-                mds.add(s)
+                mds.append(s)
 
-    return mds
+    return "\n".join(mds)
 
 def write(
     llm: Runnable,
@@ -71,6 +72,10 @@ def write(
     """
     创作长文。
     
+    - input: 除IDEA风格模板外，其他提示语模板大多需要输入依据文档，以便展开扩写、翻译、修改等任务
+             这些依据文档可以为一个或多个，可以是字符串或文件；
+             这些依据文档会被合并，作为连续的上下文。
+    
     TODO: 支持更多任务拆分模式
     """
     config = config or {}
@@ -80,70 +85,70 @@ def write(
     prompt_id = prompt_id or 'IDEA'
 
     # input
-    input_list = gather_docs(input) or ['']
+    input_doc = gather_docs(input) or ''
     task_mode, task_todos, old_docs = 'all', [], []
 
     # knowledge
-    kg_doc = '\n'.join([gather_docs(knowledge)]) if knowledge else ''
+    kg_doc = gather_docs(knowledge) or ''
 
     # prompt
     prompt = load_prompt(prompt_id, template_folder=template_folder)
 
-    for input_doc, index in enumerate(input_list):
-        if input_doc:
-            old_docs = MarkdownDocuments(input_doc)
-            task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
+    yield ('log', f'\n>->>> Prompt ID: {kwargs.get("prompt_id", "")} <<<-<\n')
 
-        if task_mode == 'all':
+    if input_doc:
+        old_docs = MarkdownDocuments(input_doc)
+        task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
 
-            _kwargs = {
-                "knowledge__": kg_doc,
-                "todo_doc__": '\n'.join([d.page_content for d in task_todos]),
-                **kwargs
-            }
-            chain = _create_chain(llm, prompt, **_kwargs)
+    if task_mode == 'all':
+        _kwargs = {
+            "knowledge__": kg_doc,
+            "todo_doc__": '\n'.join([d.page_content for d in task_todos]),
+            **kwargs
+        }
+        chain = _create_chain(llm, prompt, **_kwargs)
+        
+        resp_md = ""
+        for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
+            resp_md += delta
+            yield ('log', delta)
+        yield ('collect', resp_md)
+
+    elif task_mode == 'document':
+        last_index = None
+        new_docs = copy.deepcopy(old_docs)
+        for doc, index in task_todos:
+            if last_index != None:
+                yield ('output', "\n")
+            if old_docs.documents[last_index:index]:
+                yield ('output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:index]))
+            last_index = index + 1
             
-            resp_md = ""
-            for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
-                resp_md += delta
-                yield (index, 'log', delta)
-            yield (index, 'collect', resp_md)
+            if doc.page_content and doc.page_content.strip():
+                _kwargs = {
+                    "knowledge__": kg_doc,
+                    "todo_doc__": doc.page_content,
+                    "prev_doc__": MarkdownDocuments.to_markdown(new_docs.get_prev_documents(doc, prev_k)),
+                    "next_doc__": MarkdownDocuments.to_markdown(new_docs.get_next_documents(doc, next_k)),
+                    **kwargs
+                }
+                chain = _create_chain(llm, prompt, **_kwargs)
 
-        elif task_mode == 'document':
-            last_index = None
-            new_docs = copy.deepcopy(old_docs)
-            for doc, index in task_todos:
-                if last_index != None:
-                    yield (index, 'output', "\n")
-                if old_docs.documents[last_index:index]:
-                    yield (index, 'output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:index]))
-                last_index = index + 1
-                
-                if doc.page_content and doc.page_content.strip():
-                    _kwargs = {
-                        "knowledge__": kg_doc,
-                        "todo_doc__": doc.page_content,
-                        "prev_doc__": MarkdownDocuments.to_markdown(new_docs.get_prev_documents(doc, prev_k)),
-                        "next_doc__": MarkdownDocuments.to_markdown(new_docs.get_next_documents(doc, next_k)),
-                        **kwargs
-                    }
-                    chain = _create_chain(llm, prompt, **_kwargs)
+                resp_md = ""
+                for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
+                    yield ('log', delta)
+                    resp_md += delta
+                yield ('extract', extract_text(resp_md))
+                reply_docs = parse_markdown(extract_text(resp_md))
+                new_docs.replace_documents(doc, doc, reply_docs)
 
-                    resp_md = ""
-                    for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
-                        yield (index, 'log', delta)
-                        resp_md += delta
-                    yield (index, 'extract', extract_text(resp_md))
-                    reply_docs = parse_markdown(extract_text(resp_md))
-                    new_docs.replace_documents(doc, doc, reply_docs)
+            else:
+                # 如果内容是空行就不再处理
+                yield ('log', '(无需处理的空行)')
+                yield ('output', doc.page_content)
 
-                else:
-                    # 如果内容是空行就不再处理
-                    yield (index, 'log', '(无需处理的空行)')
-                    yield (index, 'output', doc.page_content)
-
-            if old_docs.documents[last_index:None]:
-                yield (index, 'output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:None]))
+        if old_docs.documents[last_index:None]:
+            yield ('output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:None]))
 
 def collect_stream(
     llm: Runnable,
@@ -158,11 +163,6 @@ def collect_stream(
     """
     打印流式日志。
     
-    - 参数
-        output 支持f-string匹配语法，其中
-        - {input_name} 为对应的input文件名去掉扩展名，
-        - {index} 为返回值中的 index
-
     - 返回值
         接收的流式内容都为形如 (mode, content) 的元组，其中：
         mode - 值为 output, collect, extract 或 log
@@ -176,10 +176,8 @@ def collect_stream(
     output_color = output_color or '黄色'
     log_color = log_color or '绿色'
 
-    print(color_code(log_color) + "<Prompt ID: " + kwargs.get("prompt_id", "") + ">" + "\033[0m")
-
     md = ''
-    for index, mode, chunk in write(llm, verbose_color=verbose_color, **kwargs):
+    for mode, chunk in write(llm, verbose_color=verbose_color, **kwargs):
         if mode == 'output':
             md += chunk
             print(color_code(output_color) + chunk + "\033[0m", end="")
@@ -190,9 +188,8 @@ def collect_stream(
         else:
             print(color_code(log_color) + chunk + "\033[0m", end="")
 
-    # 将输出保存到文件
-    if output:
-        cmd = Command({
+    command = Command(
+        args={
             "output": output,
             "start_marker": start_marker,
             "end_marker": end_marker,
@@ -200,15 +197,18 @@ def collect_stream(
             "output_color": output_color,
             "log_color": log_color,
             **kwargs
-        })
-        md_with_front_matter = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + md
+        },
+        output_text=md
+    )
+
+    # 将输出文本保存到指定文件
+    if output:
+        md_with_front_matter = MarkdownDocuments.to_front_matter(command.to_metadata()) + md
         os.makedirs(os.path.dirname(output), exist_ok=True)
         with open(output, 'w', encoding='utf-8') as f:
             f.write(md_with_front_matter)
-            return True
-        raise FileExistsError("无法写入到文件: ", output)
-    else:
-        return md
+    
+    return command
 
 def idea(
     llm: Runnable,
