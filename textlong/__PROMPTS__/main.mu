@@ -8,5 +8,4 @@
 {{> instruction}}
 {{> task_todo}}
 {{> knowledge}}
-
 {{> example}}

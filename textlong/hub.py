@@ -147,3 +147,39 @@ def save_prompt(template: PromptTemplate, prompt_id: str, template_folder: str=N
             return True
 
     return False
+
+def clone_prompt(prompt_id: str, template_folder: str=None):
+    """
+    克隆提示语模板。
+    根据指定的prompt_id，将文件夹和文件拷贝到template_folder位置。
+    """
+    if prompt_id not in find_resource_promopt():
+        raise ValueError(f"<{prompt_id}> prompt_id not exist !")
+
+    prompt_folder = os.path.join(
+        get_folder_root(),
+        template_folder or get_folder_prompts(),
+        prompt_id
+    )
+    os.makedirs(prompt_folder, exist_ok=True)
+
+    def _copy_prompt_file(res_file: str):
+        target_path = os.path.join(prompt_folder, res_file)
+        txt = ''
+        if (res_folder := f'textlong.__PROMPTS__.{prompt_id}') and is_resource(res_folder, res_file):
+            txt = read_text(res_folder, res_file)
+        elif (res_folder := 'textlong.__PROMPTS__') and is_resource(res_folder, res_file):
+            txt = read_text(res_folder, res_file)
+        with open(target_path, 'w', encoding='utf-8') as f:
+            f.write(txt)
+        return txt
+
+    prompt_str = _copy_prompt_file('main.mu')
+
+    # 保存 {{>include_name}} 变量
+    include_dict = {}
+    matches = re.findall(r'{{>(.*?)}}', prompt_str)
+    for part_name in matches:
+        _copy_prompt_file(f'{part_name.strip()}.mu')
+
+    return True
