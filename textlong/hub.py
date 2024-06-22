@@ -1,5 +1,5 @@
 from typing import List
-from importlib.resources import read_text, is_resource
+from importlib.resources import read_text, is_resource, path
 from langchain.prompts import PromptTemplate
 from .config import (
     get_folder_root,
@@ -12,31 +12,17 @@ import json
 
 def find_resource_promopt():
     """
-    列举包内的所有提示语模板的资源类型、适用方法和名称。
-    
-    如果要将包内提示语模板保存到本地，可以向这样使用：
-    ```python
-    prompt = load_resource_prompt("IDEA)
-    save_string_template(prompt, "MY_IDEA")
+    列举所有可用的提示语模板。
     ```
     """
-    return [
-        "IDEA",
-        "OUTLINE",
-        "OUTLINE_DETAIL",
-        "OUTLINE_SELF",
-        "REWRITE",
-        "TRANSLATE",
-        "SUMMARISE",
-        "SUMMARISE_TECH",
-    ]
-
+    return [item.name for item in path('textlong', '__PROMPTS__').iterdir()if item.is_dir()]
+ 
 def load_resource_prompt(prompt_id: str):
     """
     从python包资源文件夹加载提示语模板。
     """
     if prompt_id not in find_resource_promopt():
-        raise ValueError(f"prompt_id {prompt_id} NOT EXIST!")
+        raise ValueError(f"<{prompt_id}> prompt_id not exist !")
 
     def _get_prompt_str(res_file: str):
         if (res_folder := f'textlong.__PROMPTS__.{prompt_id}') and is_resource(res_folder, res_file):
