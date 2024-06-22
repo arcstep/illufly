@@ -31,9 +31,11 @@ def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False)
 def gather_docs(input: Union[str, List[str]]):
     """
     从input收集文本，有三种情况：
-    - input直接提供文本
-    - input提供了一个可以读取的文件
-    - input是一组可读取的文件
+    - 文本字符串
+    - 一个包含文本的文件，一般为md格式
+    - 一组包含文本的文件，一般为md格式
+    
+    TODO: 支持 word、html 等其他格式
     """
 
     md = ''
@@ -69,6 +71,8 @@ def write(
 ):
     """
     创作长文。
+    
+    TODO: 支持更多任务拆分模式
     """
     config = config or {}
 
@@ -128,7 +132,7 @@ def write(
 
         yield ('final', MarkdownDocuments.to_markdown(old_docs.documents[last_index:None]))
 
-def stream_log(llm: Runnable, **kwargs):
+def stream_log(llm: Runnable, start_marker: str=None, end_marker: str=None, **kwargs):
     """
     打印流式日志。
     
@@ -146,7 +150,7 @@ def stream_log(llm: Runnable, **kwargs):
             md += chunk
             print(chunk, end="")
         elif mode == 'extract':
-            md += extract_text(chunk)
+            md += extract_text(chunk, start_marker, end_marker)
         else:
             print(chunk, end="")
     return md
@@ -179,5 +183,14 @@ def from_outline(
 ):
     sep_mode = "outline"
     prompt_id = prompt_id or "OUTLINE_DETAIL"
-    md = ''
     return stream_log(llm, sep_mode=sep_mode, input=input, prompt_id=prompt_id, **kwargs)
+
+def outline_from_outline(
+    llm: Runnable,
+    input: Union[str, List[str]],
+    prompt_id: str=None,
+    **kwargs
+):
+    sep_mode = "outline"
+    prompt_id = prompt_id or "OUTLINE_SELF"
+    return stream_log(llm, "<OUTLINE-MORE>", "</OUTLINE-MORE>", sep_mode=sep_mode, input=input, prompt_id=prompt_id, **kwargs)
