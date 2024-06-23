@@ -115,11 +115,11 @@ p
 
 从一个简单的例子开始，假设我们要创作的是一部 10000 字的修仙小说，标题为《我修了个假仙》，主角是夏小兰，男一号是周成，每个章节都将以意外和打脸的线索推动情节。
 
-接下来，使用 textlong 的`from_idea`方法来创建提纲。该方法接收三个参数：提纲文件的路径、文章创作的任务描述，以及 prompt_id 指定为`OUTLINE`。
+接下来，使用 textlong 的`outline`方法来创建提纲。
 
 ```python
 task = "请帮我创作10000字的修仙小说，标题为《我修了个假仙》，主角是夏小兰，男一号是周成，每一个章节都适用意外、打脸的线索推动。"
-p.from_idea("提纲.md", task, prompt_id="OUTLINE")
+p.outline("提纲.md", task)
 ```
 
 当你运行上述代码后，textlong 会根据你的任务描述自动生成一份提纲。提纲将包括小说的章节划分和每个章节的关键情节。你可以根据这个提纲来进行文章的扩写。
@@ -190,32 +190,32 @@ p.from_outline(
 
 可能你希望在创作过程中，在每个步骤都共享一些知识，例如在创作长篇小说时的人物设定。
 
-你可以先使用用`from_idea`方法生成关于小说人物的设定：
+你可以先使用用`idea`方法生成关于小说人物的设定：
 
 ```python
 task = "我要写一个修仙小说，主角是夏小兰，男一号是周成，请帮我设想一下这两个人的出身，要非常魔幻。"
-p.from_idea("人物设定.md", task)
+p.idea("人物设定.md", task)
 ```
 
-接下来，通过`from_outline`方法中的`kg_files`参数来引用它们。如下示例：
+接下来，通过`from_outline`方法中的`knowledge`参数来引用它们。如下示例：
 
 ```python
 p.from_outline(
     output_file="我修了个假仙人.md",
     input_file="提纲.md",
     task="多使用人物细节、对话描写、打斗描写，减少抽象叙事",
-    kg_files=["人物设定.md"]
+    knowledge=["人物设定.md"]
 )
 ```
 
-注意，`from_idea`方法中同样可以使用`kg_files`参数。
+注意，`idea`、`outline`等方法中同样可以使用`knowledge`参数。
 
 ## 4 一键直出
 
-你在上述项目中使用过的方法都已经被日志记录，因此可以通过`save_scripts`将你手工执行过的动作保存到 `project_script.yml`脚本文件，再执行`run_scripts`实现一键直出。
+你在上述项目中使用过的方法都已经被日志记录，因此可以通过`save_script`将你手工执行过的动作保存到 `project_script.yml`脚本文件，再执行`run_scripts`实现一键直出。
 
 **保存自动化脚本**
-首先使用`save_scripts`保存可执行的脚本清单，这会生成或更新项目文件夹中的 `project_script.yml`文件：
+首先使用`save_script`保存可执行的脚本清单，这会生成或更新项目文件夹中的 `project_script.yml`文件：
 
 ```python
 # 加载
@@ -224,23 +224,9 @@ p.save_script()
 
 **查看`project_script.yml`**
 
-`project_script.yml`的结构很简单，你也可以收工编辑或对生成或的脚本裁剪：
+`project_script.yml`的结构是一个`yaml`文件，你也手工收工编辑或对生成或的脚本裁剪。
 
-```yaml
-- cmd: from_idea
-  kwargs:
-    output_file: 人物设定.md
-    task: 我要写一个修仙小说，主角是夏小兰，男一号是周成，请帮我设想一下这两个人的出身，要非常悲惨。
-  modified_at: "2024-06-18 10:31:07"
-- cmd: from_idea
-  kwargs:
-    output_file: 写作提纲.md
-    prompt_id: OUTLINE
-    task: 请帮我创作500字的修仙小说，标题为《我修了个假仙》，主角是夏小兰，男一号是周成，每一个章节都适用意外、打脸的线索推动。
-  modified_at: "2024-06-18 10:31:26"
-```
-
-**确认这就是你需要的执行脚本，运行脚本重新生成结果：**
+**执行下面的脚本就可以重新生成结果：**
 
 ```python
 # 执行
