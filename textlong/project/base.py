@@ -207,8 +207,8 @@ class Project():
         history = self.load_history(output_file)
         output_text = history[index]['output_text']
         cmd = Command.from_dict(history[index])
-        resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + output_text
-        self.save_markdown_as(self.get_path(save_as or output_file), resp_md)
+        resp_md = MarkdownLoader.to_front_matter(cmd.to_metadata()) + output_text
+        return self.save_markdown_as(self.get_path(save_as or output_file), resp_md)
 
     def export_jupyter(self, input_file: str, output_file: str):
         """
