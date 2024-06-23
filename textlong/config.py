@@ -53,6 +53,10 @@ def get_default_env(key: str=None):
         "TEXTLONG_DOCS": "__DOCS__",
         "TEXTLONG_QA": "__QA__",
 
+        # 文档切分
+        "TEXTLONG_DOC_CHUNK_SIZE": 2000,
+        "TEXTLONG_DOC_CHUNK_OVERLAP": 300,
+
         # 项目文件
         "TEXTLONG_CONFIG_FILE": "project_config.yml",
         "TEXTLONG_SCRIPT_FILE": "project_script.yml",
@@ -64,20 +68,24 @@ def get_default_env(key: str=None):
         "TEXTLONG_DEFAULT_SESSION": "default",
         "TEXTLONG_DEFAULT_USER": "default_user",
 
-        # 公共用户
+        # 用户共享位置
         "TEXTLONG_PUBLIC": "",
 
-        # 文本标签
-        "OUTLINE_START_TAG": "<OUTLINE>",
-        "OUTLINE_END_TAG": "</OUTLINE>",
-        "MORE_OUTLINE_START_TAG": "<MORE-OUTLINE>",
-        "MORE_OUTLINE_END_TAG": "</MORE-OUTLINE>",
+        # 扩写标签
+        "TEXTLONG_OUTLINE_START": "<OUTLINE>",
+        "TEXTLONG_OUTLINE_END": "</OUTLINE>",
+        "TEXTLONG_MORE_OUTLINE_START": "<MORE-OUTLINE>",
+        "TEXTLONG_MORE_OUTLINE_END": "</MORE-OUTLINE>",
+
+        # 上下文长度
+        "TEXTLONG_DOC_PREV_K": 1000,
+        "TEXTLONG_DOC_NEXT_K": 300,
         
         # 颜色
-        "COLOR_VERBOSE": "蓝色",
-        "COLOR_OUTPUT": "黄色",
-        "COLOR_INFO": "红色",
-        "COLOR_LOG": "绿色",
+        "TEXTLONG_COLOR_VERBOSE": "蓝色",
+        "TEXTLONG_COLOR_OUTPUT": "黄色",
+        "TEXTLONG_COLOR_INFO": "红色",
+        "TEXTLONG_COLOR_LOG": "绿色",
     }
     if key:
         if key not in default_values:

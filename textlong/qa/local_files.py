@@ -10,7 +10,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.runnables import Runnable
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
-from ..config import get_folder_root, get_folder_public, get_folder_docs
+from ..config import get_folder_root, get_folder_public, get_folder_docs, get_default_env
 from ..utils import raise_not_install
 from ..writing.markdown import MarkdownLoader
 
@@ -99,7 +99,11 @@ class LocalFilesLoader(BaseLoader):
         ])
 
     def get_files(self) -> list[str]:
-        """List All Files with Extension"""
+        """
+        按照规则设定过滤本地资料文件。
+        
+        如果希望按自定义逻辑处理每一个文件，可以直接使用这个方法。
+        """
         files = []
 
         folders = self.documents_folder
@@ -132,8 +136,8 @@ class LocalFilesLoader(BaseLoader):
             blocked_docs = [Document(page_content=text, metadata={"source": filename})]
 
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size = 2000,
-                chunk_overlap = 300,
+                chunk_size = get_default_env("TEXTLONG_DOC_CHUNK_SIZE"),
+                chunk_overlap = get_default_env("TEXTLONG_DOC_CHUNK_OVERLAP"),
                 length_function = len,
                 is_separator_regex = False,
             )
@@ -151,7 +155,12 @@ class LocalFilesLoader(BaseLoader):
                 yield doc
 
     def load(self) -> List[Document]:
-        """Load Documents from All Files."""
+        """
+        如果直接使用这个方法，将会直接调用load_docs方法。
+        
+        默认的load_docs方法会将文档做整体切分，然后直接输出。
+        这不是最优的RAG处理方式，但足够简单。
+        """
         return list(self.lazy_load())
 
     def get_embeddings(self):
