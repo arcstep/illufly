@@ -6,7 +6,7 @@ from typing import Union, List, Dict, Any
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
 
-from ..writing import MarkdownLoader, stream_log, idea, outline, from_outline, outline_from_outline
+from ..writing import MarkdownLoader, write, idea, outline, from_outline, more_outline
 from ..writing.command import Command
 from ..config import (
     get_folder_root,
@@ -171,8 +171,8 @@ class Project():
         自动执行脚本。
         """
         for cmd in self.load_script(script_path):
-            if cmd['command'] == 'stream_log':
-                self.exec(stream_log, output_file=cmd['output_file'], **cmd['args'])
+            if cmd['command'] == 'write':
+                self.exec(write, output_file=cmd['output_file'], **cmd['args'])
 
     def _load_output_history(self, output_path):
         history = []
@@ -221,8 +221,8 @@ class Project():
     def exec(self, task_func, output_file: str=None, **kwargs):
         resp_cmd = task_func(
             self.llm,
-            output_file=output_file,
             base_folder=self.project_folder,
+            output_file=output_file,
             **kwargs
         )
 
@@ -242,18 +242,18 @@ class Project():
 
     def outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
         """
-        从大纲开始扩写。
+        生成写作大纲。
         """
         self.exec(outline, output_file=output_file, input=input, **kwargs)
 
+    def more_outline(self, output_file: str,  input: Union[str, list[str]], **kwargs):
+        """
+        从已有大纲获得更多大纲。
+        """
+        self.exec(more_outline, output_file=output_file, input=input **kwargs)
+
     def from_outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
         """
-        逐段重新生成。
+        从大纲扩写。
         """
         self.exec(from_outline, output_file=output_file, input=input, **kwargs)
-
-    def outline_from_outline(self, output_file: str,  input: Union[str, list[str]], **kwargs):
-        """
-        逐段重新生成。
-        """
-        self.exec(outline_from_outline, output_file=output_file, input=input **kwargs)

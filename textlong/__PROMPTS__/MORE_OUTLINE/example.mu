@@ -1,7 +1,7 @@
 
 >>>>>>>>>>>>>>>>>>>> 输出例子:
 
-<OUTLINE-MORE>
+<MORE-OUTLINE>
 
 <OUTLINE>
 扩写摘要...
@@ -13,4 +13,4 @@
 
 **按需增加N个 <OUTLINE>...</OUTLINE>**
 
-</OUTLINE-MORE>
+</MORE-OUTLINE>
