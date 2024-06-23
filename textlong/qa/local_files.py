@@ -6,10 +6,13 @@ from langchain_community.document_loaders import (
     Docx2txtLoader,
     UnstructuredMarkdownLoader,
 )
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.runnables import Runnable
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
 from ..config import get_folder_root, get_folder_public, get_folder_docs
 from ..utils import raise_not_install
+from ..writing.markdown import MarkdownLoader
 
 import os
 import re
@@ -24,7 +27,9 @@ class FileLoadFactory:
     @staticmethod
     def get_loader(filename):
         ext = get_file_extension(filename)
-        if ext == "pdf":
+        if ext == "md":
+            return MarkdownLoader(filename)
+        elif ext == "pdf":
             try:
                 import pypdf
                 return PyPDFLoader(filename)
@@ -36,13 +41,6 @@ class FileLoadFactory:
                 return Docx2txtLoader(filename)
             except BaseException as e:
                 raise_not_install('docx2txt')
-        elif ext == "md":
-            try:
-                import unstructured
-                import markdown
-                return UnstructuredMarkdownLoader(filename, mode="elements", strategy="fast")
-            except BaseException as e:
-                raise_not_install(['markdown', 'unstructured'])
         elif ext == "xlsx":
             try:
                 import unstructured
@@ -61,8 +59,8 @@ class LocalFilesLoader(BaseLoader):
     从本地文件中检索知识文档，支持docx、pdf、txt、md、xlsx等文档。
     
     过滤目标：
-    - 根目录：由 LANGCHAIN_CHINESE_DOCUMENTS_FOLDER 变量指定
-    - 过滤目标：文件全路径移除 LANGCHAIN_CHINESE_DOCUMENTS_FOLDER 部份后剩余的部份
+    - 根目录：由 TEXTLONG_DOCS 变量指定
+    - 过滤目标：文件全路径移除 TEXTLONG_DOCS 部份后剩余的部份
     
     过滤规则包含：
     - 目录过滤：由 included_prefixes 指定，以列表中的字符串开头就保留
@@ -73,6 +71,8 @@ class LocalFilesLoader(BaseLoader):
 
     def __init__(
         self,
+        llm: Runnable,
+        project_folder: str=None,
         user_id: str=None,
         path_regex: str=None,
         included_prefixes: List[str] = [],
@@ -81,11 +81,12 @@ class LocalFilesLoader(BaseLoader):
         *args, **kwargs
     ):
         self.user_id = user_id or get_folder_public()
+        self.project_folder = project_folder or get_folder_docs()
         self.path_regex = path_regex or ".*"
         self.included_prefixes = included_prefixes
         self.excluded_prefixes = excluded_prefixes
         self.extensions = extensions or ["docx", "pdf", "md", "txt", "xlsx"]
-        self.documents_folder = os.path.join(get_folder_root(), self.user_id, get_folder_docs())
+        self.documents_folder = os.path.join(get_folder_root(), self.user_id, self.project_folder)
     
     def help(self):
         return "\n".join([
@@ -105,6 +106,9 @@ class LocalFilesLoader(BaseLoader):
         for dirpath, dirnames, filenames in os.walk(folders):
             for filename in filenames:
                 relpath = os.path.relpath(os.path.join(dirpath, filename), folders)
+                if relpath.startswith(".") or re.search('/.', relpath):
+                    # 确保不包含以.开头的文件夹或文件
+                    continue
                 if self.included_prefixes and not any(relpath.startswith(include) for include in self.included_prefixes):
                     continue
                 if self.excluded_prefixes and any(relpath.startswith(exclude) for exclude in self.excluded_prefixes):
@@ -118,20 +122,40 @@ class LocalFilesLoader(BaseLoader):
         return files
 
     def load_docs(self, filename: str) -> List[Document]:
-        """Load file as Documents by FileLoadFactory"""
+        """
+        按照文档类型加载文档，并直输出循环拆分后的文档块。
+        """
         file_loader = FileLoadFactory.get_loader(filename)
         if file_loader:
-            pages = file_loader.load()
-            return pages
+            file_docs = file_loader.load()
+            text = '\n'.join([doc.page_content for doc in file_docs])
+            blocked_docs = [Document(page_content=text, metadata={"source": filename})]
+
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size = 2000,
+                chunk_overlap = 300,
+                length_function = len,
+                is_separator_regex = False,
+            )
+            return text_splitter.split_documents(blocked_docs)
         else:
             return []
 
     def lazy_load(self) -> Iterator[Document]:
-        """Load files as Documents by FileLoadFactory"""
+        """
+        为每个文件重新分配块结构。
+        """
         for filename in self.get_files():
-            for doc in self.load_docs(filename):
+            file_docs = self.load_docs(filename)
+            for doc in file_docs:
                 yield doc
 
     def load(self) -> List[Document]:
         """Load Documents from All Files."""
         return list(self.lazy_load())
+
+    def get_embeddings(self):
+        """
+        获得缓存的向量编码。
+        """
+        pass

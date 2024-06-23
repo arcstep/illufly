@@ -153,7 +153,7 @@ p.outline("提纲.md", task)
 ```python
 p.from_outline(
     output_file="我修了个假仙人.md",
-    input_file="提纲.md"
+    input="提纲.md"
 )
 ```
 
@@ -165,7 +165,7 @@ p.from_outline(
 ```python
 p.from_outline(
     output_file="我修了个假仙人.md",
-    input_file="提纲.md",
+    input="提纲.md",
     task="多使用人物细节、对话描写、打斗描写，减少抽象叙事"
 )
 ```
@@ -202,7 +202,7 @@ p.idea("人物设定.md", task)
 ```python
 p.from_outline(
     output_file="我修了个假仙人.md",
-    input_file="提纲.md",
+    input="提纲.md",
     task="多使用人物细节、对话描写、打斗描写，减少抽象叙事",
     knowledge=["人物设定.md"]
 )
@@ -212,7 +212,7 @@ p.from_outline(
 
 ## 4 一键直出
 
-你在上述项目中使用过的方法都已经被日志记录，因此可以通过`save_script`将你手工执行过的动作保存到 `project_script.yml`脚本文件，再执行`run_scripts`实现一键直出。
+你在上述项目中使用过的方法都已经被日志记录，因此可以通过`save_script`将你手工执行过的动作保存到 `project_script.yml`脚本文件，再执行`run_script`实现一键直出。
 
 **保存自动化脚本**
 首先使用`save_script`保存可执行的脚本清单，这会生成或更新项目文件夹中的 `project_script.yml`文件：
