@@ -4,13 +4,13 @@
 
 **方法：**
 
-- 创意 IDEA
-- 大纲 OUTLINE
-- 扩写 FROM_OUTLINE
-- 细化大纲 OUTLINE_FROM_OUTLINE
+- 创意 idea
+- 大纲 outline
+- 扩写 from_outline
+- 细化大纲 outline_from_outline
 
-- 支持多个 input
-- 支持多个 knowledge
+- 支持多个 input，合并为一个上下文
+- 支持多个 knowledge，合并为一个知识上下文
 
 - 整体
 - 按大纲拆分
@@ -34,28 +34,27 @@ _TODO:输入输出模式_
 - 1 -> n
 - n -> 1
 
-_TODO:生成核心_
+**平行输出：**
 
-- 支持使用链和智能体替代 LLM 执行生成任务
-- 支持开源模型
+_TODO: 输出质量_
 
-_TODO:并行输出_
-
-- 按多个 LLM 同时输出
-- 按多份提示语模板同时输出
+- 按大模型平行输出
+- 多项目文件夹平行输出：不同提示语模板、不同背景资料
+- 生成质量标注：对所有平行输出打标签
+- 展示质量评分：对所有质量标签做评分统计
 
 **项目：**
 
-_TODO:_
-
-- 创意 IDEA
-- 大纲 OUTLINE
-- 扩写 FROM_OUTLINE
-- 细化大纲 OUTLINE_FROM_OUTLINE
+- 写作指令: idea, outline, from_outline ...
+- 项目加载: load_project, save_project
+- 命令历史: load_commands, load_history
+- 项目脚本: save_script, load_script, run_script
+- 指令恢复: checkout
 
 **脚本：**
 
 - 保存脚本
+- 执行脚本
 - 执行脚本
 
 **提示语模板：**
