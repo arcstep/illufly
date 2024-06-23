@@ -1,4 +1,4 @@
-from .local_files import LocalFilesLoader
+from .base import LocalFilesLoader
 from .qa_excel import QAExcelsLoader
 from .qa_prompt import create_qa_prompt, create_chat_prompt
 from .tool import (
