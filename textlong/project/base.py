@@ -20,6 +20,22 @@ from ..exporter import export_jupyter
 from ..importer import load_markdown
 from ..utils import raise_not_supply_all
 
+def command_dependency(cmd1, cmd2):
+    for value in cmd2['args'].values():
+        if isinstance(value, str) and cmd1['output_file'] in value:
+            return True
+    return False
+
+def sort_commands(commands):
+    sorted_commands = sorted(commands, key=lambda x: x['modified_at'])
+    
+    for i in range(len(sorted_commands)):
+        for j in range(i + 1, len(sorted_commands)):
+            if command_dependency(sorted_commands[j], sorted_commands[i]):
+                sorted_commands[i], sorted_commands[j] = sorted_commands[j], sorted_commands[i]
+    
+    return sorted_commands
+
 class Project():
     """
     长文生成项目的文件管理。
@@ -99,16 +115,18 @@ class Project():
     def _get_output_history_path(self, output_file):
         return self.get_path(get_folder_logs(), output_file) + ".yml"
     
-    def load_history(self, output_file):
+    def load_history(self, output_file, start: int=None, end: int=None):
         """
         查看命令生成历史。
         """
         path = self._get_output_history_path(output_file)
-        return self._load_output_history(path)
+        return self._load_output_history(path)[start:end]
 
-    def load_commands(self):
+    def load_commands(self, start: int=None, end: int=None):
         """
         从日志加载所有命令。
+
+        根据生成顺序的依赖关系排序: 如果指令对象的output_file出现在对方的args中就排在其钱买呢。
         """
         commands = []
         for output_file in self.output_files:
@@ -119,10 +137,10 @@ class Project():
                     'command': cmd['command'],
                     'args':cmd['args'],
                 }
-                for cmd in self.load_history(output_file)
+                for cmd in self.load_history(output_file, start, end)
             ])
         if commands:
-            commands = sorted(commands, key=lambda cmd: cmd['modified_at'])
+            commands = sort_commands(commands)
         return commands
 
     def load_script(self, script_path: str=None):
@@ -136,14 +154,16 @@ class Project():
                 commands = yaml.safe_load(f) or []
         return commands
 
-    def save_script(self, script_path: str=None):
+    def save_script(self, script_path: str=None, start: int=-1, end: int=None):
         """
         保存命令执行的脚本，可用于批量自动执行。
+        
+        默认保存每个文件处理历史命令中的最后一个: [-1, None]。
         """
         path = script_path or self.project_script_path
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
-            yaml.safe_dump(self.load_commands(), f, allow_unicode=True, sort_keys=False)
+            yaml.safe_dump(self.load_commands(start, end), f, allow_unicode=True, sort_keys=False)
         return True
     
     def run_script(self, script_path: str=None):
