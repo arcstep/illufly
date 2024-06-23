@@ -6,7 +6,7 @@ from typing import Union, List, Dict, Any
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
 
-from ..writing import stream_log, idea, outline, from_outline, outline_from_outline, MarkdownDocuments
+from ..writing import MarkdownLoader, stream_log, idea, outline, from_outline, outline_from_outline
 from ..writing.command import Command
 from ..config import (
     get_folder_root,

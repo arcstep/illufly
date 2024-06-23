@@ -5,7 +5,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.documents import Document
 from langchain.globals import set_verbose, get_verbose
 
-from .documents import MarkdownDocuments
+from .markdown import MarkdownLoader
 from .command import Command
 from ..parser import parse_markdown
 from ..hub import load_prompt
@@ -88,7 +88,7 @@ def write(
     template_folder = config.get('template_folder', None)
     verbose_color = config.get('verbose_color', get_default_env("COLOR_VERBOSE"))
 
-    if verbose and base_folder:
+    if get_verbose() or verbose and base_folder:
         yield ('info', f'\nbase_folder: {base_folder}\n')
 
     prompt_id = prompt_id or 'IDEA'
@@ -104,9 +104,9 @@ def write(
     prompt = load_prompt(prompt_id, template_folder=template_folder)
 
     if input_doc:
-        old_docs = MarkdownDocuments(input_doc)
+        old_docs = MarkdownLoader(input_doc)
         task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
-        if verbose:
+        if get_verbose() or verbose:
             yield ('info', f'\nsep_mode: {sep_mode}\n')
             yield ('info', f'task_mode: {task_mode}\n')
             yield ('info', f'task_todos: {task_todos}\n\n')
@@ -132,15 +132,15 @@ def write(
             if last_index != None:
                 yield ('text', "\n")
             if old_docs.documents[last_index:index]:
-                yield ('text', MarkdownDocuments.to_markdown(old_docs.documents[last_index:index]))
+                yield ('text', MarkdownLoader.to_markdown(old_docs.documents[last_index:index]))
             last_index = index + 1
             
             if doc.page_content and doc.page_content.strip():
                 _kwargs = {
                     "knowledge__": kg_doc,
                     "todo_doc__": doc.page_content,
-                    "prev_doc__": MarkdownDocuments.to_markdown(new_docs.get_prev_documents(doc, prev_k)),
-                    "next_doc__": MarkdownDocuments.to_markdown(new_docs.get_next_documents(doc, next_k)),
+                    "prev_doc__": MarkdownLoader.to_markdown(new_docs.get_prev_documents(doc, prev_k)),
+                    "next_doc__": MarkdownLoader.to_markdown(new_docs.get_next_documents(doc, next_k)),
                     **kwargs
                 }
                 chain = _create_chain(llm, prompt, **_kwargs)
@@ -159,7 +159,7 @@ def write(
                 yield ('text', doc.page_content)
 
         if old_docs.documents[last_index:None]:
-            yield ('text', MarkdownDocuments.to_markdown(old_docs.documents[last_index:None]))
+            yield ('text', MarkdownLoader.to_markdown(old_docs.documents[last_index:None]))
 
 def stream_log(
     llm: Runnable,
@@ -227,7 +227,7 @@ def stream_log(
     # 将输出文本保存到指定文件
     output_file = os.path.join(base_folder or "", output_file or "")
     if output_file:
-        md_with_front_matter = MarkdownDocuments.to_front_matter(command.to_metadata()) + md
+        md_with_front_matter = MarkdownLoader.to_front_matter(command.to_metadata()) + md
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(md_with_front_matter)

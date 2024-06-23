@@ -78,7 +78,6 @@ def get_default_env(key: str=None):
         "COLOR_OUTPUT": "黄色",
         "COLOR_INFO": "红色",
         "COLOR_LOG": "绿色",
-        
     }
     if key:
         if key not in default_values:

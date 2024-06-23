@@ -2,14 +2,22 @@ import re
 import copy
 import os
 import yaml
-from typing import List, Union
+from typing import Iterator, List, Union
 from langchain_core.documents import Document
+from langchain_community.document_loaders.base import BaseLoader
 from ..parser import parse_markdown
 
-class MarkdownDocuments():
+class MarkdownLoader(BaseLoader):
     def __init__(self, doc_str: str=None):
         self.documents = []
         self.import_markdown(doc_str)
+
+    def lazy_load(self) -> Iterator[Document]:
+        for doc in self.documents:
+            yield doc
+
+    def load(self) -> List[Document]:
+        return list(self.lazy_load())
 
     def import_markdown(self, doc_str: str=None):
         """
