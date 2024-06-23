@@ -12,7 +12,7 @@ def list_projects(user_id: str=None):
         if os.path.isdir(os.path.join(path, name)) and is_project_existing(name, user_id)
     ]
 
-def create_project(project_id: str, user_id: str=None):
+def init_project(project_id: str, user_id: str=None):
     """创建项目"""
     user_id = user_id or get_folder_public()
     p = Project(project_id=project_id, user_id=user_id)

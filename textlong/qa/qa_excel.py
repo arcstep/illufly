@@ -27,8 +27,7 @@ class QAExcelsLoader(LocalFilesLoader):
         检测包含QA标记的数据框
         
         规则：
-        - Excel文件保存在 TEXTLONG_FOLDER/public/__QA__ 文件夹中
-        - 名称中包含QA的sheet
+        - 文件名称中包含QA的sheet
         - 以数据框的形式保存整个QA文本
         - 表头应当包含QA列，即至少一列以Q开头，至少一列以A开头，例如： Q-问题 | A-回答
         - 允许表头的上方有其他行，用于说明、总结或作为空行
