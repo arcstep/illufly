@@ -32,11 +32,15 @@ class MarkdownDocuments():
     def to_front_matter(cls, dict_data):
         if isinstance(dict_data, dict):
             metadata = copy.deepcopy(dict_data)
-            if 'id' in metadata:
-                metadata.pop('id', None)
-            if 'type' in metadata:
-                metadata.pop('type', None)
-            return f'---\n{yaml.safe_dump(metadata, allow_unicode=True)}---\n\n'
+            for e_tag in ['id', 'type']:
+                if e_tag in metadata:
+                    metadata.pop(e_tag, None)
+            for e_tag in ['verbose', 'is_fake']:
+                tags = metadata.get('args', {})
+                if e_tag in tags:
+                    tags.pop(e_tag, None)
+            yaml_str = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False)
+            return "---\n" + yaml_str.replace("\n\n", "\n") + "---\n\n"
         else:
             return ''
 
@@ -108,7 +112,7 @@ class MarkdownDocuments():
             ]
             return ('all', docs)
 
-        elif sep_mode == 'document':
+        elif sep_mode == 'element':
             docs = [
                 (d, i)
                 for i, d in enumerate(self.documents) 

@@ -6,7 +6,7 @@ from typing import Union, List, Dict, Any
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
 
-from ..writing import idea, outline, from_outline, outline_from_outline, MarkdownDocuments
+from ..writing import stream_log, idea, outline, from_outline, outline_from_outline, MarkdownDocuments
 from ..writing.command import Command
 from ..config import (
     get_folder_root,
@@ -23,6 +23,12 @@ from ..utils import raise_not_supply_all
 class Project():
     """
     长文生成项目的文件管理。
+    
+    - 写作指令: idea, outline, from_outline ...
+    - 项目加载: load_project, save_project
+    - 命令历史: load_commands, load_history
+    - 项目脚本: save_script, load_script, run_script
+    - 指令恢复: checkout
     """
     def __init__(self, llm: Runnable, project_id: str, user_id: str=None):
         raise_not_supply_all("Project 对象必须提供 llm", llm)
@@ -44,8 +50,7 @@ class Project():
         ])
 
     def __repr__(self):
-        project_folder = os.path.join('{BASE_FOLDER}', self.user_id, self.project_id)
-        return f"Project<llm: '{self.llm._llm_type}/{self.llm.model}', project_folder: '{project_folder}', output_files: {self.output_files}>"
+        return f"Project<llm: '{self.llm._llm_type}/{self.llm.model}', project_folder: '{self.project_folder}', output_files: {self.output_files}>"
 
     def to_dict(self):
         return {attr: getattr(self, attr) for attr in vars(self) if attr != 'llm' and getattr(self, attr)}
@@ -66,7 +71,7 @@ class Project():
         """
         保存文本到markdown文件。
         """
-        md_text = extract_text(txt)
+        md_text = txt
         if filepath and md_text:
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(md_text)
@@ -88,7 +93,7 @@ class Project():
         """
         os.makedirs(os.path.dirname(self.project_config_path), exist_ok=True)
         with open(self.project_config_path, 'w') as f:
-            yaml.safe_dump(self.to_dict(), f, allow_unicode=True)
+            yaml.safe_dump(self.to_dict(), f, allow_unicode=True, sort_keys=False)
         return True
 
     def _get_output_history_path(self, output_file):
@@ -107,8 +112,15 @@ class Project():
         """
         commands = []
         for output_file in self.output_files:
-            hist = self.load_history(output_file)
-            commands.extend([{'cmd': cmd['command'], 'kwargs':cmd['args'],  'modified_at': cmd['modified_at']} for cmd in hist])
+            commands.extend([
+                {
+                    'modified_at': cmd['modified_at'],
+                    'output_file': cmd['output_file'],
+                    'command': cmd['command'],
+                    'args':cmd['args'],
+                }
+                for cmd in self.load_history(output_file)
+            ])
         if commands:
             commands = sorted(commands, key=lambda cmd: cmd['modified_at'])
         return commands
@@ -131,7 +143,7 @@ class Project():
         path = script_path or self.project_script_path
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
-            yaml.safe_dump(self.load_commands(), f, allow_unicode=True)
+            yaml.safe_dump(self.load_commands(), f, allow_unicode=True, sort_keys=False)
         return True
     
     def run_script(self, script_path: str=None):
@@ -139,14 +151,8 @@ class Project():
         自动执行脚本。
         """
         for cmd in self.load_script(script_path):
-            if cmd['cmd'] == 'from_idea':
-                self.from_idea(**cmd['kwargs'])
-            elif cmd['cmd'] == 'from_outline':
-                self.from_outline(**cmd['kwargs'])
-            elif cmd['cmd'] == 'from_chunk':
-                self.from_chunk(**cmd['kwargs'])
-            elif cmd['cmd'] == 'extract':
-                self.extract(**cmd['kwargs'])
+            if cmd['command'] == 'stream_log':
+                self.exec(stream_log, output_file=cmd['output_file'], **cmd['args'])
 
     def _load_output_history(self, output_path):
         history = []
@@ -155,7 +161,7 @@ class Project():
                 history = yaml.safe_load(f) or []
         return history
 
-    def save_output_history(self, output_file: str, command: Command):
+    def _save_output_history(self, output_file: str, command: Command):
         """
         保存生成历史。
         """
@@ -166,7 +172,7 @@ class Project():
 
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
-            yaml.safe_dump(history, f, allow_unicode=False)
+            yaml.safe_dump(history, f, allow_unicode=False, sort_keys=False)
  
     def get_path(self, *path):
         """
@@ -192,80 +198,42 @@ class Project():
         output_path = self.get_path(output_file)
         return export_jupyter(input_path, output_path)
 
-    def _execute_task(self, task_func, output_file, task: str=None, prompt_id: str=None, input_file: str=None, kg_files: List[str]=None, **kwargs):
-        command = task_func.__name__
-        cmd_args = {
-            "task": task,
-            "input_file": input_file,
-            "output_file": output_file,
-            "kg_files": kg_files,
-            "prompt_id": prompt_id,
-            **kwargs
-        }
-        if get_verbose():
-            print("\033[31m", f'> {command} -> {output_file} >>>')  # 红色
-            print("\033[32m", cmd_args, "\033[0m")  # 绿色，然后重置
-
-        input_doc = None
-        if input_file:
-            docs = load_markdown(self.get_path(input_file))
-            input_doc = docs.markdown
-
-        knowledge = []
-        if kg_files:
-            if isinstance(kg_files, str):
-                kg_files = [kg_files]
-            for ref_file in kg_files:
-                d = load_markdown(self.get_path(ref_file))
-                knowledge.append(d.markdown)
-
-        resp_md = ""
-        for x in task_func(
+    def exec(self, task_func, output_file: str=None, **kwargs):
+        resp_cmd = task_func(
             self.llm,
-            prompt_id=prompt_id,
-            input_doc=input_doc,
-            knowledge=knowledge,
-            task=task,
-            template_folder=self.project_folder,
+            output_file=output_file,
+            base_folder=self.project_folder,
             **kwargs
-        ):
-            resp_md += x
-            print(x, end="")
-
-        cmd = Command(command, cmd_args, resp_md)
-
-        # 保存生成结果
-        resp_md = MarkdownDocuments.to_front_matter(cmd.to_metadata()) + resp_md
-        self.save_markdown_as(self.get_path(output_file), resp_md)
+        )
 
         # 保存生成历史
-        self.save_output_history(output_file, cmd)
+        self._save_output_history(output_file, resp_cmd)
 
         # 更新项目配置
         if output_file not in self.output_files:
             self.output_files.append(output_file)
             self.save_project()
 
-    def from_idea(self, output_file: str, task: str, kg_files: List[str]=None, **kwargs):
+    def idea(self, output_file: str, task: str, **kwargs):
         """
         从一个idea开始生成。
         """
-        self._execute_task(from_idea, output_file=output_file, task=task, kg_files=kg_files, **kwargs)
+        self.exec(idea, output_file=output_file, task=task, **kwargs)
 
-    def from_outline(self, output_file: str, input_file: str, kg_files: List[str]=None, **kwargs):
+    def outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
         """
         从大纲开始扩写。
         """
-        self._execute_task(from_outline, output_file=output_file, input_file=input_file, kg_files=kg_files, **kwargs)
+        self.exec(outline, output_file=output_file, input=input, **kwargs)
 
-    def from_chunk(self, output_file: str, input_file: str, kg_files: List[str]=None, **kwargs):
+    def from_outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
         """
         逐段重新生成。
         """
-        self._execute_task(from_chunk, output_file=output_file, input_file=input_file, kg_files=kg_files, **kwargs)
+        self.exec(from_outline, output_file=output_file, input=input, **kwargs)
 
-    def extract(self, output_file: str, input_file: str, kg_files: List[str]=None, **kwargs):
+    def outline_from_outline(self, output_file: str,  input: Union[str, list[str]], **kwargs):
         """
-        整体提取。
+        逐段重新生成。
         """
-        self._execute_task(extract, output_file=output_file, input_file=input_file, kg_files=kg_files, **kwargs)
+        self.exec(outline_from_outline, output_file=output_file, input=input **kwargs)
