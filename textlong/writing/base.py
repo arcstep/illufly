@@ -11,6 +11,7 @@ from ..parser import parse_markdown
 from ..hub import load_prompt
 from ..importer import load_markdown
 from ..utils import extract_text, color_code
+from ..config import get_default_env
 
 def _create_chain(llm, prompt_template, **kwargs):
     if not llm:
@@ -19,18 +20,18 @@ def _create_chain(llm, prompt_template, **kwargs):
     return prompt | llm
 
 def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False, verbose_color: str=None):
-    verbose_color = verbose_color or '蓝色'
+    verbose_color = verbose_color or get_default_env("COLOR_VERBOSE")
 
     if get_verbose() or is_fake or verbose:
         print(color_code(verbose_color) + chain.get_prompts()[0].format(**input) + "\033[0m")
 
     if is_fake:
-        yield "FAKE-CONTENT...\n"
+        yield "Fake-Output-Content...\n"
     else:
         for chunk in chain.stream(input):
             yield chunk.content
 
-def gather_docs(input: Union[str, List[str]]) -> str:
+def gather_docs(input: Union[str, List[str]], base_folder: str="") -> str:
     """
     从input收集文本，有如下情况：
     - 文本字符串
@@ -48,11 +49,13 @@ def gather_docs(input: Union[str, List[str]]) -> str:
 
     if isinstance(input, list):
         for s in input:
-            if isinstance(s, str) and s.endswith(".md") and os.path.exists(s):
-                d = load_markdown(s)
-                mds.append(d.markdown)
-            else:
-                mds.append(s)
+            if isinstance(s, str) and s.endswith(".md"):
+                path = os.path.join(base_folder, s)
+                if os.path.exists(path):
+                    d = load_markdown(path)
+                    mds.append(d.markdown)
+                    continue
+            mds.append(s)
 
     return "\n".join(mds)
 
@@ -63,10 +66,10 @@ def write(
     sep_mode: str='all',
     knowledge: Union[str, List[str]]=None,
     prompt_id: str=None,
-    config: Dict[str, Any]=None,
-    is_fake: bool=False,
+    base_folder: str=None,
     verbose: bool=False,
-    verbose_color: str=None,
+    is_fake: bool=False,
+    config: Dict[str, Any]=None,
     **kwargs
 ):
     """
@@ -79,26 +82,34 @@ def write(
     TODO: 支持更多任务拆分模式
     """
     config = config or {}
+    base_folder = base_folder or ''
     prev_k = config.get('prev_k', 800)
     next_k = config.get('next_k', 200)
     template_folder = config.get('template_folder', None)
+    verbose_color = config.get('verbose_color', get_default_env("COLOR_VERBOSE"))
+
+    if verbose and base_folder:
+        yield ('info', f'\nbase_folder: {base_folder}\n')
+
     prompt_id = prompt_id or 'IDEA'
 
     # input
-    input_doc = gather_docs(input) or ''
+    input_doc = gather_docs(input, base_folder) or ''
     task_mode, task_todos, old_docs = 'all', [], []
 
     # knowledge
-    kg_doc = gather_docs(knowledge) or ''
+    kg_doc = gather_docs(knowledge, base_folder) or ''
 
     # prompt
     prompt = load_prompt(prompt_id, template_folder=template_folder)
 
-    yield ('log', f'\n>->>> Prompt ID: {kwargs.get("prompt_id", "")} <<<-<\n')
-
     if input_doc:
         old_docs = MarkdownDocuments(input_doc)
         task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
+        if verbose:
+            yield ('info', f'\nsep_mode: {sep_mode}\n')
+            yield ('info', f'task_mode: {task_mode}\n')
+            yield ('info', f'task_todos: {task_todos}\n\n')
 
     if task_mode == 'all':
         _kwargs = {
@@ -112,16 +123,16 @@ def write(
         for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
             resp_md += delta
             yield ('log', delta)
-        yield ('collect', resp_md)
+        yield ('final', resp_md)
 
     elif task_mode == 'document':
         last_index = None
         new_docs = copy.deepcopy(old_docs)
         for doc, index in task_todos:
             if last_index != None:
-                yield ('output', "\n")
+                yield ('text', "\n")
             if old_docs.documents[last_index:index]:
-                yield ('output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:index]))
+                yield ('text', MarkdownDocuments.to_markdown(old_docs.documents[last_index:index]))
             last_index = index + 1
             
             if doc.page_content and doc.page_content.strip():
@@ -138,26 +149,23 @@ def write(
                 for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose, verbose_color):
                     yield ('log', delta)
                     resp_md += delta
-                yield ('extract', extract_text(resp_md))
+                yield ('final-extract', extract_text(resp_md))
                 reply_docs = parse_markdown(extract_text(resp_md))
                 new_docs.replace_documents(doc, doc, reply_docs)
 
             else:
                 # 如果内容是空行就不再处理
-                yield ('log', '(无需处理的空行)')
-                yield ('output', doc.page_content)
+                yield ('info', '(无需处理的空行)\n')
+                yield ('text', doc.page_content)
 
         if old_docs.documents[last_index:None]:
-            yield ('output', MarkdownDocuments.to_markdown(old_docs.documents[last_index:None]))
+            yield ('text', MarkdownDocuments.to_markdown(old_docs.documents[last_index:None]))
 
-def collect_stream(
+def stream_log(
     llm: Runnable,
-    output: str=None,
-    start_marker: str=None,
-    end_marker: str=None,
-    verbose_color=None,
-    output_color=None,
-    log_color=None,
+    output_file: str=None,
+    base_folder: str=None,
+    config=None,
     **kwargs
 ):
     """
@@ -165,87 +173,112 @@ def collect_stream(
     
     - 返回值
         接收的流式内容都为形如 (mode, content) 的元组，其中：
-        mode - 值为 output, collect, extract 或 log
+        mode - 值为 text, final, final-extract 或 log
         content - 文本内容
 
         log: 流式输出的中间结果，一般与collect或extract搭配使用
-        output: 原始的文本结果直接被采纳
-        collect: 流式过程的最终结果收集，过程信息在log中分次输出
-        extract: 与collect类似，但最终结果做脱壳处理，例如在扩写过程中脱去可能存在的 <OUTLINE></OUTLINE>外壳
+        text: 原始的文本结果直接被采纳
+        final: 流式过程的最终结果收集，过程信息在log中分次输出
+        final-extract: 与collect类似，但最终结果做脱壳处理，例如在扩写过程中脱去可能存在的 <OUTLINE></OUTLINE>外壳
     """
-    output_color = output_color or '黄色'
-    log_color = log_color or '绿色'
+    config = config or {}
+    verbose_color = config.get('verbose_color',  get_default_env("COLOR_VERBOSE"))
+    output_color = config.get('output_color', get_default_env("COLOR_OUTPUT"))
+    info_color = config.get('info_color', get_default_env("COLOR_INFO"))
+    log_color = config.get('log_color', get_default_env("COLOR_LOG"))
+
+    outline_start_tag = config.get('outline_start_tag', get_default_env("OUTLINE_START_TAG"))
+    outline_end_tag = config.get('outline_end_tag', get_default_env("OUTLINE_END_TAG"))
+    kwargs.update({
+        "outline_start_tag": outline_start_tag,
+        "outline_end_tag": outline_end_tag
+    })
+
+    prompt_id = kwargs.get('prompt_id', 'IDEA')
+    output_str = (" | " + output_file) if output_file else ""
+    print(color_code(log_color) + f'\n>->>> Prompt ID: {prompt_id}{output_str} <<<-<\n' + "\033[0m")
 
     md = ''
-    for mode, chunk in write(llm, verbose_color=verbose_color, **kwargs):
-        if mode == 'output':
+    for mode, chunk in write(llm, base_folder=base_folder, config=config, **kwargs):
+        if mode == 'text':
             md += chunk
             print(color_code(output_color) + chunk + "\033[0m", end="")
-        elif mode == 'collect':
+        elif mode == 'final':
             md += chunk
-        elif mode == 'extract':
-            md += extract_text(chunk, start_marker, end_marker)
+        elif mode == 'final-extract':
+            md += extract_text(chunk, outline_start_tag, outline_end_tag)
+        elif mode == 'info':
+            print(color_code(info_color) + chunk + "\033[0m", end="")
+        elif mode == 'log':
+            print(color_code(log_color) + chunk + "\033[0m", end="")
         else:
             print(color_code(log_color) + chunk + "\033[0m", end="")
 
     command = Command(
+        command="stream_log",
         args={
-            "output": output,
-            "start_marker": start_marker,
-            "end_marker": end_marker,
-            "verbose_color": verbose_color,
-            "output_color": output_color,
-            "log_color": log_color,
+            "config": config,
             **kwargs
         },
+        output_file=output_file,
         output_text=md
     )
 
     # 将输出文本保存到指定文件
-    if output:
+    output_file = os.path.join(base_folder or "", output_file or "")
+    if output_file:
         md_with_front_matter = MarkdownDocuments.to_front_matter(command.to_metadata()) + md
-        os.makedirs(os.path.dirname(output), exist_ok=True)
-        with open(output, 'w', encoding='utf-8') as f:
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, 'w', encoding='utf-8') as f:
             f.write(md_with_front_matter)
     
     return command
 
 def idea(
     llm: Runnable,
-    task: str,
+    task: str=None,
     prompt_id: str=None,
     **kwargs
 ):
     sep_mode = "all"
     prompt_id = prompt_id or "IDEA"
-    return collect_stream(llm, task=task, sep_mode=sep_mode, prompt_id=prompt_id, **kwargs)
+    return stream_log(llm, task=task, sep_mode=sep_mode, prompt_id=prompt_id, **kwargs)
 
 def outline(
     llm: Runnable,
-    task: str,
+    task: str=None,
     prompt_id: str=None,
     **kwargs
 ):
     sep_mode = "all"
     prompt_id = prompt_id or "OUTLINE"
-    return collect_stream(llm, task=task, sep_mode=sep_mode, prompt_id=prompt_id, **kwargs)
+    return stream_log(llm, task=task, sep_mode=sep_mode, prompt_id=prompt_id, **kwargs)
 
 def from_outline(
     llm: Runnable,
-    input: Union[str, List[str]],
+    input: Union[str, List[str]]=None,
     prompt_id: str=None,
     **kwargs
 ):
     sep_mode = "outline"
     prompt_id = prompt_id or "FROM_OUTLINE"
-    return collect_stream(llm, "<OUTLINE>", "</OUTLINE>", sep_mode=sep_mode, input=input, prompt_id=prompt_id, **kwargs)
+    return stream_log(llm, sep_mode=sep_mode, input=input, prompt_id=prompt_id, **kwargs)
 
 def outline_from_outline(
     llm: Runnable,
-    input: Union[str, List[str]],
+    input: Union[str, List[str]]=None,
     prompt_id: str=None,
     **kwargs
 ):
+    outline_start_tag = get_default_env("MORE_OUTLINE_START_TAG")
+    outline_end_tag = get_default_env("MORE_OUTLINE_END_TAG")
+
     sep_mode = "outline"
     prompt_id = prompt_id or "OUTLINE_FROM_OUTLINE"
-    return collect_stream(llm, "<OUTLINE-MORE>", "</OUTLINE-MORE>", sep_mode=sep_mode, input=input, prompt_id=prompt_id, **kwargs)
+    return stream_log(
+        llm,
+        sep_mode=sep_mode,
+        input=input,
+        prompt_id=prompt_id,
+        config={"outline_start_tag": outline_start_tag, "outline_end_tag": outline_end_tag},
+        **kwargs)

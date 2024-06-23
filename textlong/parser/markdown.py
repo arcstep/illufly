@@ -6,6 +6,7 @@ from mistune import markdown
 from mistune.renderers.markdown import MarkdownRenderer
 from mistune.core import BlockState
 from langchain_core.documents import Document
+from ..config import get_default_env
 
 class SegmentsRenderer(MarkdownRenderer):
     def __init__(self, doc_id_generator):
@@ -23,11 +24,13 @@ class SegmentsRenderer(MarkdownRenderer):
             documents.append(Document(page_content=md, metadata=tok))
         return documents
 
-def parse_markdown(text, start_tag='<OUTLINE>', end_tag='</OUTLINE>'):
+def parse_markdown(text, start_tag=None, end_tag=None):
     """
     你可以修改 start_tag/end_tag, 使用 <<<< ... >>>> 或 {{ ... }} 等其他方案来标记提纲内容，
     默认为 <OUTLINE> ... </OUTLINE> 的形式。
     """
+    start_tag = start_tag or get_default_env("OUTLINE_START_TAG")
+    end_tag = end_tag or get_default_env("OUTLINE_END_TAG")
     doc_id_generator = get_document_id()
     pattern = re.compile(r'(.*?)(%s.*?%s)(.*)' % (re.escape(start_tag), re.escape(end_tag)), re.DOTALL)
     yaml_pattern = re.compile(r'\n*---+\n(.*?)\n---+\n', re.DOTALL)

@@ -28,13 +28,13 @@ def get_folder_docs():
     return get_default_env("TEXTLONG_DOCS")
 
 def get_default_session():
-    return os.getenv("TEXTLONG_DEFAULT_SESSION") or "default"
+    return get_default_env("TEXTLONG_DEFAULT_SESSION")
 
 def get_default_user():
-    return os.getenv("TEXTLONG_DEFAULT_USER") or "default_user"
+    return get_default_env("TEXTLONG_DEFAULT_USER")
 
 def get_folder_public():
-    return os.getenv("TEXTLONG_PUBLIC") or ""
+    return get_default_env("TEXTLONG_PUBLIC")
 
 def get_default_env(key: str=None):
     """
@@ -66,6 +66,19 @@ def get_default_env(key: str=None):
 
         # 公共用户
         "TEXTLONG_PUBLIC": "",
+
+        # 文本标签
+        "OUTLINE_START_TAG": "<OUTLINE>",
+        "OUTLINE_END_TAG": "</OUTLINE>",
+        "MORE_OUTLINE_START_TAG": "<MORE-OUTLINE>",
+        "MORE_OUTLINE_END_TAG": "</MORE-OUTLINE>",
+        
+        # 颜色
+        "COLOR_VERBOSE": "蓝色",
+        "COLOR_OUTPUT": "黄色",
+        "COLOR_INFO": "红色",
+        "COLOR_LOG": "绿色",
+        
     }
     if key:
         if key not in default_values:

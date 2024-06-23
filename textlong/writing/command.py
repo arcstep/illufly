@@ -5,8 +5,10 @@ class Command():
     """
     长文生成指令。
     """
-    def __init__(self, args: Dict[str, Any]=None, output_text: str=None, modified_at: str=None):
-        self.cmd_args = {k: v for k, v in args.items() if v}
+    def __init__(self, command: str=None, args: Dict[str, Any]=None, output_file: str=None, output_text: str=None, modified_at: str=None):
+        self.command = command
+        self.args = {k: v for k, v in args.items() if v}
+        self.output_file = output_file
         self.output_text = output_text
         self.modified_at = modified_at or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -17,22 +19,26 @@ class Command():
 
     def __repr__(self):
         info = "".join([
-            self.cmd_args.get('prompt_id', 'DEFAULT_PROMPT'),
+            self.args.get('prompt_id', 'DEFAULT_PROMPT'),
             f'[{self.modified_at}]',
             f': {self.output_text[:20]}...' if len(self.output_text) > 20 else self.output_text[:20]
         ])
-        return f"Command<{info}>"
+        return f"Command <{info}>"
 
     def to_dict(self):
         return {
-            'cmd_args': self.cmd_args,
-            'modified_at': self.modified_at,
+            'command': self.command,
+            'args': self.args,
+            'output_file': self.output_file,
             'output_text': self.output_text,
+            'modified_at': self.modified_at,
         }
     
     def to_metadata(self):
         return {
-            'cmd_args': self.cmd_args,
+            'command': self.command,
+            'args': self.args,
+            'output_file': self.output_file,
             'modified_at': self.modified_at,
         }
 
