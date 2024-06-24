@@ -21,6 +21,15 @@ import sys
 import pickle
 # import subprocess
 
+def collect_docs(docs: List[str]) -> str:
+    """
+    如果 Document 中包含的 metadata['answer'] 属性就优先采纳。
+    """
+    return "\n-----------------------------------\n".join([
+        d.page_content + "\n" + d.metadata['answer'] if 'answer' in d.metadata else d.page_content
+        for d in docs
+    ])
+
 def get_file_extension(filename: str) -> str:
     """Get File Extension"""
     return filename.split(".")[-1].lower()
@@ -91,9 +100,9 @@ class LocalFilesLoader(BaseLoader):
         self.documents_folder = os.path.join(get_folder_root(), self.user_id, self.project_folder)
     
     def help(self):
-        return "\n".join([
+        return ";\n".join([
             item for item in [
-                f"支持为 <{self.user_id}> 从 [{self.documents_folder}] 中加载类型为 {','.join(self.extensions)} 的文件。",
+                f"从位置 {self.documents_folder} 加载 {','.join(self.extensions)} 文件",
                 f"路径规则应当符合 [{self.path_regex}] 的正则表达式规则检查" if self.path_regex != ".*" else "",
                 f"但仅包含以 [{self.included_prefixes}] 开始的文件夹" if self.included_prefixes else "",
                 f"但必须排除以 [{self.excluded_prefixes}] 开始的文件夹" if self.excluded_prefixes else "",

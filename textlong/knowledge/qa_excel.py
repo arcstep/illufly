@@ -16,11 +16,11 @@ class QAExcelsLoader(LocalFilesLoader):
 
     def __init__(
         self,
+        project_folder: str=None,
         **kwargs
     ):
+        kwargs['project_folder'] = project_folder or get_folder_qa()
         super().__init__(**kwargs)
-        self.extensions = ["xlsx", "xls"]
-        self.documents_folder = os.path.join(get_folder_root(), self.user_id, get_folder_qa())
 
     def detect_df(self, filename: str) -> tuple:
         """
