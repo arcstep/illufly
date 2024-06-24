@@ -36,6 +36,7 @@ MessagesOrDictWithMessages = Union[Sequence["BaseMessage"], Dict[str, Any]]
 GetSessionHistoryCallable = Callable[..., BaseChatMessageHistory]
 
 from .memory_manager import MemoryManager
+from ..config import get_default_session
 
 class WithMemoryBinding(RunnableBindingBase):
     """Runnable that manages memory for another Runnable."""
@@ -199,26 +200,12 @@ class WithMemoryBinding(RunnableBindingBase):
 
     def _merge_configs(self, *configs: Optional[RunnableConfig]) -> RunnableConfig:
         config = super()._merge_configs(*configs)
-        expected_keys = [field_spec.id for field_spec in self.history_factory_config]
+        if "configurable" in config:
+            memory = self.memory_manager.get_memory_factory(config["configurable"].get("session_id", get_default_session()))
+        else:
+            memory = self.memory_manager.get_memory_factory(get_default_session())
+            config["configurable"] = {}
 
-        configurable = config.get("configurable", {})
-
-        # 如果没有提供 history_factory_config 中要求的键就抛出异常
-        missing_keys = set(expected_keys) - set(configurable.keys())
-        if missing_keys:
-            example_input = {self.input_messages_key: "foo"}
-            example_configurable = {
-                missing_key: "[your-value-here]" for missing_key in missing_keys
-            }
-            example_config = {"configurable": example_configurable}
-            raise ValueError(
-                f"Missing keys {sorted(missing_keys)} in config['configurable'] "
-                f"Expected keys are {sorted(expected_keys)}."
-                f"When using via .invoke() or .stream(), pass in a config; "
-                f"e.g., chain.invoke({example_input}, {example_config})"
-            )
-
-        memory = self.memory_manager.get_memory_factory(configurable["session_id"])
         config["configurable"]["memory"] = memory
         
         return config
