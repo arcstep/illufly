@@ -1,5 +1,5 @@
 from typing import List
-from importlib.resources import read_text, is_resource, path
+from importlib.resources import read_text, is_resource, contents
 from langchain.prompts import PromptTemplate
 from .config import (
     get_folder_root,
@@ -10,24 +10,26 @@ import os
 import re
 import json
 
-def find_resource_promopt():
+PROMPT_WRITING_BASE = 'textlong.__PROMPTS__.writing'
+
+def find_resource_prompt():
     """
-    列举所有可用的提示语模板。
-    ```
+    过滤出提示语模板所在的目录清单。
     """
-    return [item.name for item in path('textlong', '__PROMPTS__').iterdir()if item.is_dir()]
+    all_resources = contents('textlong.__PROMPTS__.writing')
+    return [r for r in all_resources if not is_resource(PROMPT_WRITING_BASE, r)]
  
 def load_resource_prompt(prompt_id: str):
     """
     从python包资源文件夹加载提示语模板。
     """
-    if prompt_id not in find_resource_promopt():
+    if prompt_id not in find_resource_prompt():
         raise ValueError(f"<{prompt_id}> prompt_id not exist !")
 
     def _get_prompt_str(res_file: str):
-        if (res_folder := f'textlong.__PROMPTS__.{prompt_id}') and is_resource(res_folder, res_file):
+        if (res_folder := f'{PROMPT_WRITING_BASE}.{prompt_id}') and is_resource(res_folder, res_file):
             return read_text(res_folder, res_file)
-        elif (res_folder := 'textlong.__PROMPTS__') and is_resource(res_folder, res_file):
+        elif (res_folder := PROMPT_WRITING_BASE) and is_resource(res_folder, res_file):
             return read_text(res_folder, res_file)
         else:
             return ''
@@ -153,7 +155,7 @@ def clone_prompt(prompt_id: str, template_folder: str=None):
     克隆提示语模板。
     根据指定的prompt_id，将文件夹和文件拷贝到template_folder位置。
     """
-    if prompt_id not in find_resource_promopt():
+    if prompt_id not in find_resource_prompt():
         raise ValueError(f"<{prompt_id}> prompt_id not exist !")
 
     prompt_folder = os.path.join(
@@ -166,9 +168,9 @@ def clone_prompt(prompt_id: str, template_folder: str=None):
     def _copy_prompt_file(res_file: str):
         target_path = os.path.join(prompt_folder, res_file)
         txt = ''
-        if (res_folder := f'textlong.__PROMPTS__.{prompt_id}') and is_resource(res_folder, res_file):
+        if (res_folder := f'{PROMPT_WRITING_BASE}.{prompt_id}') and is_resource(res_folder, res_file):
             txt = read_text(res_folder, res_file)
-        elif (res_folder := 'textlong.__PROMPTS__') and is_resource(res_folder, res_file):
+        elif (res_folder := PROMPT_WRITING_BASE) and is_resource(res_folder, res_file):
             txt = read_text(res_folder, res_file)
         with open(target_path, 'w', encoding='utf-8') as f:
             f.write(txt)
