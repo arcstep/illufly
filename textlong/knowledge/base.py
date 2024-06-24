@@ -88,7 +88,6 @@ class LocalFilesLoader(BaseLoader):
         included_prefixes: List[str] = [],
         excluded_prefixes: List[str] = [],
         extensions: List[str] = [],
-        llm: Runnable = None,
         *args, **kwargs
     ):
         self.user_id = user_id or get_folder_public()
@@ -220,7 +219,7 @@ class LocalFilesLoader(BaseLoader):
         print(color_code(log_color) + f'No embeddings to cached!' + "\033[0m")
         return False
 
-    def load_embeddings(self, tag_name: str=None):
+    def load_embeddings(self, model: Embeddings=None, tag_name: str=None):
         """
         缓存文本嵌入。
         """
@@ -255,4 +254,4 @@ class LocalFilesLoader(BaseLoader):
                 info = f'No embeddings cache found for: <{source}> {text[0:50]}{"..." if len(text) > 50 else ""}'
                 print(color_code(info_color) + info + "\033[0m")
 
-        return list(zip(texts, vectors)), metadatas
+        return list(zip(texts, vectors)), model, metadatas
