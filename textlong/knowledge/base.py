@@ -7,16 +7,18 @@ from langchain_community.document_loaders import (
     UnstructuredMarkdownLoader,
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.embeddings import Embeddings
 from langchain_core.runnables import Runnable
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
-from ..config import get_folder_root, get_folder_public, get_folder_docs, get_default_env
-from ..utils import raise_not_install
+from ..config import get_folder_root, get_folder_public, get_folder_docs, get_default_env, get_cache_embeddings
+from ..utils import raise_not_install, hash_text, color_code, clean_filename
 from ..writing.markdown import MarkdownLoader
 
 import os
 import re
 import sys
+import pickle
 # import subprocess
 
 def get_file_extension(filename: str) -> str:
@@ -71,13 +73,13 @@ class LocalFilesLoader(BaseLoader):
 
     def __init__(
         self,
-        llm: Runnable,
         project_folder: str=None,
         user_id: str=None,
         path_regex: str=None,
         included_prefixes: List[str] = [],
         excluded_prefixes: List[str] = [],
         extensions: List[str] = [],
+        llm: Runnable = None,
         *args, **kwargs
     ):
         self.user_id = user_id or get_folder_public()
@@ -163,8 +165,82 @@ class LocalFilesLoader(BaseLoader):
         """
         return list(self.lazy_load())
 
-    def get_embeddings(self):
+    def cache_embeddings(self, model: Embeddings, tag_name: str=None):
         """
-        获得缓存的向量编码。
+        缓存文本嵌入。
+        
+        tag_name 支持按不同模型厂商或模型名称缓存到子目录。
         """
-        pass
+        vector_folder = os.path.join(self.project_folder, get_cache_embeddings(), (tag_name or ""))
+        info_color = get_default_env("TEXTLONG_COLOR_INFO")
+        log_color = get_default_env("TEXTLONG_COLOR_LOG")
+
+        to_embedding_texts = []
+        to_embedding_paths = []
+
+        docs = self.load()
+        all_docs = [
+            (
+                d.page_content,
+                (clean_filename(d.metadata['source']) if 'source' in d.metadata else '')
+            )
+            for d
+            in docs
+        ]
+
+        for text, source in all_docs:
+            vector_path = hash_text(text) + ".emb"
+            cache_path = os.path.join(vector_folder, source, vector_path)
+            if not os.path.exists(cache_path):
+                to_embedding_texts.append(text)
+                to_embedding_paths.append(cache_path)
+        
+        if to_embedding_texts and len(to_embedding_texts) == len(to_embedding_paths):
+            vectors = model.embed_documents(to_embedding_texts)
+            for cache_path, text, data in list(zip(to_embedding_paths, to_embedding_texts, vectors)):
+                os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+                with open(cache_path, 'wb') as f:
+                    pickle.dump(data, f)
+                    info = f'<{source}> {text[0:50]}{"..." if len(text) > 50 else ""}'
+                    print(color_code(log_color) + info + "\033[0m")
+
+            info = f'Cached {len(to_embedding_paths)} embeddings to {vector_folder} !'
+            print(color_code(log_color) + info + "\033[0m")
+            return True
+        
+        print(color_code(log_color) + f'No embeddings to cached!' + "\033[0m")
+        return False
+
+    def load_embeddings(self, tag_name: str=None):
+        """
+        缓存文本嵌入。
+        """
+        vector_folder = os.path.join(self.project_folder, get_cache_embeddings(), (tag_name or ""))
+        info_color = get_default_env("TEXTLONG_COLOR_INFO")
+
+        texts = []
+        vectors = []
+        to_embedding_paths = []
+
+        docs = self.load()
+        all_docs = [
+            (
+                d.page_content,
+                (clean_filename(d.metadata['source']) if 'source' in d.metadata else '')
+            )
+            for d
+            in docs
+        ]
+
+        for text, source in all_docs:
+            vector_path = hash_text(text) + ".emb"
+            cache_path = os.path.join(vector_folder, source, vector_path)
+            if os.path.exists(cache_path):
+                with open(cache_path, 'rb') as f:
+                    texts.append(text)
+                    vectors.append(pickle.load(f))
+            else:
+                info = f'No embeddings cache found for: <{source}> {text[0:50]}{"..." if len(text) > 50 else ""}'
+                print(color_code(info_color) + info + "\033[0m")
+
+        return list(zip(texts, vectors))

@@ -1,4 +1,5 @@
 import re
+import hashlib
 from typing import List, Union, Any
 from langchain_core.documents import Document
 
@@ -38,3 +39,17 @@ def color_code(color_name: str):
         "重置": "\033[0m" 
     }
     return colors.get(color_name, '黑色')
+
+def hash_text(text):
+    text_bytes = text.encode('utf-8')
+    hash_object = hashlib.md5(text_bytes)
+    return hash_object.hexdigest()
+
+def clean_filename(filename: str):
+    """
+    先将除字母、数字、中文、下划线和短横线之外的字符替换为下划线;
+    再将多个连续的下划线或短横线替换为单个下划线。
+    """
+    cleaned_filename = re.sub(r'[^\w\s-]', '_', filename)
+    cleaned_filename = re.sub(r'[-_ ]+', '_', cleaned_filename)
+    return cleaned_filename
