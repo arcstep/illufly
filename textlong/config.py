@@ -27,6 +27,9 @@ def get_folder_qa():
 def get_folder_docs():
     return get_default_env("TEXTLONG_DOCS")
 
+def get_cache_embeddings():
+    return get_default_env("TEXTLONG_CACHE_EMBEDDINGS")
+
 def get_default_session():
     return get_default_env("TEXTLONG_DEFAULT_SESSION")
 
@@ -52,6 +55,9 @@ def get_default_env(key: str=None):
         "TEXTLONG_SHARE": "__SHARE__",
         "TEXTLONG_DOCS": "__DOCS__",
         "TEXTLONG_QA": "__QA__",
+        
+        # 提示语缓存
+        "TEXTLONG_CACHE_EMBEDDINGS": "__CACHE_EMBEDDINGS__",
 
         # 文档切分
         "TEXTLONG_DOC_CHUNK_SIZE": 2000,

@@ -2,7 +2,7 @@ from typing import Iterator, List, Union
 from langchain_core.documents import Document
 from langchain_community.document_loaders.base import BaseLoader
 from ..config import get_folder_root, get_folder_qa
-from .local_files import LocalFilesLoader
+from .base import LocalFilesLoader
 
 import os
 import pandas as pd
