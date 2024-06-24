@@ -220,27 +220,30 @@ class LocalFilesLoader(BaseLoader):
 
         texts = []
         vectors = []
+        metadatas = []
         to_embedding_paths = []
 
         docs = self.load()
         all_docs = [
             (
                 d.page_content,
-                (clean_filename(d.metadata['source']) if 'source' in d.metadata else '')
+                (clean_filename(d.metadata['source']) if 'source' in d.metadata else ''),
+                d.metadata
             )
             for d
             in docs
         ]
 
-        for text, source in all_docs:
+        for text, source, metadata in all_docs:
             vector_path = hash_text(text) + ".emb"
             cache_path = os.path.join(vector_folder, source, vector_path)
             if os.path.exists(cache_path):
                 with open(cache_path, 'rb') as f:
                     texts.append(text)
                     vectors.append(pickle.load(f))
+                    metadatas.append(metadata)
             else:
                 info = f'No embeddings cache found for: <{source}> {text[0:50]}{"..." if len(text) > 50 else ""}'
                 print(color_code(info_color) + info + "\033[0m")
 
-        return list(zip(texts, vectors))
+        return list(zip(texts, vectors)), metadatas
