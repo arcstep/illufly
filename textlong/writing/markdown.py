@@ -2,14 +2,18 @@ import re
 import copy
 import os
 import yaml
-from typing import Iterator, List, Union
+from typing import Iterator, List, Union, Optional
 from langchain_core.documents import Document
 from langchain_community.document_loaders.base import BaseLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import TextSplitter
 from ..parser import parse_markdown, create_front_matter
+from ..config import get_default_env
 
 class MarkdownLoader(BaseLoader):
     def __init__(self, doc_str: str=None):
         self.documents = []
+        self.doc_str = doc_str
         self.import_markdown(doc_str)
 
     def lazy_load(self) -> Iterator[Document]:
@@ -18,6 +22,20 @@ class MarkdownLoader(BaseLoader):
 
     def load(self) -> List[Document]:
         return list(self.lazy_load())
+
+    def load_and_split(
+        self, text_splitter: Optional[TextSplitter] = None
+    ) -> List[Document]:
+        text = '\n'.join([doc.page_content for doc in self.documents])
+        blocked_docs = [Document(page_content=text, metadata={"source": self.doc_str})]
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size = get_default_env("TEXTLONG_DOC_CHUNK_SIZE"),
+            chunk_overlap = get_default_env("TEXTLONG_DOC_CHUNK_OVERLAP"),
+            length_function = len,
+            is_separator_regex = False,
+        )
+
+        return text_splitter.split_documents(blocked_docs)
 
     def import_markdown(self, doc_str: str=None):
         """
