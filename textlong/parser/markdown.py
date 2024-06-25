@@ -2,6 +2,7 @@ from typing import Iterable, Dict, Any
 import re
 import time
 import yaml
+import copy
 from mistune import markdown
 from mistune.renderers.markdown import MarkdownRenderer
 from mistune.core import BlockState
@@ -24,7 +25,36 @@ class SegmentsRenderer(MarkdownRenderer):
             documents.append(Document(page_content=md, metadata=tok))
         return documents
 
-def parse_markdown(text, start_tag=None, end_tag=None):
+def create_front_matter(dict_data: Dict[str, Any]):
+    """
+    构造 YAML Front Matter
+    """
+    if isinstance(dict_data, dict):
+        metadata = copy.deepcopy(dict_data)
+        for e_tag in ['id', 'type']:
+            if e_tag in metadata:
+                metadata.pop(e_tag, None)
+        for e_tag in ['verbose', 'is_fake']:
+            tags = metadata.get('args', {})
+            if e_tag in tags:
+                tags.pop(e_tag, None)
+        yaml_str = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False)
+        return "---\n" + yaml_str.replace("\n\n", "\n") + "---\n\n"
+    else:
+        return ''
+
+def fetch_front_matter(text: str):
+    """
+    提取 YAML Front Matter
+    """
+    yaml_pattern = re.compile(r'\n*---+\n(.*?)\n---+\n', re.DOTALL)
+    yaml_match = yaml_pattern.match(text)
+    if yaml_match:
+        yaml_front_matter = yaml_match.group(1)
+        metadata = yaml.safe_load(yaml_front_matter)
+        return metadata, text[yaml_match.end():]
+
+def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
     """
     你可以修改 start_tag/end_tag, 使用 <<<< ... >>>> 或 {{ ... }} 等其他方案来标记提纲内容，
     默认为 <OUTLINE> ... </OUTLINE> 的形式。
@@ -33,20 +63,17 @@ def parse_markdown(text, start_tag=None, end_tag=None):
     end_tag = end_tag or get_default_env("TEXTLONG_OUTLINE_END")
     doc_id_generator = get_document_id()
     pattern = re.compile(r'(.*?)(%s.*?%s)(.*)' % (re.escape(start_tag), re.escape(end_tag)), re.DOTALL)
-    yaml_pattern = re.compile(r'\n*---+\n(.*?)\n---+\n', re.DOTALL)
     documents = []
 
     # 提取 YAML Front Matter
-    yaml_match = yaml_pattern.match(text)
-    if yaml_match:
-        yaml_front_matter = yaml_match.group(1)
-        metadata = yaml.safe_load(yaml_front_matter)
+    metadata, text = fetch_front_matter(text)
+    if metadata:
         doc_id = next(doc_id_generator)
         metadata.update({"id": doc_id, "type": "front_matter"})
         doc = Document(page_content='', metadata=metadata)
         documents.append(doc)
-        text = text[yaml_match.end():]
 
+    # 从文本中提取标记内的内容
     while start_tag in text and end_tag in text:
         match = pattern.match(text)
         if match:
