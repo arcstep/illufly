@@ -1,5 +1,6 @@
 import os
 import copy
+from datetime import datetime
 from typing import Union, List, Dict, Any
 from langchain_core.runnables import Runnable
 from langchain_core.documents import Document
@@ -67,6 +68,7 @@ def stream(
     knowledge: Union[str, List[str]]=None,
     prompt_id: str=None,
     base_folder: str=None,
+    output_file: str=None,
     tag_start: str=None,
     tag_end: str=None,
     verbose: bool=False,
@@ -86,11 +88,33 @@ def stream(
     base_folder = base_folder or ''
     prev_k = get_default_env("TEXTLONG_DOC_PREV_K")
     next_k = get_default_env("TEXTLONG_DOC_NEXT_K")
+    prompt_id = prompt_id or 'IDEA'
 
-    if get_verbose() or verbose and base_folder:
+    # front_matter
+    dict_data = {
+        "task": task,
+        "input": input,
+        "sep_mode": sep_mode,
+        "knowledge": knowledge,
+        "prompt_id": prompt_id,
+        "base_folder": base_folder,
+        "output_file": output_file,
+        "tag_start": tag_start,
+        "tag_end": tag_end,
+        "template_folder": template_folder,        
+        "modified_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    front_matter = create_front_matter(dict_data)
+    yield ('front_matter', front_matter)
+    
+    # final output
+    output_text = ""
+
+    if (get_verbose() or verbose) and base_folder:
         yield ('info', f'\nbase_folder: {base_folder}\n')
 
-    prompt_id = prompt_id or 'IDEA'
+    output_str = (prompt_id + " | " + output_file) if output_file else ""
+    yield ('info', f'\n>->>> Prompt ID: {prompt_id}{output_str} <<<-<\n')
 
     # input
     input_doc = gather_docs(input, base_folder) or ''
@@ -122,6 +146,7 @@ def stream(
         for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
             resp_md += delta
             yield ('log', delta)
+        output_text += resp_md
         yield ('final', resp_md)
 
     elif task_mode == 'document':
@@ -129,9 +154,14 @@ def stream(
         new_docs = copy.deepcopy(old_docs)
         for doc, index in task_todos:
             if last_index != None:
-                yield ('text', "\n")
+                md = "\n"
+                output_text += md
+                yield ('text', md)
             if old_docs.documents[last_index:index]:
-                yield ('text', MarkdownLoader.to_markdown(old_docs.documents[last_index:index]))
+                md = MarkdownLoader.to_markdown(old_docs.documents[last_index:index])
+                output_text += md
+                yield ('text', md)
+
             last_index = index + 1
             
             if doc.page_content and doc.page_content.strip():
@@ -148,146 +178,104 @@ def stream(
                 for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
                     yield ('log', delta)
                     resp_md += delta
+
                 final_md = extract_text(resp_md, tag_start, tag_end)
+                output_text += final_md
                 yield ('final', final_md)
+
                 reply_docs = parse_markdown(final_md)
                 new_docs.replace_documents(doc, doc, reply_docs)
 
             else:
                 # 如果内容是空行就不再处理
                 yield ('info', '(无需处理的空行)\n')
+                output_text += doc.page_content
                 yield ('text', doc.page_content)
 
         if old_docs.documents[last_index:None]:
-            yield ('text', MarkdownLoader.to_markdown(old_docs.documents[last_index:None]))
+            md = MarkdownLoader.to_markdown(old_docs.documents[last_index:None])
+            output_text += md
+            yield ('text', md)
+
+    # 将输出文本保存到指定文件
+    output_file = os.path.join(base_folder or "", output_file or "")
+    if output_file and output_text:
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(front_matter + output_text)
 
 def write(
     llm: Runnable,
-    output_file: str=None,
     base_folder: str=None,
-    use_yield: bool=False,
     **kwargs
 ):
     """
     打印流式日志。
-    
-    - 返回值
-        接收的流式内容都为形如 (mode, content) 的元组，其中：
-        mode - 值为 text, final 或 log
-        content - 文本内容
-
-        log: 流式输出的中间结果，一般与collect或extract搭配使用
-        text: 原始的文本结果直接被采纳
-        final: 流式过程的最终结果收集，过程信息在log中分次输出
     """
 
     output_color = get_default_env("TEXTLONG_COLOR_OUTPUT")
     info_color = get_default_env("TEXTLONG_COLOR_INFO")
     log_color = get_default_env("TEXTLONG_COLOR_LOG")
-
-    prompt_id = kwargs.get('prompt_id', 'IDEA')
-    output_str = (" | " + output_file) if output_file else ""
-    if not use_yield:
-        print(color_code(log_color) + f'\n>->>> Prompt ID: {prompt_id}{output_str} <<<-<\n' + "\033[0m")
-
-    md = ''
-    for mode, chunk in stream(
-        llm,
-        base_folder=base_folder,
-        **kwargs
-    ):
-        if use_yield:
-            yield mode, chunk
-        else:
-            if mode == 'text':
-                md += chunk
-                print(color_code(output_color) + chunk + "\033[0m", end="")
-            elif mode == 'final':
-                md += chunk
-            elif mode == 'info':
-                print(color_code(info_color) + chunk + "\033[0m", end="")
-            elif mode == 'log':
-                print(color_code(log_color) + chunk + "\033[0m", end="")
-            else:
-                print(color_code(log_color) + chunk + "\033[0m", end="")
-
-    command = Command(
-        command="write",
-        args=kwargs,
-        output_file=output_file,
-        output_text=md
-    )
-
-    # 将输出文本保存到指定文件
-    output_file = os.path.join(base_folder or "", output_file or "")
-    if output_file:
-        md_with_front_matter = create_front_matter(command.to_metadata()) + md
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(md_with_front_matter)
-            if use_yield:
-                yield 'log', f'\n\nSaved to {output_file}.\n'
     
-    # if not use_yield:
-    return command
+    output_text = ""
 
-def idea(
-    llm: Runnable,
-    task: str=None,
-    prompt_id: str=None,
-    **kwargs
-):
-    sep_mode = "all"
-    prompt_id = prompt_id or "IDEA"
-    return write(llm, task=task, sep_mode=sep_mode, prompt_id=prompt_id, **kwargs)
+    for mode, chunk in stream(llm, base_folder=base_folder, **kwargs):
+        if mode == 'text':
+            output_text += chunk
+            print(color_code(output_color) + chunk + "\033[0m", end="")
+        elif mode == 'info':
+            print(color_code(info_color) + chunk + "\033[0m", end="")
+        elif mode == 'log':
+            print(color_code(log_color) + chunk + "\033[0m", end="")
+        elif mode == 'final':
+            output_text += chunk
+    
+    return output_text
 
-def outline(
-    llm: Runnable,
-    task: str=None,
-    prompt_id: str=None,
-    **kwargs
-):
-    sep_mode = "all"
-    prompt_id = prompt_id or "OUTLINE"
-    return write(
-        llm,
-        task=task,
-        sep_mode=sep_mode,
-        prompt_id=prompt_id,
-        **kwargs
-    )
+def idea(llm: Runnable, prompt_id: str=None, **kwargs):
+    if 'task' not in kwargs:
+        raise ValueError("method <idea> need param <task> !!")
 
-def more_outline(
-    llm: Runnable,
-    input: Union[str, List[str]]=None,
-    prompt_id: str=None,
-    **kwargs
-):
-    sep_mode = "outline"
-    prompt_id = prompt_id or "MORE_OUTLINE"
-    return write(
-        llm,
-        sep_mode=sep_mode,
-        input=input,
-        prompt_id=prompt_id,
-        tag_start=get_default_env("TEXTLONG_MORE_OUTLINE_START"),
-        tag_end=get_default_env("TEXTLONG_MORE_OUTLINE_END"),
-        **kwargs)
+    kwargs.update({
+        "sep_mode": "all",
+        "prompt_id": prompt_id or "IDEA"
+    })
 
-def from_outline(
-    llm: Runnable,
-    input: Union[str, List[str]]=None,
-    prompt_id: str=None,
-    **kwargs
-):
-    sep_mode = "outline"
-    prompt_id = prompt_id or "FROM_OUTLINE"
-    return write(
-        llm,
-        sep_mode=sep_mode,
-        input=input,
-        prompt_id=prompt_id,
-        tag_start=get_default_env("TEXTLONG_OUTLINE_START"),
-        tag_end=get_default_env("TEXTLONG_OUTLINE_END"),
-        **kwargs
-    )
+    return write(llm, **kwargs)
+
+def outline(llm: Runnable, prompt_id: str=None, **kwargs):
+    if 'task' not in kwargs:
+        raise ValueError("method <outline> need param <task> !!")
+
+    kwargs.update({
+        "sep_mode": "all",
+        "prompt_id": prompt_id or "OUTLINE"
+    })
+
+    return write(llm, **kwargs)
+
+def more_outline(llm: Runnable, prompt_id: str=None, **kwargs):
+    if 'input' not in kwargs:
+        raise ValueError("method <more_outline> need param <input> !!")
+
+    kwargs.update({
+        "sep_mode": "outline",
+        "prompt_id": prompt_id or "MORE_OUTLINE",
+        "tag_start": get_default_env("TEXTLONG_MORE_OUTLINE_START"),
+        "tag_end": get_default_env("TEXTLONG_MORE_OUTLINE_END"),
+    })
+
+    return write(llm, **kwargs)
+
+def from_outline(llm: Runnable, prompt_id: str=None, **kwargs):
+    if 'input' not in kwargs:
+        raise ValueError("method <from_outline> need param <input> !!")
+
+    kwargs.update({
+        "sep_mode": "outline",
+        "prompt_id": prompt_id or "FROM_OUTLINE",
+        "tag_start": get_default_env("TEXTLONG_OUTLINE_START"),
+        "tag_end": get_default_env("TEXTLONG_OUTLINE_END"),
+    })
+
+    return write(llm, **kwargs)
