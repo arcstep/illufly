@@ -1,26 +1,29 @@
-from typing import Iterator, List, Union
+from typing import Iterator, List, Union, Optional
 from langchain_core.documents import Document
 from langchain_community.document_loaders.base import BaseLoader
-from ..config import get_folder_root, get_folder_qa
-from .base import LocalFilesLoader
+from langchain_text_splitters import TextSplitter
 
-import os
 import pandas as pd
 
-class QAExcelsLoader(LocalFilesLoader):
+class QAExcelsLoader(BaseLoader):
     """
     从本地文件中检索Excel文件，并以QA结构返回 Document 对象。
     """
 
-    extensions: List[str] = ["xlsx"]
+    def __init__(self, filename: str=None):
+        self.filename = filename
 
-    def __init__(
-        self,
-        project_folder: str=None,
-        **kwargs
-    ):
-        kwargs['project_folder'] = project_folder or get_folder_qa()
-        super().__init__(**kwargs)
+    def lazy_load(self) -> Iterator[Document]:
+        for doc in self.load_docs():
+            yield doc
+
+    def load(self) -> List[Document]:
+        return list(self.lazy_load())
+
+    def load_and_split(
+        self, text_splitter: Optional[TextSplitter] = None
+    ) -> List[Document]:
+        return self.load()
 
     def detect_df(self, filename: str) -> tuple:
         """
@@ -53,11 +56,11 @@ class QAExcelsLoader(LocalFilesLoader):
 
         return result
 
-    def load_docs(self, filename: str, file_loader=None) -> List[Document]:
+    def load_docs(self) -> List[Document]:
         """
         Load documents from the specified Excel file.
         """
-        dfs = self.detect_df(filename)
+        dfs = self.detect_df(self.filename)
         documents = []
 
         for file_name, sheet_name, start_row, q_columns, a_columns in dfs:
