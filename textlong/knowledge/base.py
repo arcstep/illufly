@@ -6,7 +6,6 @@ from langchain_community.document_loaders import (
     Docx2txtLoader,
     UnstructuredMarkdownLoader,
 )
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.embeddings import Embeddings
 from langchain_core.runnables import Runnable
 from langchain_community.document_loaders.base import BaseLoader
@@ -24,6 +23,7 @@ from ..config import (
 )
 from ..utils import raise_not_install, hash_text, clean_filename
 from ..writing.markdown import MarkdownLoader
+from .qa_excel import QAExcelsLoader
 
 import os
 import re
@@ -50,6 +50,8 @@ class FileLoadFactory:
         ext = get_file_extension(filename)
         if ext == "md":
             return MarkdownLoader(filename)
+        elif ext == "xlsx":
+            return QAExcelsLoader(filename)
         elif ext == "pdf":
             try:
                 import pypdf
@@ -62,12 +64,6 @@ class FileLoadFactory:
                 return Docx2txtLoader(filename)
             except BaseException as e:
                 raise_not_install('docx2txt')
-        elif ext == "xlsx":
-            try:
-                import unstructured
-                return UnstructuredExcelLoader(filename, mode="elements")
-            except BaseException as e:
-                raise_not_install('unstructured')
         elif ext == "txt":
             return TextLoader(filename, autodetect_encoding=True)
         else:
@@ -149,17 +145,7 @@ class LocalFilesLoader(BaseLoader):
         """
         file_loader = FileLoadFactory.get_loader(filename)
         if file_loader:
-            file_docs = file_loader.load()
-            text = '\n'.join([doc.page_content for doc in file_docs])
-            blocked_docs = [Document(page_content=text, metadata={"source": filename})]
-
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size = get_default_env("TEXTLONG_DOC_CHUNK_SIZE"),
-                chunk_overlap = get_default_env("TEXTLONG_DOC_CHUNK_OVERLAP"),
-                length_function = len,
-                is_separator_regex = False,
-            )
-            return text_splitter.split_documents(blocked_docs)
+            return file_loader.load_and_split()
         else:
             return []
 
