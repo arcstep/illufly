@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Union, List, Dict, Any
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
+from langchain_core.tracers.schemas import Run
 
 from ..writing import MarkdownLoader, write, idea, outline, from_outline, more_outline
 from ..writing.command import Command
@@ -15,10 +16,11 @@ from ..config import (
     get_project_script_file,
     get_folder_logs,
 )
-from ..parser import parse_markdown
+from ..parser import parse_markdown, create_front_matter
 from ..exporter import export_jupyter
 from ..importer import load_markdown
 from ..utils import raise_not_supply_all
+from ..chain import create_chain, create_qa_chain
 
 def command_dependency(cmd1, cmd2):
     for value in cmd2['args'].values():
@@ -207,7 +209,7 @@ class Project():
         history = self.load_history(output_file)
         output_text = history[index]['output_text']
         cmd = Command.from_dict(history[index])
-        resp_md = MarkdownLoader.to_front_matter(cmd.to_metadata()) + output_text
+        resp_md = create_front_matter(cmd.to_metadata()) + output_text
         return self.save_markdown_as(self.get_path(save_as or output_file), resp_md)
 
     def export_jupyter(self, input_file: str, output_file: str):
@@ -226,13 +228,25 @@ class Project():
             **kwargs
         )
 
-        # 保存生成历史
         self._save_output_history(output_file, resp_cmd)
 
-        # 更新项目配置
         if output_file not in self.output_files:
             self.output_files.append(output_file)
             self.save_project()
+
+    def create_exec_chain(self, writing_func, output_file: str, **kwargs):
+        chain = create_chain(self.llm, writing_func, base_folder=self.project_folder, output_file=output_file, **kwargs)
+
+        def fn_end(run_obj: Run):
+            # print(run_obj.outputs)
+            print(run_obj)
+            # self._save_output_history(output_file, run_obj.outputs['output'])
+
+            if output_file not in self.output_files:
+                self.output_files.append(output_file)
+                self.save_project()
+
+        return chain.with_listeners(on_end=fn_end)
 
     def idea(self, output_file: str, task: str, **kwargs):
         """
@@ -240,6 +254,12 @@ class Project():
         """
         self.exec(idea, output_file=output_file, task=task, **kwargs)
 
+    def create_idea_chain(self, output_file: str, **kwargs):
+        """
+        从一个idea开始生成。
+        """
+        return self.create_exec_chain(idea, output_file=output_file, **kwargs)
+    
     def outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
         """
         生成写作大纲。
