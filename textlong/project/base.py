@@ -74,12 +74,11 @@ class Project():
     - 项目脚本: save_script, load_script, run_script
     - 指令恢复: checkout
     """
-    def __init__(self, llm: Runnable, project_id: str, user_id: str=None):
+    def __init__(self, llm: Runnable, project_id: str):
         raise_not_supply_all("Project 对象必须提供 llm", llm)
         raise_not_supply_all("Project 对象必须提供 project_id", project_id)
 
         self.llm = llm
-        self.user_id = user_id or get_folder_public()
         self.project_id = project_id
         self.output_files: List[str] = []
 
@@ -109,7 +108,7 @@ class Project():
 
     @property
     def project_folder(self):
-        return os.path.join(get_folder_root(), self.user_id, self.project_id)
+        return os.path.join(get_folder_root(), self.project_id)
 
     def save_markdown_as(self, filepath: str, txt: str):
         """
