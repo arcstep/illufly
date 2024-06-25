@@ -5,7 +5,7 @@ import yaml
 from typing import Iterator, List, Union
 from langchain_core.documents import Document
 from langchain_community.document_loaders.base import BaseLoader
-from ..parser import parse_markdown
+from ..parser import parse_markdown, create_front_matter
 
 class MarkdownLoader(BaseLoader):
     def __init__(self, doc_str: str=None):
@@ -37,22 +37,6 @@ class MarkdownLoader(BaseLoader):
         return self.documents
 
     @classmethod
-    def to_front_matter(cls, dict_data):
-        if isinstance(dict_data, dict):
-            metadata = copy.deepcopy(dict_data)
-            for e_tag in ['id', 'type']:
-                if e_tag in metadata:
-                    metadata.pop(e_tag, None)
-            for e_tag in ['verbose', 'is_fake']:
-                tags = metadata.get('args', {})
-                if e_tag in tags:
-                    tags.pop(e_tag, None)
-            yaml_str = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False)
-            return "---\n" + yaml_str.replace("\n\n", "\n") + "---\n\n"
-        else:
-            return ''
-
-    @classmethod
     def to_markdown(cls, documents: List[Document], sep: str="", with_front_matter: bool=False):
         if not documents:
             return ''
@@ -60,7 +44,7 @@ class MarkdownLoader(BaseLoader):
         meta0 = documents[0].metadata
         front_matter = ''
         if with_front_matter and 'type' in meta0 and meta0['type'] == 'front_matter':
-            front_matter = cls.to_front_matter(meta0)
+            front_matter = create_front_matter(meta0)
 
         return front_matter + sep.join([d.page_content for d in documents])
 

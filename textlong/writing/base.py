@@ -7,7 +7,7 @@ from langchain.globals import set_verbose, get_verbose
 
 from .markdown import MarkdownLoader
 from .command import Command
-from ..parser import parse_markdown
+from ..parser import parse_markdown, create_front_matter
 from ..hub import load_prompt
 from ..importer import load_markdown
 from ..utils import extract_text, color_code
@@ -221,15 +221,15 @@ def write(
     # 将输出文本保存到指定文件
     output_file = os.path.join(base_folder or "", output_file or "")
     if output_file:
-        md_with_front_matter = MarkdownLoader.to_front_matter(command.to_metadata()) + md
+        md_with_front_matter = create_front_matter(command.to_metadata()) + md
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(md_with_front_matter)
             if use_yield:
-                yield 'log', f'Saved to {output_file}.'
+                yield 'log', f'\n\nSaved to {output_file}.\n'
     
-    if not use_yield:
-        return command
+    # if not use_yield:
+    return command
 
 def idea(
     llm: Runnable,
