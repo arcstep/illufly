@@ -7,8 +7,10 @@ from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
 from langchain_core.tracers.schemas import Run
 
-from ..writing import MarkdownLoader, write, idea, outline, from_outline, more_outline
-from ..writing.command import Command
+from ..parser import parse_markdown, create_front_matter, fetch_front_matter
+from ..exporter import export_jupyter
+from ..importer import load_markdown
+from ..utils import raise_not_supply_all
 from ..config import (
     get_folder_root,
     get_folder_public,
@@ -16,11 +18,33 @@ from ..config import (
     get_project_script_file,
     get_folder_logs,
 )
-from ..parser import parse_markdown, create_front_matter
-from ..exporter import export_jupyter
-from ..importer import load_markdown
-from ..utils import raise_not_supply_all
-from ..chain import create_chain, create_qa_chain
+
+from ..writing.command import Command
+from ..writing import (
+    MarkdownLoader,
+    stream,
+    write,
+    idea,
+    outline,
+    from_outline,
+    more_outline,
+)
+
+from ..writing.base import (
+    get_idea_args,
+    get_outline_args,
+    get_from_outline_args,
+    get_more_outline_args,
+)
+
+from ..chain import (
+    create_qa_chain,
+    create_chain,
+    create_idea_chain,
+    create_outline_chain,
+    create_from_outline_chain,
+    create_more_outline_chain,
+)
 
 def command_dependency(cmd1, cmd2):
     for value in cmd2['args'].values():
@@ -183,17 +207,21 @@ class Project():
                 history = yaml.safe_load(f) or []
         return history
 
-    def _save_output_history(self, output_file: str, command: Command):
+    def _save_output_history(self, output_file: str, output_text: str):
         """
         保存生成历史。
         """
-        path = self._get_output_history_path(output_file)
-        history = self._load_output_history(path)
+        hist_path = self._get_output_history_path(output_file)
+
+        history = self._load_output_history(hist_path)
+        front_matter, text = fetch_front_matter(output_text)
+        front_matter['output_text'] = output_text
+        command = Command.from_dict(front_matter)
 
         history.append(command.to_dict())
 
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, 'w') as f:
+        os.makedirs(os.path.dirname(hist_path), exist_ok=True)
+        with open(hist_path, 'w') as f:
             yaml.safe_dump(history, f, allow_unicode=False, sort_keys=False)
  
     def get_path(self, *path):
@@ -221,27 +249,31 @@ class Project():
         return export_jupyter(input_path, output_path)
 
     def exec(self, task_func, output_file: str=None, **kwargs):
-        resp_cmd = task_func(
+        output_text = task_func(
             self.llm,
             base_folder=self.project_folder,
             output_file=output_file,
             **kwargs
         )
 
-        self._save_output_history(output_file, resp_cmd)
+        self._save_output_history(output_file, output_text)
 
         if output_file not in self.output_files:
             self.output_files.append(output_file)
             self.save_project()
 
-    def create_exec_chain(self, writing_func, output_file: str, **kwargs):
-        chain = create_chain(self.llm, writing_func, base_folder=self.project_folder, output_file=output_file, **kwargs)
+    def create_exec_chain(self, output_file: str, **kwargs):
+        chain = create_chain(
+            self.llm,
+            stream,
+            base_folder=self.project_folder,
+            output_file=output_file,
+            **kwargs
+        )
 
         def fn_end(run_obj: Run):
-            # print(run_obj.outputs)
-            print(run_obj)
-            # self._save_output_history(output_file, run_obj.outputs['output'])
-
+            # print(run_obj)
+            self._save_output_history(output_file, run_obj.outputs['output'])
             if output_file not in self.output_files:
                 self.output_files.append(output_file)
                 self.save_project()
@@ -254,11 +286,11 @@ class Project():
         """
         self.exec(idea, output_file=output_file, task=task, **kwargs)
 
-    def create_idea_chain(self, output_file: str, **kwargs):
+    def create_idea_chain(self, output_file: str, prompt_id: str=None, **kwargs):
         """
         从一个idea开始生成。
         """
-        return self.create_exec_chain(idea, output_file=output_file, **kwargs)
+        return self.create_exec_chain(output_file, **get_idea_args(prompt_id, **kwargs))
     
     def outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
         """

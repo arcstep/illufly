@@ -31,7 +31,7 @@ def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False)
         yield ('info', get_info_color() + chain.get_prompts()[0].format(**input) + "\033[0m")
 
     if is_fake:
-        yield "Fake-Output-Content...\n"
+        yield ('info', "Fake-Output-Content...\n")
     else:
         for chunk in chain.stream(input):
             yield ('chunk', chunk.content)
@@ -95,21 +95,25 @@ def stream(
     prompt_id = prompt_id or 'IDEA'
 
     # front_matter
-    dict_data = {
+    args = {
         "task": task,
         "input": input,
         "sep_mode": sep_mode,
         "knowledge": knowledge,
         "prompt_id": prompt_id,
-        "base_folder": base_folder,
-        "output_file": output_file,
         "tag_start": tag_start,
         "tag_end": tag_end,
+        "base_folder": base_folder,
         "template_folder": template_folder,        
-        "modified_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
-    not_empty_dict = {k: dict_data[k] for k in dict_data if dict_data[k]}
-    front_matter = create_front_matter(not_empty_dict)
+    not_empty_args = {k: args[k] for k in args if args[k]}
+    dict_data = {
+        'modified_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'output_file': output_file,
+        'command': 'stream',
+        'args': not_empty_args,
+    }
+    front_matter = create_front_matter({k: dict_data[k] for k in dict_data if dict_data[k]})
     yield ('front_matter', front_matter)
     
     # final output
@@ -149,7 +153,8 @@ def stream(
         
         resp_md = ""
         for mode, delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
-            resp_md += delta
+            if mode == 'chunk':
+                resp_md += delta
             yield (mode, delta)
         output_text += resp_md
         yield ('final', resp_md)
@@ -180,9 +185,10 @@ def stream(
                 chain = _create_chain(llm, prompt, **_kwargs)
 
                 resp_md = ""
-                for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
-                    yield ('chunk', delta)
-                    resp_md += delta
+                for mode, delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
+                    if mode == 'chunk':
+                        resp_md += delta
+                    yield (mode, delta)
 
                 final_md = extract_text(resp_md, tag_start, tag_end)
                 output_text += final_md

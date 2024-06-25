@@ -27,19 +27,19 @@ class Command():
 
     def to_dict(self):
         return {
+            'modified_at': self.modified_at,
+            'output_file': self.output_file,
             'command': self.command,
             'args': self.args,
-            'output_file': self.output_file,
             'output_text': self.output_text,
-            'modified_at': self.modified_at,
         }
     
     def to_metadata(self):
         return {
+            'modified_at': self.modified_at,
+            'output_file': self.output_file,
             'command': self.command,
             'args': self.args,
-            'output_file': self.output_file,
-            'modified_at': self.modified_at,
         }
 
     @classmethod

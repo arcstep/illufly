@@ -24,13 +24,13 @@ class writing_input(BaseModel):
     base_folder: str=None
     prompt_id: str=None
 
-def create_chain(llm: Runnable, writing_func: Run, **kwargs):
+def create_chain(llm: Runnable, **kwargs):
     """
     构建执行链。
     """
     def gen(input: Iterator[Any]) -> Iterator[str]:
         for input_args in input:
-            for m, x in writing_func(llm, use_yield=True, **kwargs, **input_args):
+            for m, x in stream(llm, use_yield=True, **kwargs, **input_args):
                 if m in ['text', 'chunk', 'front_matter']:
                     yield(x)
 
@@ -39,7 +39,7 @@ def create_chain(llm: Runnable, writing_func: Run, **kwargs):
         async for input_args in input:
             func_result = await loop.run_in_executor(
                 executor,
-                lambda: list(writing_func(llm, use_yield=True, **kwargs, **input_args))
+                lambda: list(stream(llm, **kwargs, **input_args))
             )
             for m, x in func_result:
                 if m in ['text', 'chunk', 'front_matter']:
@@ -48,14 +48,14 @@ def create_chain(llm: Runnable, writing_func: Run, **kwargs):
     return RunnableGenerator(gen, agen).with_types(input_type=writing_input, output_type=Iterator[str])
 
 def create_idea_chain(llm: Runnable, prompt_id: str=None, **kwargs):
-    return create_chain(llm, stream, **get_idea_args(prompt_id, **kwargs))
+    return create_chain(llm, **get_idea_args(prompt_id, **kwargs))
 
 def create_outline_chain(llm: Runnable, prompt_id: str=None, **kwargs):
-    return create_chain(llm, stream, **get_outline_args(prompt_id, **kwargs))
+    return create_chain(llm, **get_outline_args(prompt_id, **kwargs))
 
 def create_from_outline_chain(llm: Runnable, prompt_id: str=None, **kwargs):
-    return create_chain(llm, stream, **get_from_outline_args(prompt_id, **kwargs))
+    return create_chain(llm, **get_from_outline_args(prompt_id, **kwargs))
 
 def create_more_outline_chain(llm: Runnable,prompt_id: str=None,  **kwargs):
-    return create_chain(llm, stream, **get_more_outline_args(prompt_id, **kwargs))
+    return create_chain(llm, **get_more_outline_args(prompt_id, **kwargs))
 
