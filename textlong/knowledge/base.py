@@ -80,69 +80,66 @@ class LocalFilesLoader(BaseLoader):
     """
     从本地文件中检索知识文档，支持docx、pdf、txt、md、xlsx等文档。
     
-    过滤目标：
-    - 根目录：由 TEXTLONG_DOCS 变量指定
-    - 过滤目标：文件全路径移除 TEXTLONG_DOCS 部份后剩余的部份
+    文档位置：
+    - 加载文档的位置由 {base_folder} 指定，允许用列表指定多个（没有指定就选用 {TEXTLONG_DOCS} 环境变量）
+    - 文本嵌入的缓存 {cache_folder} 默认是第一个 {base_folder}，也可以专门指定
     
     过滤规则包含：
-    - 目录过滤：由 included_prefixes 指定，以列表中的字符串开头就保留
-    - 目录排除：由 excluded_prefixes 指定，以列表中的字符串开头就排除
-    - 路径过滤：由 path_regex 指定，应当是正则表达式，通常作为文件的过滤规则使用
-    - 扩展名过滤：由 extensions 指定，即文件 xxx.ext 的末尾 ext
+    - 按目录开头过滤：由 included_prefixes 指定，以列表中的字符串开头就保留
+    - 按目录开头排除：由 excluded_prefixes 指定，以列表中的字符串开头就排除
+    - 按路径正则匹配：由 path_regex 指定，应当是正则表达式，通常作为文件的过滤规则使用
+    - 按扩展名过滤文件：由 extensions 指定，默认为 ["docx", "pdf", "md", "txt", "xlsx"]
     """
 
     def __init__(
         self,
-        project_folder: str=None,
-        user_id: str=None,
+        base_folder: Union[str, List[str]]=None,
+        cache_folder: str=None,
         path_regex: str=None,
         included_prefixes: List[str] = [],
         excluded_prefixes: List[str] = [],
         extensions: List[str] = [],
         *args, **kwargs
     ):
-        self.user_id = user_id or get_folder_public()
-        self.project_folder = project_folder or get_folder_docs()
+        if isinstance(base_folder, str):
+            self.base_folders = [base_folder]
+        elif isinstance(base_folder, list):
+            self.base_folders = base_folder
+        elif base_folder == None:
+            self.base_folders = [get_folder_docs()]
+        else:
+            raise(ValueError("base_folder: MUST be str or list[str]: ", base_folder))
+
+        self.cache_folder = cache_folder or self.base_folders[0]
+
         self.path_regex = path_regex or ".*"
         self.included_prefixes = included_prefixes
         self.excluded_prefixes = excluded_prefixes
         self.extensions = extensions or ["docx", "pdf", "md", "txt", "xlsx"]
-        self.documents_folder = os.path.join(get_folder_root(), self.user_id, self.project_folder)
     
-    def help(self):
-        return ";\n".join([
-            item for item in [
-                f"从位置 {self.documents_folder} 加载 {','.join(self.extensions)} 文件",
-                f"路径规则应当符合 [{self.path_regex}] 的正则表达式规则检查" if self.path_regex != ".*" else "",
-                f"但仅包含以 [{self.included_prefixes}] 开始的文件夹" if self.included_prefixes else "",
-                f"但必须排除以 [{self.excluded_prefixes}] 开始的文件夹" if self.excluded_prefixes else "",
-            ] if item != ""
-        ])
-
     def get_files(self) -> list[str]:
         """
         按照规则设定过滤本地资料文件。
-        
-        如果希望按自定义逻辑处理每一个文件，可以直接使用这个方法。
         """
         files = []
 
-        folders = self.documents_folder
-        for dirpath, dirnames, filenames in os.walk(folders):
-            for filename in filenames:
-                relpath = os.path.relpath(os.path.join(dirpath, filename), folders)
-                if relpath.startswith(".") or re.search('/.', relpath):
-                    # 确保不包含以.开头的文件夹或文件
-                    continue
-                if self.included_prefixes and not any(relpath.startswith(include) for include in self.included_prefixes):
-                    continue
-                if self.excluded_prefixes and any(relpath.startswith(exclude) for exclude in self.excluded_prefixes):
-                    continue
-                if self.path_regex and not re.search(self.path_regex, relpath):
-                    continue
-                if self.extensions and get_file_extension(filename) not in self.extensions:
-                    continue
-                files.append(os.path.join(dirpath, filename))
+        documents_folders = [os.path.join(get_folder_root(), folder) for folder in self.base_folders]
+        for folders in documents_folders:
+            for dirpath, dirnames, filenames in os.walk(folders):
+                for filename in filenames:
+                    relpath = os.path.relpath(os.path.join(dirpath, filename), folders)
+                    if relpath.startswith(".") or re.search('/.', relpath):
+                        # 确保不包含以.开头的文件夹或文件
+                        continue
+                    if self.included_prefixes and not any(relpath.startswith(include) for include in self.included_prefixes):
+                        continue
+                    if self.excluded_prefixes and any(relpath.startswith(exclude) for exclude in self.excluded_prefixes):
+                        continue
+                    if self.path_regex and not re.search(self.path_regex, relpath):
+                        continue
+                    if self.extensions and get_file_extension(filename) not in self.extensions:
+                        continue
+                    files.append(os.path.join(dirpath, filename))
 
         return files
 
@@ -190,7 +187,7 @@ class LocalFilesLoader(BaseLoader):
         
         tag_name 支持按不同模型厂商或模型名称缓存到子目录。
         """
-        vector_folder = os.path.join(self.project_folder, get_cache_embeddings(), (tag_name or ""))
+        vector_folder = os.path.join(self.cache_folder, get_cache_embeddings(), (tag_name or ""))
 
         to_embedding_texts = []
         to_embedding_paths = []
@@ -211,7 +208,7 @@ class LocalFilesLoader(BaseLoader):
             if not os.path.exists(cache_path):
                 to_embedding_texts.append(text)
                 to_embedding_paths.append(cache_path)
-        
+
         if to_embedding_texts and len(to_embedding_texts) == len(to_embedding_paths):
             vectors = model.embed_documents(to_embedding_texts)
             for cache_path, text, data in list(zip(to_embedding_paths, to_embedding_texts, vectors)):
@@ -232,7 +229,7 @@ class LocalFilesLoader(BaseLoader):
         """
         缓存文本嵌入。
         """
-        vector_folder = os.path.join(self.project_folder, get_cache_embeddings(), (tag_name or ""))
+        vector_folder = os.path.join(self.cache_folder, get_cache_embeddings(), (tag_name or ""))
 
         texts = []
         vectors = []
