@@ -199,7 +199,6 @@ def stream(
 
             else:
                 # 如果内容是空行就不再处理
-                yield ('warn', '(无需处理的空行)\n')
                 output_text += doc.page_content
                 yield ('text', doc.page_content)
 
@@ -214,20 +213,16 @@ def stream(
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(front_matter + output_text)
-            yield ('warn', f'已保存 {output_file} / 共计 {len(output_file)} 字。\n')
+            yield ('warn', f'\n\n已保存 {output_file}, 共计 {len(output_text)} 字。\n')
 
-def write(
-    llm: Runnable,
-    base_folder: str=None,
-    **kwargs
-):
+def write(llm: Runnable, **kwargs):
     """
     打印流式日志。
     """
 
     output_text = ""
 
-    for mode, chunk in stream(llm, base_folder=base_folder, **kwargs):
+    for mode, chunk in stream(llm, **kwargs):
         if mode == 'text':
             output_text += chunk
             print(get_text_color() + chunk + "\033[0m", end="")
@@ -238,6 +233,8 @@ def write(
         elif mode == 'chunk':
             print(get_chunk_color() + chunk + "\033[0m", end="")
         elif mode == 'final':
+            output_text += chunk
+        elif mode == 'front_matter':
             output_text += chunk
     
     return output_text

@@ -48,7 +48,9 @@ from ..chain import (
 
 def command_dependency(cmd1, cmd2):
     for value in cmd2['args'].values():
-        if isinstance(value, str) and cmd1['output_file'] in value:
+        if isinstance(value, str) and cmd1['output_file'] == value:
+            return True
+        elif isinstance(value, list) and cmd1['output_file'] in value:
             return True
     return False
 
@@ -197,7 +199,7 @@ class Project():
         自动执行脚本。
         """
         for cmd in self.load_script(script_path):
-            if cmd['command'] == 'write':
+            if cmd['command'] in ['stream']:
                 self.exec(write, output_file=cmd['output_file'], **cmd['args'])
 
     def _load_output_history(self, output_path):
@@ -249,10 +251,10 @@ class Project():
         return export_jupyter(input_path, output_path)
 
     def exec(self, task_func, output_file: str=None, **kwargs):
+        kwargs['base_folder'] = self.project_folder
+        kwargs['output_file'] = output_file
         output_text = task_func(
             self.llm,
-            base_folder=self.project_folder,
-            output_file=output_file,
             **kwargs
         )
 
@@ -263,11 +265,11 @@ class Project():
             self.save_project()
 
     def create_exec_chain(self, output_file: str, **kwargs):
+        kwargs['base_folder'] = self.project_folder
+        kwargs['output_file'] = output_file
         chain = create_chain(
             self.llm,
             stream,
-            base_folder=self.project_folder,
-            output_file=output_file,
             **kwargs
         )
 
@@ -287,16 +289,16 @@ class Project():
         self.exec(idea, output_file=output_file, task=task, **kwargs)
 
     def create_idea_chain(self, output_file: str, prompt_id: str=None, **kwargs):
-        """
-        从一个idea开始生成。
-        """
         return self.create_exec_chain(output_file, **get_idea_args(prompt_id, **kwargs))
     
-    def outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
+    def outline(self, output_file: str, task: str, **kwargs):
         """
         生成写作大纲。
         """
-        self.exec(outline, output_file=output_file, input=input, **kwargs)
+        self.exec(outline, output_file=output_file, task=task, **kwargs)
+
+    def create_outline_chain(self, output_file: str, prompt_id: str=None, **kwargs):
+        return self.create_exec_chain(output_file, **get_outline_args(prompt_id, **kwargs))
 
     def more_outline(self, output_file: str,  input: Union[str, list[str]], **kwargs):
         """
@@ -304,8 +306,14 @@ class Project():
         """
         self.exec(more_outline, output_file=output_file, input=input **kwargs)
 
+    def create_more_outline_chain(self, output_file: str, prompt_id: str=None, **kwargs):
+        return self.create_exec_chain(output_file, **get_more_outline_args(prompt_id, **kwargs))
+
     def from_outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
         """
         从大纲扩写。
         """
         self.exec(from_outline, output_file=output_file, input=input, **kwargs)
+
+    def create_from_outline_chain(self, output_file: str, prompt_id: str=None, **kwargs):
+        return self.create_exec_chain(output_file, **get_from_outline_args(prompt_id, **kwargs))

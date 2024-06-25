@@ -149,7 +149,7 @@ class MarkdownLoader(BaseLoader):
                 segments.append([d for d, i in chunk])
             return ('segment', segments)
 
-        return []
+        return ('unknown', [])
 
     def get_task_range(self, index_from: Union[str, Document], index_to: Union[str, Document]):
         """

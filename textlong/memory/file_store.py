@@ -39,22 +39,18 @@ def parse_session_id(session_id: str):
 
 class LocalFileStore(BaseChatMessageHistory):
     """
-    Chat message history that stores history in a local file.
-
-    Args:
-        file_path: path of the local file to store the messages.
+    本地文件存储。
     """
     
     @property
     def file_path(self):
         """
-        文件路径的构造规则：{history_folder}/{year}/{month}/{session_id}.json
+        文件路径的构造规则：{history_folder}/{year}/{session_id}.json
         """
         parsed = parse_session_id(self.session_id)
         path = os.path.join(
             self.history_folder,
             str(parsed['year']),
-            str(parsed['month']),
             parsed['session_id'])
         return Path(f"{path}.json")
 
@@ -64,7 +60,6 @@ class LocalFileStore(BaseChatMessageHistory):
         history_folder: str = None,
         user_id: str = None,
     ):
-
         self.user_id = user_id or get_default_user()
         self.session_id = session_id or create_session_id(self.user_id)
         self.history_folder = history_folder or os.path.join(get_folder_root(), self.user_id, get_folder_history())
@@ -97,3 +92,4 @@ class LocalFileStore(BaseChatMessageHistory):
         file_path = self.file_path
         if file_path.exists():
             file_path.write_text(json.dumps([]))
+
