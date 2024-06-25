@@ -145,7 +145,7 @@ def stream(
         resp_md = ""
         for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
             resp_md += delta
-            yield ('log', delta)
+            yield ('chunk', delta)
         output_text += resp_md
         yield ('final', resp_md)
 
@@ -176,7 +176,7 @@ def stream(
 
                 resp_md = ""
                 for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
-                    yield ('log', delta)
+                    yield ('chunk', delta)
                     resp_md += delta
 
                 final_md = extract_text(resp_md, tag_start, tag_end)
@@ -203,6 +203,7 @@ def stream(
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(front_matter + output_text)
+            yield ('info', f'已保存 {output_file} / 共计 {len(output_file)} 字。\n')
 
 def write(
     llm: Runnable,
@@ -225,14 +226,14 @@ def write(
             print(color_code(output_color) + chunk + "\033[0m", end="")
         elif mode == 'info':
             print(color_code(info_color) + chunk + "\033[0m", end="")
-        elif mode == 'log':
+        elif mode == 'chunk':
             print(color_code(log_color) + chunk + "\033[0m", end="")
         elif mode == 'final':
             output_text += chunk
     
     return output_text
 
-def idea(llm: Runnable, prompt_id: str=None, **kwargs):
+def get_idea_args(prompt_id: str=None, **kwargs):
     if 'task' not in kwargs:
         raise ValueError("method <idea> need param <task> !!")
 
@@ -240,34 +241,19 @@ def idea(llm: Runnable, prompt_id: str=None, **kwargs):
         "sep_mode": "all",
         "prompt_id": prompt_id or "IDEA"
     })
+    return kwargs
 
-    return write(llm, **kwargs)
-
-def outline(llm: Runnable, prompt_id: str=None, **kwargs):
+def get_outline_args(prompt_id: str=None, **kwargs):
     if 'task' not in kwargs:
-        raise ValueError("method <outline> need param <task> !!")
+        raise ValueError("method <idea> need param <task> !!")
 
     kwargs.update({
         "sep_mode": "all",
         "prompt_id": prompt_id or "OUTLINE"
     })
+    return kwargs
 
-    return write(llm, **kwargs)
-
-def more_outline(llm: Runnable, prompt_id: str=None, **kwargs):
-    if 'input' not in kwargs:
-        raise ValueError("method <more_outline> need param <input> !!")
-
-    kwargs.update({
-        "sep_mode": "outline",
-        "prompt_id": prompt_id or "MORE_OUTLINE",
-        "tag_start": get_default_env("TEXTLONG_MORE_OUTLINE_START"),
-        "tag_end": get_default_env("TEXTLONG_MORE_OUTLINE_END"),
-    })
-
-    return write(llm, **kwargs)
-
-def from_outline(llm: Runnable, prompt_id: str=None, **kwargs):
+def get_from_outline_args(prompt_id: str=None, **kwargs):
     if 'input' not in kwargs:
         raise ValueError("method <from_outline> need param <input> !!")
 
@@ -277,5 +263,28 @@ def from_outline(llm: Runnable, prompt_id: str=None, **kwargs):
         "tag_start": get_default_env("TEXTLONG_OUTLINE_START"),
         "tag_end": get_default_env("TEXTLONG_OUTLINE_END"),
     })
+    return kwargs
 
-    return write(llm, **kwargs)
+def get_more_outline_args(prompt_id: str=None, **kwargs):
+    if 'input' not in kwargs:
+        raise ValueError("method <more_outline> need param <input> !!")
+
+    kwargs.update({
+        "sep_mode": "outline",
+        "prompt_id": prompt_id or "MORE_OUTLINE",
+        "tag_start": get_default_env("TEXTLONG_MORE_OUTLINE_START"),
+        "tag_end": get_default_env("TEXTLONG_MORE_OUTLINE_END"),
+    })
+    return kwargs
+
+def idea(llm: Runnable, prompt_id: str=None, **kwargs):
+    return write(llm, **get_idea_args(prompt_id, **kwargs))
+
+def outline(llm: Runnable, prompt_id: str=None, **kwargs):
+    return write(llm, **get_outline_args(prompt_id, **kwargs))
+
+def more_outline(llm: Runnable, prompt_id: str=None, **kwargs):
+    return write(llm, **get_more_outline_args(prompt_id, **kwargs))
+
+def from_outline(llm: Runnable, prompt_id: str=None, **kwargs):
+    return write(llm, **get_from_outline_args(prompt_id, **kwargs))
