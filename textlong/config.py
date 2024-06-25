@@ -1,4 +1,5 @@
 import os
+from .utils import color_code
 
 def get_folder_root():
     return get_default_env("TEXTLONG_ROOT")
@@ -38,6 +39,20 @@ def get_default_user():
 
 def get_folder_public():
     return get_default_env("TEXTLONG_PUBLIC")
+
+def get_text_color():
+    return color_code(get_default_env("TEXTLONG_COLOR_TEXT"))
+
+def get_info_color():
+    return color_code(get_default_env("TEXTLONG_COLOR_INFO"))
+
+def get_chunk_color():
+    return color_code(get_default_env("TEXTLONG_COLOR_CHUNK"))
+
+def get_warn_color():
+    return color_code(get_default_env("TEXTLONG_COLOR_WARN"))
+
+
 
 def get_default_env(key: str=None):
     """
@@ -88,10 +103,11 @@ def get_default_env(key: str=None):
         "TEXTLONG_DOC_NEXT_K": 300,
         
         # 颜色
-        "TEXTLONG_COLOR_VERBOSE": "蓝色",
-        "TEXTLONG_COLOR_OUTPUT": "黄色",
-        "TEXTLONG_COLOR_INFO": "红色",
-        "TEXTLONG_COLOR_LOG": "绿色",
+        "TEXTLONG_COLOR_INFO": "蓝色",
+        "TEXTLONG_COLOR_TEXT": "黄色",
+        "TEXTLONG_COLOR_WARN": "红色",
+        "TEXTLONG_COLOR_CHUNK": "绿色",
+        "TEXTLONG_COLOR_FINAL": "青色",
     }
     if key:
         if key not in default_values:

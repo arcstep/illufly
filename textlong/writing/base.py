@@ -12,7 +12,13 @@ from ..parser import parse_markdown, create_front_matter
 from ..hub import load_prompt
 from ..importer import load_markdown
 from ..utils import extract_text, color_code
-from ..config import get_default_env
+from ..config import (
+    get_text_color,
+    get_info_color,
+    get_chunk_color,
+    get_warn_color,
+    get_default_env,
+)
 
 def _create_chain(llm, prompt_template, **kwargs):
     if not llm:
@@ -21,16 +27,14 @@ def _create_chain(llm, prompt_template, **kwargs):
     return prompt | llm
 
 def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False):
-    verbose_color = get_default_env("TEXTLONG_COLOR_VERBOSE")
-
     if get_verbose() or is_fake or verbose:
-        print(color_code(verbose_color) + chain.get_prompts()[0].format(**input) + "\033[0m")
+        yield ('info', get_info_color() + chain.get_prompts()[0].format(**input) + "\033[0m")
 
     if is_fake:
         yield "Fake-Output-Content...\n"
     else:
         for chunk in chain.stream(input):
-            yield chunk.content
+            yield ('chunk', chunk.content)
 
 def gather_docs(input: Union[str, List[str]], base_folder: str="") -> str:
     """
@@ -104,7 +108,8 @@ def stream(
         "template_folder": template_folder,        
         "modified_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
-    front_matter = create_front_matter(dict_data)
+    not_empty_dict = {k: dict_data[k] for k in dict_data if dict_data[k]}
+    front_matter = create_front_matter(not_empty_dict)
     yield ('front_matter', front_matter)
     
     # final output
@@ -143,9 +148,9 @@ def stream(
         chain = _create_chain(llm, prompt, **_kwargs)
         
         resp_md = ""
-        for delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
+        for mode, delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
             resp_md += delta
-            yield ('chunk', delta)
+            yield (mode, delta)
         output_text += resp_md
         yield ('final', resp_md)
 
@@ -188,7 +193,7 @@ def stream(
 
             else:
                 # 如果内容是空行就不再处理
-                yield ('info', '(无需处理的空行)\n')
+                yield ('warn', '(无需处理的空行)\n')
                 output_text += doc.page_content
                 yield ('text', doc.page_content)
 
@@ -203,7 +208,7 @@ def stream(
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(front_matter + output_text)
-            yield ('info', f'已保存 {output_file} / 共计 {len(output_file)} 字。\n')
+            yield ('warn', f'已保存 {output_file} / 共计 {len(output_file)} 字。\n')
 
 def write(
     llm: Runnable,
@@ -214,29 +219,24 @@ def write(
     打印流式日志。
     """
 
-    output_color = get_default_env("TEXTLONG_COLOR_OUTPUT")
-    info_color = get_default_env("TEXTLONG_COLOR_INFO")
-    log_color = get_default_env("TEXTLONG_COLOR_LOG")
-    
     output_text = ""
 
     for mode, chunk in stream(llm, base_folder=base_folder, **kwargs):
         if mode == 'text':
             output_text += chunk
-            print(color_code(output_color) + chunk + "\033[0m", end="")
+            print(get_text_color() + chunk + "\033[0m", end="")
         elif mode == 'info':
-            print(color_code(info_color) + chunk + "\033[0m", end="")
+            print(get_info_color() + chunk + "\033[0m", end="")
+        elif mode == 'warn':
+            print(get_warn_color() + chunk + "\033[0m", end="")
         elif mode == 'chunk':
-            print(color_code(log_color) + chunk + "\033[0m", end="")
+            print(get_chunk_color() + chunk + "\033[0m", end="")
         elif mode == 'final':
             output_text += chunk
     
     return output_text
 
 def get_idea_args(prompt_id: str=None, **kwargs):
-    if 'task' not in kwargs:
-        raise ValueError("method <idea> need param <task> !!")
-
     kwargs.update({
         "sep_mode": "all",
         "prompt_id": prompt_id or "IDEA"
@@ -244,9 +244,6 @@ def get_idea_args(prompt_id: str=None, **kwargs):
     return kwargs
 
 def get_outline_args(prompt_id: str=None, **kwargs):
-    if 'task' not in kwargs:
-        raise ValueError("method <idea> need param <task> !!")
-
     kwargs.update({
         "sep_mode": "all",
         "prompt_id": prompt_id or "OUTLINE"
@@ -254,9 +251,6 @@ def get_outline_args(prompt_id: str=None, **kwargs):
     return kwargs
 
 def get_from_outline_args(prompt_id: str=None, **kwargs):
-    if 'input' not in kwargs:
-        raise ValueError("method <from_outline> need param <input> !!")
-
     kwargs.update({
         "sep_mode": "outline",
         "prompt_id": prompt_id or "FROM_OUTLINE",
@@ -266,9 +260,6 @@ def get_from_outline_args(prompt_id: str=None, **kwargs):
     return kwargs
 
 def get_more_outline_args(prompt_id: str=None, **kwargs):
-    if 'input' not in kwargs:
-        raise ValueError("method <more_outline> need param <input> !!")
-
     kwargs.update({
         "sep_mode": "outline",
         "prompt_id": prompt_id or "MORE_OUTLINE",
@@ -278,13 +269,22 @@ def get_more_outline_args(prompt_id: str=None, **kwargs):
     return kwargs
 
 def idea(llm: Runnable, prompt_id: str=None, **kwargs):
+    if 'task' not in kwargs:
+        raise ValueError("method <idea> need param <task> !!")
     return write(llm, **get_idea_args(prompt_id, **kwargs))
 
 def outline(llm: Runnable, prompt_id: str=None, **kwargs):
+    if 'task' not in kwargs:
+        raise ValueError("method <outline> need param <task> !!")
     return write(llm, **get_outline_args(prompt_id, **kwargs))
 
+def from_outline(llm: Runnable, prompt_id: str=None, **kwargs):
+    if 'input' not in kwargs:
+        raise ValueError("method <from_outline> need param <input> !!")
+    return write(llm, **get_from_outline_args(prompt_id, **kwargs))
+
 def more_outline(llm: Runnable, prompt_id: str=None, **kwargs):
+    if 'input' not in kwargs:
+        raise ValueError("method <more_outline> need param <input> !!")
     return write(llm, **get_more_outline_args(prompt_id, **kwargs))
 
-def from_outline(llm: Runnable, prompt_id: str=None, **kwargs):
-    return write(llm, **get_from_outline_args(prompt_id, **kwargs))
