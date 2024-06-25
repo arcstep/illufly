@@ -1,9 +1,9 @@
 from typing import List, Callable, Any, Optional, Type, Union
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough, Runnable, RunnableAssign, chain
-from textlong.hub import load_prompt
-from textlong.memory import MemoryManager, WithMemoryBinding
-from .base import collect_docs
+from langchain_core.runnables import Runnable
+from ..hub import load_prompt
+from ..memory import MemoryManager, WithMemoryBinding
+from ..knowledge.base import collect_docs
 
 def create_qa_chain(llm: Runnable, retriever: Callable, memory: MemoryManager=None, prompt: str = None) -> Callable:
     """
