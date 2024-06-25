@@ -53,6 +53,8 @@ def fetch_front_matter(text: str):
         yaml_front_matter = yaml_match.group(1)
         metadata = yaml.safe_load(yaml_front_matter)
         return metadata, text[yaml_match.end():]
+    else:
+        return {}, text
 
 def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
     """
