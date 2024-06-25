@@ -165,6 +165,7 @@ def write(
     llm: Runnable,
     output_file: str=None,
     base_folder: str=None,
+    use_yield: bool=False,
     **kwargs
 ):
     """
@@ -186,7 +187,8 @@ def write(
 
     prompt_id = kwargs.get('prompt_id', 'IDEA')
     output_str = (" | " + output_file) if output_file else ""
-    print(color_code(log_color) + f'\n>->>> Prompt ID: {prompt_id}{output_str} <<<-<\n' + "\033[0m")
+    if not use_yield:
+        print(color_code(log_color) + f'\n>->>> Prompt ID: {prompt_id}{output_str} <<<-<\n' + "\033[0m")
 
     md = ''
     for mode, chunk in stream(
@@ -194,17 +196,20 @@ def write(
         base_folder=base_folder,
         **kwargs
     ):
-        if mode == 'text':
-            md += chunk
-            print(color_code(output_color) + chunk + "\033[0m", end="")
-        elif mode == 'final':
-            md += chunk
-        elif mode == 'info':
-            print(color_code(info_color) + chunk + "\033[0m", end="")
-        elif mode == 'log':
-            print(color_code(log_color) + chunk + "\033[0m", end="")
+        if use_yield:
+            yield mode, chunk
         else:
-            print(color_code(log_color) + chunk + "\033[0m", end="")
+            if mode == 'text':
+                md += chunk
+                print(color_code(output_color) + chunk + "\033[0m", end="")
+            elif mode == 'final':
+                md += chunk
+            elif mode == 'info':
+                print(color_code(info_color) + chunk + "\033[0m", end="")
+            elif mode == 'log':
+                print(color_code(log_color) + chunk + "\033[0m", end="")
+            else:
+                print(color_code(log_color) + chunk + "\033[0m", end="")
 
     command = Command(
         command="write",
@@ -220,8 +225,11 @@ def write(
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(md_with_front_matter)
+            if use_yield:
+                yield 'log', f'Saved to {output_file}.'
     
-    return command
+    if not use_yield:
+        return command
 
 def idea(
     llm: Runnable,
