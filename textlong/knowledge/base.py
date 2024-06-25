@@ -11,8 +11,18 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.runnables import Runnable
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
-from ..config import get_folder_root, get_folder_public, get_folder_docs, get_default_env, get_cache_embeddings
-from ..utils import raise_not_install, hash_text, color_code, clean_filename
+from ..config import (
+    get_folder_root,
+    get_folder_public,
+    get_folder_docs,
+    get_default_env,
+    get_cache_embeddings,
+    get_info_color,
+    get_text_color,
+    get_chunk_color,
+    get_warn_color
+)
+from ..utils import raise_not_install, hash_text, clean_filename
 from ..writing.markdown import MarkdownLoader
 
 import os
@@ -61,7 +71,8 @@ class FileLoadFactory:
         elif ext == "txt":
             return TextLoader(filename, autodetect_encoding=True)
         else:
-            print(f"WARNING: Loaded File extension {ext} not supported now.")
+            info = f"WARNING: Loaded File extension {ext} not supported now."
+            print(get_warn_color() + info + "\033[0m")
 
         return None
 
@@ -180,8 +191,6 @@ class LocalFilesLoader(BaseLoader):
         tag_name 支持按不同模型厂商或模型名称缓存到子目录。
         """
         vector_folder = os.path.join(self.project_folder, get_cache_embeddings(), (tag_name or ""))
-        info_color = get_default_env("TEXTLONG_COLOR_INFO")
-        log_color = get_default_env("TEXTLONG_COLOR_LOG")
 
         to_embedding_texts = []
         to_embedding_paths = []
@@ -210,13 +219,13 @@ class LocalFilesLoader(BaseLoader):
                 with open(cache_path, 'wb') as f:
                     pickle.dump(data, f)
                     info = f'<{source}> {text[0:50]}{"..." if len(text) > 50 else ""}'
-                    print(color_code(log_color) + info + "\033[0m")
+                    print(get_info_color() + info + "\033[0m")
 
             info = f'Cached {len(to_embedding_paths)} embeddings to {vector_folder} !'
-            print(color_code(log_color) + info + "\033[0m")
+            print(get_info_color() + info + "\033[0m")
             return True
         
-        print(color_code(log_color) + f'No embeddings to cached!' + "\033[0m")
+        print(get_info_color() + f'No embeddings to cached!' + "\033[0m")
         return False
 
     def load_embeddings(self, model: Embeddings=None, tag_name: str=None):
@@ -224,7 +233,6 @@ class LocalFilesLoader(BaseLoader):
         缓存文本嵌入。
         """
         vector_folder = os.path.join(self.project_folder, get_cache_embeddings(), (tag_name or ""))
-        info_color = get_default_env("TEXTLONG_COLOR_INFO")
 
         texts = []
         vectors = []
@@ -252,6 +260,6 @@ class LocalFilesLoader(BaseLoader):
                     metadatas.append(metadata)
             else:
                 info = f'No embeddings cache found for: <{source}> {text[0:50]}{"..." if len(text) > 50 else ""}'
-                print(color_code(info_color) + info + "\033[0m")
+                print(get_warn_color() + info + "\033[0m")
 
         return list(zip(texts, vectors)), model, metadatas
