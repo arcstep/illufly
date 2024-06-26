@@ -55,11 +55,11 @@ def load_resource_prompt(prompt_id: str, tag: str="writing"):
 
     return template.partial(**kwargs)
 
-def _find_prompt_file(prompt_id: str, file_name, template_folder: str=None, sep: str=None, all_path: List[str]=[], force: bool=False):
+def _find_prompt_file(prompt_id: str, file_name, template_folder: str=None, tag: str="writing", sep: str=None, all_path: List[str]=[], force: bool=False):
     sep = sep or os.sep
     prompt_id = prompt_id.strip(f'{sep}| ')
 
-    prompt_folder = os.path.join(get_folder_root(), template_folder or "", prompt_id)
+    prompt_folder = os.path.join(get_folder_root(), template_folder or "", tag, prompt_id)
     if sep != os.sep:
         prompt_folder = prompt_folder.replace(os.sep, sep).strip(sep)
 
@@ -73,7 +73,7 @@ def _find_prompt_file(prompt_id: str, file_name, template_folder: str=None, sep:
             raise ValueError(f"Can't find {file_name}(.mu, .mustache, .txt) in [ {', '.join(all_path)} ]!")
         else:
             return None
-    return _find_prompt_file(prompt_id.rpartition(sep)[0], file_name, template_folder, sep, all_path)
+    return _find_prompt_file(prompt_id.rpartition(sep)[0], file_name, template_folder, tag, sep, all_path)
 
 def load_prompt(prompt_id: str, template_folder: str=None, tag: str="writing"):
     """
@@ -91,13 +91,8 @@ def load_prompt(prompt_id: str, template_folder: str=None, tag: str="writing"):
        - xxx_, 可选变量，加载时会被赋默认值""
        - xxx, 必须填写的变量
     """
-    prompt_folder = os.path.join(
-        get_folder_root(),
-        template_folder or "",
-        prompt_id
-    )
-    
-    main_prompt = _find_prompt_file(prompt_id, 'main', template_folder)
+    template_folder = template_folder or get_folder_prompts()
+    main_prompt = _find_prompt_file(prompt_id, 'main', template_folder, tag)
 
     if main_prompt:
         template_format = 'mustache' if main_prompt.endswith('.mu') or  main_prompt.endswith('.mustache') else 'f-string'
@@ -109,7 +104,7 @@ def load_prompt(prompt_id: str, template_folder: str=None, tag: str="writing"):
                 include_dict = {}
                 matches = re.findall(r'{{>(.*?)}}', prompt_str)
                 for part_name in matches:
-                    part_file = _find_prompt_file(prompt_id, part_name.strip(), template_folder)
+                    part_file = _find_prompt_file(prompt_id, part_name.strip(), template_folder, tag)
                     with open(part_file, 'r') as f:
                         include_dict[part_name] = f.read()
                 for part_name, part_str in include_dict.items():
@@ -130,15 +125,12 @@ def load_prompt(prompt_id: str, template_folder: str=None, tag: str="writing"):
 
     raise ValueError(f'无法构建模板：{prompt_id}')
 
-def save_prompt(template: PromptTemplate, prompt_id: str, template_folder: str=None):
+def save_prompt(template: PromptTemplate, prompt_id: str, template_folder: str=None, tag: str="writing"):
     """
     保存提示语模板到文件夹。
     """
-    prompt_folder = os.path.join(
-        get_folder_root(),
-        template_folder or get_folder_prompts(),
-        prompt_id
-    )
+    template_folder = template_folder or get_folder_prompts()
+    prompt_folder = os.path.join(get_folder_root(), template_folder, tag, prompt_id)
     os.makedirs(prompt_folder, exist_ok=True)
     
     ext = 'mu' if template.template_format == 'mustache' else 'txt'
@@ -158,11 +150,8 @@ def clone_prompt(prompt_id: str, template_folder: str=None, tag: str="writing"):
     if prompt_id not in find_resource_prompt(tag):
         raise ValueError(f"<{prompt_id}> prompt_id not exist !")
 
-    prompt_folder = os.path.join(
-        get_folder_root(),
-        template_folder or get_folder_prompts(),
-        prompt_id
-    )
+    template_folder = template_folder or get_folder_prompts()
+    prompt_folder = os.path.join(get_folder_root(), template_folder, tag, prompt_id)
     os.makedirs(prompt_folder, exist_ok=True)
 
     def _copy_prompt_file(res_file: str):
