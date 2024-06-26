@@ -19,20 +19,37 @@
 - 支持可定制的颜色打印
 - 支持 fake 模式
 - 支持 verbose 模式
-- 支持 config 参数 prev_k 和 next_k 控制参考的上下文长度
 
-_TODO:更多方法_
+_更多提示语模板_
 
 - 翻译
 - 仿写
 - 摘要
 - 提炼
+- 提炼概念
+- 提炼知识三元组
 
-_TODO:输入输出模式_
+_对文档 QA_
 
-- 1 -> 1
-- 1 -> n
-- n -> 1
+- 生成 QA 文档：设定 Q 和 A 的标题层次，以及 QA 分割线
+- 查询 QA 文档：markdown
+
+_对文档提炼_
+
+- 提炼文档：摘要、概念、实体、流程、三元组、QA
+- 支持缓存
+
+_对话：_
+
+- 简单的大模型对话：支持记忆
+- 保存原始对话
+- 整理对话摘要
+
+**Jupuyter 笔记**
+
+- 启动模板：大模型配置、QA 应用和项目创作的 python 工具包
+- 快速启动：零代码直接可用和简洁函数
+- 支持命令行：结合启动模板，快速启动 Jupyter 环境
 
 **平行输出：**
 
@@ -43,13 +60,20 @@ _TODO: 输出质量_
 - 生成质量标注：对所有平行输出打标签
 - 展示质量评分：对所有质量标签做评分统计
 
+**Chain：**
+
+- QA 链
+- 写作链
+- 基于项目的写作链
+
 **项目：**
 
-- 写作指令: idea, outline, from_outline ...
-- 项目加载: load_project, save_project
+- 写作框架: idea, outline, from_outline ...
+- 本地提示语: hub.load_prompt, hub.save_prompt, hub.clone_prompt
+- 项目恢复: load_project, save_project
 - 命令历史: load_commands, load_history
-- 项目脚本: save_script, load_script, run_script
-- 指令恢复: checkout
+- 批处理: save_script, load_script, run_script
+- 版本恢复: checkout
 
 **脚本：**
 
@@ -77,11 +101,17 @@ _TODO:_
 
 ## 3. QA
 
-- 加载 本地文件：docx / pdf /md / txt
-- 加载 QA-Excel
-- 为项目做 RAG
-- 为用户做 RAG
-- 支持用户共享资料的 RAG
+- 加载 本地文件：docx / pdf /md / txt / xlsx
+- 加载 QA-Excel：支持 QA 和普通 xls 文本
+- 支持从多个目录加载（共享 public）
+- 支持文本嵌入缓存
+- 支持记忆：基于内存、基于文件
+- 支持按用户加载
+
+- 支持文本拆分
+- 支持 QA 查询
+- 支持概念查询
+- 支持知识三元组关联查询
 
 ## 4. Agent
 
