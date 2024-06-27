@@ -12,7 +12,7 @@ from .command import Command
 from ..parser import parse_markdown, create_front_matter
 from ..hub import load_prompt
 from ..importer import load_markdown
-from ..utils import extract_text, color_code
+from ..utils import extract_text, color_code, safety_path
 from ..config import (
     get_text_color,
     get_info_color,
@@ -55,7 +55,7 @@ def gather_docs(input: Union[str, List[str]], base_folder: str="") -> str:
 
     if isinstance(input, list):
         for s in input:
-            s = os.path.normpath(re.sub(r"\.\.+", ".", s))
+            s = safety_path(s)
             if isinstance(s, str) and s.endswith(".md"):
                 path = os.path.join(base_folder, s)
                 if os.path.exists(path):
@@ -95,7 +95,7 @@ def stream(
     prev_k = get_default_env("TEXTLONG_DOC_PREV_K")
     next_k = get_default_env("TEXTLONG_DOC_NEXT_K")
     prompt_id = prompt_id or 'IDEA'
-    output_file = os.path.normpath(re.sub(r"\.\.+", ".", output_file)) if output_file else None
+    output_file = safety_path(output_file) if output_file else None
 
     # front_matter
     args = {

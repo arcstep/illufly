@@ -12,10 +12,11 @@ from langchain_core.tracers.schemas import Run
 from ..parser import parse_markdown, create_front_matter, fetch_front_matter
 from ..exporter import export_jupyter
 from ..importer import load_markdown
-from ..utils import raise_not_supply_all
+from ..utils import raise_not_supply_all, safety_path
 from ..config import (
     get_folder_root,
     get_folder_public,
+    get_project_list_file,
     get_project_config_file,
     get_project_script_file,
     get_folder_logs,
@@ -81,7 +82,7 @@ class Project():
 
         self.llm = llm
         self.base_folder = base_folder or get_folder_root()
-        self.project_id = project_id
+        self.project_id = safety_path(project_id)
         self.output_files: List[str] = []
 
         if os.path.exists(self.project_config_path):
@@ -139,10 +140,22 @@ class Project():
         os.makedirs(os.path.dirname(self.project_config_path), exist_ok=True)
         with open(self.project_config_path, 'w') as f:
             yaml.safe_dump(self.to_dict(), f, allow_unicode=True, sort_keys=False)
+
+        all_projects = []
+        project_list_file = os.path.join(self.base_folder, get_project_list_file())
+        if os.path.exists(project_list_file):
+            with open(project_list_file, 'r') as f:
+                all_projects = yaml.safe_load(f)
+        
+        if self.project_id not in all_projects:
+            all_projects.append(self.project_id)
+            with open(project_list_file, 'w') as f:
+                yaml.safe_dump(all_projects, f, sort_keys=True, allow_unicode=True)
+
         return True
 
     def _get_output_history_path(self, output_file):
-        output_file = os.path.normpath(re.sub(r"\.\.+", ".", output_file))
+        output_file = safety_path(output_file)
         return self.get_path(get_folder_logs(), output_file) + ".yml"
     
     def load_history(self, output_file, start: int=None, end: int=None):
@@ -190,7 +203,7 @@ class Project():
         
         默认保存每个文件处理历史命令中的最后一个: [-1, None]。
         """
-        script_path = os.path.normpath(re.sub(r"\.\.+", ".", script_path))
+        script_path = safety_path(script_path)
         path = script_path or self.project_script_path
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
@@ -239,6 +252,7 @@ class Project():
         """
         从历史记录中提取生成过的文本，默认提取倒数第2个。
         """
+        save_as = safety_path(save_as)
         history = self.load_history(output_file)
         output_text = history[index]['output_text']
         cmd = Command.from_dict(history[index])

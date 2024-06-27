@@ -1,7 +1,8 @@
 import os
+import yaml
 from langchain_core.runnables import Runnable
 from .base import Project
-from ..config import get_folder_public, get_folder_root, get_project_config_file
+from ..config import get_folder_root, get_project_config_file, get_project_list_file
 
 def is_project_existing(project_path):
     """递归检查项目目录中是否存在配置文件"""
@@ -13,6 +14,12 @@ def is_project_existing(project_path):
 def list_projects(base_folder: str=None):
     """列举项目"""
     base_folder = base_folder or get_folder_root()
+
+    project_list_file = os.path.join(base_folder, get_project_list_file())
+    if os.path.exists(project_list_file):
+        with open(project_list_file, 'r') as f:
+            return yaml.safe_load(f)
+    
     projects = []
 
     def walk_and_add_projects(folder):
@@ -33,10 +40,15 @@ def list_projects(base_folder: str=None):
             break  # 防止 os.walk 默认的递归行为
 
     walk_and_add_projects(base_folder)
+    
+    os.makedirs(os.path.dirname(project_list_file), exist_ok=True)
+    with open(project_list_file, 'w') as f:
+        yaml.safe_dump(projects, f, sort_keys=True, allow_unicode=True)
+
     return projects
 
 def init_project(project_id: str, base_folder: str=None):
     """创建项目"""
     base_folder = base_folder or get_folder_root()
-    p = Project(None, project_id=project_id)
+    p = Project(None, project_id=project_id, base_folder=base_folder)
     return p.save_project()
