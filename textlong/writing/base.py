@@ -1,4 +1,5 @@
 import os
+import re
 import copy
 from datetime import datetime
 from typing import Union, List, Dict, Any
@@ -54,6 +55,7 @@ def gather_docs(input: Union[str, List[str]], base_folder: str="") -> str:
 
     if isinstance(input, list):
         for s in input:
+            s = os.path.normpath(re.sub(r"\.\.+", ".", s))
             if isinstance(s, str) and s.endswith(".md"):
                 path = os.path.join(base_folder, s)
                 if os.path.exists(path):
@@ -93,6 +95,7 @@ def stream(
     prev_k = get_default_env("TEXTLONG_DOC_PREV_K")
     next_k = get_default_env("TEXTLONG_DOC_NEXT_K")
     prompt_id = prompt_id or 'IDEA'
+    output_file = os.path.normpath(re.sub(r"\.\.+", ".", output_file)) if output_file else None
 
     # front_matter
     args = {
@@ -239,55 +242,55 @@ def write(llm: Runnable, **kwargs):
     
     return output_text
 
-def get_idea_args(prompt_id: str=None, **kwargs):
+def get_idea_args(**kwargs):
     kwargs.update({
         "sep_mode": "all",
-        "prompt_id": prompt_id or "IDEA"
+        "prompt_id": kwargs.get('prompt_id', "IDEA")
     })
     return kwargs
 
-def get_outline_args(prompt_id: str=None, **kwargs):
+def get_outline_args(**kwargs):
     kwargs.update({
         "sep_mode": "all",
-        "prompt_id": prompt_id or "OUTLINE"
+        "prompt_id": kwargs.get('prompt_id', "OUTLINE")
     })
     return kwargs
 
-def get_from_outline_args(prompt_id: str=None, **kwargs):
+def get_from_outline_args(**kwargs):
     kwargs.update({
         "sep_mode": "outline",
-        "prompt_id": prompt_id or "FROM_OUTLINE",
+        "prompt_id": kwargs.get('prompt_id', "FROM_OUTLINE"),
         "tag_start": get_default_env("TEXTLONG_OUTLINE_START"),
         "tag_end": get_default_env("TEXTLONG_OUTLINE_END"),
     })
     return kwargs
 
-def get_more_outline_args(prompt_id: str=None, **kwargs):
+def get_more_outline_args(**kwargs):
     kwargs.update({
         "sep_mode": "outline",
-        "prompt_id": prompt_id or "MORE_OUTLINE",
+        "prompt_id": kwargs.get('prompt_id', "MORE_OUTLINE"),
         "tag_start": get_default_env("TEXTLONG_MORE_OUTLINE_START"),
         "tag_end": get_default_env("TEXTLONG_MORE_OUTLINE_END"),
     })
     return kwargs
 
-def idea(llm: Runnable, prompt_id: str=None, **kwargs):
+def idea(llm: Runnable, **kwargs):
     if 'task' not in kwargs:
         raise ValueError("method <idea> need param <task> !!")
-    return write(llm, **get_idea_args(prompt_id, **kwargs))
+    return write(llm, **get_idea_args(**kwargs))
 
-def outline(llm: Runnable, prompt_id: str=None, **kwargs):
+def outline(llm: Runnable, **kwargs):
     if 'task' not in kwargs:
         raise ValueError("method <outline> need param <task> !!")
-    return write(llm, **get_outline_args(prompt_id, **kwargs))
+    return write(llm, **get_outline_args(**kwargs))
 
-def from_outline(llm: Runnable, prompt_id: str=None, **kwargs):
+def from_outline(llm: Runnable, **kwargs):
     if 'input' not in kwargs:
         raise ValueError("method <from_outline> need param <input> !!")
-    return write(llm, **get_from_outline_args(prompt_id, **kwargs))
+    return write(llm, **get_from_outline_args(**kwargs))
 
-def more_outline(llm: Runnable, prompt_id: str=None, **kwargs):
+def more_outline(llm: Runnable, **kwargs):
     if 'input' not in kwargs:
         raise ValueError("method <more_outline> need param <input> !!")
-    return write(llm, **get_more_outline_args(prompt_id, **kwargs))
+    return write(llm, **get_more_outline_args(**kwargs))
 
