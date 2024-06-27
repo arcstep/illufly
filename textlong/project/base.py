@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Union, List, Dict, Any
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
+from langchain_core.runnables.utils import Input, Output
 from langchain_core.tracers.schemas import Run
 
 from ..parser import parse_markdown, create_front_matter, fetch_front_matter
@@ -263,7 +264,7 @@ class Project():
             self.output_files.append(output_file)
             self.save_project()
 
-    def create_exec_chain(self, output_file: str, **kwargs):
+    def create_exec_chain(self, output_file: str, **kwargs) -> Runnable[Input, Output]:
         kwargs['base_folder'] = self.project_folder
         kwargs['output_file'] = output_file
         chain = create_chain(
@@ -286,7 +287,7 @@ class Project():
         """
         self.exec(idea, output_file=output_file, task=task, **kwargs)
 
-    def create_idea_chain(self, output_file: str, prompt_id: str=None, **kwargs):
+    def create_idea_chain(self, output_file: str, prompt_id: str=None, **kwargs) -> Runnable[Input, Output]:
         return self.create_exec_chain(output_file, **get_idea_args(prompt_id, **kwargs))
     
     def outline(self, output_file: str, task: str, **kwargs):
