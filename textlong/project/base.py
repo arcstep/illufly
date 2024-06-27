@@ -268,7 +268,6 @@ class Project():
         kwargs['output_file'] = output_file
         chain = create_chain(
             self.llm,
-            stream,
             **kwargs
         )
 
