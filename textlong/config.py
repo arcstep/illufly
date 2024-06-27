@@ -10,6 +10,9 @@ def get_folder_prompts():
 def get_folder_logs():
     return get_default_env("TEXTLONG_LOGS")
 
+def get_project_list_file():
+    return get_default_env("TEXTLONG_PROJECT_LIST")
+
 def get_project_config_file():
     return get_default_env("TEXTLONG_CONFIG_FILE")
 
@@ -60,7 +63,7 @@ def get_default_env(key: str=None):
     """
     default_values = {
         # 根文件夹配置
-        "TEXTLONG_ROOT": "",
+        "TEXTLONG_ROOT": "./",
 
         # 提示语文件夹
         "TEXTLONG_PROMPTS": "__PROMPTS__",
@@ -79,6 +82,7 @@ def get_default_env(key: str=None):
         "TEXTLONG_DOC_CHUNK_OVERLAP": 300,
 
         # 项目文件
+        "TEXTLONG_PROJECT_LIST": "project_list.yml",
         "TEXTLONG_CONFIG_FILE": "project_config.yml",
         "TEXTLONG_SCRIPT_FILE": "project_script.yml",
 

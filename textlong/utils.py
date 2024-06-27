@@ -1,4 +1,5 @@
 import re
+import os
 import hashlib
 from typing import List, Union, Any
 from langchain_core.documents import Document
@@ -53,3 +54,6 @@ def clean_filename(filename: str):
     cleaned_filename = re.sub(r'[^\w\s-]', '_', filename)
     cleaned_filename = re.sub(r'[-_ ]+', '_', cleaned_filename)
     return cleaned_filename
+
+def safety_path(path: str):
+    return os.path.normpath(re.sub(r"\.\.+", ".", path))
