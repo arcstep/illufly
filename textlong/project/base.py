@@ -141,6 +141,7 @@ class Project():
         return True
 
     def _get_output_history_path(self, output_file):
+        output_file = os.path.normpath(re.sub(r"\.\.+", ".", output_file))
         return self.get_path(get_folder_logs(), output_file) + ".yml"
     
     def load_history(self, output_file, start: int=None, end: int=None):
@@ -188,6 +189,7 @@ class Project():
         
         默认保存每个文件处理历史命令中的最后一个: [-1, None]。
         """
+        script_path = os.path.normpath(re.sub(r"\.\.+", ".", script_path))
         path = script_path or self.project_script_path
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
@@ -264,16 +266,14 @@ class Project():
             self.output_files.append(output_file)
             self.save_project()
 
-    def create_exec_chain(self, output_file: str, **kwargs) -> Runnable[Input, Output]:
+    def create_exec_chain(self, **kwargs) -> Runnable[Input, Output]:
         kwargs['base_folder'] = self.project_folder
-        kwargs['output_file'] = output_file
         chain = create_chain(
             self.llm,
             **kwargs
         )
 
         def fn_end(run_obj: Run):
-            # print(run_obj)
             self._save_output_history(output_file, run_obj.outputs['output'])
             if output_file not in self.output_files:
                 self.output_files.append(output_file)
@@ -287,8 +287,8 @@ class Project():
         """
         self.exec(idea, output_file=output_file, task=task, **kwargs)
 
-    def create_idea_chain(self, output_file: str, prompt_id: str=None, **kwargs) -> Runnable[Input, Output]:
-        return self.create_exec_chain(output_file, **get_idea_args(prompt_id, **kwargs))
+    def create_idea_chain(self, **kwargs) -> Runnable[Input, Output]:
+        return self.create_exec_chain(**get_idea_args(**kwargs))
     
     def outline(self, output_file: str, task: str, **kwargs):
         """
@@ -296,8 +296,8 @@ class Project():
         """
         self.exec(outline, output_file=output_file, task=task, **kwargs)
 
-    def create_outline_chain(self, output_file: str, prompt_id: str=None, **kwargs):
-        return self.create_exec_chain(output_file, **get_outline_args(prompt_id, **kwargs))
+    def create_outline_chain(self, **kwargs):
+        return self.create_exec_chain(**get_outline_args(**kwargs))
 
     def more_outline(self, output_file: str,  input: Union[str, list[str]], **kwargs):
         """
@@ -305,8 +305,8 @@ class Project():
         """
         self.exec(more_outline, output_file=output_file, input=input **kwargs)
 
-    def create_more_outline_chain(self, output_file: str, prompt_id: str=None, **kwargs):
-        return self.create_exec_chain(output_file, **get_more_outline_args(prompt_id, **kwargs))
+    def create_more_outline_chain(self, **kwargs):
+        return self.create_exec_chain(**get_more_outline_args(**kwargs))
 
     def from_outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
         """
@@ -314,5 +314,5 @@ class Project():
         """
         self.exec(from_outline, output_file=output_file, input=input, **kwargs)
 
-    def create_from_outline_chain(self, output_file: str, prompt_id: str=None, **kwargs):
-        return self.create_exec_chain(output_file, **get_from_outline_args(prompt_id, **kwargs))
+    def create_from_outline_chain(self, **kwargs):
+        return self.create_exec_chain(**get_from_outline_args(**kwargs))

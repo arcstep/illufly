@@ -90,7 +90,7 @@ def get_default_env(key: str=None):
         "TEXTLONG_DEFAULT_USER": "default_user",
 
         # 用户共享位置
-        "TEXTLONG_PUBLIC": "",
+        "TEXTLONG_PUBLIC": "./",
 
         # 扩写标签
         "TEXTLONG_OUTLINE_START": "<OUTLINE>",

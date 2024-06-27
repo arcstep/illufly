@@ -24,7 +24,6 @@ class writing_input(BaseModel):
     input: Union[str, List[str]]=None
     knowledge: Union[str, List[str]]=None
     output_file: str=None
-    base_folder: str=None
     prompt_id: str=None
 
 def create_chain(llm: Runnable, **kwargs) -> Runnable[Input, Output]:
@@ -33,7 +32,7 @@ def create_chain(llm: Runnable, **kwargs) -> Runnable[Input, Output]:
     """
     def gen(input: Iterator[Any]) -> Iterator[str]:
         for input_args in input:
-            for m, x in stream(llm, use_yield=True, **{**kwargs, **input_args}):
+            for m, x in stream(llm, **{**kwargs, **input_args}):
                 if m in ['text', 'chunk', 'front_matter']:
                     yield(AIMessageChunk(content=x))
 
@@ -53,15 +52,15 @@ def create_chain(llm: Runnable, **kwargs) -> Runnable[Input, Output]:
 
     return chain
 
-def create_idea_chain(llm: Runnable, prompt_id: str=None, **kwargs):
-    return create_chain(llm, **get_idea_args(prompt_id, **kwargs))
+def create_idea_chain(llm: Runnable, **kwargs):
+    return create_chain(llm, **get_idea_args(**kwargs))
 
-def create_outline_chain(llm: Runnable, prompt_id: str=None, **kwargs):
-    return create_chain(llm, **get_outline_args(prompt_id, **kwargs))
+def create_outline_chain(llm: Runnable, **kwargs):
+    return create_chain(llm, **get_outline_args(**kwargs))
 
-def create_from_outline_chain(llm: Runnable, prompt_id: str=None, **kwargs):
-    return create_chain(llm, **get_from_outline_args(prompt_id, **kwargs))
+def create_from_outline_chain(llm: Runnable, **kwargs):
+    return create_chain(llm, **get_from_outline_args(**kwargs))
 
-def create_more_outline_chain(llm: Runnable,prompt_id: str=None,  **kwargs):
-    return create_chain(llm, **get_more_outline_args(prompt_id, **kwargs))
+def create_more_outline_chain(llm: Runnable, **kwargs):
+    return create_chain(llm, **get_more_outline_args(**kwargs))
 
