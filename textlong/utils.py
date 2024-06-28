@@ -56,4 +56,4 @@ def clean_filename(filename: str):
     return cleaned_filename
 
 def safety_path(path: str):
-    return os.path.normpath(re.sub(r"\.\.+", ".", path))
+    return os.path.normpath(re.sub(r"\.\.+", ".", path)) if path else ''
