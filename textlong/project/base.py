@@ -122,8 +122,8 @@ class Project():
         """
         all_paths = []
         exclude_paths = [
-            self.project_script_path,
-            self.project_config_path,
+            get_project_script_file(),
+            get_project_config_file(),
             get_folder_logs(),
         ]
         for root, dirs, files in os.walk(self.project_folder):
