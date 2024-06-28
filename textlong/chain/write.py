@@ -33,17 +33,16 @@ class WritingInput(BaseModel):
     output_file: str=None
     prompt_id: str=None
 
-def create_chain(llm: Runnable, **kwargs) -> Runnable[Input, Output]:
+def create_chain(llm: Runnable, base_folder: str=None, **kwargs) -> Runnable[Input, Output]:
     """
     构建执行链。
     """
 
     def gen(input: Iterator[Any]) -> Iterator[str]:
         for input_args in input:
-            project = Project(llm, input_args.get('project_id', get_folder_docs()))
+            project_id = input_args.get('project_id', get_folder_docs())
+            project = Project(project_id, base_folder, llm)
             kwargs['base_folder'] = project.project_folder
-            kwargs['output_file'] = kwargs.get('output_file', get_default_output())
-            output_file = kwargs['output_file']
             args = {**kwargs, **get_default_args(input_args)}
 
             output_text = ''
@@ -52,18 +51,19 @@ def create_chain(llm: Runnable, **kwargs) -> Runnable[Input, Output]:
                     yield(AIMessageChunk(content=x))
                     output_text += x
 
+            output_file = kwargs['output_file']
             project.save_output_history(output_file, output_text)
             if output_file not in project.output_files:
-                project.output_files.append(output_file)
+                project.output_files.add(output_file)
                 project.save_project()
 
     async def agen(input: AsyncIterator[Any]) -> AsyncIterator[str]:
         loop = asyncio.get_running_loop()
         async for input_args in input:
-            project = Project(llm, input_args.get('project_id', get_folder_docs()))
+            project_id = input_args.get('project_id', get_folder_docs())
+            project = Project(project_id, base_folder, llm)
+
             kwargs['base_folder'] = project.project_folder
-            kwargs['output_file'] = kwargs.get('output_file', get_default_output())
-            output_file = kwargs['output_file']
             args = {**kwargs, **get_default_args(input_args)}
 
             res = await loop.run_in_executor(executor, lambda: list(stream(llm, **args)))
@@ -73,9 +73,10 @@ def create_chain(llm: Runnable, **kwargs) -> Runnable[Input, Output]:
                     yield(AIMessageChunk(content=x))
                     output_text += x
 
+            output_file = args['output_file']
             project.save_output_history(output_file, output_text)
             if output_file not in project.output_files:
-                project.output_files.append(output_file)
+                project.output_files.add(output_file)
                 project.save_project()
 
     # 为了兼容 langserve，需要将 RunnableGenerator 转换为非迭代的返回
@@ -97,4 +98,5 @@ def get_default_args(input_args: Dict[str, Any]):
     else:
         default_args = input_args
 
+    default_args['output_file'] = input_args.get('output_file', get_default_output())
     return default_args

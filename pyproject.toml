@@ -15,6 +15,7 @@ langchain = ">=0.1.0,<0.3.0"
 langchain-community = ">=0.0.38,<0.3.0"
 mistune = "^3.0.2"
 pandas = "^2.2.2"
+openpyxl = "^3.1.4"
 
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "^1.0.1"

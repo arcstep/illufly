@@ -68,18 +68,21 @@ class Project():
     - 项目脚本: save_script, load_script, run_script
     - 指令恢复: checkout
     """
-    def __init__(self, llm: Runnable, project_id: str, base_folder: str=None):
+    def __init__(self, project_id: str, base_folder: str=None, llm: Runnable=None):
         raise_not_supply_all("Project 对象必须提供有效的 project_id", project_id)
 
         self.llm = llm
         self.base_folder = base_folder or get_folder_root()
         self.project_id = safety_path(project_id)
-        self.output_files: List[str] = []
+        self.output_files: Set[str] = set()
+        self.embedding_files: Set[str] = set()
 
         if os.path.exists(self.project_config_path):
             data = self._load_project_data()
             if 'output_files' in data:
-                self.output_files = data['output_files'] or []
+                self.output_files = set(data['output_files'] or [])
+            if 'embedding_files' in data:
+                self.embedding_files = set(data['embedding_files'] or [])
 
     def __str__(self):
         return "\n".join([
@@ -87,7 +90,7 @@ class Project():
         ])
 
     def __repr__(self):
-        return f"Project<llm: '{self.llm._llm_type}/{self.llm.model}', project_folder: '{self.project_folder}', output_files: {self.output_files}>"
+        return f"Project<llm: '{self.llm._llm_type}/{self.llm.model}', project_folder: '{self.project_folder}', output_files: {list(self.output_files)}>"
 
     def to_dict(self):
         return {attr: getattr(self, attr) for attr in vars(self) if attr != 'llm' and getattr(self, attr)}
@@ -148,6 +151,30 @@ class Project():
         if path and md_text:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(md_text)
+
+        return True
+
+    def to_output(self, res_name: str, as_output=False):
+        """
+        修改文件资源是否纳入到输出清单。
+        """
+        if as_output:
+            self.output_files.add(res_name)
+        else:
+            self.output_files.discard(res_name)
+        self.save_project()
+
+        return True
+    
+    def to_embedding(self, res_name: str, as_embedding=False):
+        """
+        修改文件资源是否纳入到文本嵌入清单。
+        """
+        if as_embedding:
+            self.embedding_files.add(res_name)
+        else:
+            self.embedding_files.discard(res_name)
+        self.save_project()
 
         return True
 
@@ -305,8 +332,8 @@ class Project():
 
         self.save_output_history(output_file, output_text)
 
-        if output_file not in self.output_files:
-            self.output_files.append(output_file)
+        if output_file and output_file not in self.output_files:
+            self.output_files.add(output_file)
             self.save_project()
 
     def idea(self, output_file: str, task: str, **kwargs):
