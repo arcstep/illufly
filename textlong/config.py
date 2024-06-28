@@ -13,6 +13,9 @@ def get_folder_logs():
 def get_project_list_file():
     return get_default_env("TEXTLONG_PROJECT_LIST")
 
+def get_default_output():
+    return get_default_env("TEXTLONG_DEFAULT_OUTPUT")
+
 def get_project_config_file():
     return get_default_env("TEXTLONG_CONFIG_FILE")
 
@@ -55,8 +58,6 @@ def get_chunk_color():
 def get_warn_color():
     return color_code(get_default_env("TEXTLONG_COLOR_WARN"))
 
-
-
 def get_default_env(key: str=None):
     """
     环境变量的默认值。
@@ -82,6 +83,7 @@ def get_default_env(key: str=None):
         "TEXTLONG_DOC_CHUNK_OVERLAP": 300,
 
         # 项目文件
+        "TEXTLONG_DEFAULT_OUTPUT": "output.md",
         "TEXTLONG_PROJECT_LIST": "project_list.yml",
         "TEXTLONG_CONFIG_FILE": "project_config.yml",
         "TEXTLONG_SCRIPT_FILE": "project_script.yml",
@@ -112,6 +114,9 @@ def get_default_env(key: str=None):
         "TEXTLONG_COLOR_WARN": "红色",
         "TEXTLONG_COLOR_CHUNK": "绿色",
         "TEXTLONG_COLOR_FINAL": "青色",
+        
+        # 多线程配置
+        "TEXTLONG_MAX_WORKERS": 4,
     }
     if key:
         if key not in default_values:

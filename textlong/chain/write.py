@@ -1,4 +1,4 @@
-from typing import Any, AsyncIterator, Iterator, AsyncIterator, List, Union
+from typing import Any, AsyncIterator, Iterator, AsyncIterator, List, Union, Dict
 from langchain_core.runnables import Runnable, RunnableGenerator
 from langchain_core.runnables.utils import Input, Output
 from langchain_core.output_parsers import StrOutputParser
@@ -6,8 +6,10 @@ from langchain_core.messages import AIMessageChunk
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.tracers.schemas import Run
 
+from ..project.base import Project
+from ..config import get_folder_docs, get_default_output, get_default_env
+from ..writing import stream
 from ..writing.base import (
-    stream,
     get_idea_args,
     get_outline_args,
     get_from_outline_args,
@@ -16,8 +18,7 @@ from ..writing.base import (
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-
-executor = ThreadPoolExecutor(max_workers=4)
+executor = ThreadPoolExecutor(max_workers=get_default_env("TEXTLONG_MAX_WORKERS"))
 
 class WritingInput(BaseModel):
     """
@@ -28,6 +29,7 @@ class WritingInput(BaseModel):
     task: str=None
     input: Union[str, List[str]]=None
     knowledge: Union[str, List[str]]=None
+    project_id: str=None
     output_file: str=None
     prompt_id: str=None
 
@@ -35,37 +37,64 @@ def create_chain(llm: Runnable, **kwargs) -> Runnable[Input, Output]:
     """
     构建执行链。
     """
+
     def gen(input: Iterator[Any]) -> Iterator[str]:
         for input_args in input:
-            for m, x in stream(llm, **{**kwargs, **input_args}):
+            project = Project(llm, input_args.get('project_id', get_folder_docs()))
+            kwargs['base_folder'] = project.project_folder
+            kwargs['output_file'] = kwargs.get('output_file', get_default_output())
+            output_file = kwargs['output_file']
+            args = {**kwargs, **get_default_args(input_args)}
+
+            output_text = ''
+            for m, x in stream(llm, **args):
                 if m in ['text', 'chunk', 'front_matter']:
                     yield(AIMessageChunk(content=x))
+                    output_text += x
+
+            project.save_output_history(output_file, output_text)
+            if output_file not in project.output_files:
+                project.output_files.append(output_file)
+                project.save_project()
 
     async def agen(input: AsyncIterator[Any]) -> AsyncIterator[str]:
         loop = asyncio.get_running_loop()
         async for input_args in input:
-            func_result = await loop.run_in_executor(
-                executor,
-                lambda: list(stream(llm, **{**kwargs, **input_args}))
-            )
-            for m, x in func_result:
+            project = Project(llm, input_args.get('project_id', get_folder_docs()))
+            kwargs['base_folder'] = project.project_folder
+            kwargs['output_file'] = kwargs.get('output_file', get_default_output())
+            output_file = kwargs['output_file']
+            args = {**kwargs, **get_default_args(input_args)}
+
+            res = await loop.run_in_executor(executor, lambda: list(stream(llm, **args)))
+            output_text = ''
+            for m, x in res:
                 if m in ['text', 'chunk', 'front_matter']:
                     yield(AIMessageChunk(content=x))
+                    output_text += x
+
+            project.save_output_history(output_file, output_text)
+            if output_file not in project.output_files:
+                project.output_files.append(output_file)
+                project.save_project()
 
     # 为了兼容 langserve，需要将 RunnableGenerator 转换为非迭代的返回
-    chain = RunnableGenerator(gen, agen).with_types(input_type=WritingInput, output_type=Iterator[str]) | StrOutputParser()
+    return RunnableGenerator(gen, agen).with_types(
+        input_type=WritingInput,
+        output_type=Iterator[str]
+    ) | StrOutputParser()
 
-    return chain
+def get_default_args(input_args: Dict[str, Any]):
+    action = input_args.get("action", "idea")
+    if action == "idea":
+        default_args = get_idea_args(**input_args)
+    elif action == "outline":
+        default_args = get_outline_args(**input_args)
+    elif action == "from_outline":
+        default_args = get_from_outline_args(**input_args)
+    elif action == "more_outline":
+        default_args = get_more_outline_args(**input_args)
+    else:
+        default_args = input_args
 
-def create_idea_chain(llm: Runnable, **kwargs):
-    return create_chain(llm, **get_idea_args(**kwargs))
-
-def create_outline_chain(llm: Runnable, **kwargs):
-    return create_chain(llm, **get_outline_args(**kwargs))
-
-def create_from_outline_chain(llm: Runnable, **kwargs):
-    return create_chain(llm, **get_from_outline_args(**kwargs))
-
-def create_more_outline_chain(llm: Runnable, **kwargs):
-    return create_chain(llm, **get_more_outline_args(**kwargs))
-
+    return default_args
