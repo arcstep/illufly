@@ -72,7 +72,7 @@ class Project():
     长文生成项目的文件管理。
     
     - 写作指令: idea, outline, from_outline ...
-    - 项目加载: load_project, save_project
+    - 项目保存: save_project
     - 命令历史: load_commands, load_history
     - 项目脚本: save_script, load_script, run_script
     - 指令恢复: checkout
@@ -86,7 +86,7 @@ class Project():
         self.output_files: List[str] = []
 
         if os.path.exists(self.project_config_path):
-            data = self.load_project(self.project_config_path)
+            data = self._load_project_data()
             if 'output_files' in data:
                 self.output_files = data['output_files'] or []
 
@@ -124,12 +124,12 @@ class Project():
 
         return True
 
-    def load_project(self, config_path: str):
+    def _load_project_data(self):
         """
         加载项目。
         """
         state = {}
-        with open(config_path, 'r') as f:
+        with open(self.project_config_path, 'r') as f:
             state = yaml.safe_load(f)
         return state
 
@@ -191,6 +191,7 @@ class Project():
         加载执行脚本。
         """
         commands = []
+        script_path = safety_path(script_path)
         path = script_path or self.project_script_path
         if os.path.exists(path):
             with open(path, 'r') as f:

@@ -19,7 +19,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 executor = ThreadPoolExecutor(max_workers=4)
 
-class writing_input(BaseModel):
+class WritingInput(BaseModel):
+    """
+    使用 chain 时应当提交以下参数。
+    
+    其中，output_file 可以在使用时指定，而 base_folder 等其他参数只能在构建链时指定。
+    """
     task: str=None
     input: Union[str, List[str]]=None
     knowledge: Union[str, List[str]]=None
@@ -48,7 +53,7 @@ def create_chain(llm: Runnable, **kwargs) -> Runnable[Input, Output]:
                     yield(AIMessageChunk(content=x))
 
     # 为了兼容 langserve，需要将 RunnableGenerator 转换为非迭代的返回
-    chain = RunnableGenerator(gen, agen).with_types(input_type=writing_input, output_type=Iterator[str]) | StrOutputParser()
+    chain = RunnableGenerator(gen, agen).with_types(input_type=WritingInput, output_type=Iterator[str]) | StrOutputParser()
 
     return chain
 
