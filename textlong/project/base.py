@@ -139,13 +139,14 @@ class Project():
                     all_paths.append(relative_path)
         return all_paths
 
-    def save_markdown_as(self, filepath: str, txt: str):
+    def save_markdown_as(self, res_name: str, txt: str):
         """
         保存文本到markdown文件。
         """
-        md_text = txt
-        if filepath and md_text:
-            with open(filepath, 'w', encoding='utf-8') as f:
+        md_text = txt or "\n"
+        path = self.get_path(res_name)
+        if path and md_text:
+            with open(path, 'w', encoding='utf-8') as f:
                 f.write(md_text)
 
         return True
@@ -284,7 +285,7 @@ class Project():
         output_text = history[index]['output_text']
         cmd = Command.from_dict(history[index])
         resp_md = create_front_matter(cmd.to_metadata()) + output_text
-        return self.save_markdown_as(self.get_path(save_as or output_file), resp_md)
+        return self.save_markdown_as(save_as or output_file, resp_md)
 
     def export_jupyter(self, input_file: str, output_file: str):
         """
