@@ -40,15 +40,6 @@ from ..writing.base import (
     get_more_outline_args,
 )
 
-from ..chain import (
-    create_qa_chain,
-    create_chain,
-    create_idea_chain,
-    create_outline_chain,
-    create_from_outline_chain,
-    create_more_outline_chain,
-)
-
 def command_dependency(cmd1, cmd2):
     for value in cmd2['args'].values():
         if isinstance(value, str) and cmd1['output_file'] == value:
@@ -226,7 +217,7 @@ class Project():
                 history = yaml.safe_load(f) or []
         return history
 
-    def _save_output_history(self, output_file: str, output_text: str):
+    def save_output_history(self, output_file: str, output_text: str):
         """
         保存生成历史。
         """
@@ -276,26 +267,11 @@ class Project():
             **kwargs
         )
 
-        self._save_output_history(output_file, output_text)
+        self.save_output_history(output_file, output_text)
 
         if output_file not in self.output_files:
             self.output_files.append(output_file)
             self.save_project()
-
-    def create_exec_chain(self, **kwargs) -> Runnable[Input, Output]:
-        kwargs['base_folder'] = self.project_folder
-        chain = create_chain(
-            self.llm,
-            **kwargs
-        )
-
-        def fn_end(run_obj: Run):
-            self._save_output_history(output_file, run_obj.outputs['output'])
-            if output_file not in self.output_files:
-                self.output_files.append(output_file)
-                self.save_project()
-
-        return chain.with_listeners(on_end=fn_end)
 
     def idea(self, output_file: str, task: str, **kwargs):
         """
@@ -303,17 +279,11 @@ class Project():
         """
         self.exec(idea, output_file=output_file, task=task, **kwargs)
 
-    def create_idea_chain(self, **kwargs) -> Runnable[Input, Output]:
-        return self.create_exec_chain(**get_idea_args(**kwargs))
-    
     def outline(self, output_file: str, task: str, **kwargs):
         """
         生成写作大纲。
         """
         self.exec(outline, output_file=output_file, task=task, **kwargs)
-
-    def create_outline_chain(self, **kwargs):
-        return self.create_exec_chain(**get_outline_args(**kwargs))
 
     def more_outline(self, output_file: str,  input: Union[str, list[str]], **kwargs):
         """
@@ -321,14 +291,8 @@ class Project():
         """
         self.exec(more_outline, output_file=output_file, input=input **kwargs)
 
-    def create_more_outline_chain(self, **kwargs):
-        return self.create_exec_chain(**get_more_outline_args(**kwargs))
-
     def from_outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
         """
         从大纲扩写。
         """
         self.exec(from_outline, output_file=output_file, input=input, **kwargs)
-
-    def create_from_outline_chain(self, **kwargs):
-        return self.create_exec_chain(**get_from_outline_args(**kwargs))
