@@ -24,6 +24,7 @@ from ..config import (
 from ..utils import raise_not_install, hash_text, clean_filename
 from ..writing.markdown import MarkdownLoader
 from .qa_excel import QAExcelsLoader
+from ..project import is_project_existing, Project
 
 import os
 import re
@@ -77,8 +78,9 @@ class LocalFilesLoader(BaseLoader):
     从本地文件中检索知识文档，支持docx、pdf、txt、md、xlsx等文档。
     
     文档位置：
-    - 加载文档的位置由 {base_folder} 指定，允许用列表指定多个（没有指定就选用 {TEXTLONG_DOCS} 环境变量）
-    - 文本嵌入的缓存 {cache_folder} 默认是第一个 {base_folder}，也可以专门指定
+    - 加载文档的位置由 {docs_folders} 指定，允许用列表指定多个（没有指定就选用 {TEXTLONG_DOCS} 环境变量）
+    - {docs_folders} 应当描述为相对于 {base_folder} 的相对位置
+    - 文本嵌入的缓存 {cache_folder} 默认是 {base_folder}，也可以专门指定
     
     过滤规则包含：
     - 按目录开头过滤：由 included_prefixes 指定，以列表中的字符串开头就保留
@@ -89,24 +91,26 @@ class LocalFilesLoader(BaseLoader):
 
     def __init__(
         self,
-        base_folder: Union[str, List[str]]=None,
+        docs_folders: Union[str, List[str]]=None,
         cache_folder: str=None,
         path_regex: str=None,
         included_prefixes: List[str] = [],
         excluded_prefixes: List[str] = [],
         extensions: List[str] = [],
+        base_folder: str=None,
         *args, **kwargs
     ):
-        if isinstance(base_folder, str):
-            self.base_folders = [base_folder]
-        elif isinstance(base_folder, list):
-            self.base_folders = base_folder
-        elif base_folder == None:
-            self.base_folders = [get_folder_docs()]
+        if isinstance(docs_folders, str):
+            self.docs_folders = [docs_folders]
+        elif isinstance(docs_folders, list):
+            self.docs_folders = docs_folders
+        elif docs_folders == None:
+            self.docs_folders = [get_folder_docs()]
         else:
             raise(ValueError("base_folder: MUST be str or list[str]: ", base_folder))
 
-        self.cache_folder = cache_folder or self.base_folders[0]
+        self.base_folder = base_folder or get_folder_root()
+        self.cache_folder = cache_folder or self.base_folder
 
         self.path_regex = path_regex or ".*"
         self.included_prefixes = included_prefixes
@@ -119,23 +123,27 @@ class LocalFilesLoader(BaseLoader):
         """
         files = []
 
-        documents_folders = [os.path.join(get_folder_root(), folder) for folder in self.base_folders]
-        for folders in documents_folders:
-            for dirpath, dirnames, filenames in os.walk(folders):
-                for filename in filenames:
-                    relpath = os.path.relpath(os.path.join(dirpath, filename), folders)
-                    if relpath.startswith(".") or re.search('/.', relpath):
-                        # 确保不包含以.开头的文件夹或文件
-                        continue
-                    if self.included_prefixes and not any(relpath.startswith(include) for include in self.included_prefixes):
-                        continue
-                    if self.excluded_prefixes and any(relpath.startswith(exclude) for exclude in self.excluded_prefixes):
-                        continue
-                    if self.path_regex and not re.search(self.path_regex, relpath):
-                        continue
-                    if self.extensions and get_file_extension(filename) not in self.extensions:
-                        continue
-                    files.append(os.path.join(dirpath, filename))
+        documents_folders = [os.path.join(self.base_folder, folder) for folder in self.docs_folders]
+        for folder in documents_folders:
+            if is_project_existing(folder):
+                project = Project(folder, self.base_folder)
+                files.extend(list(project.embedding_files))
+            else:
+                for dirpath, dirnames, filenames in os.walk(folder):
+                    for filename in filenames:
+                        relpath = os.path.relpath(os.path.join(dirpath, filename), folder)
+                        if relpath.startswith(".") or re.search('/.', relpath):
+                            # 确保不包含以.开头的文件夹或文件
+                            continue
+                        if self.included_prefixes and not any(relpath.startswith(include) for include in self.included_prefixes):
+                            continue
+                        if self.excluded_prefixes and any(relpath.startswith(exclude) for exclude in self.excluded_prefixes):
+                            continue
+                        if self.path_regex and not re.search(self.path_regex, relpath):
+                            continue
+                        if self.extensions and get_file_extension(filename) not in self.extensions:
+                            continue
+                        files.append(os.path.join(dirpath, filename))
 
         return files
 
