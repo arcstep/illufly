@@ -30,11 +30,3 @@ def create_qa_chain(
             "context":  (lambda x: x) | retriever | collect_docs,
             "question": lambda x: x,
         } | _prompt | llm
-
-def create_dynamic_qa_chain(chain_func: Callable):
-    """
-    动态构建QA链。
-    """
-    chain = chain_func()
-    return chain
-    
