@@ -103,6 +103,41 @@ class Project():
     @property
     def project_folder(self):
         return os.path.join(self.base_folder, self.project_id)
+    
+    def load_markdown(self, filepath: str):
+        """
+        加载markdown文件。
+        """
+        path = self.get_path(filepath)
+        txt = ""
+        if path:
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    txt = f.read()        
+        return txt
+
+    def list_resource(self):
+        """
+        列举markdown文件清单，排除exclude_paths中任何元素开头或以"."开头的路径。
+        """
+        all_paths = []
+        exclude_paths = [
+            self.project_script_path,
+            self.project_config_path,
+            get_folder_logs(),
+        ]
+        for root, dirs, files in os.walk(self.project_folder):
+            for name in files:
+                file_path = os.path.join(root, name)
+                relative_path = os.path.relpath(file_path, self.project_folder)
+                if not any(relative_path.startswith(exclude) or relative_path.startswith('.') for exclude in exclude_paths):
+                    all_paths.append(relative_path)
+            for name in dirs:
+                dir_path = os.path.join(root, name)
+                relative_path = os.path.relpath(dir_path, self.project_folder)
+                if not any(relative_path.startswith(exclude) or relative_path.startswith('.') for exclude in exclude_paths):
+                    all_paths.append(relative_path)
+        return all_paths
 
     def save_markdown_as(self, filepath: str, txt: str):
         """
