@@ -189,6 +189,8 @@ class MarkdownLoader(BaseLoader):
     def replace_documents(self, index_from: Union[str, Document], index_to: Union[str, Document], docs: Union[str, List[Document]]=None):
         """
         替换文档对象。
+        
+        如果被提取的文本与原有上文和下文重叠，就剔除重叠的部份。
         """
         to_insert = parse_markdown(docs) if isinstance(docs, str) else docs
 
@@ -222,9 +224,13 @@ class MarkdownLoader(BaseLoader):
                 continue
 
             # 在token数量可承受范围内优先前文
-            md = doc.page_content + md
+            # 并且，在获得上下文内容时，下文内容中不出现<OUTLINE>
+            new_doc = copy.deepcopy(doc)
+            if new_doc.metadata['type'] == 'OUTLINE':
+                new_doc.page_content = ''
+            md = new_doc.page_content + md
             if len(md) <= k:
-                docs.append(doc)
+                docs.append(new_doc)
                 continue
 
             # 补充所有祖先标题
@@ -240,6 +246,9 @@ class MarkdownLoader(BaseLoader):
     def get_next_documents(self, index_doc: Union[str, Document]=None, k:int =200):
         """
         获得向后关联文档。
+        
+        推理能力较弱的模型，不可在上下文中出现 <OUTLINE></OUTLINE> 包含的扩写内容。
+        否则模型将无视提示语中无需的扩写指令，对其展开扩写。
         """
         if index_doc is None:
             return []
@@ -256,9 +265,13 @@ class MarkdownLoader(BaseLoader):
                     found_task = True
                 continue
 
-            md = doc.page_content + md
+            # 获得上下文内容时，下文内容中不出现<OUTLINE>
+            new_doc = copy.deepcopy(doc)
+            if new_doc.metadata['type'] == 'OUTLINE':
+                new_doc.page_content = ''
+            md = new_doc.page_content + md
             if len(md) <= k:
-                docs.append(doc)
+                docs.append(new_doc)
             else:
                 break
 
