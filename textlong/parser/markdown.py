@@ -1,6 +1,7 @@
-from typing import Iterable, Dict, Any
+from typing import Iterable, Dict, Any, List
 import re
 import time
+import random
 import yaml
 import copy
 from mistune import markdown
@@ -93,5 +94,11 @@ def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
 def get_document_id():
     counter = 0
     while True:
-        yield f'{int(time.time())}-{counter}'
-        counter += 1
+        timestamp = str(int(time.time()))[-4:]
+        random_number = f'{random.randint(0, 999):03}'
+        counter_str = f'{counter:03}'
+        yield f'{timestamp}-{random_number}-{counter_str}'
+        counter = 0 if counter == 999 else counter + 1
+
+def list_markdown(documents: List[Document]):
+    return [(d.metadata['type'][:2] + "-" + d.metadata['id'][-7:], d.page_content) for d in documents]
