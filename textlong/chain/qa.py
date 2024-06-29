@@ -10,13 +10,13 @@ def create_qa_chain(
     llm: Runnable,
     retriever: Callable,
     memory: MemoryManager=None,
-    prompt: str = None
+    prompt_id: str = None
 ) -> Callable:
     """
     构建QA链。
     """
 
-    _prompt = load_prompt((prompt or "RAG"), tag="chat").partial(history="")
+    _prompt = load_prompt((prompt_id or "RAG"), tag="chat").partial(history="")
 
     if memory:
         chain = {

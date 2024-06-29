@@ -68,7 +68,7 @@ class Project():
     - 项目脚本: save_script, load_script, run_script
     - 指令恢复: checkout
     """
-    def __init__(self, project_id: str, base_folder: str=None, llm: Runnable=None):
+    def __init__(self, project_id: str, base_folder: str=None, llm: Runnable=None, prompt_tag=None):
         raise_not_supply_all("Project 对象必须提供有效的 project_id", project_id)
 
         self.llm = llm
@@ -76,6 +76,7 @@ class Project():
         self.project_id = safety_path(project_id)
         self.output_files: Set[str] = set()
         self.embedding_files: Set[str] = set()
+        self.prompt_tag = prompt_tag
 
         if os.path.exists(self.project_config_path):
             data = self._load_project_data()
@@ -93,7 +94,12 @@ class Project():
         return f"Project<llm: '{self.llm._llm_type}/{self.llm.model}', project_folder: '{self.project_folder}', output_files: {list(self.output_files)}>"
 
     def to_dict(self):
-        return {attr: getattr(self, attr) for attr in vars(self) if attr != 'llm' and getattr(self, attr)}
+        return {
+            "base_folder": self.base_folder,
+            "project_id": self.project_id,
+            "output_files": list(self.output_files),
+            "embedding_files": list(self.embedding_files),
+        }
     
     @property
     def project_config_path(self):
@@ -154,7 +160,7 @@ class Project():
 
         return True
 
-    def to_output(self, res_name: str, as_output=False):
+    def to_output(self, res_name: str, as_output=True):
         """
         修改文件资源是否纳入到输出清单。
         """
@@ -166,7 +172,7 @@ class Project():
 
         return True
     
-    def to_embedding(self, res_name: str, as_embedding=False):
+    def to_embedding(self, res_name: str, as_embedding=True):
         """
         修改文件资源是否纳入到文本嵌入清单。
         """
@@ -323,8 +329,19 @@ class Project():
         return export_jupyter(input_path, output_path)
 
     def exec(self, task_func, output_file: str=None, **kwargs):
+        """
+        基于Project内封装的状态执行写作任务。
+        
+        借助该函数对 llm / prompt_tag / base_folder 等封装可以实现平行输出，以便对生成质量做评估。
+
+        Args:
+        - llm 直接采纳 self.llm
+        - base_folder 直接采纳 self.project_folder
+        - prompt_tag 如果执行参数没有提供，就采纳 self.prompt_tag
+        """
         kwargs['base_folder'] = self.project_folder
         kwargs['output_file'] = output_file
+        kwargs['prompt_tag'] = kwargs.get('prompt_tag', self.prompt_tag)
         output_text = task_func(
             self.llm,
             **kwargs

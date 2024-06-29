@@ -216,7 +216,7 @@ class LocalFilesLoader(BaseLoader):
             print(get_info_color() + info + "\033[0m")
             return True
         
-        print(get_info_color() + f'No embeddings to cached!' + "\033[0m")
+        # print(get_info_color() + f'No embeddings to cached!' + "\033[0m")
         return False
 
     def load_embeddings(self, model: Embeddings=None, tag_name: str=None):

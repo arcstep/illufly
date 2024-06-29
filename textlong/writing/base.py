@@ -6,6 +6,7 @@ from typing import Union, List, Dict, Any
 from langchain_core.runnables import Runnable
 from langchain_core.documents import Document
 from langchain.globals import set_verbose, get_verbose
+from langchain_core.messages import BaseMessage
 
 from .markdown import MarkdownLoader
 from .command import Command
@@ -35,7 +36,10 @@ def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False)
         yield ('info', "Fake-Output-Content...\n")
     else:
         for chunk in chain.stream(input):
-            yield ('chunk', chunk.content)
+            if isinstance(chunk, BaseMessage):
+                yield ('chunk', chunk.content)
+            else:
+                yield('chunk', chunk)
 
 def gather_docs(input: Union[str, List[str]], base_folder: str="") -> str:
     """
@@ -73,6 +77,7 @@ def stream(
     sep_mode: str='all',
     knowledge: Union[str, List[str]]=None,
     prompt_id: str=None,
+    prompt_tag: str=None,
     base_folder: str=None,
     output_file: str=None,
     tag_start: str=None,
@@ -125,7 +130,7 @@ def stream(
     if (get_verbose() or verbose) and base_folder:
         yield ('info', f'\nbase_folder: {base_folder}\n')
 
-    output_str = (prompt_id + " | " + output_file) if output_file else ""
+    output_str = (" | " + output_file) if output_file else ""
     yield ('info', f'\n>->>> Prompt ID: {prompt_id}{output_str} <<<-<\n')
 
     # input
@@ -136,7 +141,7 @@ def stream(
     kg_doc = gather_docs(knowledge, base_folder) or ''
 
     # prompt
-    prompt = load_prompt(prompt_id, template_folder=template_folder)
+    prompt = load_prompt(prompt_id, template_folder=template_folder, tag=prompt_tag)
 
     if input_doc:
         old_docs = MarkdownLoader(input_doc)
