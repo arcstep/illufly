@@ -15,15 +15,20 @@ def raise_not_supply_all(info: str, *args):
 
 def extract_text(resp_md: str, start_marker: str=None, end_marker: str=None):
     """
-    如果指定开始和结束的标记，就提取标记中间的文本。
+    如果指定开始和结束的标记，就提取标记中间的文本，并移除标记所在的行。
+    一旦文本出现Markdown标题（若干个#开头的行），之后的内容就都不要进行start_marker匹配。
     """
     if start_marker and end_marker:
-        start_index = resp_md.find(start_marker)
-        end_index = resp_md.rfind(end_marker)
+        start_lines = resp_md.split('\n')
+        # 查找第一个Markdown标题的索引
+        markdown_title_index = next((i for i, line in enumerate(start_lines) if line.strip().startswith('#')), len(start_lines))
+        
+        # 在第一个Markdown标题之前查找start_marker
+        start_index = next((i for i, line in enumerate(start_lines[:markdown_title_index]) if start_marker in line), None)
+        end_index = next((i for i, line in enumerate(reversed(start_lines), 1) if end_marker in line), None)
 
-        if start_index != -1 and end_index != -1 and start_index < end_index:
-            start_index += len(start_marker)
-            return resp_md[start_index:end_index].strip()
+        if start_index is not None and end_index is not None and start_index < len(start_lines) - end_index:
+            return '\n'.join(start_lines[start_index+1:len(start_lines)-end_index]).strip()
 
     return resp_md
 
