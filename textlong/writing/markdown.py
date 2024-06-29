@@ -7,7 +7,7 @@ from langchain_core.documents import Document
 from langchain_community.document_loaders.base import BaseLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import TextSplitter
-from ..parser import parse_markdown, create_front_matter
+from ..parser import parse_markdown, create_front_matter, list_markdown
 from ..config import get_default_env
 
 class MarkdownLoader(BaseLoader):
@@ -199,9 +199,41 @@ class MarkdownLoader(BaseLoader):
             raise ValueError(f"{index_from} NOT FOUND!")
         if _to == None:
             raise ValueError(f"{index_to} NOT FOUND!")
+        
+        prev_docs = self.documents[:_from]
+        next_docs = self.documents[_to + 1:]
+        
+        prev_heading = next((doc for doc in reversed(prev_docs) if doc.metadata['type'] == 'heading'), None)
+        next_heading = next((doc for doc in next_docs if doc.metadata['type'] == 'heading'), None)
 
-        self.documents = self.documents[:_from] + to_insert + self.documents[_to + 1:]
-        return self.documents
+        from_index = None
+        if prev_heading:
+            for i, d in enumerate(to_insert):
+                if d.page_content.strip() == prev_heading.page_content.strip():
+                    from_index = i + 1
+                    break
+
+        to_index = None
+        if next_heading:
+            for i, d in enumerate(reversed(to_insert)):
+                if d.page_content.strip() == next_heading.page_content.strip():
+                    to_index = i
+                    break
+
+        to_insert_docs = to_insert[from_index:to_index]
+
+        ##
+        # print("\n", "-"*80)
+        # print(list_markdown([prev_heading, next_heading]))
+        # print("\n", "-"*80)
+        # print(list_markdown(to_insert[:3]))
+        # print(list_markdown(to_insert[-3:]))
+        # print("\n", "-"*80)
+        # print(from_index, to_index)
+        # print(list_markdown(to_insert_docs))
+
+        self.documents = prev_docs + to_insert_docs + next_docs
+        return to_insert_docs
 
     def get_prev_documents(self, index_doc: Union[int, str, Document]=None, k: int=800):
         """
@@ -225,9 +257,9 @@ class MarkdownLoader(BaseLoader):
 
             # 在token数量可承受范围内优先前文
             # 并且，在获得上下文内容时，下文内容中不出现<OUTLINE>
-            new_doc = copy.deepcopy(doc)
+            new_doc = doc
             if new_doc.metadata['type'] == 'OUTLINE':
-                new_doc.page_content = ''
+                new_doc.page_content = '...\n'
             md = new_doc.page_content + md
             if len(md) <= k:
                 docs.append(new_doc)
@@ -268,7 +300,7 @@ class MarkdownLoader(BaseLoader):
             # 获得上下文内容时，下文内容中不出现<OUTLINE>
             new_doc = copy.deepcopy(doc)
             if new_doc.metadata['type'] == 'OUTLINE':
-                new_doc.page_content = ''
+                new_doc.page_content = '...\n'
             md = new_doc.page_content + md
             if len(md) <= k:
                 docs.append(new_doc)
