@@ -2,7 +2,7 @@
 
 ## 1. 创作方法
 
-**方法：**
+**创作方法：**
 
 - 创意 idea
 - 大纲 outline
@@ -12,15 +12,40 @@
 - 支持多个 input，合并为一个上下文
 - 支持多个 knowledge，合并为一个知识上下文
 
-- 整体
-- 按大纲拆分
+- 按整体作为任务
+- 按大纲拆分任务
+
+**项目管理：**
+
+- 写作方法: idea, outline, from_outline ...
+- 本地提示语: hub.load_prompt, hub.save_prompt, hub.clone_prompt
+- 项目恢复: init, save_project
+- 命令历史: load_commands, load_history
+- 批处理: save_script, load_script, run_script
+- 版本恢复: checkout
+- 其他指令：session, save_as
+
+**提示语模板：**
+
+- 克隆提示语：clone_prompt
+- 从代码构建提示语：save_prompt
+- 手动编辑提示语
+- 支持模板继承
+
+**作为 SDK 使用：**
 
 - 支持在流式输出中将日志和最终结果分离
 - 支持可定制的颜色打印
 - 支持 fake 模式
 - 支持 verbose 模式
+- 支持工程封装：将模型和 base_folder 封装在 Project
 
-_更多提示语模板_
+**作为 Chain 使用：**
+
+- 支持 QA 链：可选记忆体，可动态构建文本嵌入
+- 支持写作链：将 SDK 方法封装为 langfuse 可直接使用的 Runnable
+
+**更多提示语模板：**
 
 - 翻译
 - 仿写
@@ -29,21 +54,26 @@ _更多提示语模板_
 - 提炼概念
 - 提炼知识三元组
 
-_对文档 QA_
+**RAG 能力集成：**
+
+- 加载 本地文件：docx / pdf /md / txt / xlsx
+- 加载 QA-Excel：支持 QA 和普通 xls 文本
+- 支持从多个目录加载
+
+- 文本嵌入缓存和加载
+- 支持按嵌入模型各自缓存
+- 支持基于 redis 的缓存
+
+- 支持记忆：基于内存、基于文件
+
+- 支持`QA`元数据查询
+- 支持`概念`元数据查询
+- 支持`知识三元组`元数据关联查询
 
 - 生成 QA 文档：设定 Q 和 A 的标题层次，以及 QA 分割线
-- 查询 QA 文档：markdown
+- 从已有文档提炼资料：摘要、概念、实体、流程、三元组、QA
 
-_对文档提炼_
-
-- 提炼文档：摘要、概念、实体、流程、三元组、QA
-- 支持缓存
-
-_对话：_
-
-- 简单的大模型对话：支持记忆
-- 保存原始对话
-- 整理对话摘要
+- 从 QA 结果作为生成文档的 knowledge
 
 **Jupuyter 笔记**
 
@@ -51,59 +81,48 @@ _对话：_
 - 快速启动：零代码直接可用和简洁函数
 - 支持命令行：结合启动模板，快速启动 Jupyter 环境
 
-**平行输出：**
+## 2. 跟踪和评估
 
-_TODO: 输出质量_
+**项目配置：**
 
-- 按大模型平行输出
-- 多项目文件夹平行输出：不同提示语模板、不同背景资料
-- 生成质量标注：对所有平行输出打标签
-- 展示质量评分：对所有质量标签做评分统计
+- 项目配置文件
+- 项目脚本文件
+- 基于 redis 管理项目配置
+- 基于 redis 管理项目脚本
 
-**Chain：**
+**项目日志：**
 
-- QA 链
-- 写作链
-- 基于项目的写作链
+- 生成日志
+- 基于 redis 保存日志
 
-**项目：**
+**生成跟踪：**
 
-- 写作框架: idea, outline, from_outline ...
-- 本地提示语: hub.load_prompt, hub.save_prompt, hub.clone_prompt
-- 项目恢复: load_project, save_project
-- 命令历史: load_commands, load_history
-- 批处理: save_script, load_script, run_script
-- 版本恢复: checkout
+- 保存输入和输出历史记录：输入参数、输出结果、提示语参数、大模型参数、token 使用
+- 大模型和输出结果：评估指令跟随状况
+- 提示语版本和输出结果：评估指令控制能力
+- 输入参数和输出结果：评估指令工程效果
+- 大模型 Token 跟踪：统计 Token 消耗
 
-**脚本：**
+**生成评估：**
 
-- 保存脚本
-- 执行脚本
-- 执行脚本
+- 平行输入：按大模型参数、提示语版本、输入参数等
+- 平行输出：每个评估一个输出标签文件夹
+- 质量标注：对所有平行输出打标签
+- 生成约束测试：对齐国内法律法规、道德规范
 
-**提示语模板：**
-
-- 从包中提取模板，并保存到本地
-- 从内存提取模板，并保存到本地
-
-_TODO:_
-
-- 从 git 项目提取模板，并保存到本地
-- 项目模板清单分享（基于 Git 服务器）
-
-## 2. FastAPI 分享
+## 3. FastAPI
 
 - 项目列表
+- 项目生成
 - 分享网页
-- 一键直出
-- 项目模板查询
-- 提示语查询
+- 提示语模板
+- session 管理
 
-## 3. QA
+## 4. QA
 
 - 加载 本地文件：docx / pdf /md / txt / xlsx
 - 加载 QA-Excel：支持 QA 和普通 xls 文本
-- 支持从多个目录加载（共享 public）
+- 支持从多个文件夹加载
 - 支持文本嵌入缓存
 - 支持记忆：基于内存、基于文件
 - 支持按用户加载
@@ -113,65 +132,6 @@ _TODO:_
 - 支持概念查询
 - 支持知识三元组关联查询
 
-## 4. Agent
-
-**支持定义工具：**
-
-- 基于查询范围（文件、项目等）配置 RAG 工具
-- 基于数据查询（SQL）配置数据分析工具
-
-**自定义智能体执行器：**
-
-- 基于工具辅助文档内容生成（由大模型推理结果决定是否使用工具）
-- 支持多种智能体风格：Tools-Calling、ReAct、CoT
-- 可无缝嵌入到写作过程中（支持流反馈）
-
-**支持在其他场景中集成：**
-
-- 作为 RAG Runnable 被集成：RAG 查询
-- 作为 QA 工具中被集成：Tools-Calling、ReAct、CoT、langgraph 应用
-
-## 5. 分享
-
-- 导出 MD
-- 导出 HTML
-- 导出 Jupyter
-- 导出 Word
-- 导出 PDF
-
-- 在线分享 HTML
-
-## 6. 配置管理
-
-**根文件夹配置**
-
-- "TEXTLONG_ROOT": "",
-
-**提示语文件夹**
-
-- "TEXTLONG_PROMPTS": "**PROMPTS**",
-
-**项目文件夹**
-
-- "TEXTLONG_LOGS": "**LOG**",
-- "TEXTLONG_SHARE": "**SHARE**",
-- "TEXTLONG_DOCS": "**DOCS**",
-- "TEXTLONG_QA": "**QA**",
-
-**项目文件**
-
-- "TEXTLONG_CONFIG_FILE": "project_config.yml",
-- "TEXTLONG_SCRIPT_FILE": "project_script.yml",
-
-**对话历史**
-
-- "TEXTLONG_MEMORY_HISTORY": "**MEMORY_HISTORY**",
-
-**用户个人文件夹**
-
-- "TEXTLONG_DEFAULT_SESSION": "default",
-- "TEXTLONG_DEFAULT_USER": "default_user",
-
-**公共用户**
-
-- "TEXTLONG_PUBLIC": "",
+- 从 parquet 查询数据并分析
+- 从 xls 查询数据并分析
+- 从 SQL 查询数据并分析
