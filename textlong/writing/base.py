@@ -199,11 +199,11 @@ def stream(
                     yield (mode, delta)
 
                 final_md = extract_text(resp_md, tag_start, tag_end)
-                output_text += final_md
-                yield ('final', final_md)
+                to_insert = new_docs.replace_documents(doc, doc, final_md)
+                final_md_strip = MarkdownLoader.to_markdown(to_insert).strip()
 
-                reply_docs = parse_markdown(final_md)
-                new_docs.replace_documents(doc, doc, reply_docs)
+                output_text += final_md_strip
+                yield ('final', final_md_strip)
 
             else:
                 # 如果内容是空行就不再处理

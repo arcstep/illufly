@@ -101,4 +101,4 @@ def get_document_id():
         counter = 0 if counter == 999 else counter + 1
 
 def list_markdown(documents: List[Document]):
-    return [(d.metadata['type'][:2] + "-" + d.metadata['id'][-7:], d.page_content) for d in documents]
+    return [(d.metadata['type'][:2] + "-" + d.metadata['id'][-7:], d.page_content) for d in documents if d]
