@@ -99,6 +99,8 @@ def get_default_env(key: str=None):
         "TEXTLONG_PUBLIC": "./",
 
         # 扩写标签
+        "TEXTLONG_MARKDOWN_START": "```",
+        "TEXTLONG_MARKDOWN_END": "```",
         "TEXTLONG_OUTLINE_START": "<OUTLINE>",
         "TEXTLONG_OUTLINE_END": "</OUTLINE>",
         "TEXTLONG_MORE_OUTLINE_START": "<MORE-OUTLINE>",

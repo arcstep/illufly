@@ -75,7 +75,7 @@ def _find_prompt_file(prompt_id: str, file_name, template_folder: str=None, tag:
             return None
     return _find_prompt_file(prompt_id.rpartition(sep)[0], file_name, template_folder, tag, sep, all_path)
 
-def load_prompt(prompt_id: str, template_folder: str=None, tag: str="writing"):
+def load_prompt(prompt_id: str, template_folder: str=None, tag: str=None):
     """
     从模板文件夹加载提示语模板。
     
@@ -91,6 +91,7 @@ def load_prompt(prompt_id: str, template_folder: str=None, tag: str="writing"):
        - xxx_, 可选变量，加载时会被赋默认值""
        - xxx, 必须填写的变量
     """
+    tag = tag or "writing"
     template_folder = template_folder or get_folder_prompts()
     main_prompt = _find_prompt_file(prompt_id, 'main', template_folder, tag)
 

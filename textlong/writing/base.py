@@ -164,8 +164,9 @@ def stream(
             if mode == 'chunk':
                 resp_md += delta
             yield (mode, delta)
-        output_text += resp_md
-        yield ('final', resp_md)
+        final_md = extract_text(resp_md, tag_start, tag_end)
+        output_text += final_md
+        yield ('final', final_md)
 
     elif task_mode == 'document':
         last_index = None
@@ -250,14 +251,18 @@ def write(llm: Runnable, **kwargs):
 def get_idea_args(**kwargs):
     kwargs.update({
         "sep_mode": "all",
-        "prompt_id": kwargs.get('prompt_id', "IDEA")
+        "prompt_id": kwargs.get('prompt_id', "IDEA"),
+        "tag_start": get_default_env("TEXTLONG_MARKDOWN_START"),
+        "tag_end": get_default_env("TEXTLONG_MARKDOWN_END"),
     })
     return kwargs
 
 def get_outline_args(**kwargs):
     kwargs.update({
         "sep_mode": "all",
-        "prompt_id": kwargs.get('prompt_id', "OUTLINE")
+        "prompt_id": kwargs.get('prompt_id', "OUTLINE"),
+        "tag_start": get_default_env("TEXTLONG_MARKDOWN_START"),
+        "tag_end": get_default_env("TEXTLONG_MARKDOWN_END"),
     })
     return kwargs
 
