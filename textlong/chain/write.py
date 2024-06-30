@@ -40,9 +40,10 @@ def create_chain(llm: Runnable, base_folder: str=None, **kwargs) -> Runnable[Inp
 
     def gen(input: Iterator[Any]) -> Iterator[str]:
         for input_args in input:
-            project_id = input_args.get('project_id', get_folder_docs())
+            project_id = input_args.get('project_id', get_folder_docs() or "DEFAULT")
             project = Project(project_id, base_folder, llm)
             kwargs['base_folder'] = project.project_folder
+            kwargs['output_file'] = kwargs.get("output_file", "output.md") or "output.md"
             args = {**kwargs, **get_default_args(input_args)}
 
             output_text = ''
@@ -60,10 +61,11 @@ def create_chain(llm: Runnable, base_folder: str=None, **kwargs) -> Runnable[Inp
     async def agen(input: AsyncIterator[Any]) -> AsyncIterator[str]:
         loop = asyncio.get_running_loop()
         async for input_args in input:
-            project_id = input_args.get('project_id', get_folder_docs())
+            project_id = input_args.get('project_id', get_folder_docs() or "DEFAULT")
             project = Project(project_id, base_folder, llm)
 
             kwargs['base_folder'] = project.project_folder
+            kwargs['output_file'] = kwargs.get("output_file", "output.md") or "output.md"
             args = {**kwargs, **get_default_args(input_args)}
 
             res = await loop.run_in_executor(executor, lambda: list(stream(llm, **args)))
