@@ -119,6 +119,10 @@ def get_default_env(key: str=None):
         
         # 多线程配置
         "TEXTLONG_MAX_WORKERS": 4,
+        
+        # FastAPI
+        "FASTAPI_SECRET_KEY": "Your-Secret-Key",
+        "FASTAPI_ALGORITHM": "HS256",
     }
     if key:
         if key not in default_values:
