@@ -64,7 +64,7 @@ def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
     """
     start_tag = start_tag or get_default_env("TEXTLONG_OUTLINE_START")
     end_tag = end_tag or get_default_env("TEXTLONG_OUTLINE_END")
-    doc_id_generator = get_document_id()
+    doc_id_generator = create_document_id()
     pattern = re.compile(r'(.*?)(%s.*?%s)(.*)' % (re.escape(start_tag), re.escape(end_tag)), re.DOTALL)
     documents = []
 
@@ -91,7 +91,7 @@ def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
         documents.extend(markdown(text, renderer=SegmentsRenderer(doc_id_generator)))
     return documents
 
-def get_document_id():
+def create_document_id():
     counter = 0
     while True:
         timestamp = str(int(time.time()))[-4:]

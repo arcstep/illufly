@@ -1,5 +1,5 @@
 import os
-from .utils import color_code
+from ..utils import color_code
 
 def get_folder_root():
     return get_default_env("TEXTLONG_ROOT")
