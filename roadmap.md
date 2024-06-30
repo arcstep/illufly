@@ -43,7 +43,14 @@
 **作为 Chain 使用：**
 
 - 支持 QA 链：可选记忆体，可动态构建文本嵌入
-- 支持写作链：将 SDK 方法封装为 langfuse 可直接使用的 Runnable
+- 支持写作链：将 SDK 方法封装为 langserve 可直接使用的 Runnable
+
+**作为 API 使用：**
+
+- 匿名用户管理
+- 用户授权对接
+- 对话 session 和访问资源管理
+- Access Token 管理
 
 **更多提示语模板：**
 
