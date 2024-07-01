@@ -18,7 +18,7 @@ from ..config import get_default_env
 SECRET_KEY = get_default_env("FASTAPI_SECRET_KEY")
 ALGORITHM = get_default_env("FASTAPI_ALGORITHM")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 TOKEN_BLACKLIST = set()
 
@@ -81,7 +81,7 @@ def create_auth_api(auth_func: callable=None):
         except JWTError:
             raise HTTPException(status_code=403, detail="Token is expired or invalid")
 
-    @router.post("/token")
+    @router.post("/login")
     async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
         user_info = auth_func(form_data.username, form_data.password)
         if not user_info:
