@@ -123,6 +123,7 @@ def get_default_env(key: str=None):
         # FastAPI
         "FASTAPI_SECRET_KEY": "Your-Secret-Key",
         "FASTAPI_ALGORITHM": "HS256",
+        "FASTAPI_TOKEN_WHITELIST": "token_whitelist.json",
     }
     if key:
         if key not in default_values:
