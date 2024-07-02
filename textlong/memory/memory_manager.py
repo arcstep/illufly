@@ -7,7 +7,7 @@ from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
 from typing import Any, Dict, Union, List
 from copy import deepcopy
-from ..config import get_default_session
+from ..config import get_env
 
 class MemoryManager:
     """
@@ -34,7 +34,7 @@ class MemoryManager:
 
     def get_memory(self, session_id: str=None) -> List[BaseMessage]:
         """返回短期内存记忆"""
-        session_id = session_id or get_default_session()
+        session_id = session_id or get_env("TEXTLONG_DEFAULT_SESSION")
 
         if session_id in self._memory_dict:
             memory = self._memory_dict[session_id]
@@ -44,7 +44,7 @@ class MemoryManager:
 
     def get_store(self, session_id: str=None) -> List[BaseMessage]:
         """返回长期记忆存储"""
-        session_id = session_id or get_default_session()
+        session_id = session_id or get_env("TEXTLONG_DEFAULT_SESSION")
 
         if session_id in self._memory_dict:
             memory = self._memory_dict[session_id]
@@ -54,7 +54,7 @@ class MemoryManager:
 
     # 结合 session_id 构造记忆对象
     def get_memory_factory(self, session_id: str=None) -> BaseChatMemory:
-        session_id = session_id or get_default_session()
+        session_id = session_id or get_env("TEXTLONG_DEFAULT_SESSION")
 
         if session_id not in self._memory_dict:
             store = self.get_store_factory(session_id)

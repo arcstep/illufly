@@ -8,7 +8,7 @@ from langchain_community.document_loaders.base import BaseLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import TextSplitter
 from ..parser import parse_markdown, create_front_matter, list_markdown
-from ..config import get_default_env
+from ..config import get_env
 
 class MarkdownLoader(BaseLoader):
     def __init__(self, doc_str: str=None):
@@ -29,8 +29,8 @@ class MarkdownLoader(BaseLoader):
         text = '\n'.join([doc.page_content for doc in self.documents])
         blocked_docs = [Document(page_content=text, metadata={"source": self.doc_str})]
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size = get_default_env("TEXTLONG_DOC_CHUNK_SIZE"),
-            chunk_overlap = get_default_env("TEXTLONG_DOC_CHUNK_OVERLAP"),
+            chunk_size = get_env("TEXTLONG_DOC_CHUNK_SIZE"),
+            chunk_overlap = get_env("TEXTLONG_DOC_CHUNK_OVERLAP"),
             length_function = len,
             is_separator_regex = False,
         )
@@ -186,7 +186,7 @@ class MarkdownLoader(BaseLoader):
                 return (_from, _to)
         return (_from, _to)
 
-    def replace_documents(self, index_from: Union[str, Document], index_to: Union[str, Document], docs: Union[str, List[Document]]=None):
+    def replace_documents(self, doc_from: Union[str, Document], doc_to: Union[str, Document], docs: Union[str, List[Document]]=None):
         """
         替换文档对象。
         
@@ -194,11 +194,11 @@ class MarkdownLoader(BaseLoader):
         """
         to_insert = parse_markdown(docs) if isinstance(docs, str) else docs
 
-        _from, _to = self.get_task_range(index_from, index_to)
+        _from, _to = self.get_task_range(doc_from, doc_to)
         if _from == None:
-            raise ValueError(f"{index_from} NOT FOUND!")
+            raise ValueError(f"{doc_from} NOT FOUND!")
         if _to == None:
-            raise ValueError(f"{index_to} NOT FOUND!")
+            raise ValueError(f"{doc_to} NOT FOUND!")
         
         prev_docs = self.documents[:_from]
         next_docs = self.documents[_to + 1:]

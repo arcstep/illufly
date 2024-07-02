@@ -13,10 +13,10 @@ from .whitelist import (
     add_access_token_to_whitelist,
     remove_access_token_from_whitelist,
 )
-from ..config import get_default_env
+from ..config import get_env
 
-SECRET_KEY = get_default_env("FASTAPI_SECRET_KEY")
-ALGORITHM = get_default_env("FASTAPI_ALGORITHM")
+SECRET_KEY = get_env("FASTAPI_SECRET_KEY")
+ALGORITHM = get_env("FASTAPI_ALGORITHM")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 

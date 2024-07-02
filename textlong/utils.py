@@ -32,20 +32,6 @@ def extract_text(resp_md: str, start_marker: str=None, end_marker: str=None):
 
     return resp_md
 
-def color_code(color_name: str):
-    colors = {
-        "黑色": "\033[30m",
-        "红色": "\033[31m",
-        "绿色": "\033[32m",
-        "黄色": "\033[33m",
-        "蓝色": "\033[34m",
-        "品红": "\033[35m",
-        "青色": "\033[36m",
-        "白色": "\033[37m",
-        "重置": "\033[0m" 
-    }
-    return colors.get(color_name, '黑色')
-
 def hash_text(text):
     text_bytes = text.encode('utf-8')
     hash_object = hashlib.md5(text_bytes)

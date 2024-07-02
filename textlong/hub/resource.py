@@ -1,14 +1,11 @@
 from typing import List
 from importlib.resources import read_text, is_resource, contents
 from langchain.prompts import PromptTemplate
-from ..config import (
-    get_folder_root,
-    get_folder_public,
-    get_folder_prompts,
-)
 import os
 import re
 import json
+
+from ..config import get_folder_root, get_env
 
 PROMPT_WRITING_BASE = 'textlong.__PROMPTS__'
 
@@ -92,7 +89,7 @@ def load_prompt(prompt_id: str, template_folder: str=None, tag: str=None):
        - xxx, 必须填写的变量
     """
     tag = tag or "writing"
-    template_folder = template_folder or get_folder_prompts()
+    template_folder = template_folder or get_env("TEXTLONG_PROMPTS")
     main_prompt = _find_prompt_file(prompt_id, 'main', template_folder, tag)
 
     if main_prompt:
@@ -130,7 +127,7 @@ def save_prompt(template: PromptTemplate, prompt_id: str, template_folder: str=N
     """
     保存提示语模板到文件夹。
     """
-    template_folder = template_folder or get_folder_prompts()
+    template_folder = template_folder or get_env("TEXTLONG_PROMPTS")
     prompt_folder = os.path.join(get_folder_root(), template_folder, tag, prompt_id)
     os.makedirs(prompt_folder, exist_ok=True)
     
@@ -153,7 +150,7 @@ def clone_prompt(prompt_id: str, template_folder: str=None, tag: str="writing"):
     if prompt_id not in find_resource_prompt(tag):
         raise ValueError(f"<{prompt_id}> prompt_id not exist !")
 
-    template_folder = template_folder or get_folder_prompts()
+    template_folder = template_folder or get_env("TEXTLONG_PROMPTS")
     prompt_folder = os.path.join(get_folder_root(), template_folder, tag, prompt_id)
     if os.path.exists(prompt_folder):
         return False

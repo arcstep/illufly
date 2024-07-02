@@ -36,7 +36,7 @@ MessagesOrDictWithMessages = Union[Sequence["BaseMessage"], Dict[str, Any]]
 GetSessionHistoryCallable = Callable[..., BaseChatMessageHistory]
 
 from .memory_manager import MemoryManager
-from ..config import get_default_session
+from ..config import get_env
 
 class WithMemoryBinding(RunnableBindingBase):
     """Runnable that manages memory for another Runnable."""
@@ -199,11 +199,12 @@ class WithMemoryBinding(RunnableBindingBase):
         store.add_messages(input_messages + output_messages)
 
     def _merge_configs(self, *configs: Optional[RunnableConfig]) -> RunnableConfig:
+        default_session = get_env("TEXTLONG_DEFAULT_SESSION")
         config = super()._merge_configs(*configs)
         if "configurable" in config:
-            memory = self.memory_manager.get_memory_factory(config["configurable"].get("session_id", get_default_session()))
+            memory = self.memory_manager.get_memory_factory(config["configurable"].get("session_id", default_session))
         else:
-            memory = self.memory_manager.get_memory_factory(get_default_session())
+            memory = self.memory_manager.get_memory_factory(default_session)
             config["configurable"] = {}
 
         config["configurable"]["memory"] = memory

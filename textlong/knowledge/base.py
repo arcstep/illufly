@@ -10,21 +10,13 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.runnables import Runnable
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
-from ..config import (
-    get_folder_root,
-    get_folder_public,
-    get_folder_docs,
-    get_default_env,
-    get_cache_embeddings,
-    get_info_color,
-    get_text_color,
-    get_chunk_color,
-    get_warn_color
-)
+
+from ..config import get_folder_root, get_env
 from ..utils import raise_not_install, hash_text, clean_filename
-from ..writing.markdown import MarkdownLoader
+from ..project import is_project_existing, BaseProject
+from ..writing import MarkdownLoader, TextChunk
+
 from .qa_excel import QAExcelsLoader
-from ..project import is_project_existing, Project
 
 import os
 import re
@@ -105,7 +97,7 @@ class LocalFilesLoader(BaseLoader):
         elif isinstance(docs_folders, list):
             self.docs_folders = docs_folders
         elif docs_folders == None:
-            self.docs_folders = [get_folder_docs()]
+            self.docs_folders = [get_env("TEXTLONG_DOCS")]
         else:
             raise(ValueError("base_folder: MUST be str or list[str]: ", base_folder))
 
@@ -126,7 +118,7 @@ class LocalFilesLoader(BaseLoader):
         documents_folders = [os.path.join(self.base_folder, folder) for folder in self.docs_folders]
         for folder in documents_folders:
             if is_project_existing(folder):
-                project = Project(folder, self.base_folder)
+                project = BaseProject(folder, self.base_folder)
                 files.extend(list(project.embedding_files))
             else:
                 for dirpath, dirnames, filenames in os.walk(folder):
@@ -181,7 +173,9 @@ class LocalFilesLoader(BaseLoader):
         
         tag_name 支持按不同模型厂商或模型名称缓存到子目录。
         """
-        vector_folder = os.path.join(self.cache_folder, get_cache_embeddings(), (tag_name or ""))
+        tag_name = tag_name or ''
+        cache_folder = get_env("TEXTLONG_CACHE_EMBEDDINGS")
+        vector_folder = os.path.join(self.cache_folder, cache_folder, tag_name)
 
         to_embedding_texts = []
         to_embedding_paths = []
@@ -209,25 +203,26 @@ class LocalFilesLoader(BaseLoader):
                 os.makedirs(os.path.dirname(cache_path), exist_ok=True)
                 with open(cache_path, 'wb') as f:
                     pickle.dump(data, f)
-                    info = f'<{source}> {text[0:50]}{"..." if len(text) > 50 else ""}'
-                    print(get_info_color() + info + "\033[0m")
+                    chunk = TextChunk('info', f'<{source}> {text[0:50]}{"..." if len(text) > 50 else ""}')
+                    print(chunk.text_with_print_color)
 
-            info = f'Cached {len(to_embedding_paths)} embeddings to {vector_folder} !'
-            print(get_info_color() + info + "\033[0m")
+            chunk = TextChunk('info', f'Cached {len(to_embedding_paths)} embeddings to {vector_folder} !')
+            print(chunk.text_with_print_color)
             return True
         
-        # print(get_info_color() + f'No embeddings to cached!' + "\033[0m")
         return False
 
     def load_embeddings(self, model: Embeddings=None, tag_name: str=None):
         """
         缓存文本嵌入。
         """
-        vector_folder = os.path.join(self.cache_folder, get_cache_embeddings(), (tag_name or ""))
+        tag_name = tag_name or ''
+        cache_folder = get_env("TEXTLONG_CACHE_EMBEDDINGS")
+        vector_folder = os.path.join(self.cache_folder, cache_folder, tag_name)
 
         texts = []
         vectors = []
-        metadatas = []
+        metadata_list = []
         to_embedding_paths = []
 
         docs = self.load()
@@ -248,9 +243,9 @@ class LocalFilesLoader(BaseLoader):
                 with open(cache_path, 'rb') as f:
                     texts.append(text)
                     vectors.append(pickle.load(f))
-                    metadatas.append(metadata)
+                    metadata_list.append(metadata)
             else:
-                info = f'No embeddings cache found for: <{source}> {text[0:50]}{"..." if len(text) > 50 else ""}'
-                print(get_warn_color() + info + "\033[0m")
+                chunk = TextChunk('warn', f'No embeddings cache found for: <{source}> {text[0:50]}{"..." if len(text) > 50 else ""}')
+                print(chunk.text_with_print_color)
 
-        return list(zip(texts, vectors)), model, metadatas
+        return list(zip(texts, vectors)), model, metadata_list

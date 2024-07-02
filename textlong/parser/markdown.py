@@ -8,7 +8,7 @@ from mistune import markdown
 from mistune.renderers.markdown import MarkdownRenderer
 from mistune.core import BlockState
 from langchain_core.documents import Document
-from ..config import get_default_env
+from ..config import get_env
 
 class SegmentsRenderer(MarkdownRenderer):
     def __init__(self, doc_id_generator):
@@ -62,8 +62,8 @@ def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
     你可以修改 start_tag/end_tag, 使用 <<<< ... >>>> 或 {{ ... }} 等其他方案来标记提纲内容，
     默认为 <OUTLINE> ... </OUTLINE> 的形式。
     """
-    start_tag = start_tag or get_default_env("TEXTLONG_OUTLINE_START")
-    end_tag = end_tag or get_default_env("TEXTLONG_OUTLINE_END")
+    start_tag = start_tag or get_env("TEXTLONG_OUTLINE_START")
+    end_tag = end_tag or get_env("TEXTLONG_OUTLINE_END")
     doc_id_generator = create_document_id()
     pattern = re.compile(r'(.*?)(%s.*?%s)(.*)' % (re.escape(start_tag), re.escape(end_tag)), re.DOTALL)
     documents = []
