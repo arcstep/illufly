@@ -6,6 +6,7 @@ from .base import (
   get_default_writing_args,
 
   chat,
+  idea,
   outline,
   more_outline,
   from_outline

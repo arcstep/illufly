@@ -249,6 +249,12 @@ def get_default_writing_args(command: str=None, **kwargs):
     if not command:
         command = "chat"
     default_args = {
+        "idea": {
+            "sep_mode": "all",
+            "prompt_id": "IDEA",
+            "tag_start": get_env("TEXTLONG_MARKDOWN_START"),
+            "tag_end": get_env("TEXTLONG_MARKDOWN_END"),
+        },
         "chat": {
             "sep_mode": "all",
             "prompt_id": "CHAT",
@@ -282,6 +288,11 @@ def get_default_writing_args(command: str=None, **kwargs):
         return new_args
     else:
         return kwargs
+
+def idea(llm: Runnable, **kwargs):
+    if 'task' not in kwargs:
+        raise ValueError("method <chat> need param <task> !!")
+    return stream_log(llm, **get_default_writing_args('idea', **kwargs))
 
 def chat(llm: Runnable, **kwargs):
     if 'task' not in kwargs:

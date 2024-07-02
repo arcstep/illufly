@@ -23,6 +23,7 @@ from ..writing import (
     get_default_writing_args,
 
     chat,
+    idea,
     outline,
     from_outline,
     more_outline,
@@ -355,9 +356,15 @@ class WritingProject(BaseProject):
 
     def chat(self, output_file: str, task: str, **kwargs):
         """
-        从一个idea开始生成。
+        对话。
         """
         self.stream_log(chat, output_file=output_file, task=task, **kwargs)
+
+    def idea(self, output_file: str, task: str, **kwargs):
+        """
+        从一个idea开始生成。
+        """
+        self.stream_log(idea, output_file=output_file, task=task, **kwargs)
 
     def outline(self, output_file: str, task: str, **kwargs):
         """
