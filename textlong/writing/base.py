@@ -2,11 +2,13 @@ import os
 import re
 import copy
 from datetime import datetime
-from typing import Union, List, Dict, Any
+from typing import Union, List, Dict, Any, Optional
 from langchain_core.runnables import Runnable
 from langchain_core.documents import Document
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.messages import BaseMessage
+from langchain.memory import ConversationBufferWindowMemory
+from langchain.memory.chat_memory import BaseChatMemory
 
 from .message import TextChunk
 from .markdown import MarkdownLoader
@@ -80,6 +82,7 @@ def stream(
     verbose: bool=False,
     is_fake: bool=False,
     template_folder: str=None,
+    memory: Optional[BaseChatMemory] = None,
     **kwargs
 ):
     """
@@ -97,6 +100,7 @@ def stream(
     next_k = get_env("TEXTLONG_DOC_NEXT_K")
     prompt_id = prompt_id or 'IDEA'
     output_file = safety_path(output_file) if output_file else None
+    history = memory.buffer_as_str if memory else ''
 
     # front_matter
     args = {
@@ -108,7 +112,7 @@ def stream(
         "tag_start": tag_start,
         "tag_end": tag_end,
         "base_folder": base_folder,
-        "template_folder": template_folder,        
+        "template_folder": template_folder,
     }
     not_empty_args = {k: args[k] for k in args if args[k]}
     dict_data = {
@@ -151,6 +155,7 @@ def stream(
         _kwargs = {
             "knowledge__": kg_doc,
             "todo_doc__": '\n'.join([d.page_content for d in task_todos]),
+            "history": history,
             **kwargs
         }
         chain = _create_chain(llm, prompt, **_kwargs)
@@ -211,6 +216,10 @@ def stream(
             md = MarkdownLoader.to_markdown(old_docs.documents[last_index:None])
             output_text += md
             yield TextChunk('text', md)
+    
+    # 记忆
+    if memory:
+        memory.save_context({"input": task}, {"output": output_text})
 
     # 将输出文本保存到指定文件
     output_file = os.path.join(base_folder or "", output_file or "")
@@ -231,7 +240,7 @@ def stream_log(llm: Runnable, **kwargs):
         if chunk.mode in ['text', 'final', 'front_matter']:
             output_text += chunk.text
 
-        if chunk.mode in ['text', 'info', 'warn', 'chunk']:
+        if chunk.mode in ['info', 'warn', 'text', 'chunk']:
             print(chunk.text_with_print_color, end="")
     
     return output_text
@@ -253,12 +262,14 @@ def get_default_writing_args(command: str=None, **kwargs):
             "tag_end": get_env("TEXTLONG_MARKDOWN_END"),
         },
         "from_outline": {
+            "task": "请帮我扩写。",
             "sep_mode": "outline",
             "prompt_id": "FROM_OUTLINE",
             "tag_start": get_env("TEXTLONG_OUTLINE_START"),
             "tag_end": get_env("TEXTLONG_OUTLINE_END"),
         },
         "more_outline": {
+            "task": "请帮我生成更多提纲。",
             "sep_mode": "outline",
             "prompt_id": "MORE_OUTLINE",
             "tag_start": get_env("TEXTLONG_MORE_OUTLINE_START"),
