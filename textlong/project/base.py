@@ -22,7 +22,7 @@ from ..writing import (
     stream_log,
     get_default_writing_args,
 
-    idea,
+    chat,
     outline,
     from_outline,
     more_outline,
@@ -310,7 +310,7 @@ class WritingProject(BaseProject):
     """
     在 Project 中管理写作任务。
 
-    - 写作指令: idea, outline, from_outline ...
+    - 写作指令: chat, outline, from_outline ...
     - 项目脚本: run_script
     """
     def __init__(self, llm: Runnable=None, *args, **kwargs):
@@ -353,11 +353,11 @@ class WritingProject(BaseProject):
             self.output_files.add(output_file)
             self.save_project()
 
-    def idea(self, output_file: str, task: str, **kwargs):
+    def chat(self, output_file: str, task: str, **kwargs):
         """
         从一个idea开始生成。
         """
-        self.stream_log(idea, output_file=output_file, task=task, **kwargs)
+        self.stream_log(chat, output_file=output_file, task=task, **kwargs)
 
     def outline(self, output_file: str, task: str, **kwargs):
         """

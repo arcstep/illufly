@@ -98,7 +98,7 @@ def stream(
     base_folder = base_folder or ''
     prev_k = get_env("TEXTLONG_DOC_PREV_K")
     next_k = get_env("TEXTLONG_DOC_NEXT_K")
-    prompt_id = prompt_id or 'IDEA'
+    prompt_id = prompt_id or 'CHAT'
     output_file = safety_path(output_file) if output_file else None
     history = memory.buffer_as_str if memory else ''
 
@@ -247,11 +247,11 @@ def stream_log(llm: Runnable, **kwargs):
 
 def get_default_writing_args(command: str=None, **kwargs):
     if not command:
-        command = "idea"
+        command = "chat"
     default_args = {
-        "idea": {
+        "chat": {
             "sep_mode": "all",
-            "prompt_id": "IDEA",
+            "prompt_id": "CHAT",
             "tag_start": get_env("TEXTLONG_MARKDOWN_START"),
             "tag_end": get_env("TEXTLONG_MARKDOWN_END"),
         },
@@ -283,10 +283,10 @@ def get_default_writing_args(command: str=None, **kwargs):
     else:
         return kwargs
 
-def idea(llm: Runnable, **kwargs):
+def chat(llm: Runnable, **kwargs):
     if 'task' not in kwargs:
-        raise ValueError("method <idea> need param <task> !!")
-    return stream_log(llm, **get_default_writing_args('idea', **kwargs))
+        raise ValueError("method <chat> need param <task> !!")
+    return stream_log(llm, **get_default_writing_args('chat', **kwargs))
 
 def outline(llm: Runnable, **kwargs):
     if 'task' not in kwargs:
