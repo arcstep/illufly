@@ -41,7 +41,7 @@ def create_chain(llm: Runnable, base_folder: str=None, **kwargs) -> Runnable[Inp
             input_args['base_folder'] = project.project_folder
             output_file = input_args.get("output_file", default_output) or default_output
             input_args['output_file'] = output_file
-            command = input_args.get("action", "idea")
+            command = input_args.get("action", "chat")
             args = {**input_args, **get_default_writing_args(command, **input_args)}
 
             output_text = ''
@@ -64,7 +64,7 @@ def create_chain(llm: Runnable, base_folder: str=None, **kwargs) -> Runnable[Inp
             input_args['base_folder'] = project.project_folder
             output_file = input_args.get("output_file", default_output) or default_output
             input_args['output_file'] = output_file
-            command = input_args.get("action", "idea")
+            command = input_args.get("action", "chat")
             args = {**input_args, **get_default_writing_args(command, input_args)}
 
             res = await loop.run_in_executor(executor, lambda: list(stream(llm, **args)))

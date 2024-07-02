@@ -5,7 +5,7 @@ from .base import (
   stream_log,
   get_default_writing_args,
 
-  idea,
+  chat,
   outline,
   more_outline,
   from_outline
