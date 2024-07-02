@@ -1,13 +1,13 @@
 import os
 import yaml
 from langchain_core.runnables import Runnable
-from .base import Project
-from ..config import get_folder_root, get_project_config_file, get_project_list_file
+from .base import BaseProject
+from ..config import get_folder_root, get_env
 
 def is_project_existing(project_path):
     """递归检查项目目录中是否存在配置文件"""
     for root, dirs, files in os.walk(project_path):
-        if get_project_config_file() in files:
+        if get_env("TEXTLONG_CONFIG_FILE") in files:
             return True
     return False
 
@@ -15,7 +15,7 @@ def list_projects(base_folder: str=None):
     """列举项目"""
     base_folder = base_folder or get_folder_root()
 
-    project_list_file = os.path.join(base_folder, get_project_list_file())
+    project_list_file = os.path.join(base_folder, get_env("TEXTLONG_PROJECT_LIST"))
     if os.path.exists(project_list_file):
         with open(project_list_file, 'r') as f:
             return yaml.safe_load(f)
@@ -25,7 +25,7 @@ def list_projects(base_folder: str=None):
     def walk_and_add_projects(folder):
         contains_config_file = False
         for root, dirs, files in os.walk(folder):
-            if get_project_config_file() in files:
+            if get_env("TEXTLONG_CONFIG_FILE") in files:
                 # 找到配置文件，标记此目录并停止遍历其子目录
                 contains_config_file = True
                 # 从 base_folder 到当前目录的相对路径
@@ -50,5 +50,5 @@ def list_projects(base_folder: str=None):
 def init_project(project_id: str, base_folder: str=None):
     """创建项目"""
     base_folder = base_folder or get_folder_root()
-    p = Project(None, project_id=project_id, base_folder=base_folder)
+    p = BaseProject(project_id=project_id, base_folder=base_folder)
     return p.save_project()

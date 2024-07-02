@@ -4,7 +4,7 @@ import os
 from typing import Dict, Any
 from fastapi import HTTPException, Depends
 from datetime import datetime, timedelta
-from ..config import get_default_env, get_folder_root
+from ..config import get_env, get_folder_root
 
 # 假设access_token有效期为1小时
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -52,7 +52,7 @@ def load_token_whitelist():
     从文件加载白名单刷新令牌列表;
     现在每个令牌都包含username和expire信息"""
     try:
-        path = os.path.join(get_folder_root(), get_default_env("FASTAPI_TOKEN_WHITELIST"))
+        path = os.path.join(get_folder_root(), get_env("FASTAPI_TOKEN_WHITELIST"))
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "r") as file:
             return json.load(file)
@@ -67,7 +67,7 @@ def save_token_whitelist(whitelist):
     # 移除过期的令牌
     current_time = datetime.utcnow()
     whitelist = {token: data for token, data in whitelist.items() if current_time <= datetime.fromisoformat(data["expire"])}
-    path = os.path.join(get_folder_root(), get_default_env("FASTAPI_TOKEN_WHITELIST"))
+    path = os.path.join(get_folder_root(), get_env("FASTAPI_TOKEN_WHITELIST"))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as file:
         json.dump(whitelist, file)

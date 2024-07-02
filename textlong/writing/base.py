@@ -8,19 +8,14 @@ from langchain_core.documents import Document
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.messages import BaseMessage
 
+from .message import TextChunk
 from .markdown import MarkdownLoader
 from .command import Command
 from ..parser import parse_markdown, create_front_matter
 from ..hub import load_prompt
 from ..importer import load_markdown
-from ..utils import extract_text, color_code, safety_path
-from ..config import (
-    get_text_color,
-    get_info_color,
-    get_chunk_color,
-    get_warn_color,
-    get_default_env,
-)
+from ..utils import extract_text, safety_path
+from ..config import get_env
 
 def _create_chain(llm, prompt_template, **kwargs):
     if not llm:
@@ -30,16 +25,16 @@ def _create_chain(llm, prompt_template, **kwargs):
 
 def _call_markdown_chain(chain, completed, is_fake: bool=False, verbose: bool=False):
     if get_verbose() or is_fake or verbose:
-        yield ('info', get_info_color() + chain.get_prompts()[0].format(**completed) + "\033[0m")
+        yield TextChunk('info', chain.get_prompts()[0].format(**completed))
 
     if is_fake:
-        yield ('info', "Fake-Output-Content...\n")
+        yield TextChunk('info', "Fake-Output-Content...\n")
     else:
         for chunk in chain.stream(completed):
             if isinstance(chunk, BaseMessage):
-                yield ('chunk', chunk.content)
+                yield TextChunk('chunk', chunk.content)
             else:
-                yield('chunk', chunk)
+                yield TextChunk('chunk', chunk)
 
 def gather_docs(completed: Union[str, List[str]], base_folder: str="") -> str:
     """
@@ -90,15 +85,16 @@ def stream(
     """
     创作长文。
     
-    - completed: 除IDEA风格模板外，其他提示语模板大多需要输入依据文档，以便展开扩写、翻译、修改等任务
-             这些依据文档可以为一个或多个，可以是字符串或文件；
-             这些依据文档会被合并，作为连续的上下文。
+    - completed: 
+        除IDEA风格模板外，其他提示语模板大多需要输入依据文档，以便展开扩写、翻译、修改等任务
+        这些依据文档可以为一个或多个，可以是字符串或文件；
+        这些依据文档会被合并，作为连续的上下文。
     
     TODO: 支持更多任务拆分模式
     """
     base_folder = base_folder or ''
-    prev_k = get_default_env("TEXTLONG_DOC_PREV_K")
-    next_k = get_default_env("TEXTLONG_DOC_NEXT_K")
+    prev_k = get_env("TEXTLONG_DOC_PREV_K")
+    next_k = get_env("TEXTLONG_DOC_NEXT_K")
     prompt_id = prompt_id or 'IDEA'
     output_file = safety_path(output_file) if output_file else None
 
@@ -122,16 +118,16 @@ def stream(
         'args': not_empty_args,
     }
     front_matter = create_front_matter({k: dict_data[k] for k in dict_data if dict_data[k]})
-    yield ('front_matter', front_matter)
+    yield TextChunk('front_matter', front_matter)
     
     # final output
     output_text = ""
 
     if (get_verbose() or verbose) and base_folder:
-        yield ('info', f'\nbase_folder: {base_folder}\n')
+        yield TextChunk('info', f'\nbase_folder: {base_folder}\n')
 
     output_str = (" | " + output_file) if output_file else ""
-    yield ('info', f'\n>->>> Prompt ID: {prompt_id}{output_str} <<<-<\n')
+    yield TextChunk('info', f'\n>->>> Prompt ID: {prompt_id}{output_str} <<<-<\n')
 
     # completed
     input_doc = gather_docs(completed, base_folder) or ''
@@ -147,9 +143,9 @@ def stream(
         old_docs = MarkdownLoader(input_doc)
         task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
         if get_verbose() or verbose:
-            yield ('info', f'\nsep_mode: {sep_mode}\n')
-            yield ('info', f'task_mode: {task_mode}\n')
-            yield ('info', f'task_todos: {task_todos}\n\n')
+            yield TextChunk('info', f'\nsep_mode: {sep_mode}\n')
+            yield TextChunk('info', f'task_mode: {task_mode}\n')
+            yield TextChunk('info', f'task_todos: {task_todos}\n\n')
 
     if task_mode == 'all':
         _kwargs = {
@@ -160,13 +156,13 @@ def stream(
         chain = _create_chain(llm, prompt, **_kwargs)
         
         resp_md = ""
-        for mode, delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
-            if mode == 'chunk':
-                resp_md += delta
-            yield (mode, delta)
+        for chunk in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
+            if chunk.mode == 'chunk':
+                resp_md += chunk.content
+            yield chunk
         final_md = extract_text(resp_md, tag_start, tag_end)
         output_text += final_md
-        yield ('final', final_md)
+        yield TextChunk('final', final_md)
 
     elif task_mode == 'document':
         last_index = None
@@ -175,11 +171,11 @@ def stream(
             if last_index != None:
                 md = "\n"
                 output_text += md
-                yield ('text', md)
+                yield TextChunk('text', md)
             if old_docs.documents[last_index:index]:
                 md = MarkdownLoader.to_markdown(old_docs.documents[last_index:index])
                 output_text += md
-                yield ('text', md)
+                yield TextChunk('text', md)
 
             last_index = index + 1
             
@@ -194,27 +190,27 @@ def stream(
                 chain = _create_chain(llm, prompt, **_kwargs)
 
                 resp_md = ""
-                for mode, delta in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
-                    if mode == 'chunk':
-                        resp_md += delta
-                    yield (mode, delta)
+                for chunk in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
+                    if chunk.mode == 'chunk':
+                        resp_md += chunk.content
+                    yield chunk
 
                 final_md = extract_text(resp_md, tag_start, tag_end)
                 to_insert = new_docs.replace_documents(doc, doc, final_md)
                 final_md_strip = MarkdownLoader.to_markdown(to_insert).strip()
 
                 output_text += final_md_strip
-                yield ('final', final_md_strip)
+                yield TextChunk('final', final_md_strip)
 
             else:
                 # 如果内容是空行就不再处理
                 output_text += doc.page_content
-                yield ('text', doc.page_content)
+                yield TextChunk('text', doc.page_content)
 
         if old_docs.documents[last_index:None]:
             md = MarkdownLoader.to_markdown(old_docs.documents[last_index:None])
             output_text += md
-            yield ('text', md)
+            yield TextChunk('text', md)
 
     # 将输出文本保存到指定文件
     output_file = os.path.join(base_folder or "", output_file or "")
@@ -222,85 +218,77 @@ def stream(
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(front_matter + output_text)
-            yield ('warn', f'\n\n已保存 {output_file}, 共计 {len(output_text)} 字。\n')
+            yield TextChunk('warn', f'\n\n已保存 {output_file}, 共计 {len(output_text)} 字。\n')
 
-def write(llm: Runnable, **kwargs):
+def stream_log(llm: Runnable, **kwargs):
     """
     打印流式日志。
     """
 
     output_text = ""
 
-    for mode, chunk in stream(llm, **kwargs):
-        if mode == 'text':
-            output_text += chunk
-            print(get_text_color() + chunk + "\033[0m", end="")
-        elif mode == 'info':
-            print(get_info_color() + chunk + "\033[0m", end="")
-        elif mode == 'warn':
-            print(get_warn_color() + chunk + "\033[0m", end="")
-        elif mode == 'chunk':
-            print(get_chunk_color() + chunk + "\033[0m", end="")
-        elif mode == 'final':
-            output_text += chunk
-        elif mode == 'front_matter':
-            output_text += chunk
+    for chunk in stream(llm, **kwargs):
+        if chunk.mode in ['text', 'final', 'front_matter']:
+            output_text += chunk.text
+
+        if chunk.mode in ['text', 'info', 'warn', 'chunk']:
+            print(chunk.text_with_print_color, end="")
     
     return output_text
 
-def get_idea_args(**kwargs):
-    kwargs.update({
-        "sep_mode": "all",
-        "prompt_id": kwargs.get('prompt_id', "IDEA"),
-        "tag_start": get_default_env("TEXTLONG_MARKDOWN_START"),
-        "tag_end": get_default_env("TEXTLONG_MARKDOWN_END"),
-    })
-    return kwargs
-
-def get_outline_args(**kwargs):
-    kwargs.update({
-        "sep_mode": "all",
-        "prompt_id": kwargs.get('prompt_id', "OUTLINE"),
-        "tag_start": get_default_env("TEXTLONG_MARKDOWN_START"),
-        "tag_end": get_default_env("TEXTLONG_MARKDOWN_END"),
-    })
-    return kwargs
-
-def get_from_outline_args(**kwargs):
-    kwargs.update({
-        "sep_mode": "outline",
-        "prompt_id": kwargs.get('prompt_id', "FROM_OUTLINE"),
-        "tag_start": get_default_env("TEXTLONG_OUTLINE_START"),
-        "tag_end": get_default_env("TEXTLONG_OUTLINE_END"),
-    })
-    return kwargs
-
-def get_more_outline_args(**kwargs):
-    kwargs.update({
-        "sep_mode": "outline",
-        "prompt_id": kwargs.get('prompt_id', "MORE_OUTLINE"),
-        "tag_start": get_default_env("TEXTLONG_MORE_OUTLINE_START"),
-        "tag_end": get_default_env("TEXTLONG_MORE_OUTLINE_END"),
-    })
-    return kwargs
+def get_default_writing_args(command: str=None, **kwargs):
+    if not command:
+        command = "idea"
+    default_args = {
+        "idea": {
+            "sep_mode": "all",
+            "prompt_id": "IDEA",
+            "tag_start": get_env("TEXTLONG_MARKDOWN_START"),
+            "tag_end": get_env("TEXTLONG_MARKDOWN_END"),
+        },
+        "outline": {
+            "sep_mode": "all",
+            "prompt_id": "OUTLINE",
+            "tag_start": get_env("TEXTLONG_MARKDOWN_START"),
+            "tag_end": get_env("TEXTLONG_MARKDOWN_END"),
+        },
+        "from_outline": {
+            "sep_mode": "outline",
+            "prompt_id": "FROM_OUTLINE",
+            "tag_start": get_env("TEXTLONG_OUTLINE_START"),
+            "tag_end": get_env("TEXTLONG_OUTLINE_END"),
+        },
+        "more_outline": {
+            "sep_mode": "outline",
+            "prompt_id": "MORE_OUTLINE",
+            "tag_start": get_env("TEXTLONG_MORE_OUTLINE_START"),
+            "tag_end": get_env("TEXTLONG_MORE_OUTLINE_END"),
+        }
+    }
+    if command in default_args:
+        new_args = default_args[command]
+        new_args.update(kwargs)
+        return new_args
+    else:
+        return kwargs
 
 def idea(llm: Runnable, **kwargs):
     if 'task' not in kwargs:
         raise ValueError("method <idea> need param <task> !!")
-    return write(llm, **get_idea_args(**kwargs))
+    return stream_log(llm, **get_default_writing_args('idea', **kwargs))
 
 def outline(llm: Runnable, **kwargs):
     if 'task' not in kwargs:
         raise ValueError("method <outline> need param <task> !!")
-    return write(llm, **get_outline_args(**kwargs))
+    return stream_log(llm, **get_default_writing_args('outline', **kwargs))
 
 def from_outline(llm: Runnable, **kwargs):
     if 'completed' not in kwargs:
         raise ValueError("method <from_outline> need param <completed> !!")
-    return write(llm, **get_from_outline_args(**kwargs))
+    return stream_log(llm, **get_default_writing_args('from_outline', **kwargs))
 
 def more_outline(llm: Runnable, **kwargs):
     if 'completed' not in kwargs:
         raise ValueError("method <more_outline> need param <completed> !!")
-    return write(llm, **get_more_outline_args(**kwargs))
+    return stream_log(llm, **get_default_writing_args('more_outline', **kwargs))
 

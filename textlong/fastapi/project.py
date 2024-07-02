@@ -6,7 +6,7 @@ from langserve import add_routes
 from langchain_core.runnables import Runnable
 
 from .auth import verify_jwt, get_current_user
-from ..config import get_default_env
+from ..config import get_env
 from ..chain import create_qa_chain, create_chain
 
 async def _config_modifier(config: Dict, request: Request) -> Dict:

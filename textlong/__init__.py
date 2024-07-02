@@ -1,5 +1,5 @@
-from .writing import write, idea, outline, more_outline, from_outline
-from .project import Project, list_projects, init_project, is_project_existing
+from .writing import idea, outline, more_outline, from_outline
+from .project import WritingProject, list_projects, init_project, is_project_existing
 from .chain import create_chain
 
 __all__ = [
@@ -7,5 +7,5 @@ __all__ = [
   "outline",
   "more_outline",
   "from_outline",
-  "Project",
+  "WritingProject",
 ]

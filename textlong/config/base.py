@@ -1,64 +1,9 @@
 import os
-from ..utils import color_code
 
 def get_folder_root():
-    return get_default_env("TEXTLONG_ROOT")
+    return get_env("TEXTLONG_ROOT")
 
-def get_folder_prompts():
-    return get_default_env("TEXTLONG_PROMPTS")
-
-def get_folder_logs():
-    return get_default_env("TEXTLONG_LOGS")
-
-def get_project_list_file():
-    return get_default_env("TEXTLONG_PROJECT_LIST")
-
-def get_default_output():
-    return get_default_env("TEXTLONG_DEFAULT_OUTPUT")
-
-def get_project_config_file():
-    return get_default_env("TEXTLONG_CONFIG_FILE")
-
-def get_project_script_file():
-    return get_default_env("TEXTLONG_SCRIPT_FILE")
-
-def get_folder_share():
-    return get_default_env("TEXTLONG_SHARE")
-
-def get_folder_history():
-    return get_default_env("TEXTLONG_MEMORY_HISTORY")
-
-def get_folder_qa():
-    return get_default_env("TEXTLONG_QA")
-
-def get_folder_docs():
-    return get_default_env("TEXTLONG_DOCS")
-
-def get_cache_embeddings():
-    return get_default_env("TEXTLONG_CACHE_EMBEDDINGS")
-
-def get_default_session():
-    return get_default_env("TEXTLONG_DEFAULT_SESSION")
-
-def get_default_user():
-    return get_default_env("TEXTLONG_DEFAULT_USER")
-
-def get_folder_public():
-    return get_default_env("TEXTLONG_PUBLIC")
-
-def get_text_color():
-    return color_code(get_default_env("TEXTLONG_COLOR_TEXT"))
-
-def get_info_color():
-    return color_code(get_default_env("TEXTLONG_COLOR_INFO"))
-
-def get_chunk_color():
-    return color_code(get_default_env("TEXTLONG_COLOR_CHUNK"))
-
-def get_warn_color():
-    return color_code(get_default_env("TEXTLONG_COLOR_WARN"))
-
-def get_default_env(key: str=None):
+def get_env(key: str=None):
     """
     环境变量的默认值。
     """
@@ -111,11 +56,13 @@ def get_default_env(key: str=None):
         "TEXTLONG_DOC_NEXT_K": 300,
         
         # 颜色
+        "TEXTLONG_COLOR_DEFAULT": "黑色",
         "TEXTLONG_COLOR_INFO": "蓝色",
         "TEXTLONG_COLOR_TEXT": "黄色",
         "TEXTLONG_COLOR_WARN": "红色",
         "TEXTLONG_COLOR_CHUNK": "绿色",
         "TEXTLONG_COLOR_FINAL": "青色",
+        "TEXTLONG_COLOR_FRONT_MATTER": "品红",
         
         # 多线程配置
         "TEXTLONG_MAX_WORKERS": 4,
@@ -132,3 +79,18 @@ def get_default_env(key: str=None):
             return os.getenv(key) or default_values[key]
     else:
         return default_values
+
+def color_code(color_name: str):
+    colors = {
+        "黑色": "\033[30m",
+        "红色": "\033[31m",
+        "绿色": "\033[32m",
+        "黄色": "\033[33m",
+        "蓝色": "\033[34m",
+        "品红": "\033[35m",
+        "青色": "\033[36m",
+        "白色": "\033[37m",
+        "重置": "\033[0m" 
+    }
+    return colors.get(color_name, '黑色')
+

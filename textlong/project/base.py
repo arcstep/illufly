@@ -13,31 +13,19 @@ from ..parser import parse_markdown, create_front_matter, fetch_front_matter
 from ..exporter import export_jupyter
 from ..importer import load_markdown
 from ..utils import raise_not_supply_all, safety_path
-from ..config import (
-    get_folder_root,
-    get_folder_public,
-    get_project_list_file,
-    get_project_config_file,
-    get_project_script_file,
-    get_folder_logs,
-)
+from ..config import (get_folder_root, get_env)
 
 from ..writing.command import Command
 from ..writing import (
     MarkdownLoader,
     stream,
-    write,
+    stream_log,
+    get_default_writing_args,
+
     idea,
     outline,
     from_outline,
     more_outline,
-)
-
-from ..writing.base import (
-    get_idea_args,
-    get_outline_args,
-    get_from_outline_args,
-    get_more_outline_args,
 )
 
 def command_dependency(cmd1, cmd2):
@@ -58,20 +46,18 @@ def sort_commands(commands):
     
     return sorted_commands
 
-class Project():
+class BaseProject():
     """
-    长文生成项目的文件管理。
+    基于项目管理写作文件。
     
-    - 写作指令: idea, outline, from_outline ...
     - 项目保存: save_project
     - 命令历史: load_commands, load_history
-    - 项目脚本: save_script, load_script, run_script
+    - 项目脚本: save_script, load_script
     - 指令恢复: checkout
     """
-    def __init__(self, project_id: str, base_folder: str=None, llm: Runnable=None, prompt_tag=None):
+    def __init__(self, project_id: str, base_folder: str=None, prompt_tag=None):
         raise_not_supply_all("Project 对象必须提供有效的 project_id", project_id)
 
-        self.llm = llm
         self.base_folder = base_folder or get_folder_root()
         self.project_id = safety_path(project_id)
         self.output_files: Set[str] = set()
@@ -91,7 +77,7 @@ class Project():
         ])
 
     def __repr__(self):
-        return f"Project<llm: '{self.llm._llm_type}/{self.llm.model}', project_folder: '{self.project_folder}', output_files: {list(self.output_files)}>"
+        return f"Project<project_folder: '{self.project_folder}', output_files: {list(self.output_files)}>"
 
     def to_dict(self):
         return {
@@ -103,11 +89,11 @@ class Project():
     
     @property
     def project_config_path(self):
-        return self.get_path(get_project_config_file())
+        return self.get_path(get_env("TEXTLONG_CONFIG_FILE"))
 
     @property
     def project_script_path(self):
-        return self.get_path(get_project_script_file())
+        return self.get_path(get_env("TEXTLONG_SCRIPT_FILE"))
 
     @property
     def project_folder(self):
@@ -131,9 +117,9 @@ class Project():
         """
         all_paths = []
         exclude_paths = [
-            get_project_script_file(),
-            get_project_config_file(),
-            get_folder_logs(),
+            get_env("TEXTLONG_SCRIPT_FILE"),
+            get_env("TEXTLONG_CONFIG_FILE"),
+            get_env("TEXTLONG_LOGS"),
         ]
         for root, dirs, files in os.walk(self.project_folder):
             for name in files:
@@ -202,7 +188,7 @@ class Project():
             yaml.safe_dump(self.to_dict(), f, allow_unicode=True, sort_keys=False)
 
         all_projects = []
-        project_list_file = os.path.join(self.base_folder, get_project_list_file())
+        project_list_file = os.path.join(self.base_folder, get_env("TEXTLONG_PROJECT_LIST"))
         if os.path.exists(project_list_file):
             with open(project_list_file, 'r') as f:
                 all_projects = yaml.safe_load(f)
@@ -216,7 +202,7 @@ class Project():
 
     def _get_output_history_path(self, output_file):
         output_file = safety_path(output_file)
-        return self.get_path(get_folder_logs(), output_file) + ".yml"
+        return self.get_path(get_env("TEXTLONG_LOGS"), output_file) + ".yml"
     
     def load_history(self, output_file, start: int=None, end: int=None):
         """
@@ -271,14 +257,6 @@ class Project():
             yaml.safe_dump(self.load_commands(start, end), f, allow_unicode=True, sort_keys=False)
         return True
     
-    def run_script(self, script_path: str=None):
-        """
-        自动执行脚本。
-        """
-        for cmd in self.load_script(script_path):
-            if cmd['command'] in ['stream']:
-                self.exec(write, output_file=cmd['output_file'], **cmd['args'])
-
     def _load_output_history(self, output_path):
         history = []
         if os.path.exists(output_path):
@@ -328,7 +306,29 @@ class Project():
         output_path = self.get_path(output_file)
         return export_jupyter(input_path, output_path)
 
-    def exec(self, task_func, output_file: str=None, **kwargs):
+class WritingProject(BaseProject):
+    """
+    在 Project 中管理写作任务。
+
+    - 写作指令: idea, outline, from_outline ...
+    - 项目脚本: run_script
+    """
+    def __init__(self, llm: Runnable=None, *args, **kwargs):
+        self.llm = llm
+        super().__init__(*args, **kwargs)
+
+    def __repr__(self):
+        return f"Project<llm: '{self.llm._llm_type}/{self.llm.model}', project_folder: '{self.project_folder}', output_files: {list(self.output_files)}>"
+
+    def run_script(self, script_path: str=None):
+        """
+        自动执行脚本。
+        """
+        for cmd in self.load_script(script_path):
+            if cmd['command'] in ['stream']:
+                self.stream_log(stream_log, output_file=cmd['output_file'], **cmd['args'])
+
+    def stream_log(self, task_func, output_file: str=None, **kwargs):
         """
         基于Project内封装的状态执行写作任务。
         
@@ -357,22 +357,22 @@ class Project():
         """
         从一个idea开始生成。
         """
-        self.exec(idea, output_file=output_file, task=task, **kwargs)
+        self.stream_log(idea, output_file=output_file, task=task, **kwargs)
 
     def outline(self, output_file: str, task: str, **kwargs):
         """
         生成写作大纲。
         """
-        self.exec(outline, output_file=output_file, task=task, **kwargs)
+        self.stream_log(outline, output_file=output_file, task=task, **kwargs)
 
     def more_outline(self, output_file: str,  completed: Union[str, list[str]], **kwargs):
         """
         从已有大纲获得更多大纲。
         """
-        self.exec(more_outline, output_file=output_file, completed=completed, **kwargs)
+        self.stream_log(more_outline, output_file=output_file, completed=completed, **kwargs)
 
     def from_outline(self, output_file: str, completed: Union[str, list[str]], **kwargs):
         """
         从大纲扩写。
         """
-        self.exec(from_outline, output_file=output_file, completed=completed, **kwargs)
+        self.stream_log(from_outline, output_file=output_file, completed=completed, **kwargs)

@@ -2,10 +2,12 @@ from .markdown import MarkdownLoader
 from .command import Command
 from .base import (
   stream,
-  write,
+  stream_log,
+  get_default_writing_args,
 
   idea,
   outline,
   more_outline,
   from_outline
 )
+from .message import TextChunk
