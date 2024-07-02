@@ -28,20 +28,20 @@ def _create_chain(llm, prompt_template, **kwargs):
     prompt = prompt_template.partial(**kwargs)
     return prompt | llm
 
-def _call_markdown_chain(chain, input, is_fake: bool=False, verbose: bool=False):
+def _call_markdown_chain(chain, completed, is_fake: bool=False, verbose: bool=False):
     if get_verbose() or is_fake or verbose:
-        yield ('info', get_info_color() + chain.get_prompts()[0].format(**input) + "\033[0m")
+        yield ('info', get_info_color() + chain.get_prompts()[0].format(**completed) + "\033[0m")
 
     if is_fake:
         yield ('info', "Fake-Output-Content...\n")
     else:
-        for chunk in chain.stream(input):
+        for chunk in chain.stream(completed):
             if isinstance(chunk, BaseMessage):
                 yield ('chunk', chunk.content)
             else:
                 yield('chunk', chunk)
 
-def gather_docs(input: Union[str, List[str]], base_folder: str="") -> str:
+def gather_docs(completed: Union[str, List[str]], base_folder: str="") -> str:
     """
     从input收集文本，有如下情况：
     - 文本字符串
@@ -54,11 +54,11 @@ def gather_docs(input: Union[str, List[str]], base_folder: str="") -> str:
 
     mds = []
 
-    if isinstance(input, str):
-        input = [input]
+    if isinstance(completed, str):
+        completed = [completed]
 
-    if isinstance(input, list):
-        for s in input:
+    if isinstance(completed, list):
+        for s in completed:
             s = safety_path(s)
             if isinstance(s, str) and s.endswith(".md"):
                 path = os.path.join(base_folder, s)
@@ -73,7 +73,7 @@ def gather_docs(input: Union[str, List[str]], base_folder: str="") -> str:
 def stream(
     llm: Runnable,
     task: str=None,
-    input: Union[str, List[str]]=None,
+    completed: Union[str, List[str]]=None,
     sep_mode: str='all',
     knowledge: Union[str, List[str]]=None,
     prompt_id: str=None,
@@ -90,7 +90,7 @@ def stream(
     """
     创作长文。
     
-    - input: 除IDEA风格模板外，其他提示语模板大多需要输入依据文档，以便展开扩写、翻译、修改等任务
+    - completed: 除IDEA风格模板外，其他提示语模板大多需要输入依据文档，以便展开扩写、翻译、修改等任务
              这些依据文档可以为一个或多个，可以是字符串或文件；
              这些依据文档会被合并，作为连续的上下文。
     
@@ -105,7 +105,7 @@ def stream(
     # front_matter
     args = {
         "task": task,
-        "input": input,
+        "completed": completed,
         "sep_mode": sep_mode,
         "knowledge": knowledge,
         "prompt_id": prompt_id,
@@ -133,8 +133,8 @@ def stream(
     output_str = (" | " + output_file) if output_file else ""
     yield ('info', f'\n>->>> Prompt ID: {prompt_id}{output_str} <<<-<\n')
 
-    # input
-    input_doc = gather_docs(input, base_folder) or ''
+    # completed
+    input_doc = gather_docs(completed, base_folder) or ''
     task_mode, task_todos, old_docs = 'all', [], []
 
     # knowledge
@@ -295,12 +295,12 @@ def outline(llm: Runnable, **kwargs):
     return write(llm, **get_outline_args(**kwargs))
 
 def from_outline(llm: Runnable, **kwargs):
-    if 'input' not in kwargs:
-        raise ValueError("method <from_outline> need param <input> !!")
+    if 'completed' not in kwargs:
+        raise ValueError("method <from_outline> need param <completed> !!")
     return write(llm, **get_from_outline_args(**kwargs))
 
 def more_outline(llm: Runnable, **kwargs):
-    if 'input' not in kwargs:
-        raise ValueError("method <more_outline> need param <input> !!")
+    if 'completed' not in kwargs:
+        raise ValueError("method <more_outline> need param <completed> !!")
     return write(llm, **get_more_outline_args(**kwargs))
 
