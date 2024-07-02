@@ -32,18 +32,7 @@ def create_project_api(llm: Runnable):
         per_req_config_modifier=_config_modifier,
         dependencies=[Depends(get_current_user)],
         enabled_endpoints=["invoke", "stream"],
-        path = "/agent/writing"
-    )
-
-    from langchain_core.runnables import RunnableLambda
-    chain = RunnableLambda(add_one)
-    add_routes(
-        router,
-        chain,
-        path="/agent/add",
-        per_req_config_modifier=_config_modifier,
-        enabled_endpoints=["invoke"],
-        dependencies=[Depends(get_current_user)],
+        path = "/writing"
     )
 
     @router.get("/projects")

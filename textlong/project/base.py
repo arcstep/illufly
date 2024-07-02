@@ -365,14 +365,14 @@ class Project():
         """
         self.exec(outline, output_file=output_file, task=task, **kwargs)
 
-    def more_outline(self, output_file: str,  input: Union[str, list[str]], **kwargs):
+    def more_outline(self, output_file: str,  completed: Union[str, list[str]], **kwargs):
         """
         从已有大纲获得更多大纲。
         """
-        self.exec(more_outline, output_file=output_file, input=input **kwargs)
+        self.exec(more_outline, output_file=output_file, completed=completed, **kwargs)
 
-    def from_outline(self, output_file: str, input: Union[str, list[str]], **kwargs):
+    def from_outline(self, output_file: str, completed: Union[str, list[str]], **kwargs):
         """
         从大纲扩写。
         """
-        self.exec(from_outline, output_file=output_file, input=input, **kwargs)
+        self.exec(from_outline, output_file=output_file, completed=completed, **kwargs)

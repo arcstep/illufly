@@ -106,10 +106,6 @@ def create_auth_api(auth_func: callable=None):
     @router.get("/users/me")
     async def read_users_me(user: dict = Depends(get_current_user)):
         return user
-
-    @router.get("/protected-route")
-    async def protected_route(user: dict = Depends(get_current_user)):
-        return {"message": "This is a protected route", "user": user}
     
     return router
 
