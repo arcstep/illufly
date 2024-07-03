@@ -1,13 +1,16 @@
 import re
 import os
+import shutil
 import yaml
 import copy
+import random
 from datetime import datetime
 from typing import Union, List, Dict, Any
 from langchain.globals import set_verbose, get_verbose
 from langchain_core.runnables import Runnable
 from langchain_core.runnables.utils import Input, Output
 from langchain_core.tracers.schemas import Run
+from langchain.memory import ConversationBufferWindowMemory
 
 from ..parser import parse_markdown, create_front_matter, fetch_front_matter
 from ..exporter import export_jupyter
@@ -201,16 +204,41 @@ class BaseProject():
 
         return True
 
-    def _get_output_history_path(self, output_file):
+    def _get_output_history_path(self, output_file, version=""):
         output_file = safety_path(output_file)
-        return self.get_path(get_env("TEXTLONG_LOGS"), output_file) + ".yml"
+        return self.get_path(get_env("TEXTLONG_LOGS"), version, output_file) + ".yml"
     
-    def load_history(self, output_file, start: int=None, end: int=None):
+    def load_history(self, output_file, start: int=None, end: int=None, version=""):
         """
         查看命令生成历史。
+
+        支持按照按版本管理日志历史。
         """
-        path = self._get_output_history_path(output_file)
+        path = self._get_output_history_path(output_file, version)
         return self._load_output_history(path)[start:end]
+
+    def clear_history(self, output_file: str, version: str=None):
+        """
+        查看命令生成历史。
+
+        支持按照按版本管理日志历史。
+        """
+        if output_file:
+            now_path = self._get_output_history_path(output_file, "")
+
+            version = version or next(create_ver_id())
+            ver_path = self._get_output_history_path(output_file, version)
+            os.makedirs(os.path.dirname(ver_path), exist_ok=True)
+
+            # 检查ver_path指向的文件是否存在
+            if os.path.exists(now_path):
+                shutil.move(now_path, ver_path)
+                with open(now_path, 'w') as file:
+                    self.memory.pop(output_file)
+                    file.truncate()
+                    return True
+
+        return False
 
     def load_commands(self, start: int=None, end: int=None):
         """
@@ -315,11 +343,28 @@ class WritingProject(BaseProject):
     - 项目脚本: run_script
     """
     def __init__(self, llm: Runnable=None, *args, **kwargs):
-        self.llm = llm
         super().__init__(*args, **kwargs)
+        self.llm = llm
+        self.memory = {}
 
     def __repr__(self):
         return f"Project<llm: '{self.llm._llm_type}/{self.llm.model}', project_folder: '{self.project_folder}', output_files: {list(self.output_files)}>"
+
+    def get_memory(self, output_file: str):
+        """
+        获得文件的历史记忆。
+        """
+        if (output_file not in self.memory) and (output_file in self.output_files):
+            hist = self.load_history(output_file)
+            memory = ConversationBufferWindowMemory()
+            for cmd in hist:
+                args = cmd['args']
+                task = cmd['args'].get("task", "") if args else ''
+                output_text = cmd['output_text']
+                memory.save_context({'input': task}, {'output': output_text})
+            self.memory[output_file] = memory
+
+        return self.memory[output_file]
 
     def run_script(self, script_path: str=None):
         """
@@ -343,6 +388,7 @@ class WritingProject(BaseProject):
         kwargs['base_folder'] = self.project_folder
         kwargs['output_file'] = output_file
         kwargs['prompt_tag'] = kwargs.get('prompt_tag', self.prompt_tag)
+        kwargs['memory'] = self.get_memory(output_file)
         output_text = task_func(
             self.llm,
             **kwargs
@@ -358,7 +404,7 @@ class WritingProject(BaseProject):
         """
         对话。
         """
-        self.stream_log(chat, output_file=output_file, task=task, **kwargs)
+        self.stream_log(chat, output_file=output_file, task=task, memory=self.memory, **kwargs)
 
     def idea(self, output_file: str, task: str, **kwargs):
         """
@@ -383,3 +429,12 @@ class WritingProject(BaseProject):
         从大纲扩写。
         """
         self.stream_log(from_outline, output_file=output_file, completed=completed, **kwargs)
+
+def create_ver_id():
+    counter = 0
+    while True:
+        date_str = datetime.now().strftime("%y%m%d")
+        random_number = f'{random.randint(0, 99):02}'
+        counter_str = f'{counter:02}'
+        yield f'{date_str}{random_number}{counter_str}'
+        counter = 0 if counter == 99 else counter + 1

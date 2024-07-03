@@ -9,17 +9,23 @@ from ..config import get_folder_root, get_env
 
 PROMPT_WRITING_BASE = 'textlong.__PROMPTS__'
 
-def find_resource_prompt(tag: str="writing"):
+def find_resource_prompt(tag: str=None):
     """
     过滤出提示语模板所在的目录清单。
     """
+    if tag not in ['writing', 'chat']:
+        tag = 'writing'
+
     all_resources = contents(f'textlong.__PROMPTS__.{tag}')
     return [r for r in all_resources if not is_resource(f'{PROMPT_WRITING_BASE}.{tag}', r)]
  
-def load_resource_prompt(prompt_id: str, tag: str="writing"):
+def load_resource_prompt(prompt_id: str, tag: str=None):
     """
     从python包资源文件夹加载提示语模板。
     """
+    if tag not in ['writing', 'chat']:
+        tag = 'writing'
+
     if prompt_id not in find_resource_prompt(tag):
         raise ValueError(f"<{prompt_id}> prompt_id not exist !")
 
