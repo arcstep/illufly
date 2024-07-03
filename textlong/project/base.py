@@ -16,7 +16,7 @@ from ..parser import parse_markdown, create_front_matter, fetch_front_matter
 from ..exporter import export_jupyter
 from ..importer import load_markdown
 from ..utils import raise_not_supply_all, safety_path
-from ..config import (get_folder_root, get_env)
+from ..config import get_folder_root, get_env
 
 from ..writing.command import Command
 from ..writing import (
@@ -354,15 +354,16 @@ class WritingProject(BaseProject):
         """
         获得文件的历史记忆。
         """
-        if (output_file not in self.memory) and (output_file in self.output_files):
-            hist = self.load_history(output_file)
-            memory = ConversationBufferWindowMemory()
-            for cmd in hist:
-                args = cmd['args']
-                task = cmd['args'].get("task", "") if args else ''
-                output_text = cmd['output_text']
-                memory.save_context({'input': task}, {'output': output_text})
-            self.memory[output_file] = memory
+        if output_file not in self.memory:
+            self.memory[output_file] = ConversationBufferWindowMemory()
+
+            if output_file in self.output_files:
+                hist = self.load_history(output_file)
+                for cmd in hist:
+                    args = cmd['args']
+                    task = cmd['args'].get("task", "") if args else ''
+                    output_text = cmd['output_text']
+                    self.memory[output_file].save_context({'input': task}, {'output': output_text})
 
         return self.memory[output_file]
 
@@ -385,6 +386,7 @@ class WritingProject(BaseProject):
         - base_folder 直接采纳 self.project_folder
         - prompt_tag 如果执行参数没有提供，就采纳 self.prompt_tag
         """
+        output_file = output_file or get_env("TEXTLONG_DEFAULT_OUTPUT")
         kwargs['base_folder'] = self.project_folder
         kwargs['output_file'] = output_file
         kwargs['prompt_tag'] = kwargs.get('prompt_tag', self.prompt_tag)
@@ -400,31 +402,31 @@ class WritingProject(BaseProject):
             self.output_files.add(output_file)
             self.save_project()
 
-    def chat(self, output_file: str, task: str, **kwargs):
+    def chat(self, task: str, output_file: str=None, **kwargs):
         """
         对话。
         """
-        self.stream_log(chat, output_file=output_file, task=task, memory=self.memory, **kwargs)
+        self.stream_log(chat, task=task, output_file=output_file, memory=self.memory, **kwargs)
 
-    def idea(self, output_file: str, task: str, **kwargs):
+    def idea(self, task: str, output_file: str=None, **kwargs):
         """
         从一个idea开始生成。
         """
-        self.stream_log(idea, output_file=output_file, task=task, **kwargs)
+        self.stream_log(idea, task=task, output_file=output_file, **kwargs)
 
-    def outline(self, output_file: str, task: str, **kwargs):
+    def outline(self, task: str, output_file: str=None, **kwargs):
         """
         生成写作大纲。
         """
         self.stream_log(outline, output_file=output_file, task=task, **kwargs)
 
-    def more_outline(self, output_file: str,  completed: Union[str, list[str]], **kwargs):
+    def more_outline(self, completed: Union[str, list[str]], output_file: str=None, **kwargs):
         """
         从已有大纲获得更多大纲。
         """
         self.stream_log(more_outline, output_file=output_file, completed=completed, **kwargs)
 
-    def from_outline(self, output_file: str, completed: Union[str, list[str]], **kwargs):
+    def from_outline(self, completed: Union[str, list[str]], output_file: str=None, **kwargs):
         """
         从大纲扩写。
         """
