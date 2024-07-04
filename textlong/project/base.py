@@ -148,7 +148,7 @@ class BaseProject():
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(md_text)
 
-        return True
+        return path
 
     def to_output(self, res_name: str, as_output=True):
         """
@@ -160,7 +160,7 @@ class BaseProject():
             self.output_files.discard(res_name)
         self.save_project()
 
-        return True
+        return self.output_files
     
     def to_embedding(self, res_name: str, as_embedding=True):
         """
@@ -172,7 +172,7 @@ class BaseProject():
             self.embedding_files.discard(res_name)
         self.save_project()
 
-        return True
+        return self.embedding_files
 
     def _load_project_data(self):
         """
@@ -217,28 +217,29 @@ class BaseProject():
         path = self._get_output_history_path(output_file, version)
         return self._load_output_history(path)[start:end]
 
-    def clear_history(self, output_file: str, version: str=None):
+    def clear_history(self, output_file: str=None, version: str=None):
         """
         查看命令生成历史。
 
         支持按照按版本管理日志历史。
         """
-        if output_file:
-            now_path = self._get_output_history_path(output_file, "")
+        output_file = output_file or get_env("TEXTLONG_DEFAULT_OUTPUT")
+        now_path = self._get_output_history_path(output_file, "")
 
-            version = version or next(create_ver_id())
-            ver_path = self._get_output_history_path(output_file, version)
-            os.makedirs(os.path.dirname(ver_path), exist_ok=True)
+        version = version or next(create_ver_id())
+        ver_path = self._get_output_history_path(output_file, version)
+        os.makedirs(os.path.dirname(ver_path), exist_ok=True)
 
-            # 检查ver_path指向的文件是否存在
-            if os.path.exists(now_path):
-                shutil.move(now_path, ver_path)
-                with open(now_path, 'w') as file:
+        # 检查ver_path指向的文件是否存在
+        if os.path.exists(now_path):
+            shutil.move(now_path, ver_path)
+            with open(now_path, 'w') as file:
+                file.truncate()
+                if output_file in self.memory:
                     self.memory.pop(output_file)
-                    file.truncate()
-                    return True
+                return f'Clear succeed: {output_file}'
 
-        return False
+        return f'Clear failed: {output_file}'
 
     def load_commands(self, start: int=None, end: int=None):
         """
@@ -301,7 +302,7 @@ class BaseProject():
 
         history = self._load_output_history(hist_path)
         front_matter, text = fetch_front_matter(output_text)
-        front_matter['output_text'] = output_text
+        front_matter['output_text'] = text
         command = Command.from_dict(front_matter)
 
         history.append(command.to_dict())
@@ -315,17 +316,22 @@ class BaseProject():
         获得基于项目文件夹的文件资源路径。
         """
         return os.path.join(self.project_folder, *path)
-    
-    def checkout(self, output_file: str, index: int=-2, save_as: str=None):
+
+    def checkout(self, to_output: str=None, from_output: str=None, ver_index: int=None):
         """
-        从历史记录中提取生成过的文本，默认提取倒数第2个。
+        从历史版本中提取。
+
+        - 默认版本提取规则：如果提供新文件名 to_output 就从当前版本中提取，否则从上一版本中提取
         """
-        save_as = safety_path(save_as)
-        history = self.load_history(output_file)
-        output_text = history[index]['output_text']
-        cmd = Command.from_dict(history[index])
+        if ver_index == None:
+            ver_index = -1 if to_output else -2
+        from_output =  safety_path(from_output or get_env("TEXTLONG_DEFAULT_OUTPUT"))
+        to_output = safety_path(to_output or from_output)
+        history = self.load_history(from_output)
+        output_text = history[ver_index]['output_text']
+        cmd = Command.from_dict(history[ver_index])
         resp_md = create_front_matter(cmd.to_metadata()) + output_text
-        return self.save_markdown_as(save_as or output_file, resp_md)
+        return self.save_markdown_as(to_output, resp_md)
 
     def export_jupyter(self, input_file: str, output_file: str):
         """
