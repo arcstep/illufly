@@ -190,6 +190,7 @@ def stream(
                     "todo_doc__": doc.page_content,
                     "prev_doc__": MarkdownLoader.to_markdown(new_docs.get_prev_documents(doc, prev_k)),
                     "next_doc__": MarkdownLoader.to_markdown(new_docs.get_next_documents(doc, next_k)),
+                    "history": "",
                     **kwargs
                 }
                 chain = _create_chain(llm, prompt, **_kwargs)
