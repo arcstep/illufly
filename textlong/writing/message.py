@@ -2,7 +2,6 @@ from ..config import get_env, color_code
 
 class TextChunk():
     def __init__(self, mode: str, content: str, session_id: str=None):
-        self.id = None
         self.content = content
         self.mode = mode
     

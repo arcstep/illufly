@@ -1362,13 +1362,13 @@ langchain-core = ">=0.2.10,<0.3.0"
 
 [[package]]
 name = "langchain-zhipu"
-version = "4.1.5"
+version = "4.1.6"
 description = "将智谱AI集成到LangChain"
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "langchain_zhipu-4.1.5-py3-none-any.whl", hash = "sha256:46a9c24ab9da6499bcbdfdb2add3722e8ed1d340b86263c7b68ee9d0d92699b6"},
-    {file = "langchain_zhipu-4.1.5.tar.gz", hash = "sha256:a07b0d94443517d7cf5a143e55021fe4b6ca06661e80fac07196c7de9195be40"},
+    {file = "langchain_zhipu-4.1.6-py3-none-any.whl", hash = "sha256:9253129b6fd1da50a3ac4b9111bac25177969c8785e23488965a7a5d43961fae"},
+    {file = "langchain_zhipu-4.1.6.tar.gz", hash = "sha256:82b7fa0b3a50f99896eb30197b9891d8b6857d568b51ed106fa1ec4adae858ba"},
 ]
 
 [package.dependencies]
@@ -3703,4 +3703,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4"
-content-hash = "4495fc78a9d601e1790e7a866918048734701051820239279fd2ad4f22e09ec5"
+content-hash = "b0dfd7b364289749cd698492208dbda666ecc7b2b9d539fcfa6e5981e48f0c6d"
