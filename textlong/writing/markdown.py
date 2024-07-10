@@ -148,7 +148,7 @@ class MarkdownLoader(BaseLoader):
             ]
             return ('document', docs)
 
-        elif sep_mode == 'segment':
+        elif sep_mode == 'not-heading':
             docs = [
                 (d, i)
                 for i, d in enumerate(self.documents) 
@@ -162,10 +162,10 @@ class MarkdownLoader(BaseLoader):
                     if docs[i][1] == chunk[-1][1] + 1:
                         chunk.append(docs[i])
                     else:
-                        segments.append([d for d, i in chunk])
+                        segments.append(chunk)
                         chunk = [docs[i]]
-                segments.append([d for d, i in chunk])
-            return ('segment', segments)
+                segments.append(chunk)
+            return ('document', segments)
 
         return ('unknown', [])
 
