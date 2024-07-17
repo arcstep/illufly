@@ -167,3 +167,4 @@ notes/*/*.yml
 notes/*/*.md
 notes/*/*/
 demo*
+.vscode/settings.json
