@@ -10,6 +10,7 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.runnables import Runnable
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
+from langchain_text_splitters import TextSplitter
 
 from ..config import get_folder_root, get_env
 from ..utils import raise_not_install, hash_text, clean_filename
@@ -90,6 +91,7 @@ class LocalFilesLoader(BaseLoader):
         excluded_prefixes: List[str] = [],
         extensions: List[str] = [],
         base_folder: str=None,
+        text_spliter: TextSplitter=None,
         *args, **kwargs
     ):
         if isinstance(docs_folders, str):
@@ -108,6 +110,8 @@ class LocalFilesLoader(BaseLoader):
         self.included_prefixes = included_prefixes
         self.excluded_prefixes = excluded_prefixes
         self.extensions = extensions or ["docx", "pdf", "md", "txt", "xlsx"]
+
+        self.text_spliter = text_spliter
     
     def get_files(self) -> list[str]:
         """
@@ -145,7 +149,7 @@ class LocalFilesLoader(BaseLoader):
         """
         file_loader = FileLoadFactory.get_loader(filename)
         if file_loader:
-            return file_loader.load_and_split()
+            return file_loader.load_and_split(self.text_spliter)
         else:
             return []
 
