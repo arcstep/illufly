@@ -66,6 +66,7 @@ class BaseProject():
         self.project_id = safety_path(project_id)
         self.output_files: Set[str] = set()
         self.embedding_files: Set[str] = set()
+        self.publish_files: Set[str] = set()
         self.prompt_tag = prompt_tag
 
         if os.path.exists(self.project_config_path):
@@ -74,6 +75,8 @@ class BaseProject():
                 self.output_files = set(data['output_files'] or [])
             if 'embedding_files' in data:
                 self.embedding_files = set(data['embedding_files'] or [])
+            if 'publish_files' in data:
+                self.publish_files = set(data['publish_files'] or [])
 
     def __str__(self):
         return "\n".join([
@@ -89,6 +92,7 @@ class BaseProject():
             "project_id": self.project_id,
             "output_files": list(self.output_files),
             "embedding_files": list(self.embedding_files),
+            "publish_files": list(self.publish_files),
         }
     
     @property
@@ -138,6 +142,26 @@ class BaseProject():
                     all_paths.append(relative_path)
         return all_paths
 
+    def touch_file(self, file_path: str):
+        """创建一个空文件，如果文件不存在"""
+        with open(file_path, 'a'):
+            os.utime(file_path, None)
+
+    def delete_file(self, file_path: str):
+        """删除指定路径的文件"""
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"文件 {file_path} 已删除")
+        else:
+            print(f"文件 {file_path} 不存在")
+
+    def rename_file(self, old_file_path: str, new_file_path: str):
+        """重命名文件"""
+        if os.path.exists(old_file_path):
+            os.rename(old_file_path, new_file_path)
+            print(f"文件 {old_file_path} 已重命名为 {new_file_path}")
+        else:
+            print(f"文件 {old_file_path} 不存在")        
     def save_markdown_as(self, res_name: str, txt: str):
         """
         保存文本到markdown文件。
@@ -174,6 +198,17 @@ class BaseProject():
 
         return self.embedding_files
 
+    def to_publish(self, res_name: str, as_publish=True):
+        """
+        修改文件资源是否纳入到文本嵌入清单。
+        """
+        if as_publish:
+            self.publish_files.add(res_name)
+        else:
+            self.publish_files.discard(res_name)
+        self.save_project()
+
+        return self.publish_files
     def _load_project_data(self):
         """
         加载项目。
