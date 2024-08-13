@@ -252,11 +252,13 @@ class BaseProject():
         path = self._get_output_history_path(output_file, version)
         return self._load_output_history(path)[start:end]
 
-    def clear_history(self, output_file: str=None, version: str=None):
+    def archive_and_reset_memory(self, output_file: str=None, version: str=None):
         """
-        查看命令生成历史。
+        将历史记忆归档到特定版本，并清空当前记忆、重新开始。
 
-        支持按照按版本管理日志历史。
+        参数:
+        output_file (str): 归档文件的路径。
+        version (str): 归档的版本号。
         """
         output_file = output_file or get_env("TEXTLONG_DEFAULT_OUTPUT")
         now_path = self._get_output_history_path(output_file, "")
