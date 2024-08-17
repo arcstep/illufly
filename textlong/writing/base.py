@@ -1,6 +1,7 @@
 import os
 import re
 import copy
+import hashlib
 from datetime import datetime
 from typing import Union, List, Dict, Any, Optional
 from langchain_core.runnables import Runnable
@@ -243,6 +244,16 @@ def stream_log(llm: Runnable, **kwargs):
 
         if chunk.mode in ['info', 'warn', 'text', 'chunk']:
             print(chunk.text_with_print_color, end="")
+    
+    # 生成哈希值
+    # 移除前后空格以确保唯一性
+    trimmed_output_text = output_text.strip()
+    hash_object = hashlib.sha256(trimmed_output_text.encode())
+    hash_hex = hash_object.hexdigest()  # 获取十六进制哈希值
+    # 转换为8位数字哈希值
+    hash_code = int(hash_hex, 16) % (10 ** 8)  # 取模运算得到8位数字
+    tail = f'【内容由幻蝶AI生成，其观点仅代表创作者个人立场，可登录 http://www.illufly.com 查验其校验码 {hash_code}】'
+    print(tail)
     
     return output_text
 
