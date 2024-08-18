@@ -132,7 +132,7 @@ def stream(
         yield TextChunk('info', f'\nbase_folder: {base_folder}\n')
 
     output_str = (" | " + output_file) if output_file else ""
-    yield TextChunk('info', f'\n>->>> Prompt ID: {prompt_id}{output_str} <<<-<\n')
+    yield TextChunk('info', f'Prompt ID: {prompt_id}{output_str}\n')
 
     # completed
     input_doc = gather_docs(completed, base_folder) or ''
@@ -229,7 +229,7 @@ def stream(
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(front_matter + output_text)
-            yield TextChunk('warn', f'\n\n已保存 {output_file}, 共计 {len(output_text)} 字。\n')
+            yield TextChunk('warn', f'已保存 {output_file}, 共计 {len(output_text)} 字。')
 
 def stream_log(llm: Runnable, **kwargs):
     """
@@ -237,14 +237,27 @@ def stream_log(llm: Runnable, **kwargs):
     """
 
     output_text = ""
+    last_print_mode = ""
 
     for chunk in stream(llm, **kwargs):
         if chunk.mode in ['text', 'final', 'front_matter']:
             output_text += chunk.text
 
-        if chunk.mode in ['info', 'warn', 'text', 'chunk']:
+        if chunk.mode in ['chunk']:
             print(chunk.text_with_print_color, end="")
+            last_print_mode = chunk.mode
+
+        if chunk.mode in ['info', 'warn', 'text']:
+            if last_print_mode == "chunk":
+                print("\n")
+                last_print_mode = ""
+            print(f'>-[{chunk.mode.upper()}]>> {chunk.text_with_print_color}')
+            last_print_mode = chunk.mode
     
+    if last_print_mode == "chunk":
+        print("\n")
+        last_print_mode = ""
+
     # 生成哈希值
     # 移除前后空格以确保唯一性
     trimmed_output_text = output_text.strip()
@@ -252,8 +265,9 @@ def stream_log(llm: Runnable, **kwargs):
     hash_hex = hash_object.hexdigest()  # 获取十六进制哈希值
     # 转换为8位数字哈希值
     hash_code = int(hash_hex, 16) % (10 ** 8)  # 取模运算得到8位数字
-    tail = f'【内容由幻蝶AI生成，其观点仅代表创作者个人立场，可登录 http://www.illufly.com 查验其校验码 {hash_code}】'
+    tail = f'>-[CHK]>> 【内容由幻蝶AI生成，其观点仅代表创作者个人立场，可登录 http://www.illufly.com 查验其校验码 {hash_code}】'
     print(tail)
+    print('>-[END]>>')
     
     return output_text
 
