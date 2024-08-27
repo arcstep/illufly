@@ -418,7 +418,7 @@ class WritingProject(BaseProject):
             if cmd['command'] in ['stream']:
                 self.stream_log(stream_log, output_file=cmd['output_file'], **cmd['args'])
 
-    def stream_log(self, task_func, output_file: str=None, **kwargs):
+    def stream_log(self, task_func=stream_log, output_file: str=None, **kwargs):
         """
         基于Project内封装的状态执行写作任务。
         
