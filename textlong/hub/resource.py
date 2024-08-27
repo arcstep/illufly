@@ -23,7 +23,7 @@ def load_resource_prompt(prompt_id: str, tag: str=None):
     """
     从python包资源文件夹加载提示语模板。
     """
-    if tag not in ['writing', 'chat']:
+    if tag not in ['writing', 'chat', 'kg']:
         tag = 'writing'
 
     if prompt_id not in find_resource_prompt(tag):
