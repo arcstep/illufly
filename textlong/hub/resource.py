@@ -13,8 +13,8 @@ def find_resource_prompt(tag: str=None):
     """
     过滤出提示语模板所在的目录清单。
     """
-    if tag not in ['writing', 'chat', 'kg']:
-        tag = 'writing'
+    # if tag not in ['writing', 'chat', 'kg', 'data']:
+    #     tag = 'writing'
 
     all_resources = contents(f'textlong.__PROMPTS__.{tag}')
     return [r for r in all_resources if not is_resource(f'{PROMPT_WRITING_BASE}.{tag}', r)]
