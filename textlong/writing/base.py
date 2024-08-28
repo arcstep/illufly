@@ -26,7 +26,7 @@ def _create_chain(llm, prompt_template, **kwargs):
     prompt = prompt_template.partial(**kwargs)
     return prompt | llm
 
-def _call_markdown_chain(chain, completed, is_fake: bool=False, verbose: bool=False):
+def _call_chain(chain, completed, is_fake: bool=False, verbose: bool=False):
     if get_verbose() or is_fake or verbose:
         yield TextChunk('info', chain.get_prompts()[0].format(**completed))
 
@@ -162,7 +162,7 @@ def stream(
         chain = _create_chain(llm, prompt, **_kwargs)
         
         resp_md = ""
-        for chunk in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
+        for chunk in _call_chain(chain, {"task": task}, is_fake, verbose):
             if chunk.mode == 'chunk':
                 resp_md += chunk.content
             yield chunk
@@ -197,7 +197,7 @@ def stream(
                 chain = _create_chain(llm, prompt, **_kwargs)
 
                 resp_md = ""
-                for chunk in _call_markdown_chain(chain, {"task": task}, is_fake, verbose):
+                for chunk in _call_chain(chain, {"task": task}, is_fake, verbose):
                     if chunk.mode == 'chunk':
                         resp_md += chunk.content
                     yield chunk
