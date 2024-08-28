@@ -45,3 +45,23 @@ graph TD
     - 反向构造：根据工具调用入参和知识片段（或相关概念），构造问题
     - 反向构造：根据新概念和知识片段（或相关概念），构造问题
 
+# 对话工作台结构
+
+## 工作台结构
+
+```mermaid
+graph LR
+    INPUT[输入]
+    DB[向量库]
+    OUTPUT[输出内容]
+    LLM[大模型]
+    Tools[回调工具]
+    Slide[工作台内容]
+    Cursor[演示指令]
+
+    INPUT -->|检索| DB -->|返回| INPUT
+    INPUT -->|调用| LLM -->|选择| Tools -->|反馈| LLM
+    LLM -->|生成| OUTPUT -->|保存到| Slide
+    OUTPUT --> Cursor --> Slide
+    INPUT -->|指定| Slide
+```
