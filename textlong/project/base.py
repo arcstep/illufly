@@ -449,7 +449,7 @@ class WritingProject(BaseProject):
         """
         对话。
         """
-        self.stream_log(chat, task=task, output_file=output_file, memory=self.memory, **kwargs)
+        self.stream_log(chat, task=task, output_file=output_file, **kwargs)
 
     def idea(self, task: str, output_file: str=None, **kwargs):
         """
