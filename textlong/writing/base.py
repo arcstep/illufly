@@ -17,7 +17,7 @@ from .command import Command
 from ..parser import parse_markdown, create_front_matter
 from ..hub import load_prompt
 from ..importer import load_markdown
-from ..utils import extract_text, safety_path
+from ..utils import extract_text, safety_path, compress_text
 from ..config import get_env
 
 def _create_chain(llm, prompt_template, **kwargs):
@@ -221,7 +221,7 @@ def stream(
     
     # 记忆
     if memory:
-        memory.save_context({"input": task}, {"output": output_text})
+        memory.save_context({"input": compress_text(task)}, {"output": compress_text(output_text)})
 
     # 将输出文本保存到指定文件
     output_file = os.path.join(base_folder or "", output_file or "")
