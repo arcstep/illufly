@@ -15,7 +15,7 @@ from langchain.memory import ConversationBufferWindowMemory
 from ..parser import parse_markdown, create_front_matter, fetch_front_matter
 from ..exporter import export_jupyter
 from ..importer import load_markdown
-from ..utils import raise_not_supply_all, safety_path
+from ..utils import raise_not_supply_all, safety_path, compress_text
 from ..config import get_folder_root, get_env
 
 from ..writing.command import Command
@@ -406,7 +406,7 @@ class WritingProject(BaseProject):
                     args = cmd['args']
                     task = cmd['args'].get("task", "") if args else ''
                     output_text = cmd['output_text']
-                    self.memory[output_file].save_context({'input': task}, {'output': output_text})
+                    self.memory[output_file].save_context({'input': compress_text(task)}, {'output': compress_text(output_text)})
 
         return self.memory[output_file]
 

@@ -48,3 +48,14 @@ def clean_filename(filename: str):
 
 def safety_path(path: str):
     return os.path.normpath(re.sub(r"\.\.+", ".", path)) if path else ''
+
+def compress_text(text: str, start_limit: int=100, end_limit: int=100, delta: int=50) -> str:
+    """
+    压缩文本，如果文本长度超过指定限制，则只保留前后部分，并用省略号连接。
+    """
+    if len(text) <= start_limit + end_limit + delta:
+        # 如果文本长度小于或等于前后限制之和，则直接返回原文本
+        return text
+    else:
+        # 否则，保留前后部分并用省略号连接
+        return text[:start_limit] + f"\n...(省略{len(text)-start_limit-end_limit}字)\n" + text[-end_limit:]
