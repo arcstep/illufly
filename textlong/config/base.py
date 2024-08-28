@@ -63,7 +63,11 @@ def get_env(key: str=None):
         "TEXTLONG_COLOR_CHUNK": "绿色",
         "TEXTLONG_COLOR_FINAL": "青色",
         "TEXTLONG_COLOR_FRONT_MATTER": "品红",
-        
+
+        # 结束语
+        "TEXTLONG_AIGC_INFO_DECLARE": "内容由AI生成，其观点仅代表创作者个人立场",
+        "TEXTLONG_AIGC_INFO_CHK": "可联系服务商查验其校验码",
+
         # 多线程配置
         "TEXTLONG_MAX_WORKERS": 4,
         
