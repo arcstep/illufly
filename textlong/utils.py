@@ -3,6 +3,7 @@ import os
 import hashlib
 from typing import List, Union, Any
 from langchain_core.documents import Document
+from .config import get_env
 
 def raise_not_install(packages):
     print(f"please install package: '{packages}' with pip or poetry")
@@ -59,3 +60,43 @@ def compress_text(text: str, start_limit: int=100, end_limit: int=100, delta: in
     else:
         # 否则，保留前后部分并用省略号连接
         return text[:start_limit] + f"\n...(省略{len(text)-start_limit-end_limit}字)\n" + text[-end_limit:]
+
+def stream_log(call, *args, **kwargs):
+    """
+    打印流式日志。
+    """
+
+    output_text = ""
+    last_block_type = ""
+
+    for block in call(*args, **kwargs):
+        if block.block_type in ['text', 'final', 'front_matter']:
+            output_text += block.text
+
+        if block.block_type in ['chunk']:
+            print(block.text_with_print_color, end="")
+            last_block_type = block.block_type
+
+        if block.block_type in ['info', 'warn', 'text']:
+            if last_block_type == "chunk":
+                print("\n")
+                last_block_type = ""
+            print(f'>-[{block.block_type.upper()}]>> {block.text_with_print_color}')
+            last_block_type = block.block_type
+    
+    if last_block_type == "chunk":
+        print("\n")
+        last_block_type = ""
+
+    # 生成哈希值
+    # 移除前后空格以确保唯一性
+    trimmed_output_text = output_text.strip()
+    hash_object = hashlib.sha256(trimmed_output_text.encode())
+    hash_hex = hash_object.hexdigest()  # 获取十六进制哈希值
+    # 转换为8位数字哈希值
+    hash_code = int(hash_hex, 16) % (10 ** 8)  # 取模运算得到8位数字
+
+    tail = f'>-[END]>> 【{get_env("TEXTLONG_AIGC_INFO_DECLARE")}，{get_env("TEXTLONG_AIGC_INFO_CHK")} {hash_code}】'
+    print(tail)
+    
+    return output_text
