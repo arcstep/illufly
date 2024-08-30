@@ -15,7 +15,8 @@ from langchain_text_splitters import TextSplitter
 from ..config import get_folder_root, get_env
 from ..utils import raise_not_install, hash_text, clean_filename
 from ..project import is_project_existing, BaseProject
-from ..writing import MarkdownLoader, TextChunk
+from ..writing import MarkdownLoader
+from ..message import TextBlock
 
 from .qa_excel import QAExcelsLoader
 
