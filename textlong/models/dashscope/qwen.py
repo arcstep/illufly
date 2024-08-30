@@ -1,6 +1,7 @@
 from http import HTTPStatus
 from dashscope import Generation
-
+from ...utils import stream_log
+from ...message import TextBlock
 def qwen(prompt, model="qwen-turbo"):
     """
     messages = [
@@ -28,24 +29,17 @@ def qwen(prompt, model="qwen-turbo"):
         stream=True,
         incremental_output=True
         )
-    full_content = ""
 
     # 默认使用流输出
+    full_content = ""
     for response in responses:
         if response.status_code == HTTPStatus.OK:
-            chunk = response.output.choices[0].message.content
-            yield chunk
-            full_content += chunk
+            content = response.output.choices[0].message.content
+            yield TextBlock("chunk", content)
+            full_content += content
         else:
-            yield ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+            yield TextBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                 response.request_id, response.status_code,
                 response.code, response.message
-            ))
-    print(f"Full content:{full_content}")
-
-    # 返回生成的文本
-    yield full_content
-
-def qwen_log(prompt, model="qwen-turbo"):
-    for chunk in qwen(prompt, model):
-        print(chunk, end='')
+            )))
+    yield TextBlock("final", full_content)

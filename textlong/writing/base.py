@@ -11,9 +11,9 @@ from langchain_core.messages import BaseMessage
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.memory.chat_memory import BaseChatMemory
 
-from .message import TextChunk
 from .markdown import MarkdownLoader
 from .command import Command
+from ..message import TextBlock
 from ..parser import parse_markdown, create_front_matter
 from ..hub import load_prompt
 from ..importer import load_markdown
@@ -28,16 +28,16 @@ def _create_chain(llm, prompt_template, **kwargs):
 
 def _call_chain(chain, completed, is_fake: bool=False, verbose: bool=False):
     if get_verbose() or is_fake or verbose:
-        yield TextChunk('info', chain.get_prompts()[0].format(**completed))
+        yield TextBlock('info', chain.get_prompts()[0].format(**completed))
 
     if is_fake:
-        yield TextChunk('info', "Fake-Output-Content...\n")
+        yield TextBlock('info', "Fake-Output-Content...\n")
     else:
         for chunk in chain.stream(completed):
             if isinstance(chunk, BaseMessage):
-                yield TextChunk('chunk', chunk.content)
+                yield TextBlock('chunk', chunk.content)
             else:
-                yield TextChunk('chunk', chunk)
+                yield TextBlock('chunk', chunk)
 
 def gather_docs(completed: Union[str, List[str]], base_folder: str="") -> str:
     """
@@ -123,16 +123,16 @@ def stream(
         'args': not_empty_args,
     }
     front_matter = create_front_matter({k: dict_data[k] for k in dict_data if dict_data[k]})
-    yield TextChunk('front_matter', front_matter)
+    yield TextBlock('front_matter', front_matter)
     
     # final output
     output_text = ""
 
     if (get_verbose() or verbose) and base_folder:
-        yield TextChunk('info', f'\nbase_folder: {base_folder}\n')
+        yield TextBlock('info', f'\nbase_folder: {base_folder}\n')
 
     output_str = (" | " + output_file) if output_file else ""
-    yield TextChunk('info', f'Prompt ID: {prompt_id}{output_str}\n')
+    yield TextBlock('info', f'Prompt ID: {prompt_id}{output_str}\n')
 
     # completed
     input_doc = gather_docs(completed, base_folder) or ''
@@ -148,9 +148,9 @@ def stream(
         old_docs = MarkdownLoader(input_doc)
         task_mode, task_todos = old_docs.get_todo_documents(sep_mode)
         if get_verbose() or verbose:
-            yield TextChunk('info', f'\nsep_mode: {sep_mode}\n')
-            yield TextChunk('info', f'task_mode: {task_mode}\n')
-            yield TextChunk('info', f'task_todos: {task_todos}\n\n')
+            yield TextBlock('info', f'\nsep_mode: {sep_mode}\n')
+            yield TextBlock('info', f'task_mode: {task_mode}\n')
+            yield TextBlock('info', f'task_todos: {task_todos}\n\n')
 
     if task_mode == 'all':
         _kwargs = {
@@ -168,7 +168,7 @@ def stream(
             yield chunk
         final_md = extract_text(resp_md, tag_start, tag_end)
         output_text += final_md
-        yield TextChunk('final', final_md)
+        yield TextBlock('final', final_md)
 
     elif task_mode == 'document':
         last_index = None
@@ -177,11 +177,11 @@ def stream(
             if last_index != None:
                 md = "\n"
                 output_text += md
-                yield TextChunk('text', md)
+                yield TextBlock('text', md)
             if old_docs.documents[last_index:index]:
                 md = MarkdownLoader.to_markdown(old_docs.documents[last_index:index])
                 output_text += md
-                yield TextChunk('text', md)
+                yield TextBlock('text', md)
 
             last_index = index + 1
             
@@ -207,17 +207,17 @@ def stream(
                 final_md_strip = MarkdownLoader.to_markdown(to_insert).strip()
 
                 output_text += final_md_strip
-                yield TextChunk('final', final_md_strip)
+                yield TextBlock('final', final_md_strip)
 
             else:
                 # 如果内容是空行就不再处理
                 output_text += doc.page_content
-                yield TextChunk('text', doc.page_content)
+                yield TextBlock('text', doc.page_content)
 
         if old_docs.documents[last_index:None]:
             md = MarkdownLoader.to_markdown(old_docs.documents[last_index:None])
             output_text += md
-            yield TextChunk('text', md)
+            yield TextBlock('text', md)
     
     # 记忆
     if memory:
@@ -229,7 +229,7 @@ def stream(
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(front_matter + output_text)
-            yield TextChunk('warn', f'已保存 {output_file}, 共计 {len(output_text)} 字。')
+            yield TextBlock('warn', f'已保存 {output_file}, 共计 {len(output_text)} 字。')
 
 def stream_log(llm: Runnable, **kwargs):
     """

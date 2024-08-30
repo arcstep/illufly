@@ -1,9 +1,9 @@
 from ..config import get_env, color_code
 
-class TextChunk():
-    def __init__(self, mode: str, content: str, session_id: str=None):
+class TextBlock():
+    def __init__(self, block_type: str, content: str, session_id: str=None):
         self.content = content
-        self.mode = mode
+        self.block_type = block_type
     
     @property
     def text(self):
@@ -12,17 +12,17 @@ class TextChunk():
     @property
     def text_with_print_color(self):
         color = get_env("TEXTLONG_COLOR_DEFAULT")
-        if self.mode == 'text':
+        if self.block_type == 'text':
             color = get_env("TEXTLONG_COLOR_TEXT")
-        elif self.mode == 'info':
+        elif self.block_type == 'info':
             color = get_env("TEXTLONG_COLOR_INFO")
-        elif self.mode == 'chunk':
+        elif self.block_type == 'chunk':
             color = get_env("TEXTLONG_COLOR_CHUNK")
-        elif self.mode == 'warn':
+        elif self.block_type == 'warn':
             color = get_env("TEXTLONG_COLOR_WARN")
-        elif self.mode == 'final':
+        elif self.block_type == 'final':
             color = get_env("TEXTLONG_COLOR_FINAL")
-        elif self.mode == 'front_matter':
+        elif self.block_type == 'front_matter':
             color = get_env("TEXTLONG_COLOR_FRONT_MATTER")
 
         return color_code(color) + self.content + "\033[0m"

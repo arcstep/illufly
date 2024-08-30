@@ -11,4 +11,3 @@ from .base import (
   more_outline,
   from_outline
 )
-from .message import TextChunk
