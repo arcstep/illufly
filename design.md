@@ -18,7 +18,7 @@
 ```mermaid
 graph LR
     INPUT((输入))
-    Prompt(提示语)
+    Prompt(提示语模板)
     LLM(大模型)
     OUTPUT((输出))
     DB[[向量库]]
@@ -26,7 +26,6 @@ graph LR
     Tools(工具\n BI/工单)
     Workshop(工作台\n 数据/讲稿)
     Pen[指令]
-    ShortermMemory(短期记忆)
     LongtermMemory(长期记忆)
     Topic[[持久会话]]
     Project[[项目上下文环境]]
@@ -37,16 +36,17 @@ graph LR
     style LLM fill:#ccf,stroke:#333,stroke-width:4px
     
     INPUT -->|指定| Topic
-    INPUT ==>|填充| Prompt
+    INPUT ==>|填充| Prompt -->|观察| Workshop
     INPUT -->|检索| DB -->|召回| Knowledge -->|填充| Prompt
-    Prompt ==>|调用| LLM -->|选择| Tools -->|存储| ShortermMemory -->|反馈| LLM
+    Prompt ==>|调用| LLM -->|选择| Tools -->|反馈| LLM
                                  Tools -->|修改| Workshop
 
     LLM ==>|生成| OUTPUT -->|提取| Pen -->|呈现| Workshop
                  OUTPUT -->|保存到| Topic
 
-    Topic -->|属于| Project -->|包含| Workshop
+    Topic -->|属于| Project -->|管理| Workshop
     Topic -->|提取| LongtermMemory -->|填充| Prompt
+
 ```
 
 ## （三）工具构造
