@@ -17,7 +17,7 @@ from ..message import TextBlock
 from ..parser import parse_markdown, create_front_matter
 from ..hub import load_prompt
 from ..importer import load_markdown
-from ..utils import extract_text, safety_path, compress_text
+from ..utils import extract_text, safety_path, compress_text, stream_log
 from ..config import get_env
 
 def _create_chain(llm, prompt_template, **kwargs):
@@ -163,7 +163,7 @@ def stream(
         
         resp_md = ""
         for chunk in _call_chain(chain, {"task": task}, is_fake, verbose):
-            if chunk.mode == 'chunk':
+            if chunk.block_type == 'chunk':
                 resp_md += chunk.content
             yield chunk
         final_md = extract_text(resp_md, tag_start, tag_end)
@@ -198,7 +198,7 @@ def stream(
 
                 resp_md = ""
                 for chunk in _call_chain(chain, {"task": task}, is_fake, verbose):
-                    if chunk.mode == 'chunk':
+                    if chunk.block_type == 'chunk':
                         resp_md += chunk.content
                     yield chunk
 
@@ -230,46 +230,6 @@ def stream(
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(front_matter + output_text)
             yield TextBlock('warn', f'已保存 {output_file}, 共计 {len(output_text)} 字。')
-
-def stream_log(llm: Runnable, **kwargs):
-    """
-    打印流式日志。
-    """
-
-    output_text = ""
-    last_print_mode = ""
-
-    for chunk in stream(llm, **kwargs):
-        if chunk.mode in ['text', 'final', 'front_matter']:
-            output_text += chunk.text
-
-        if chunk.mode in ['chunk']:
-            print(chunk.text_with_print_color, end="")
-            last_print_mode = chunk.mode
-
-        if chunk.mode in ['info', 'warn', 'text']:
-            if last_print_mode == "chunk":
-                print("\n")
-                last_print_mode = ""
-            print(f'>-[{chunk.mode.upper()}]>> {chunk.text_with_print_color}')
-            last_print_mode = chunk.mode
-    
-    if last_print_mode == "chunk":
-        print("\n")
-        last_print_mode = ""
-
-    # 生成哈希值
-    # 移除前后空格以确保唯一性
-    trimmed_output_text = output_text.strip()
-    hash_object = hashlib.sha256(trimmed_output_text.encode())
-    hash_hex = hash_object.hexdigest()  # 获取十六进制哈希值
-    # 转换为8位数字哈希值
-    hash_code = int(hash_hex, 16) % (10 ** 8)  # 取模运算得到8位数字
-
-    tail = f'>-[END]>> 【{get_env("TEXTLONG_AIGC_INFO_DECLARE")}，{get_env("TEXTLONG_AIGC_INFO_CHK")} {hash_code}】'
-    print(tail)
-    
-    return output_text
 
 def get_default_writing_args(command: str=None, **kwargs):
     if not command:
@@ -318,25 +278,25 @@ def get_default_writing_args(command: str=None, **kwargs):
 def idea(llm: Runnable, **kwargs):
     if 'task' not in kwargs:
         raise ValueError("method <chat> need param <task> !!")
-    return stream_log(llm, **get_default_writing_args('idea', **kwargs))
+    return stream_log(stream, llm, **get_default_writing_args('idea', **kwargs))
 
 def chat(llm: Runnable, **kwargs):
     if 'task' not in kwargs:
         raise ValueError("method <chat> need param <task> !!")
-    return stream_log(llm, **get_default_writing_args('chat', **kwargs))
+    return stream_log(stream, llm, **get_default_writing_args('chat', **kwargs))
 
 def outline(llm: Runnable, **kwargs):
     if 'task' not in kwargs:
         raise ValueError("method <outline> need param <task> !!")
-    return stream_log(llm, **get_default_writing_args('outline', **kwargs))
+    return stream_log(stream, llm, **get_default_writing_args('outline', **kwargs))
 
 def from_outline(llm: Runnable, **kwargs):
     if 'completed' not in kwargs:
         raise ValueError("method <from_outline> need param <completed> !!")
-    return stream_log(llm, **get_default_writing_args('from_outline', **kwargs))
+    return stream_log(stream, llm, **get_default_writing_args('from_outline', **kwargs))
 
 def more_outline(llm: Runnable, **kwargs):
     if 'completed' not in kwargs:
         raise ValueError("method <more_outline> need param <completed> !!")
-    return stream_log(llm, **get_default_writing_args('more_outline', **kwargs))
+    return stream_log(stream, llm, **get_default_writing_args('more_outline', **kwargs))
 
