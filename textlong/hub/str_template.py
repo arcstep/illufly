@@ -16,7 +16,7 @@ def find_resource_prompt(tag: str=None):
     # if tag not in ['writing', 'chat', 'kg', 'data']:
     #     tag = 'writing'
 
-    all_resources = contents(f'textlong.__PROMPTS__.{tag}')
+    all_resources = contents(f'{PROMPT_WRITING_BASE}.{tag}')
     return [r for r in all_resources if not is_resource(f'{PROMPT_WRITING_BASE}.{tag}', r)]
  
 def load_resource_prompt(prompt_id: str, tag: str=None):
