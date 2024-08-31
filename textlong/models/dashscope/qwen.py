@@ -1,33 +1,47 @@
+from typing import Union, List, Optional
+from langchain.memory import ConversationBufferWindowMemory
+from langchain.memory.chat_memory import BaseChatMemory
+
 from http import HTTPStatus
 from dashscope import Generation
 from ...utils import stream_log
 from ...message import TextBlock
-def qwen(prompt, model="qwen-turbo"):
+
+def qwen(
+    prompt: Union[str, List[dict]],
+    model: str="qwen-turbo",
+    memory: Optional[BaseChatMemory]=None,
+    **kwargs):
     """
-    messages = [
-        {'role':'system','content':'you are a helpful assistant'},
-        {'role': 'user','content': '你是谁？'}
+    Args:
+    - prompt 支持字符串提示语或消息列表。
+
+    Example:
+        messages = [
+            {'role':'system','content':'you are a helpful assistant'},
+            {'role': 'user','content': '你是谁？'}
         ]
 
-    gen(messages)
+        stream_log(qwen, messages)
     """
 
     # 转换消息格式
+    _messages = None
+    _prompt = None
     if isinstance(prompt, str):
-        messages = [
-            {'role':'system','content':'you are a helpful assistant'},
-            {'role': 'user', 'content': prompt}
-        ]
+        _prompt = prompt
     else:
-        messages = prompt
+        _messages = prompt
 
     # 调用生成接口
     responses = Generation.call(
         model="qwen-turbo",
-        messages=messages,
+        messages=_messages,
+        prompt=_prompt,
         result_format='message',
         stream=True,
-        incremental_output=True
+        incremental_output=True,
+        **kwargs
         )
 
     # 默认使用流输出
@@ -42,4 +56,5 @@ def qwen(prompt, model="qwen-turbo"):
                 response.request_id, response.status_code,
                 response.code, response.message
             )))
+
     yield TextBlock("final", full_content)
