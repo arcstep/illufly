@@ -60,32 +60,3 @@ def compress_text(text: str, start_limit: int=100, end_limit: int=100, delta: in
     else:
         # 否则，保留前后部分并用省略号连接
         return text[:start_limit] + f"\n...(省略{len(text)-start_limit-end_limit}字)\n" + text[-end_limit:]
-
-def stream_log(call, *args, **kwargs):
-    """
-    打印流式日志。
-    """
-
-    output_text = ""
-    last_block_type = ""
-
-    for block in call(*args, **kwargs):
-        if block.block_type in ['text', 'final', 'front_matter']:
-            output_text += block.text
-
-        if block.block_type in ['chunk']:
-            print(block.text_with_print_color, end="")
-            last_block_type = block.block_type
-
-        if block.block_type in ['info', 'warn', 'text']:
-            if last_block_type == "chunk":
-                print("\n")
-                last_block_type = ""
-            print(f'>-[{block.block_type.upper()}]>> {block.text_with_print_color}')
-            last_block_type = block.block_type
-    
-    if last_block_type == "chunk":
-        print("\n")
-        last_block_type = ""
-
-    return output_text

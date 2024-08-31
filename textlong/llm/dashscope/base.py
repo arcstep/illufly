@@ -5,8 +5,7 @@ from langchain.memory import ConversationBufferWindowMemory
 from langchain.memory.chat_memory import BaseChatMemory
 
 from http import HTTPStatus
-from ...utils import stream_log
-from ...message import TextBlock
+from ...message import TextBlock, stream_log
 from ...config import get_env
 
 import dashscope
