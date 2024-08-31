@@ -1,16 +1,20 @@
 from typing import Union, List, Optional
+from langchain_core.messages.ai import AIMessage
+from langchain_core.messages.human import HumanMessage
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.memory.chat_memory import BaseChatMemory
 
 from http import HTTPStatus
-from dashscope import Generation
 from ...utils import stream_log
 from ...message import TextBlock
 
+import dashscope
+
 def qwen(
     prompt: Union[str, List[dict]],
-    model: str="qwen-turbo",
+    model: str="qwen-max",
     memory: Optional[BaseChatMemory]=None,
+    question: Optional[str]=None,
     **kwargs):
     """
     Args:
@@ -34,11 +38,16 @@ def qwen(
         _messages = prompt
 
     # 调用生成接口
-    responses = Generation.call(
-        model="qwen-turbo",
+    responses = dashscope.Generation.call(
+        model="qwen-max",
         messages=_messages,
         prompt=_prompt,
+        seed=1234,
+        top_p=0.8,
         result_format='message',
+        max_tokens=1500,
+        temperature=0.85,
+        repetition_penalty=1.0,
         stream=True,
         incremental_output=True,
         **kwargs
@@ -58,3 +67,12 @@ def qwen(
             )))
 
     yield TextBlock("final", full_content)
+
+    # 归纳记忆
+    if memory:
+        if not question:
+            question = "请你开始"
+            memory.chat_memory.clear()
+
+        memory.chat_memory.add_user_message(HumanMessage(question))
+        memory.chat_memory.add_ai_message(AIMessage(full_content))

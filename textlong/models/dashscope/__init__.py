@@ -1,1 +1,1 @@
-from .qwen import qwen, stream_log
+from .base import qwen
