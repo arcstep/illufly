@@ -7,5 +7,6 @@ from .str_template import (
 
 from .chat_template import (
   load_resource_chat_template,
-  load_chat_template
+  load_chat_template,
+  create_prompt
 )
