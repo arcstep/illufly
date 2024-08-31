@@ -7,14 +7,13 @@ from langchain.memory.chat_memory import BaseChatMemory
 from http import HTTPStatus
 from ...utils import stream_log
 from ...message import TextBlock
+from ...config import get_env
 
 import dashscope
 
 def qwen(
     prompt: Union[str, List[dict]],
     model: str="qwen-max",
-    memory: Optional[BaseChatMemory]=None,
-    question: Optional[str]=None,
     **kwargs):
     """
     Args:
@@ -67,12 +66,3 @@ def qwen(
             )))
 
     yield TextBlock("final", full_content)
-
-    # 归纳记忆
-    if memory:
-        if not question:
-            question = "请你开始"
-            memory.chat_memory.clear()
-
-        memory.chat_memory.add_user_message(HumanMessage(question))
-        memory.chat_memory.add_ai_message(AIMessage(full_content))

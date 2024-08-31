@@ -7,18 +7,9 @@
     ... 还有其他一些可用的特性
 """
 
-from typing import List
+from typing import List, Dict, Any, Union
 from importlib.resources import read_text, is_resource, contents
 from langchain.prompts import PromptTemplate
-from langchain.memory import ConversationBufferWindowMemory
-from langchain.memory.chat_memory import BaseChatMemory
-from langchain_core.messages.ai import AIMessage, AIMessageChunk
-from langchain_core.messages.human import HumanMessage, HumanMessageChunk
-from langchain_core.messages.base import BaseMessage, BaseMessageChunk
-from langchain_core.messages.chat import ChatMessage, ChatMessageChunk
-from langchain_core.messages.function import FunctionMessage, FunctionMessageChunk
-from langchain_core.messages.system import SystemMessage, SystemMessageChunk
-from langchain_core.messages.tool import ToolMessage, ToolMessageChunk
 
 import os
 import re
@@ -142,11 +133,14 @@ def load_chat_template(prompt_id: str, template_folder: str=None,):
 
     raise ValueError(f'无法构建模板：{prompt_id}')
 
-def create_prompt(prompt_id, question:str="", memory:BaseChatMemory=None, **kwargs):
+def create_prompt(prompt_id, question:str=None, history=[], **kwargs):
     """
     从模板文件夹加载提示语模板，并填充变量。
     memory对象作为记忆历史，将补充到提示语模板的中。
     """
+    if not question:
+        question = get_env("TEXTLONG_USER_MESSAGE_DEFAULT")
+
     template = load_chat_template(prompt_id)
     system_prompt = template.partial(**kwargs).format()
 
@@ -158,11 +152,9 @@ def create_prompt(prompt_id, question:str="", memory:BaseChatMemory=None, **kwar
     ]
 
     # 追加对话历史
-    messages.extend(get_raw_messages(memory))
+    messages.extend(history)
 
-    # 追加问题到记忆中
-    if not question:
-        question = "请你开始"
+    # 追加问题到最后
     messages.extend([
         {
             'role': 'user',
@@ -171,31 +163,3 @@ def create_prompt(prompt_id, question:str="", memory:BaseChatMemory=None, **kwar
     ])
 
     return messages
-
-def get_raw_messages(memory):
-    """
-    从记忆对象中的 Message 对象列表构造原始的消息列表。
-    """
-    if not memory:
-        return []
-
-    messages = memory.chat_memory.messages
-    
-    string_messages = []
-    for m in messages:
-        if isinstance(m, HumanMessage):
-            role = "user"
-        elif isinstance(m, AIMessage):
-            role = "assistant"
-        elif isinstance(m, SystemMessage):
-            role = "System"
-        elif isinstance(m, ChatMessage):
-            role = m.role
-        else:
-            raise ValueError(f"Got unsupported message type: {m}")
-        string_messages.append({
-            'role': role,
-            'content': m.content
-        })
- 
-    return string_messages

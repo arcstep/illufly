@@ -88,15 +88,4 @@ def stream_log(call, *args, **kwargs):
         print("\n")
         last_block_type = ""
 
-    # 生成哈希值
-    # 移除前后空格以确保唯一性
-    trimmed_output_text = output_text.strip()
-    hash_object = hashlib.sha256(trimmed_output_text.encode())
-    hash_hex = hash_object.hexdigest()  # 获取十六进制哈希值
-    # 转换为8位数字哈希值
-    hash_code = int(hash_hex, 16) % (10 ** 8)  # 取模运算得到8位数字
-
-    tail = f'>-[END]>> 【{get_env("TEXTLONG_AIGC_INFO_DECLARE")}，{get_env("TEXTLONG_AIGC_INFO_CHK")} {hash_code}】'
-    print(tail)
-    
     return output_text
