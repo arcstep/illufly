@@ -13,7 +13,7 @@ from langchain_core.messages.system import SystemMessage, SystemMessageChunk
 from langchain_core.messages.tool import ToolMessage, ToolMessageChunk
 
 from ..config import get_env
-from ..utils import stream_log
+from ..message import stream_log
 from ..hub import create_prompt
 def stream(model_call, prompt_id:str=None, question:str=None, memory:BaseChatMemory=None, input:Dict[str, Any]={}, **model_kwargs):
     """
