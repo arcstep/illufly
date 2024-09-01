@@ -11,7 +11,7 @@ def stream_log(call, *args, **kwargs):
     last_block_type = ""
 
     for block in call(*args, **kwargs):
-        if block.block_type in ['text', 'final', 'front_matter']:
+        if block.block_type in ['text', 'chunk', 'front_matter']:
             output_text += block.text
 
         if block.block_type in ['chunk']:
@@ -30,3 +30,4 @@ def stream_log(call, *args, **kwargs):
         last_block_type = ""
 
     return output_text
+

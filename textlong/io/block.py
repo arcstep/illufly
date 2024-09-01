@@ -3,7 +3,7 @@ from ..config import get_env, color_code
 class TextBlock():
     def __init__(self, block_type: str, content: str, session_id: str=None):
         self.content = content
-        self.block_type = block_type.lower()
+        self.block_type = block_type
     
     @property
     def text(self):
@@ -17,7 +17,8 @@ class TextBlock():
             'warn': "TEXTLONG_COLOR_WARN",
             'final': "TEXTLONG_COLOR_FINAL",
             'chunk': "TEXTLONG_COLOR_CHUNK",
-            'front_matter': "TEXTLONG_COLOR_FRONT_MATTER"
+            'front_matter': "TEXTLONG_COLOR_FRONT_MATTER",
+            'END': "TEXTLONG_COLOR_INFO"
         }
 
         env_var_name = color_mapping.get(self.block_type, "TEXTLONG_COLOR_DEFAULT")
