@@ -1,1 +1,2 @@
-from .stream import stream
+from .base import chat, write, stream
+from .fake import fake_llm
