@@ -9,6 +9,7 @@ from ...io import TextBlock, stream_log
 from ...config import get_env
 
 import dashscope
+import json
 
 def qwen(
     prompt: Union[str, List[dict]],
@@ -52,16 +53,17 @@ def qwen(
         )
 
     # 默认使用流输出
-    full_content = ""
     for response in responses:
         if response.status_code == HTTPStatus.OK:
-            content = response.output.choices[0].message.content
-            yield TextBlock("chunk", content)
-            full_content += content
+            ai_output = response.output.choices[0].message
+            if 'tool_calls' not in ai_output:
+                content = ai_output.content
+                yield TextBlock("chunk", content)
+            else:
+                for func in ai_output.tool_calls:
+                    yield TextBlock("tools_call", json.dumps(func))
         else:
             yield TextBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                 response.request_id, response.status_code,
                 response.code, response.message
             )))
-
-    yield TextBlock("final", full_content)
