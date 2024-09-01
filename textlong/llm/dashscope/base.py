@@ -5,7 +5,7 @@ from langchain.memory import ConversationBufferWindowMemory
 from langchain.memory.chat_memory import BaseChatMemory
 
 from http import HTTPStatus
-from ...message import TextBlock, stream_log
+from ...io import TextBlock, stream_log
 from ...config import get_env
 
 import dashscope
@@ -24,7 +24,7 @@ def qwen(
             {'role': 'user','content': '你是谁？'}
         ]
 
-        stream_log(qwen, messages)
+        stream(qwen, messages)
     """
 
     # 转换消息格式
