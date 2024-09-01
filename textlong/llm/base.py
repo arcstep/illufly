@@ -1,5 +1,6 @@
 import re
 import os
+import json
 import hashlib
 from typing import List, Union, Dict, Any
 from langchain.memory import ConversationBufferWindowMemory
@@ -16,7 +17,7 @@ from ..config import get_env
 from ..io import stream_log, chk_tail
 from ..hub import create_prompt, load_chat_template
 
-def chat(llm, question:str, messages:List=[], k=10, is_fake=False, **model_kwargs):
+def chat(llm, question:str, messages:List=[], toolkits=None, k=10, is_fake=False, **model_kwargs):
     """
     基于`memory`中的聊天历史，开始多轮对话。
 
@@ -42,16 +43,45 @@ def chat(llm, question:str, messages:List=[], k=10, is_fake=False, **model_kwarg
         new_messages = messages[-final_k:]
 
     # 调用大模型
-    output_text = stream_log(llm, new_messages, **model_kwargs)
-    messages.extend([{
-        'role': 'assistant',
-        'content': output_text
-    }])
+    while(True):
+        to_continue_call_llm = False
+        log = stream_log(llm, new_messages, **model_kwargs)
 
-    # 补充校验的尾缀
-    stream_log(chk_tail, output_text)
-    
-    return output_text
+        if log['tools_call']:
+            # 如果大模型的结果返回多个工具回调，则要逐个调用完成才能继续下一轮大模型的访问调用。
+            for index, tool in log['tools_call'].items():
+                for struct_tool in toolkits:
+                    if tool['function']['name'] == struct_tool.name:
+                        args = json.loads(tool['function']['arguments'])
+                        tool_resp = struct_tool.func(**args)
+                        tool_info = [
+                            {
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [tool]
+                            },
+                            {
+                                "role": "tool",
+                                "name": tool['function']['name'],
+                                "content": tool_resp
+                            }
+                        ]
+                        new_messages.extend(tool_info)
+                        messages.extend(tool_info)
+                        to_continue_call_llm = True
+        else:
+            messages.extend([{
+                'role': 'assistant',
+                'content': log['output']
+            }])
+            # 补充校验的尾缀
+            stream_log(chk_tail, log['output'])
+        
+        # 只要不要求继续调用工具，就赶紧跳出循环
+        if to_continue_call_llm:
+            continue
+        else:
+            return log['output']
 
 def write(llm, prompt_id: str=None, input:Dict[str, Any]={}, messages:List=None, question:str=None, **model_kwargs):
     if not question:
@@ -75,16 +105,16 @@ def write(llm, prompt_id: str=None, input:Dict[str, Any]={}, messages:List=None,
     ])
 
     # 调用大模型
-    output_text = stream_log(llm, messages, **model_kwargs)
+    log = stream_log(llm, messages, **model_kwargs)
     messages.extend([{
         'role': 'assistant',
-        'content': output_text
+        'content': log['output']
     }])
 
     # 补充校验的尾缀
-    stream_log(chk_tail, output_text)
+    stream_log(chk_tail, log['output'])
     
-    return output_text
+    return log['output']
 
 def stream(model_call, prompt_id:str=None, question:str=None, memory:BaseChatMemory=None, input:Dict[str, Any]={}, **model_kwargs):
     """
