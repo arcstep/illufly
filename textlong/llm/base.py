@@ -13,8 +13,79 @@ from langchain_core.messages.system import SystemMessage, SystemMessageChunk
 from langchain_core.messages.tool import ToolMessage, ToolMessageChunk
 
 from ..config import get_env
-from ..message import stream_log
-from ..hub import create_prompt
+from ..io import stream_log, chk_tail
+from ..hub import create_prompt, load_chat_template
+
+def chat(llm, question:str, messages:List=[], k=10, is_fake=False, **model_kwargs):
+    """
+    基于`memory`中的聊天历史，开始多轮对话。
+
+    Args:
+    - llm: 调用模型的函数
+    - question: 用户追问的问题
+    - messages: 记忆存储器
+    - k: 保留的历史消息轮数，每轮为2条消息
+    - model_kwargs: 模型调用的其他参数
+    """
+    # 将问题增加到消息列表的最后
+    messages.extend([{
+        'role': 'user',
+        'content': question
+    }])
+
+    # 如果第1条消息为 system 类型，就永远保留前3条消息和最后的k-1轮，否则就保留最后的k轮
+    if messages[0]['role'] == 'system':
+        final_k = 2*k-3 if k >= 2 else 1
+        new_messages = messages[:3] + messages[3:][-final_k:]
+    else:
+        final_k = 2*k-1 if k >= 1 else 1
+        new_messages = messages[-final_k:]
+
+    # 调用大模型
+    output_text = stream_log(llm, new_messages, **model_kwargs)
+    messages.extend([{
+        'role': 'assistant',
+        'content': output_text
+    }])
+
+    # 补充校验的尾缀
+    stream_log(chk_tail, output_text)
+    
+    return output_text
+
+def write(llm, prompt_id: str=None, input:Dict[str, Any]={}, messages:List=None, question:str=None, **model_kwargs):
+    if not question:
+        question = get_env("TEXTLONG_USER_MESSAGE_DEFAULT")
+
+    template = load_chat_template(prompt_id)
+    system_prompt = template.format(**input)
+
+    # 重置消息列表
+    messages.clear()
+    # 构造 system_prompt
+    messages.extend([
+        {
+            'role': 'system',
+            'content': system_prompt
+        },
+        {
+            'role': 'user',
+            'content': question
+        }
+    ])
+
+    # 调用大模型
+    output_text = stream_log(llm, messages, **model_kwargs)
+    messages.extend([{
+        'role': 'assistant',
+        'content': output_text
+    }])
+
+    # 补充校验的尾缀
+    stream_log(chk_tail, output_text)
+    
+    return output_text
+
 def stream(model_call, prompt_id:str=None, question:str=None, memory:BaseChatMemory=None, input:Dict[str, Any]={}, **model_kwargs):
     """
     stream 实现了大模型调用的逻辑封装，包括：提示语模板、模型和基于追问的记忆管理。
@@ -52,7 +123,7 @@ def stream(model_call, prompt_id:str=None, question:str=None, memory:BaseChatMem
 
         if len(memory.chat_memory.messages) == 0:
             memory.chat_memory.add_message(SystemMessage(prompt[0]["content"]))
-            memory.chat_memory.add_message(SystemMessage(prompt[1]["content"]))
+            memory.chat_memory.add_message(HumanMessage(prompt[1]["content"]))
         else:
             memory.chat_memory.add_message(HumanMessage(question))
 
@@ -73,29 +144,34 @@ def stream(model_call, prompt_id:str=None, question:str=None, memory:BaseChatMem
 
 def get_raw_messages(memory):
     """
-    从记忆对象中的 Message 对象列表构造原始的消息列表。
+    从记忆对象构造用于大模型调用的消息列表。
 
-    以下是生成的准则：
-    Role must be in ["user", "assistant", "system", "function", "plugin", "tool"] 
-    the role in last message must be in ["user", "function", "tool"]
+    以下是检查合法性的准则：
+    1. role 必须是 ["user", "assistant", "system", "function", "plugin", "tool"] 其中之一
+    2. 最后一条消息的 role 必须是 ["user", "function", "tool"] 其中之一
+    3. 返回时剔除 role 为 system 的消息
     """
     if not memory:
         return []
 
-    messages = memory.chat_memory.messages
-    
+    # messages = memory.chat_memory.messages
+    messages = memory
+
     string_messages = []
-    for m in messages:
+    selected_messages = messages[:2] + messages[2:][-20:]
+    for m in selected_messages:
         if isinstance(m, HumanMessage):
             role = "user"
         elif isinstance(m, AIMessage):
             role = "assistant"
-        elif isinstance(m, SystemMessage):
-            role = "System"
         elif isinstance(m, ChatMessage):
             role = m.role
+        elif isinstance(m, SystemMessage):
+            role = "System"
+            continue
         else:
             raise ValueError(f"Got unsupported message type: {m}")
+
         string_messages.append({
             'role': role,
             'content': m.content
