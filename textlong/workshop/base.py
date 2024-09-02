@@ -3,21 +3,12 @@ import os
 import json
 import hashlib
 from typing import List, Union, Dict, Any
-from langchain.memory import ConversationBufferWindowMemory
-from langchain.memory.chat_memory import BaseChatMemory
-from langchain_core.messages.ai import AIMessage, AIMessageChunk
-from langchain_core.messages.human import HumanMessage, HumanMessageChunk
-from langchain_core.messages.base import BaseMessage, BaseMessageChunk
-from langchain_core.messages.chat import ChatMessage, ChatMessageChunk
-from langchain_core.messages.function import FunctionMessage, FunctionMessageChunk
-from langchain_core.messages.system import SystemMessage, SystemMessageChunk
-from langchain_core.messages.tool import ToolMessage, ToolMessageChunk
 
 from ..config import get_env
 from ..io import stream_log, chk_tail
-from ..hub import create_prompt, load_chat_template
+from ..hub import load_chat_template
 
-def chat(llm, question:str, messages:List=[], state:Dict={}, toolkits=None, k=10, is_fake=False, **model_kwargs):
+def chat(llm, question:str, messages:List=[], state:Dict={}, toolkits=None, k=10, **model_kwargs):
     """
     基于`messages`中的聊天历史，开始多轮对话。
     在`state`中管理需要一直保留的变量、成果等，例如数据、提纲等。
@@ -25,7 +16,7 @@ def chat(llm, question:str, messages:List=[], state:Dict={}, toolkits=None, k=10
     Args:
     - llm: 调用模型的函数
     - question: 用户追问的问题
-    - messages: 记忆存储器
+    - messages: 工作台内保留的完整消息列表
     - state: 工作台的状态变量管理
     - k: 保留的历史消息轮数，每轮为2条消息
     - model_kwargs: 模型调用的其他参数
@@ -77,6 +68,7 @@ def write(llm, prompt_id: str=None, input:Dict[str, Any]={}, messages:List=None,
         }
     ])
 
+    # 构造一份短期记忆的拷贝
     new_messages = messages[None:None]
 
     return _call(llm, toolkits, messages, new_messages, **model_kwargs)
@@ -88,7 +80,7 @@ def _call(llm, toolkits, messages, new_messages, **model_kwargs):
     Args:
     - llm: 调用模型的函数
     - toolkits: 工具包
-    - messages: 完整的消息列表
+    - messages: 工作台内保留的完整消息列表
     - new_messages: 对话时代入提示语中的消息列表
     - model_kwargs: 模型调用的其他参数
 
