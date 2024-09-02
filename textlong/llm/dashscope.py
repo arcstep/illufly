@@ -52,7 +52,7 @@ def qwen(
         **kwargs
         )
 
-    # 默认使用流输出
+    # 流输出
     for response in responses:
         if response.status_code == HTTPStatus.OK:
             ai_output = response.output.choices[0].message

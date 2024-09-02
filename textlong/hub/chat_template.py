@@ -132,34 +132,3 @@ def load_chat_template(prompt_id: str, template_folder: str=None,):
             return template
 
     raise ValueError(f'无法构建模板：{prompt_id}')
-
-def create_prompt(prompt_id, question:str=None, history=[], **kwargs):
-    """
-    从模板文件夹加载提示语模板，并填充变量。
-    memory对象作为记忆历史，将补充到提示语模板的中。
-    """
-    if not question:
-        question = get_env("TEXTLONG_USER_MESSAGE_DEFAULT")
-
-    template = load_chat_template(prompt_id)
-    system_prompt = template.partial(**kwargs).format()
-
-    messages = [
-        {
-            'role': 'system',
-            'content': system_prompt
-        }
-    ]
-
-    # 追加对话历史
-    messages.extend(history)
-
-    # 追加问题到最后
-    messages.extend([
-        {
-            'role': 'user',
-            'content': question
-        }
-    ])
-
-    return messages

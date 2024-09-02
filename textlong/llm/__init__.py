@@ -1,2 +1,3 @@
-from .base import new_chat, chat, write
 from .fake import fake_llm
+from .openai import openai
+from .dashscope import qwen
