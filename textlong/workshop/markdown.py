@@ -8,6 +8,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import TextSplitter
 from .parser import parse_markdown, create_front_matter, list_markdown
 from ..config import get_env
+from ..utils import extract_text
 
 class Markdown():
     def __init__(self, doc_str: str=None):
@@ -47,7 +48,7 @@ class Markdown():
     @property
     def markdown(self):
         return self.__class__.to_markdown(self.documents)
-    
+
     @property
     def types(self):
         s = set()
@@ -57,110 +58,45 @@ class Markdown():
 
     def get_all(self, pattern: str=None):
         return [
-            (d, i)
-            for i, d in enumerate(self.documents) 
+            d
+            for d in self.documents
             if re.search(pattern or '.*', d.page_content)
         ]
 
-    def get_outline(self, pattern: str=None):
+    def get_outlines(self, pattern: str=None):
         return [
-            (d, i)
-            for i, d in enumerate(self.documents) 
+            d
+            for d in self.documents
             if d.metadata['type'] == "OUTLINE"
             and re.search(pattern or '.*', d.page_content)
         ]
-
-    def get_todo_documents(self, sep_mode: Union[str, List[str]]="all", pattern: str=None, score: float=None, k: int=None):
+    
+    def fetch_outline_task(self, outline_doc: Document, prev_k: int=800, next_k: int=200):
         """
-        将文档拆分为N个批次, 构建任务清单。
-
-        Args:
-        - sep_mode: 拆分模式
-            # 整体返回, 返回 ('all', List[doc: Document])
-            - 'all', 获得全部文档
-
-            # 从Document类型拆分, 返回 ('document', List[index: int])
-            - 'document', 逐个文档元素
-            - 'outline', 仅<OUTLINE><OUTLINE/>中的部份
-
-            # 从Document类型拆分, 返回 ('document', List[(from: int, to: int)])
-            - 'section', 将所有相邻的非标题内容连成一个批次并包括上文紧邻的标题
-            - 'not-heading', 将所有非标题内容连成一个批次
-            - 'headings', 将所有标题内容连成一个批次
-            - {元素名称}, 按标题、代码块、列表、paragraph等元素
-
-            # 从文本拆分, 返回 ('md', List[(from: int, to: int)])
-            - 'chunk', 合并Document, 直到合并后的内容超过字数限制k
-            - 'paragraph', 按每一个换行符
-
-        - pattern: 按正则表达式匹配并过滤
-        - score: 按向量相似性分数过滤
-
-        - k: 如果长度不超过k就合并批次
-
-        Return: 拆分好的文档和插入位置的元组。
-        - ('all', List[doc: Document])
-        - ('document', List[index: int])
-        - ('document', List[(from: int, to: int)])
-        - ('md', List[(from: int, to: int)])
+        提取提纲内容。
         """
-        sep_mode = sep_mode.lower()
-        pattern = pattern or '.*'
+        if outline_doc.metadata['type'] != 'OUTLINE':
+            raise  ValueError(f"Document's type Must be OUTLINE!")
 
-        if sep_mode == 'all':
-            docs = [
-                d
-                for d in self.documents
-                if re.search(pattern, d.page_content)
-            ]
-            return ('all', docs)
+        # 提取草稿
+        docs = []
 
-        elif sep_mode == 'element':
-            docs = [
-                (d, i)
-                for i, d in enumerate(self.documents) 
-                if re.search(pattern, d.page_content)
-            ]
-            return ('document', docs)
+        docs.extend(self.get_prev_documents(outline_doc, k=prev_k))
 
-        elif sep_mode in ['heading', 'list', 'block_code', 'paragraph']:
-            docs = [
-                (d, i)
-                for i, d in enumerate(self.documents) 
-                if re.search(pattern, d.page_content)
-                and d.metadata['type'] in sep_mode
-            ]
-            return ('document', docs)
+        outline = Document(page_content="{{YOUR_TEXT}}\n\n", metadata={"type": "paragraph"})
+        docs.append(outline)
 
-        elif sep_mode == 'outline':
-            docs = [
-                (d, i)
-                for i, d in enumerate(self.documents) 
-                if d.metadata['type'] == "OUTLINE"
-                and re.search(pattern, d.page_content)
-            ]
-            return ('document', docs)
+        docs.extend(self.get_next_documents(outline_doc, k=next_k))
 
-        elif sep_mode == 'not-heading':
-            docs = [
-                (d, i)
-                for i, d in enumerate(self.documents) 
-                if re.search(pattern, d.page_content)
-                and d.metadata['type'] != 'heading'
-            ]
-            segments = []
-            if docs:
-                chunk = [docs[0]]
-                for i in range(1, len(docs)):
-                    if docs[i][1] == chunk[-1][1] + 1:
-                        chunk.append(docs[i])
-                    else:
-                        segments.append(chunk)
-                        chunk = [docs[i]]
-                segments.append(chunk)
-            return ('document', segments)
+        draft = self.__class__.to_markdown(docs)
 
-        return ('unknown', [])
+        # 提取任务
+        tag_start = get_env("TEXTLONG_OUTLINE_START")
+        tag_end = get_env("TEXTLONG_OUTLINE_END")
+        md = self.__class__.to_markdown([outline_doc])
+        task = extract_text(md, tag_start, tag_end)
+
+        return (draft, task)
 
     def get_task_range(self, index_from: Union[str, Document], index_to: Union[str, Document]):
         """
