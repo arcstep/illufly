@@ -24,3 +24,7 @@ class TextBlock():
         env_var_name = color_mapping.get(self.block_type, "TEXTLONG_COLOR_DEFAULT")
         color = get_env(env_var_name)
         return color_code(color) + self.content + "\033[0m"
+
+def yield_block(block_type: str, output_text: str):
+    yield TextBlock(block_type, output_text)
+

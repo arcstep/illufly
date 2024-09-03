@@ -7,7 +7,7 @@ from langchain.memory.chat_memory import BaseChatMemory
 
 from http import HTTPStatus
 from dashscope import Generation
-from ...message import TextBlock
+from ..io import TextBlock
 
 def openai(
     prompt: Union[str, List[dict]],
