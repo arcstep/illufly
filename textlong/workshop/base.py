@@ -5,8 +5,9 @@ import hashlib
 from typing import List, Union, Dict, Any
 
 from ..config import get_env
-from ..io import stream_log, chk_tail
+from ..io import stream_log, chk_tail, yield_block
 from ..hub import load_chat_template
+from .markdown import Markdown
 
 def chat(llm, question:str, messages:List=[], state:Dict={}, toolkits=None, k=10, **model_kwargs):
     """
@@ -18,7 +19,7 @@ def chat(llm, question:str, messages:List=[], state:Dict={}, toolkits=None, k=10
     - question: 用户追问的问题
     - messages: 工作台内保留的完整消息列表
     - state: 工作台的状态变量管理
-    - k: 保留的历史消息轮数，每轮为2条消息
+    - k: 保留的历史消息轮数，每轮包括问和答共2条消息
     - model_kwargs: 模型调用的其他参数
     """
     # 将问题增加到消息列表的最后
@@ -71,7 +72,13 @@ def write(llm, prompt_id: str=None, input:Dict[str, Any]={}, messages:List=None,
     # 构造一份短期记忆的拷贝
     new_messages = messages[None:None]
 
-    return _call(llm, toolkits, messages, new_messages, **model_kwargs)
+    # 自动提取提纲
+    resp = _call(llm, toolkits, messages, new_messages, **model_kwargs)
+    state['outline'] = Markdown(resp).get_outlines()
+    if state['outline']:
+        state['output'] = resp
+
+    return resp
 
 def _call(llm, toolkits, messages, new_messages, **model_kwargs):
     """
@@ -97,6 +104,7 @@ def _call(llm, toolkits, messages, new_messages, **model_kwargs):
                     if tool['function']['name'] == struct_tool.name:
                         args = json.loads(tool['function']['arguments'])
                         tool_resp = struct_tool.func(**args)
+                        stream_log(yield_block, "tool_resp", tool_resp)
                         tool_info = [
                             {
                                 "role": "assistant",

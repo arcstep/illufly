@@ -8,6 +8,8 @@ def stream_log(call, *args, **kwargs):
 
     也可以将打印日志升级为提交到 redis 或消息队列中，实现跨系统的流信息交换，
     如 stream_redis / stream_mq 等。
+
+    返回值中，tools_call可以方便处理智能体的工具回调。
     """
 
     output_text = ""
@@ -25,7 +27,7 @@ def stream_log(call, *args, **kwargs):
             print(block.text_with_print_color, end="")
             last_block_type = block.block_type
 
-        if block.block_type in ['info', 'warn', 'text']:
+        if block.block_type in ['info', 'warn', 'text', 'tool_resp']:
             if last_block_type == "chunk":
                 print("\n")
                 last_block_type = ""
