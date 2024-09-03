@@ -72,11 +72,18 @@ def write(llm, prompt_id: str=None, input:Dict[str, Any]={}, messages:List=None,
     # 构造一份短期记忆的拷贝
     new_messages = messages[None:None]
 
-    # 自动提取提纲
+    # 提取输出
     resp = _call(llm, toolkits, messages, new_messages, **model_kwargs)
-    state['outline'] = Markdown(resp).get_outlines()
-    if state['outline']:
-        state['output'] = resp
+
+    # 提取提纲
+    md = Markdown(resp)
+    outlines = md.get_outlines()
+
+    # 仅当写作任务输出了提纲时，才将更新工作台的提纲信息
+    if outlines:
+        state['outline_docs'] = md
+        state['outline_task'] = outlines
+        state['from_outline'] = {}
 
     return resp
 
