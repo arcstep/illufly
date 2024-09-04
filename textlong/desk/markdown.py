@@ -63,7 +63,7 @@ class Markdown():
             if re.search(pattern or '.*', d.page_content)
         ]
 
-    def get_outlines(self, pattern: str=None):
+    def get_outline(self, pattern: str=None):
         return [
             d
             for d in self.documents
