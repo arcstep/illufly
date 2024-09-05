@@ -8,7 +8,7 @@ from ..config import get_env
 from ..io import stream_log, chk_tail, yield_block
 from ..hub import load_chat_template
 from ..llm import qwen
-from .markdown import Markdown
+from .markdown import Markdown, parse_markdown
 from .history import History
 from .state import State
 
@@ -40,7 +40,7 @@ class Desk:
             self.state.messages.clear()
         
         self.model_kwargs.update(model_kwargs)
-        _chat(
+        return _chat(
             question,
             messages=self.state.messages,
             toolkits=toolkits or self.toolkits,
@@ -88,16 +88,31 @@ class Desk:
         )
 
         # 提取提纲
-        md = Markdown(resp)
+        md = Markdown(resp[-1]['content'])
         outline = md.get_outline()
 
         # 仅当写作任务输出了提纲时，才将更新工作台的提纲信息
         if outline:
-            self.state.output = md
+            self.state.markdown = md
             self.state.outline = outline
             self.state.from_outline = {}
 
         return resp
+
+    def from_outline(self, toolkits=None, llm=None, **model_kwargs):
+        """
+        从工作台中指定的提纲执行扩写任务。
+        """
+        outline = self.state.outline
+        md = self.state.markdown
+
+        if outline and md:
+            for doc in outline:
+                (draft, task) = md.fetch_outline_task(doc)
+                stream_log(yield_block, "info", f"执行扩写任务：\n{task}")
+                resp = self.write({"draft": draft, "task": task}, template="FROM_OUTLINE", toolkits=toolkits, llm=llm, **model_kwargs)
+                self.state.from_outline[doc.metadata['id']] = resp[-1]['content']
+                # md.replace_documents(doc, doc, parse_markdown(resp_text))
 
 def _chat(question:str, messages:Dict[str, Any]=None, toolkits=None, llm=None, k:int=10, **model_kwargs):
     # 将问题增加到消息列表的最后
@@ -157,4 +172,4 @@ def _call(llm, messages, new_messages, toolkits, **model_kwargs):
         if to_continue_call_llm:
             continue
         else:
-            return log['output']
+            return messages

@@ -34,7 +34,7 @@ class Markdown():
         return self.documents
 
     @classmethod
-    def to_markdown(cls, documents: List[Document], sep: str="", with_front_matter: bool=False):
+    def to_text(cls, documents: List[Document], sep: str="", with_front_matter: bool=False):
         if not documents:
             return ''
 
@@ -46,8 +46,8 @@ class Markdown():
         return front_matter + sep.join([d.page_content for d in documents])
 
     @property
-    def markdown(self):
-        return self.__class__.to_markdown(self.documents)
+    def text(self):
+        return self.__class__.to_text(self.documents)
 
     @property
     def types(self):
@@ -74,6 +74,10 @@ class Markdown():
     def fetch_outline_task(self, outline_doc: Document, prev_k: int=800, next_k: int=200):
         """
         提取提纲内容。
+
+        返回结果为 (draft: str, task: str)，其中：
+        - draft 为结合了前后文和扩写位置说明的草稿
+        - task 为具体的要求
         """
         if outline_doc.metadata['type'] != 'OUTLINE':
             raise  ValueError(f"Document's type Must be OUTLINE!")
@@ -83,17 +87,17 @@ class Markdown():
 
         docs.extend(self.get_prev_documents(outline_doc, k=prev_k))
 
-        outline = Document(page_content="{{YOUR_TEXT}}\n\n", metadata={"type": "paragraph"})
+        outline = Document(page_content="<<<YOUR_TEXT>>>\n\n", metadata={"type": "paragraph"})
         docs.append(outline)
 
         docs.extend(self.get_next_documents(outline_doc, k=next_k))
 
-        draft = self.__class__.to_markdown(docs)
+        draft = self.__class__.to_text(docs)
 
         # 提取任务
         tag_start = get_env("TEXTLONG_OUTLINE_START")
         tag_end = get_env("TEXTLONG_OUTLINE_END")
-        md = self.__class__.to_markdown([outline_doc])
+        md = self.__class__.to_text([outline_doc])
         task = extract_text(md, tag_start, tag_end)
 
         return (draft, task)
@@ -186,7 +190,7 @@ class Markdown():
 
             # 在token数量可承受范围内优先前文
             # 并且，在获得上下文内容时，下文内容中不出现<OUTLINE>
-            new_doc = doc
+            new_doc = copy.deepcopy(doc)
             if new_doc.metadata['type'] == 'OUTLINE':
                 new_doc.page_content = '...\n'
             md = new_doc.page_content + md
