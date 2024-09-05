@@ -2,6 +2,7 @@ import re
 import os
 import json
 import hashlib
+import copy
 from typing import List, Union, Dict, Any
 
 from ..config import get_env
@@ -31,6 +32,18 @@ class Desk:
         # 
         self.state = State()
 
+    @property
+    def output(self):
+        if self.state.outline:
+            md = copy.deepcopy(self.state.markdown)
+            for doc in self.state.outline:
+                if doc.metadata['id'] in self.state.from_outline:
+                    from_outline_text = self.state.from_outline[doc.metadata['id']][-1]['content']
+                    md.replace_documents(doc, doc, from_outline_text)
+            return md.text
+        else:
+            return self.state.markdown.text
+
     def chat(self, question:str, toolkits=None, llm=None, new_chat:bool=False, k:int=10, **model_kwargs):
         """
         多轮对话时，将对话记录追加到状态数据中的消息列表。
@@ -53,49 +66,21 @@ class Desk:
         """
         执行单轮写作任务时，首先清空消息列表。
         """
-        if not question:
-            question = get_env("TEXTLONG_USER_MESSAGE_DEFAULT")
-
-        prompt_template = load_chat_template(template or "OUTLINE")
-        system_prompt = prompt_template.format(**input)
-
-        messages = self.state.messages
-        # 重置消息列表
-        messages.clear()
-        # 构造 system_prompt
-        messages.extend([
-            {
-                'role': 'system',
-                'content': system_prompt
-            },
-            {
-                'role': 'user',
-                'content': question
-            }
-        ])
-
-        # 构造一份短期记忆的拷贝
-        new_messages = messages[None:None]
-
-        # 提取输出
+        
         self.model_kwargs.update(model_kwargs)
-        resp = _call(
-            llm or self.llm,
-            messages,
-            new_messages,
-            toolkits or self.toolkits,
+        resp = _write(
+            input,
+            template=template,
+            messages=self.state.messages,
+            toolkits=toolkits or self.toolkits,
+            question=question,
+            llm=llm or self.llm,
             **self.model_kwargs
         )
 
         # 提取提纲
         md = Markdown(resp[-1]['content'])
-        outline = md.get_outline()
-
-        # 仅当写作任务输出了提纲时，才将更新工作台的提纲信息
-        if outline:
-            self.state.markdown = md
-            self.state.outline = outline
-            self.state.from_outline = {}
+        self.state.markdown = md
 
         return resp
 
@@ -106,13 +91,53 @@ class Desk:
         outline = self.state.outline
         md = self.state.markdown
 
-        if outline and md:
+        if md:
+            outline = md.get_outline()
             for doc in outline:
+                # 初始化为空的消息列表
+                self.state.from_outline[doc.metadata['id']] = []
+                new_messages = self.state.from_outline[doc.metadata['id']]
+
                 (draft, task) = md.fetch_outline_task(doc)
                 stream_log(yield_block, "info", f"执行扩写任务：\n{task}")
-                resp = self.write({"draft": draft, "task": task}, template="FROM_OUTLINE", toolkits=toolkits, llm=llm, **model_kwargs)
-                self.state.from_outline[doc.metadata['id']] = resp[-1]['content']
-                # md.replace_documents(doc, doc, parse_markdown(resp_text))
+                resp = _write(
+                    input={"draft": draft, "task": task},
+                    template="FROM_OUTLINE",
+                    messages=new_messages,
+                    toolkits=toolkits or self.toolkits,
+                    llm=llm or self.llm,
+                    **self.model_kwargs
+                )
+
+def _write(input:Dict[str, Any], template: str=None, messages:Dict[str, Any]=None, toolkits=None, question:str=None, llm=None, **model_kwargs):
+    """
+    执行单轮写作任务时，首先清空消息列表。
+    """
+    if not question:
+        question = get_env("TEXTLONG_USER_MESSAGE_DEFAULT")
+
+    prompt_template = load_chat_template(template or "OUTLINE")
+    system_prompt = prompt_template.format(**input)
+
+    # 重置消息列表
+    messages.clear()
+    # 构造 system_prompt
+    messages.extend([
+        {
+            'role': 'system',
+            'content': system_prompt
+        },
+        {
+            'role': 'user',
+            'content': question
+        }
+    ])
+
+    # 构造一份短期记忆的拷贝
+    new_messages = messages[None:None]
+
+    return _call(llm, messages, new_messages, toolkits, **model_kwargs)
+
 
 def _chat(question:str, messages:Dict[str, Any]=None, toolkits=None, llm=None, k:int=10, **model_kwargs):
     # 将问题增加到消息列表的最后
