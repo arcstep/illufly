@@ -182,15 +182,15 @@ class Markdown():
         last_header_level = None
         docs = []
 
-        for doc in self.documents[::-1]:
+        for _doc in self.documents[::-1]:
+            new_doc = copy.deepcopy(_doc)
             if not found_task:
-                if doc.metadata['id'] == task_id:
+                if new_doc.metadata['id'] == task_id:
                     found_task = True
                 continue
 
             # 在token数量可承受范围内优先前文
             # 并且，在获得上下文内容时，下文内容中不出现<OUTLINE>
-            new_doc = copy.deepcopy(doc)
             if new_doc.metadata['type'] == 'OUTLINE':
                 new_doc.page_content = '...\n'
             md = new_doc.page_content + md
@@ -199,11 +199,11 @@ class Markdown():
                 continue
 
             # 补充所有祖先标题
-            doc_is_header = doc.metadata['type'] == "heading"
+            doc_is_header = new_doc.metadata['type'] == "heading"
             if doc_is_header:
-                doc_level = doc.metadata['attrs']['level']
+                doc_level = new_doc.metadata['attrs']['level']
                 if last_header_level == None or doc_level <= last_header_level:
-                    docs.append(doc)
+                    docs.append(new_doc)
                     last_header_level = doc_level
 
         return docs[::-1]
@@ -224,14 +224,14 @@ class Markdown():
         found_task = False
         docs = []
 
-        for doc in self.documents:
+        for _doc in self.documents:
+            new_doc = copy.deepcopy(_doc)
             if not found_task:
-                if doc.metadata['id'] == task_id:
+                if new_doc.metadata['id'] == task_id:
                     found_task = True
                 continue
 
             # 获得上下文内容时，下文内容中不出现<OUTLINE>
-            new_doc = copy.deepcopy(doc)
             if new_doc.metadata['type'] == 'OUTLINE':
                 new_doc.page_content = '...\n'
             md = new_doc.page_content + md
