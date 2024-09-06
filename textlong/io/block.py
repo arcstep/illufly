@@ -13,6 +13,9 @@ class TextBlock():
     def text_with_print_color(self):
         color_mapping = {
             'text': "TEXTLONG_COLOR_TEXT",
+            'code': "TEXTLONG_COLOR_INFO",
+            'tool_resp': "TEXTLONG_COLOR_INFO",
+            'tools_call': "TEXTLONG_COLOR_INFO",
             'info': "TEXTLONG_COLOR_INFO",
             'warn': "TEXTLONG_COLOR_WARN",
             'final': "TEXTLONG_COLOR_FINAL",
