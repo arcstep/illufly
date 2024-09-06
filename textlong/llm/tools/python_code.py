@@ -3,12 +3,12 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.tools import StructuredTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
-from ...desk import Desk
 from ...io import stream_log, yield_block
 from ...hub import load_chat_template
 
 import textwrap
 import pandas as pd
+import numpy as np
 
 def parse_code(code: str):
     """
@@ -22,7 +22,7 @@ def execute_code(data: Dict[str, Any], code: str):
     """
     filtered_code = '\n'.join([line for line in code.split('\n') if not line.startswith('import')])
 
-    # 受限制的全局命名空间
+    # 受限的全局命名空间
     restricted_globals = {
         "__builtins__": {
             "print": print,
@@ -35,11 +35,11 @@ def execute_code(data: Dict[str, Any], code: str):
             "dict": dict,
             "list": list,
         },
-        "data": data, # 数据集清单
+        "data": data,  # 数据集清单
         "pd": pd  # 仅允许 pandas 模块
     }
 
-    # 受限制的本地命名空间
+    # 受限的本地命名空间
     restricted_locals = {}
 
     # 将附加代码添加到现有代码中
@@ -51,6 +51,7 @@ def execute_code(data: Dict[str, Any], code: str):
         return f"执行代码时发生错误: {e}"
     
     return restricted_locals.get('result', "生成的代码已经执行，但返回了空结果。")
+
 
 def create_python_code_tool(data: Dict[str, Any], llm: Any, **kwargs):
     def data_desc():
@@ -88,8 +89,10 @@ def create_python_code_tool(data: Dict[str, Any], llm: Any, **kwargs):
         code = parse_code(log['output'])
         if code:
             resp = execute_code(data, code)
-            if resp:
-                return resp
+            if isinstance(resp, pd.DataFrame):
+                return resp.to_markdown(index=False)
+            elif resp:
+                return convert_to_text(resp)
             else:
                 return "生成的代码已经执行，但返回了空结果。"
         else:
@@ -101,7 +104,23 @@ def create_python_code_tool(data: Dict[str, Any], llm: Any, **kwargs):
     return StructuredTool.from_function(
         func=python_code,
         name="python_code",
-        description="针对数据集名称和问题生成python代码，并返回执行结果。",
+        description="当必须根据具体数据回答问题时，从工作台数据集中查询、分析并给出结果。",
         args_schema=PythonCodeInput
     )
+
+def convert_to_text(data):
+    if isinstance(data, np.int64):
+        return int(data)
+    elif isinstance(data, dict):
+        return {k: convert_to_text(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_to_text(v) for v in data]
+    elif isinstance(data, np.ndarray):
+        return data.tolist()
+    elif isinstance(data, pd.DataFrame):
+        return data.to_markdown(index=False)
+    elif isinstance(data, pd.Series):
+        return data.to_markdown(index=False)
+    else:
+        return data
 

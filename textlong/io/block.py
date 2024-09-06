@@ -2,7 +2,7 @@ from ..config import get_env, color_code
 
 class TextBlock():
     def __init__(self, block_type: str, content: str, session_id: str=None):
-        self.content = content
+        self.content = str(content)
         self.block_type = block_type
     
     @property
