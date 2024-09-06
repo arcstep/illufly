@@ -13,8 +13,10 @@ from .markdown import Markdown, parse_markdown
 from .history import History
 from .state import State
 
+from ..llm.tools import create_python_code_tool, convert_to_openai_tool
+
 class Desk:
-    def __init__(self, llm, toolkits: list=None, k: int=10, history: History=None, **model_kwargs):
+    def __init__(self, llm, toolkits: list=[], tools: list=[], k: int=10, history: History=None, **model_kwargs):
         """
         Args:
         - llm: 调用模型的函数
@@ -24,13 +26,28 @@ class Desk:
         """
 
         self.llm = llm
-        self.toolkits = toolkits
         self.history = history
         self.k = k
         self.model_kwargs = model_kwargs
 
-        # 
+        self._toolkits = toolkits or []
+        self._tools = tools or []
+
+        # 状态数据
         self.state = State()
+    
+    def load_data(self, data: Dict[str, Any]):
+        self.state.data.update(data)
+    
+    @property
+    def tools(self):
+        python_code_tool = create_python_code_tool(self.state.data, self.llm, **self.model_kwargs)
+        return self._tools + [convert_to_openai_tool(python_code_tool)]
+    
+    @property
+    def toolkits(self):
+        python_code_tool = create_python_code_tool(self.state.data, self.llm, **self.model_kwargs)
+        return self._toolkits + [python_code_tool]
 
     @property
     def output(self):
@@ -44,7 +61,7 @@ class Desk:
         else:
             return self.state.markdown.text
 
-    def chat(self, question:str, toolkits=None, llm=None, new_chat:bool=False, k:int=10, **model_kwargs):
+    def chat(self, question:str, toolkits=[], tools=[], llm=None, new_chat:bool=False, k:int=10, **model_kwargs):
         """
         多轮对话时，将对话记录追加到状态数据中的消息列表。
         但如果指定新对话，则首先清空消息列表。
@@ -56,13 +73,14 @@ class Desk:
         return _chat(
             question,
             messages=self.state.messages,
-            toolkits=toolkits or self.toolkits,
+            toolkits=toolkits + self.toolkits,
+            tools=tools + self.tools,
             llm=llm or self.llm,
             k=k or self.k,
             **self.model_kwargs
         )
 
-    def write(self, input:Dict[str, Any], template: str=None, toolkits=None, question:str=None, llm=None, **model_kwargs):
+    def write(self, input:Dict[str, Any], template: str=None, toolkits=[], tools=[], question:str=None, llm=None, **model_kwargs):
         """
         执行单轮写作任务时，首先清空消息列表。
         """
@@ -72,7 +90,8 @@ class Desk:
             input,
             template=template,
             messages=self.state.messages,
-            toolkits=toolkits or self.toolkits,
+            toolkits=toolkits + self.toolkits,
+            tools=tools + self.tools,
             question=question,
             llm=llm or self.llm,
             **self.model_kwargs
@@ -84,7 +103,7 @@ class Desk:
 
         return resp
 
-    def from_outline(self, toolkits=None, llm=None, **model_kwargs):
+    def from_outline(self, toolkits=[], tools=[], llm=None, **model_kwargs):
         """
         从工作台中指定的提纲执行扩写任务。
         """
@@ -104,12 +123,13 @@ class Desk:
                     input={"draft": draft, "task": task},
                     template="FROM_OUTLINE",
                     messages=new_messages,
-                    toolkits=toolkits or self.toolkits,
+                    toolkits=toolkits + self.toolkits,
+                    tools=tools + self.tools,
                     llm=llm or self.llm,
                     **self.model_kwargs
                 )
 
-def _write(input:Dict[str, Any], template: str=None, messages:Dict[str, Any]=None, toolkits=None, question:str=None, llm=None, **model_kwargs):
+def _write(input:Dict[str, Any], template: str=None, messages:Dict[str, Any]=None, toolkits=[], question:str=None, llm=None, **model_kwargs):
     """
     执行单轮写作任务时，首先清空消息列表。
     """
@@ -138,8 +158,7 @@ def _write(input:Dict[str, Any], template: str=None, messages:Dict[str, Any]=Non
 
     return _call(llm, messages, new_messages, toolkits, **model_kwargs)
 
-
-def _chat(question:str, messages:Dict[str, Any]=None, toolkits=None, llm=None, k:int=10, **model_kwargs):
+def _chat(question:str, messages:Dict[str, Any]=None, toolkits=[], llm=None, k:int=10, **model_kwargs):
     # 将问题增加到消息列表的最后
     messages.extend([{
         'role': 'user',

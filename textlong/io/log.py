@@ -27,7 +27,7 @@ def stream_log(call, *args, **kwargs):
             print(block.text_with_print_color, end="")
             last_block_type = block.block_type
 
-        if block.block_type in ['info', 'warn', 'text', 'tool_resp']:
+        if block.block_type in ['info', 'warn', 'text', 'tool_resp', 'tools_call']:
             if last_block_type == "chunk":
                 print("\n")
                 last_block_type = ""
