@@ -4,12 +4,13 @@ import json
 import hashlib
 import copy
 from typing import List, Union, Dict, Any
+from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from ..config import get_env
 from ..io import stream_log, chk_tail, yield_block
 from ..hub import load_chat_template
 from ..llm import qwen
-from ..llm.tools import create_python_code_tool, convert_to_openai_tool
+from ..llm.tools import create_python_code_tool
 
 from .markdown import Markdown, parse_markdown
 from .history import History
@@ -88,6 +89,10 @@ class Desk:
         """
         
         _input = {"task": input} if isinstance(input, str) else input
+        _question = question
+        if self.state.data:
+            _question = "请根据需要调用工具查询真实数据。"
+
         self.model_kwargs.update(model_kwargs)
         resp = _write(
             _input,
@@ -95,7 +100,7 @@ class Desk:
             messages=self.state.messages,
             toolkits=toolkits + self.toolkits,
             tools=tools + self.tools,
-            question=question,
+            question=_question,
             llm=llm or self.llm,
             **self.model_kwargs
         )
@@ -106,12 +111,15 @@ class Desk:
 
         return resp
 
-    def from_outline(self, toolkits=[], tools=[], question:str=None, llm=None, prev_k:int=5000, next_k:int=1000, **model_kwargs):
+    def from_outline(self, toolkits=[], tools=[], question:str=None, llm=None, prev_k:int=1000, next_k:int=500, **model_kwargs):
         """
         从工作台中指定的提纲执行扩写任务。
         """
         outline = self.state.outline
         md = self.state.markdown
+        _question = question
+        if self.state.data:
+            _question = "请根据需要调用工具查询真实数据。"
 
         if outline:
             for doc in outline:
@@ -129,7 +137,7 @@ class Desk:
                     messages=new_messages,
                     toolkits=toolkits + self.toolkits,
                     tools=tools + self.tools,
-                    question=question,
+                    question=_question,
                     llm=llm or self.llm,
                     **self.model_kwargs
                 )

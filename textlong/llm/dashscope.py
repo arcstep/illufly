@@ -41,12 +41,12 @@ def qwen(
         model="qwen-max",
         messages=_messages,
         prompt=_prompt,
-        seed=1234,
-        top_p=0.8,
         result_format='message',
-        max_tokens=1500,
-        temperature=0.85,
-        repetition_penalty=1.0,
+        # seed=1234,
+        # top_p=0.8,
+        # max_tokens=1500,
+        # temperature=0.85,
+        # repetition_penalty=1.0,
         stream=True,
         incremental_output=True,
         **kwargs
@@ -56,12 +56,12 @@ def qwen(
     for response in responses:
         if response.status_code == HTTPStatus.OK:
             ai_output = response.output.choices[0].message
-            if 'tool_calls' not in ai_output:
-                content = ai_output.content
-                yield TextBlock("chunk", content)
-            else:
+            if 'tool_calls' in ai_output:
                 for func in ai_output.tool_calls:
                     yield TextBlock("tools_call", json.dumps(func, ensure_ascii=False))
+            else:
+                content = ai_output.content
+                yield TextBlock("chunk", content)
         else:
             yield TextBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                 response.request_id, response.status_code,
