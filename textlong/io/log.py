@@ -17,7 +17,7 @@ def stream_log(call, *args, **kwargs):
     tools_call = []
     last_block_type = ""
 
-    for block in call(*args, **kwargs):
+    for block in (call(*args, **kwargs) or []):
         if block.block_type in ['text', 'chunk', 'front_matter']:
             output_text += block.text
         

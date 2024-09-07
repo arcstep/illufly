@@ -1,11 +1,9 @@
 from typing import Dict, List, Any, Union
 from langchain_core.documents import Document
 from .markdown import Markdown
+from .dataset import Dataset
 import pandas as pd
-class Dataset:
-    def __init__(self, df: Union[pd.DataFrame]=None, desc: str=None):
-        self.df = df
-        self.desc = desc
+
 
 class State():
     def __init__(

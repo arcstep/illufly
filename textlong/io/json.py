@@ -11,7 +11,7 @@ def merge_json_blocks(blocks: List[Dict[str, Any]]) -> Dict[str, Any]:
             else:
                 if isinstance(value, dict) and isinstance(merged_result[key], dict):
                     merged_result[key] = merge_json_blocks([merged_result[key], value])
-                elif key not in ['id', 'type'] and isinstance(value, str) and isinstance(merged_result[key], str):
+                elif key not in ['type'] and isinstance(value, str) and isinstance(merged_result[key], str):
                     merged_result[key] += value
                 elif value != merged_result[key]:
                     merged_result[key] = value
