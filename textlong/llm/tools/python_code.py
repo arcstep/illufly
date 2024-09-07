@@ -6,6 +6,8 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 from ...io import stream_log, yield_block
 from ...hub import load_chat_template
 
+from ...desk.state import Dataset
+
 import textwrap
 import pandas as pd
 import numpy as np
@@ -39,33 +41,34 @@ def execute_code(data: Dict[str, Any], code: str):
         "pd": pd  # 仅允许 pandas 模块
     }
 
-    # 受限的本地命名空间
-    restricted_locals = {}
-
     # 将附加代码添加到现有代码中
     filtered_code = f"{filtered_code}\n\nresult = main()\n"
 
+    # 创建一个合并的命名空间
+    exec_namespace = restricted_globals.copy()
+
     try:
-        exec(filtered_code, restricted_globals, restricted_locals)
+        exec(filtered_code, exec_namespace)
     except Exception as e:
         return f"执行代码时发生错误: {e}"
     
-    return restricted_locals.get('result', "生成的代码已经执行，但返回了空结果。")
+    return exec_namespace.get('result', "生成的代码已经执行，但返回了空结果。")
 
 
-def create_python_code_tool(data: Dict[str, Any], llm: Any, **kwargs):
+def create_python_code_tool(data: Dict[str, Dataset], llm: Any, **kwargs):
     def data_desc():
-        datasets = [
-            textwrap.dedent(f"""
+        datasets = []
+        for ds in data.keys():
+            head = data[ds].df.head()
+            example_md = head.to_markdown(index=False)
+            datasets.append(textwrap.dedent(f"""
             ------------------------------
             **数据集名称：**
             {ds}
             
-            **数据示例：**
+            **部份数据样例：**
 
-            """) + pd.DataFrame(data[ds]).head().to_markdown(index=False)
-            for ds in data.keys()
-        ]
+            """) + example_md)
 
         return '\n'.join(datasets)
 
@@ -101,26 +104,29 @@ def create_python_code_tool(data: Dict[str, Any], llm: Any, **kwargs):
     class PythonCodeInput(BaseModel):
         question: str = Field(description="任务或问题的描述")
     
+    dataset_names = ', '.join(data.keys())
+    dataset_desc = '\n - '.join([ds.desc for ds in data.values()])
+
     return StructuredTool.from_function(
         func=python_code,
         name="python_code",
-        description="当必须根据具体数据回答问题时，从工作台数据集中查询、分析并给出结果。",
+        description=f"回答关于{dataset_names}的数据查询和分析的问题。\n具体包括：{dataset_desc}",
         args_schema=PythonCodeInput
     )
 
-def convert_to_text(data):
-    if isinstance(data, np.int64):
-        return int(data)
-    elif isinstance(data, dict):
-        return {k: convert_to_text(v) for k, v in data.items()}
-    elif isinstance(data, list):
-        return [convert_to_text(v) for v in data]
-    elif isinstance(data, np.ndarray):
-        return data.tolist()
-    elif isinstance(data, pd.DataFrame):
-        return data.to_markdown(index=False)
-    elif isinstance(data, pd.Series):
-        return data.to_markdown(index=False)
+def convert_to_text(d):
+    if isinstance(d, np.int64):
+        return int(d)
+    elif isinstance(d, dict):
+        return {k: convert_to_text(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return [convert_to_text(v) for v in d]
+    elif isinstance(d, np.ndarray):
+        return d.tolist()
+    elif isinstance(d, pd.DataFrame):
+        return d.to_markdown(index=False)
+    elif isinstance(d, pd.Series):
+        return d.to_markdown(index=False)
     else:
-        return data
+        return d
 
