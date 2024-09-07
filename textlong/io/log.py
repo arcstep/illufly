@@ -1,5 +1,6 @@
 import json
 from .json import merge_blocks_by_index
+from .block import TextBlock
 
 def stream_log(call, *args, **kwargs):
     """
@@ -40,7 +41,8 @@ def stream_log(call, *args, **kwargs):
     
     final_tools_call = merge_blocks_by_index(tools_call)
     if final_tools_call:
-        print(f'>-[TOOLS_CALL]>> {json.dumps(final_tools_call)}')
+        block = TextBlock("info", json.dumps(final_tools_call, ensure_ascii=False))
+        print(block.text_with_print_color)
 
     return {"output": output_text, "tools_call": final_tools_call}
 

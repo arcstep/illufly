@@ -87,9 +87,10 @@ class Desk:
         执行单轮写作任务时，首先清空消息列表。
         """
         
+        _input = {"task": input} if isinstance(input, str) else input
         self.model_kwargs.update(model_kwargs)
         resp = _write(
-            input,
+            _input,
             template=template,
             messages=self.state.messages,
             toolkits=toolkits + self.toolkits,
@@ -105,31 +106,35 @@ class Desk:
 
         return resp
 
-    def from_outline(self, toolkits=[], tools=[], llm=None, **model_kwargs):
+    def from_outline(self, toolkits=[], tools=[], question:str=None, llm=None, prev_k:int=5000, next_k:int=1000, **model_kwargs):
         """
         从工作台中指定的提纲执行扩写任务。
         """
         outline = self.state.outline
         md = self.state.markdown
 
-        if md:
-            outline = md.get_outline()
+        if outline:
             for doc in outline:
                 # 初始化为空的消息列表
                 self.state.from_outline[doc.metadata['id']] = []
                 new_messages = self.state.from_outline[doc.metadata['id']]
 
-                (draft, task) = md.fetch_outline_task(doc)
+                (draft, task) = md.fetch_outline_task(doc, prev_k=prev_k, next_k=next_k)
                 stream_log(yield_block, "info", f"执行扩写任务：\n{task}")
+                draft_md = f'```markdown\n{draft}\n```'
+                task_md = f'```markdown\n{task}\n```'
                 resp = _write(
-                    input={"draft": draft, "task": task},
+                    input={"draft": draft_md, "task": task_md},
                     template="FROM_OUTLINE",
                     messages=new_messages,
                     toolkits=toolkits + self.toolkits,
                     tools=tools + self.tools,
+                    question=question,
                     llm=llm or self.llm,
                     **self.model_kwargs
                 )
+        else:
+            stream_log(yield_block, "info", f"没有提纲可供扩写")
 
 def _write(input:Dict[str, Any], template: str=None, messages:Dict[str, Any]=None, toolkits=[], question:str=None, llm=None, **model_kwargs):
     """

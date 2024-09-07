@@ -92,12 +92,7 @@ def create_python_code_tool(data: Dict[str, Dataset], llm: Any, **kwargs):
         code = parse_code(log['output'])
         if code:
             resp = execute_code(data, code)
-            if isinstance(resp, pd.DataFrame):
-                return resp.to_markdown(index=False)
-            elif resp:
-                return convert_to_text(resp)
-            else:
-                return "生成的代码已经执行，但返回了空结果。"
+            return convert_to_text(resp)
         else:
             return "没有正确生成python代码失败。"
 
@@ -115,18 +110,22 @@ def create_python_code_tool(data: Dict[str, Dataset], llm: Any, **kwargs):
     )
 
 def convert_to_text(d):
-    if isinstance(d, np.int64):
-        return int(d)
+    if isinstance(d, (np.int64, np.int32, np.uint8)):
+        return str(int(d))
+    elif isinstance(d, (np.float64, np.float32)):
+        return str(float(d))
     elif isinstance(d, dict):
-        return {k: convert_to_text(v) for k, v in d.items()}
+        return ', '.join(f"{k}: {convert_to_text(v)}" for k, v in d.items())
     elif isinstance(d, list):
-        return [convert_to_text(v) for v in d]
+        return ', '.join(convert_to_text(v) for v in d)
     elif isinstance(d, np.ndarray):
-        return d.tolist()
+        return ', '.join(map(str, d.tolist()))
     elif isinstance(d, pd.DataFrame):
-        return d.to_markdown(index=False)
+        return "\n" + d.to_markdown(index=False)
     elif isinstance(d, pd.Series):
         return d.to_markdown(index=False)
+    elif isinstance(d, (str, int, float)):
+        return str(d)
     else:
-        return d
+        return str(d)  # Fallback to string conversion for any other type
 
