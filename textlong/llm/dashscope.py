@@ -61,7 +61,7 @@ def qwen(
                 yield TextBlock("chunk", content)
             else:
                 for func in ai_output.tool_calls:
-                    yield TextBlock("tools_call", json.dumps(func))
+                    yield TextBlock("tools_call", json.dumps(func, ensure_ascii=False))
         else:
             yield TextBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                 response.request_id, response.status_code,
