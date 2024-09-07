@@ -21,7 +21,7 @@ def get_env(key: str=None):
         "TEXTLONG_QA": "__QA__",
 
         # 大模型
-        "TEXTLONG_USER_MESSAGE_DEFAULT": "请你开始",
+        "TEXTLONG_USER_MESSAGE_DEFAULT": "请根据需要调用工具查询真实数据。",
         
         # 提示语缓存
         "TEXTLONG_CACHE_EMBEDDINGS": "__CACHE_EMBEDDINGS__",

@@ -9,11 +9,13 @@ from ..config import get_env
 from ..io import stream_log, chk_tail, yield_block
 from ..hub import load_chat_template
 from ..llm import qwen
+from ..llm.tools import create_python_code_tool, convert_to_openai_tool
+
 from .markdown import Markdown, parse_markdown
 from .history import History
 from .state import State
 
-from ..llm.tools import create_python_code_tool, convert_to_openai_tool
+import pandas as pd
 
 class Desk:
     def __init__(self, llm, toolkits: list=[], tools: list=[], k: int=10, history: History=None, **model_kwargs):
@@ -36,8 +38,8 @@ class Desk:
         # 状态数据
         self.state = State()
     
-    def load_data(self, data: Dict[str, Any]):
-        self.state.data.update(data)
+    def add_dataset(self, name: str, df: pd.DataFrame, desc: str=None):
+        self.state.add_dataset(name, df, desc)
     
     @property
     def tools(self):
