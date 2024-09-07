@@ -4,11 +4,12 @@ import json
 
 from ..io import TextBlock
 
-from openai import OpenAI
+from zhipuai import ZhipuAI
 
-def openai(
+def zhipu(
     prompt: Union[str, List[dict]],
-    model: str="gpt-3.5-turbo",
+    model: str="glm-4-flash",
+    api_key: str=None,
     **kwargs
     ):
     _prompt = prompt
@@ -20,14 +21,11 @@ def openai(
             }
         ]
 
-    completion = OpenAI().chat.completions.create(
+    client = ZhipuAI(api_key=api_key or os.getenv("ZHIPU_API_KEY"))
+    completion = client.chat.completions.create(
         model=model,
         messages=_prompt,
         stream=True,
-        # temperature=0.8,
-        # top_p=0.8,
-        # 可选，配置以后会在流式输出的最后一行展示token使用信息
-        # stream_options={"include_usage": True},
         **kwargs
     )
 

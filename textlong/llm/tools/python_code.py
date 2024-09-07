@@ -6,8 +6,6 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 from ...io import stream_log, yield_block
 from ...hub import load_chat_template
 
-from ...desk.state import Dataset
-
 import textwrap
 import pandas as pd
 import numpy as np
@@ -55,7 +53,9 @@ def execute_code(data: Dict[str, Any], code: str):
     return exec_namespace.get('result', "生成的代码已经执行，但返回了空结果。")
 
 
-def create_python_code_tool(data: Dict[str, Dataset], llm: Any, **kwargs):
+def create_python_code_tool(data: Dict[str, "Dataset"], llm: Any, **kwargs):
+    # from ...desk.dataset import Dataset
+
     def data_desc():
         datasets = []
         for ds in data.keys():
