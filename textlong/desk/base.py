@@ -2,7 +2,6 @@ import re
 import os
 import json
 import hashlib
-import copy
 from typing import List, Union, Dict, Any
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
@@ -11,6 +10,7 @@ from ..io import stream_log, chk_tail, yield_block
 from ..hub import load_chat_template
 from ..llm import qwen
 from ..llm.tools import create_python_code_tool
+from ..utils import compress_text
 
 from .markdown import Markdown, parse_markdown
 from .history import History
@@ -39,6 +39,12 @@ class Desk:
         # 状态数据
         self.state = State()
     
+    def __str__(self):
+        return f"Desk(state={self.state})"
+    
+    def __repr__(self):
+        return f"Desk(state={self.state})"
+    
     def add_dataset(self, name: str, df: pd.DataFrame, desc: str=None):
         self.state.add_dataset(name, df, desc)
     
@@ -54,20 +60,14 @@ class Desk:
 
     @property
     def output(self):
-        if self.state.outline:
-            md = copy.deepcopy(self.state.markdown)
-            for doc in self.state.outline:
-                if doc.metadata['id'] in self.state.from_outline:
-                    from_outline_text = self.state.from_outline[doc.metadata['id']][-1]['content']
-                    md.replace_documents(doc, doc, from_outline_text)
-            return md.text
-        else:
-            return self.state.markdown.text
+        return self.state.output
 
     def chat(self, question:str, toolkits=[], tools=[], llm=None, new_chat:bool=False, k:int=10, **model_kwargs):
         """
         多轮对话时，将对话记录追加到状态数据中的消息列表。
         但如果指定新对话，则首先清空消息列表。
+
+        请注意，执行`chat`指令时，输出不会影响到 output 属性。
         """
         if new_chat:
             self.state.messages.clear()
@@ -86,6 +86,8 @@ class Desk:
     def write(self, input:Dict[str, Any], template: str=None, toolkits=[], tools=[], question:str=None, llm=None, **model_kwargs):
         """
         执行单轮写作任务时，首先清空消息列表。
+
+        每次执行`write`指令时，输出的内容将保存到 state 中的 markdown 属性。
         """
         
         _input = {"task": input} if isinstance(input, str) else input
@@ -114,6 +116,8 @@ class Desk:
     def from_outline(self, toolkits=[], tools=[], question:str=None, llm=None, prev_k:int=1000, next_k:int=500, **model_kwargs):
         """
         从工作台中指定的提纲执行扩写任务。
+
+        每次执行`from_outline`指令时，输出的内容将保存到 state 中的 from_outline 属性。
         """
         outline = self.state.outline
         md = self.state.markdown
