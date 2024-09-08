@@ -4,7 +4,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.embeddings import Embeddings
 from ..hub import load_prompt
 from ..memory import MemoryManager, WithMemoryBinding
-from ..knowledge.base import collect_docs
+from ..knowledge.local_files import collect_docs
 
 def create_qa_chain(
     llm: Runnable,
