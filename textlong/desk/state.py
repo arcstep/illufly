@@ -28,14 +28,23 @@ class Knowledge:
     def __repr__(self):
         return f"Knowledge(text={self.text})"
 
+    def __eq__(self, other):
+        if isinstance(other, Knowledge):
+            return self.text == other.text
+        return False
+
+    def __hash__(self):
+        return hash(self.text)
+
 class State():
     def __init__(
         self,
         markdown: str=None,
         from_outline: Dict[str, Document]=None,
         data: Dict[str, Dataset]=None,
-        knowledge: Set[str]=None,
-        messages: []=None
+        knowledge: Set[Knowledge]=None,
+        messages: List[Any]=None,
+        reserved_k: int=None
     ):
         """    
         Args:
@@ -48,14 +57,19 @@ class State():
         self.markdown = markdown or Markdown()
         self.from_outline = from_outline or {}
         self.data = data or {}
-        self.knowledge = knowledge or []
+        self.knowledge = knowledge or set()
         self.messages = messages or []
+        self.reserved_k = reserved_k or 0
     
     def __str__(self):
-        return f"State(output={compress_text(self.output) or None}, data={','.join(self.get_dataset_names()) or None})"
+        return self.output
 
     def __repr__(self):
-        return f"State(output={compress_text(self.output) or None}, data={','.join(self.get_dataset_names()) or None})"
+        output = compress_text(self.output) if self.output else None
+        data_desc = ','.join(self.get_dataset_names()) if self.get_dataset_names() else None
+        kg = self.get_knowledge()
+        kg_desc = compress_text('; '.join(kg) if kg else None)
+        return f"State(output=<{output}>, data=<{data_desc}>, knowledge=<{kg_desc}>)"
     
     @property
     def output(self):
@@ -67,7 +81,7 @@ class State():
             md = copy.deepcopy(self.markdown)
             for doc in self.outline:
                 if doc.metadata['id'] in self.from_outline:
-                    from_outline_text = self.rom_outline[doc.metadata['id']][-1]['content']
+                    from_outline_text = self.from_outline[doc.metadata['id']][-1]['content']
                     md.replace_documents(doc, doc, from_outline_text)
             return md.text
         else:
@@ -95,13 +109,13 @@ class State():
 
     # 管理知识
     def add_knowledge(self, text: str):
-        self.knowledge.add(text)
+        self.knowledge.add(Knowledge(text))
 
     def get_knowledge(self, filter: str=None):
         if filter:
-            return [k for k in self.knowledge if re.search(filter, k)]
+            return [k.text for k in self.knowledge if re.search(filter, k)]
         else:
-            return list(self.knowledge)
+            return [k.text for k in self.knowledge]
 
     def clear_knowledge(self):
         self.knowledge.clear()
