@@ -5,6 +5,12 @@ class TextBlock():
         self.content = str(content)
         self.block_type = block_type
     
+    def __str__(self):
+        return self.content
+    
+    def __repr__(self):
+        return f"TextBlock(block_type=<{self.block_type}>, content=<{self.content}>)"
+        
     @property
     def text(self):
         return self.content
