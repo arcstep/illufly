@@ -2,11 +2,13 @@ import re
 import os
 import json
 import hashlib
+from threading import Thread
+
 from typing import List, Union, Dict, Any
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from ..config import get_env
-from ..io import stream_log, chk_tail, yield_block
+from ..io import chk_tail, yield_block
 from ..hub import load_chat_template
 from ..llm import qwen
 from ..llm.tools import create_python_code_tool
@@ -15,11 +17,12 @@ from ..utils import compress_text
 from .markdown import Markdown, parse_markdown
 from .history import History
 from .state import State
+from ..io import BaseLog, StreamLog
 
 import pandas as pd
 
 class Desk:
-    def __init__(self, llm, toolkits: list=[], tools: list=[], k: int=10, history: History=None, **model_kwargs):
+    def __init__(self, llm, toolkits: list=[], tools: list=[], k: int=10, logger: BaseLog=None, history: History=None, **model_kwargs):
         """
         Args:
         - llm: 调用模型的函数
@@ -38,7 +41,8 @@ class Desk:
 
         # 状态数据
         self.state = State()
-    
+        self.logger = logger or StreamLog()
+
     def __str__(self):
         return f"Desk(state={self.state})"
     
@@ -53,12 +57,12 @@ class Desk:
     
     @property
     def tools(self):
-        python_code_tool = create_python_code_tool(self.state.data, self.llm, **self.model_kwargs)
+        python_code_tool = create_python_code_tool(self.state.data, self.llm, logger=self.logger, **self.model_kwargs)
         return self._tools + [convert_to_openai_tool(python_code_tool)]
     
     @property
     def toolkits(self):
-        python_code_tool = create_python_code_tool(self.state.data, self.llm, **self.model_kwargs)
+        python_code_tool = create_python_code_tool(self.state.data, self.llm, logger=self.logger, **self.model_kwargs)
         return self._toolkits + [python_code_tool]
 
     @property
@@ -83,6 +87,17 @@ class Desk:
                     'content': 'OK, 我将利用这个知识回答后面问题。'
                 }])
         return messages
+    
+    def achat(self, question:str, toolkits=[], tools=[], llm=None, new_chat:bool=False, k:int=10, **model_kwargs):
+        """
+        异步版本的 chat 方法，使用多线程实现非阻塞行为。
+        """
+        def worker():
+            self.chat(question, toolkits, tools, llm, new_chat, k, **model_kwargs)
+
+        thread = Thread(target=worker)
+        thread.start()
+        return thread
 
     def chat(self, question:str, toolkits=[], tools=[], llm=None, new_chat:bool=False, k:int=10, **model_kwargs):
         """
@@ -116,7 +131,7 @@ class Desk:
         short_term_memory.extend(new_messages)
 
         self.model_kwargs.update(model_kwargs)
-        return self._call(
+        resp = self._call(
             llm=llm or self.llm,
             long_term_memory=long_term_memory,
             short_term_memory=short_term_memory,
@@ -124,6 +139,19 @@ class Desk:
             tools=tools + self.tools,
             **model_kwargs
         )
+        self.logger.end()
+        return resp
+
+    def awrite(self, input:Dict[str, Any], template: str=None, toolkits=[], tools=[], question:str=None, llm=None, **model_kwargs):
+        """
+        异步版本的 write 方法，使用多线程实现非阻塞行为。
+        """
+        def worker():
+            self.write(input, template, toolkits, tools, question, llm, **model_kwargs)
+
+        thread = Thread(target=worker)
+        thread.start()
+        return thread
 
     def write(self, input:Dict[str, Any], template: str=None, toolkits=[], tools=[], question:str=None, llm=None, **model_kwargs):
         """
@@ -159,7 +187,19 @@ class Desk:
         md = Markdown(resp[-1]['content'])
         self.state.markdown = md
 
+        self.logger.end()
         return resp
+
+    def afrom_outline(self, toolkits=[], tools=[], question:str=None, llm=None, prev_k:int=1000, next_k:int=500, **model_kwargs):
+        """
+        异步版本的 from_outline 方法，使用多线程实现非阻塞行为。
+        """
+        def worker():
+            self.from_outline(toolkits, tools, question, llm, prev_k, next_k, **model_kwargs)
+
+        thread = Thread(target=worker)
+        thread.start()
+        return thread
 
     def from_outline(self, toolkits=[], tools=[], question:str=None, llm=None, prev_k:int=1000, next_k:int=500, **model_kwargs):
         """
@@ -182,7 +222,7 @@ class Desk:
                 long_term_memory = self.state.from_outline[doc.metadata['id']]
 
                 (draft, task) = md.fetch_outline_task(doc, prev_k=prev_k, next_k=next_k)
-                stream_log(yield_block, "info", f"执行扩写任务：\n{task}")
+                self.logger(yield_block, "info", f"执行扩写任务：\n{task}")
                 draft_md = f'```markdown\n{draft}\n```'
                 task_md = f'```markdown\n{task}\n```'
                 resp = self._write(
@@ -196,7 +236,9 @@ class Desk:
                     **self.model_kwargs
                 )
         else:
-            stream_log(yield_block, "info", f"没有提纲可供扩写")
+            self.logger(yield_block, "info", f"没有提纲可供扩写")
+        
+        self.logger.end()
 
     def _write(self, input: Dict[str, Any], template: str = None, long_term_memory: List[Dict[str, Any]] = None, toolkits: list = [], question: str = None, llm = None, **model_kwargs):
         """
@@ -232,8 +274,7 @@ class Desk:
         # 调用大模型
         while(True):
             to_continue_call_llm = False
-            log = stream_log(llm, short_term_memory, **model_kwargs)
-
+            log = self.logger(llm, short_term_memory, **model_kwargs)
             if log['tools_call']:
                 # 如果大模型的结果返回多个工具回调，则要逐个调用完成才能继续下一轮大模型的问调用。
                 for index, tool in log['tools_call'].items():
@@ -241,7 +282,7 @@ class Desk:
                         if tool['function']['name'] == struct_tool.name:
                             args = json.loads(tool['function']['arguments'])
                             tool_resp = struct_tool.func(**args)
-                            stream_log(yield_block, "tool_resp", tool_resp)
+                            self.logger(yield_block, "tool_resp", tool_resp)
                             tool_info = [
                                 {
                                     "role": "assistant",
@@ -267,10 +308,11 @@ class Desk:
                     'content': log['output']
                 }])
                 # 补充校验的尾缀
-                stream_log(chk_tail, log['output'])
+                self.logger(chk_tail, log['output'])
             
             # 只要不要求继续调用工具，就赶紧跳出循环
             if to_continue_call_llm:
                 continue
             else:
                 return short_term_memory
+
