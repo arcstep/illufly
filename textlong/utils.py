@@ -54,6 +54,9 @@ def compress_text(text: str, start_limit: int=100, end_limit: int=100, delta: in
     """
     压缩文本，如果文本长度超过指定限制，则只保留前后部分，并用省略号连接。
     """
+    if not text:
+        return ''
+
     if len(text) <= start_limit + end_limit + delta:
         # 如果文本长度小于或等于前后限制之和，则直接返回原文本
         return text
