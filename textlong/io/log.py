@@ -1,8 +1,12 @@
+from typing import Callable
+
 import json
+
 from .json import merge_blocks_by_index
 from .block import TextBlock
+from .base import BaseLog
 
-def stream_log(call, *args, **kwargs):
+def stream_log(func: Callable, *args, **kwargs):
     """
     针对任何回调函数，只要符合规范的返回TextBlock对象的生成器，就可以使用这个函数来
     打印流式日志。
@@ -17,7 +21,7 @@ def stream_log(call, *args, **kwargs):
     tools_call = []
     last_block_type = ""
 
-    for block in (call(*args, **kwargs) or []):
+    for block in (func(*args, **kwargs) or []):
         if block.block_type in ['text', 'chunk', 'front_matter']:
             output_text += block.text
         
@@ -46,3 +50,12 @@ def stream_log(call, *args, **kwargs):
 
     return {"output": output_text, "tools_call": final_tools_call}
 
+class StreamLog(BaseLog):
+    def __repr__(self):
+        return "StreamLog()"
+    
+    def __str__(self):
+        return "StreamLog()"
+
+    def __call__(self, func: Callable, *args, **kwargs):
+        return stream_log(func, *args, **kwargs)
