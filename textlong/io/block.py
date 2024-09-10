@@ -1,18 +1,15 @@
-from abc import ABC, abstractmethod
 from typing import Callable
-
 from ..config import get_env, color_code
 
 import hashlib
 from datetime import datetime
-
 
 class TextBlock():
     def __init__(self, block_type: str, content: str, thread_id: str=None):
         self.content = str(content)
         self.block_type = block_type
         self.thread_id = thread_id
-        self.created_at = datetime.now()
+        # self.created_at = datetime.now()
 
     def __str__(self):
         return self.content
@@ -70,13 +67,3 @@ def create_chk_block(output_text: str):
     tail = f'【{get_env("TEXTLONG_AIGC_INFO_DECLARE")}，{get_env("TEXTLONG_AIGC_INFO_CHK")} {hash_code}】'
 
     return TextBlock("END", tail)
-
-
-class BaseLog(ABC):
-    @abstractmethod
-    def __call__(self, func: Callable, *args, **kwargs):
-        pass
-
-    def end(self):
-        return None
-
