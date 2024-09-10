@@ -2,17 +2,13 @@ from typing import Callable
 
 import json
 
-from .json import merge_blocks_by_index
-from .block import TextBlock
-from .base import BaseLog
+from .utils import merge_blocks_by_index
+from .base import BaseLog, TextBlock
 
 def stream_log(func: Callable, *args, **kwargs):
     """
     针对任何回调函数，只要符合规范的返回TextBlock对象的生成器，就可以使用这个函数来
     打印流式日志。
-
-    也可以将打印日志升级为提交到 redis 或消息队列中，实现跨系统的流信息交换，
-    如 stream_redis / stream_mq 等。
 
     返回值中，tools_call可以方便处理智能体的工具回调。
     """
@@ -36,7 +32,7 @@ def stream_log(func: Callable, *args, **kwargs):
             if last_block_type == "chunk":
                 print("\n")
                 last_block_type = ""
-            print(f'>-[{block.block_type.upper()}]>> {block.text_with_print_color}')
+            print(f'[{block.block_type.upper()}] {block.text_with_print_color}')
             last_block_type = block.block_type
     
     if last_block_type == "chunk":

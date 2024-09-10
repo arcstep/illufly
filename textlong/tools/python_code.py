@@ -3,8 +3,8 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.tools import StructuredTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
-from ...io import BaseLog, StreamLog, yield_block
-from ...hub import load_chat_template
+from ..io import BaseLog, StreamLog, TextBlock
+from ..hub import load_chat_template
 
 import textwrap
 import pandas as pd
@@ -53,10 +53,8 @@ def execute_code(data: Dict[str, Any], code: str):
     return exec_namespace.get('result', "生成的代码已经执行，但返回了空结果。")
 
 
-def create_python_code_tool(data: Dict[str, "Dataset"], llm: Any, logger: BaseLog=None, **kwargs):
+def create_python_code_tool(data: Dict[str, "Dataset"], llm: Any, **kwargs):
     # from ...desk.dataset import Dataset
-
-    logger = logger or StreamLog()
 
     def data_desc():
         datasets = []
@@ -89,14 +87,15 @@ def create_python_code_tool(data: Dict[str, "Dataset"], llm: Any, logger: BaseLo
             }
         ]
 
-        log_resp = logger(llm, messages, model=llm, **kwargs)
+        for x in llm(messages, model=llm, **kwargs):
+            yield x
 
         code = parse_code(log_resp['output'])
         if code:
             resp = execute_code(data, code)
-            return convert_to_text(resp)
+            yield TextBlock("text", convert_to_text(resp))
         else:
-            return "没有正确生成python代码失败。"
+            yield TextBlock("text", "没有正确生成python代码失败。")
 
     class PythonCodeInput(BaseModel):
         question: str = Field(description="任务或问题的描述")
