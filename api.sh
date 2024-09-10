@@ -9,4 +9,4 @@ set +a
 # 将上级目录的绝对路径添加到 PYTHONPATH
 export PYTHONPATH="$SCRIPT_DIR/:$PYTHONPATH"
 
-python ./app.py
+uvicorn app:app --host 0.0.0.0 --port 8000 --http h11

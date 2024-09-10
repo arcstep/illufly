@@ -1,6 +1,7 @@
 from typing import Callable
 from ..config import get_env, color_code
 
+import json
 import hashlib
 from datetime import datetime
 
@@ -16,6 +17,13 @@ class TextBlock():
     
     def __repr__(self):
         return f"TextBlock(block_type=<{self.block_type}>, content=<{self.content}>)"
+    
+    def json(self):
+        return json.dumps({
+            "block_type": self.block_type,
+            "content": self.content,
+            "thread_id": self.thread_id
+        })
         
     @property
     def text(self):
