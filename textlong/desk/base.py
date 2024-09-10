@@ -42,10 +42,10 @@ class Desk:
         self.state = State()
 
     def __str__(self):
-        return f"Desk(state={self.state})"
+        return f"Desk(state={self.state.__repr__()})"
     
     def __repr__(self):
-        return f"Desk(state={self.state})"
+        return f"Desk(state={self.state.__repr__()})"
     
     def add_dataset(self, name: str, df: pd.DataFrame, desc: str=None):
         self.state.add_dataset(name, df, desc)
@@ -67,6 +67,14 @@ class Desk:
     def output(self):
         return self.state.output
 
+    @property
+    def messages(self):
+        return self.state.messages
+
+    @property
+    def last(self):
+        return self.state.messages[-1]['content']
+
     def append_knowledge_to_messages(self, messages: List[Any]):
         """
         将知识库中的知识追加到消息列表中。
@@ -86,7 +94,7 @@ class Desk:
                 }])
         return messages
     
-    def achat(self, question:str, toolkits=[], tools=[], llm=None, new_chat:bool=False, k:int=10, **model_kwargs):
+    def achat(self, question:str, toolkits=[], tools=[], llm=None, new_chat:bool=False, k:int=None, **model_kwargs):
         """
         异步版本的 chat 方法，使用多线程实现非阻塞行为。
         """
@@ -97,36 +105,42 @@ class Desk:
         thread.start()
         return thread
 
-    def chat(self, question:str, toolkits=[], tools=[], llm=None, new_chat:bool=False, k:int=10, **model_kwargs):
+    def get_chat_memory(self, k:int=None):
+        _k = self.k if k is None else k
+        long_term_memory = self.state.messages
+
+        final_k = 2 * _k if _k >= 1 else 1
+        if len(long_term_memory) > 0 and long_term_memory[0]['role'] == 'system':
+            new_memory = long_term_memory[:self.state.reserved_k]
+            new_memory += long_term_memory[self.state.reserved_k:][-final_k:]
+        else:
+            new_memory = long_term_memory[-final_k:]
+
+        self.append_knowledge_to_messages(new_memory)
+
+        return new_memory
+
+    def chat(self, question:str, toolkits=[], tools=[], llm=None, new_chat:bool=False, k:int=None, **model_kwargs):
         """
         多轮对话时，将对话记录追加到状态数据中的消息列表。
         但如果指定新对话，则首先清空消息列表。
 
         请注意，执行`chat`指令时，输出不会影响到 output 属性。
         """
-        long_term_memory = self.state.messages
-        if new_chat:
-            long_term_memory.clear()
-
-        # 如果对话从系统消息开始，则保留至少5条消息（以便包括可能出现的 tools 回调）
-        final_k = 2 * k if k >= 1 else 1
-        if len(long_term_memory) > 0 and long_term_memory[0]['role'] == 'system':
-            short_term_memory = long_term_memory[:self.state.reserved_k]
-            short_term_memory += long_term_memory[self.state.reserved_k:][-final_k:]
-        else:
-            short_term_memory = long_term_memory[-final_k:]
-
-        # 将新消息追加到短期记忆中
         new_messages = [{
             'role': 'user',
             'content': question
         }]
 
+        long_term_memory = self.state.messages
+        if new_chat:
+            long_term_memory.clear()
+
+        short_term_memory = self.get_chat_memory(k)
+        short_term_memory.extend(new_messages)
+
         self.append_knowledge_to_messages(long_term_memory)
         long_term_memory.extend(new_messages)
-
-        self.append_knowledge_to_messages(short_term_memory)
-        short_term_memory.extend(new_messages)
 
         self.model_kwargs.update(model_kwargs)
         resp = self._call(
@@ -137,8 +151,8 @@ class Desk:
             tools=tools + self.tools,
             **model_kwargs
         )
-        for x in resp:
-            yield x
+        for block in resp:
+            yield block
 
     def awrite(self, input:Dict[str, Any], template: str=None, toolkits=[], tools=[], question:str=None, llm=None, **model_kwargs):
         """
@@ -178,15 +192,13 @@ class Desk:
             **self.model_kwargs
         )
 
+        for block in resp:
+            yield block
+
         # 针对 write 指令结果对话时，将当前消息列表的长度作为 reserved_k
         self.state.reserved_k = len(long_term_memory)
-
-        # 提取提纲
-        md = Markdown(resp[-1]['content'])
-        self.state.markdown = md
-
-        for x in resp:
-            yield x
+        # 将最终生成结果保存到 markdown 中
+        self.state.markdown = Markdown(long_term_memory[-1]['content'])
 
     def afrom_outline(self, toolkits=[], tools=[], question:str=None, llm=None, prev_k:int=1000, next_k:int=500, **model_kwargs):
         """
@@ -214,12 +226,13 @@ class Desk:
         if outline:
             for doc in outline:
                 # 初始化为空的消息列表
-                self.state.from_outline[doc.metadata['id']] = []
+                outline_id = doc.metadata['id']
+                self.state.from_outline[outline_id] = []
 
-                long_term_memory = self.state.from_outline[doc.metadata['id']]
+                long_term_memory = self.state.from_outline[outline_id]
 
                 (draft, task) = md.fetch_outline_task(doc, prev_k=prev_k, next_k=next_k)
-                yield TextBlock("info", f"执行扩写任务：\n{task}")
+                yield TextBlock("info", f"执行扩写任务 <{outline_id}>：\n{task}")
                 draft_md = f'```markdown\n{draft}\n```'
                 task_md = f'```markdown\n{task}\n```'
                 resp = self._write(
@@ -232,8 +245,8 @@ class Desk:
                     llm=llm or self.llm,
                     **self.model_kwargs
                 )
-                for x in resp:
-                    yield x
+                for block in resp:
+                    yield block
         else:
             yield TextBlock("info", f"没有提纲可供扩写")
 
@@ -266,16 +279,19 @@ class Desk:
         short_term_memory = long_term_memory[None:None]
 
         resp = self._call(llm, long_term_memory, short_term_memory, toolkits, **model_kwargs)
-        for x in resp:
-            yield x
+        for block in resp:
+            yield block
 
     def _call(self, llm, long_term_memory, short_term_memory, toolkits, **model_kwargs):
         # 调用大模型
-        while(True):
+
+        to_continue_call_llm = True
+        while(to_continue_call_llm):
             to_continue_call_llm = False
             output_text = ""
             tools_call = []
 
+            # 大模型推理
             for block in (llm(short_term_memory, **model_kwargs) or []):
                 yield block
                 if isinstance(block, TextBlock):
@@ -287,8 +303,10 @@ class Desk:
                 else:
                     output_text += block.text
 
-            final_tools_call = merge_blocks_by_index(tools_call)
+            # 合并工具回调
+            final_tools_call = merge_blocks_by_index(tools_call)            
             if final_tools_call:
+                yield TextBlock("tools_call_final", json.dumps(final_tools_call, ensure_ascii=False))
                 # 如果大模型的结果返回多个工具回调，则要逐个调用完成才能继续下一轮大模型的问调用。
                 for index, tool in final_tools_call.items():
                     for struct_tool in toolkits:
@@ -299,7 +317,7 @@ class Desk:
                                 if isinstance(x, TextBlock):
                                     yield x
                                 else:
-                                    yield TextBlock("chunk", tool_resp)
+                                    yield TextBlock("tool_resp_chunk", x)
                             tool_info = [
                                 {
                                     "role": "assistant",
@@ -327,9 +345,4 @@ class Desk:
                 # 补充校验的尾缀
                 yield create_chk_block(output_text)
             
-            # 只要不要求继续调用工具，就赶紧跳出循环
-            if to_continue_call_llm:
-                continue
-
-            break
 

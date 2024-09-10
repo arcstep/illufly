@@ -69,7 +69,7 @@ class State():
         data_desc = ','.join(self.get_dataset_names()) if self.get_dataset_names() else None
         kg = self.get_knowledge()
         kg_desc = compress_text('; '.join(kg) if kg else None)
-        return f"State(output=<{output}>, data=<{data_desc}>, knowledge=<{kg_desc}>)"
+        return f"State(output=<{output}>, messages=<{len(self.messages)}>, data=<{data_desc}>, knowledge=<{kg_desc}>)"
     
     @property
     def output(self):
