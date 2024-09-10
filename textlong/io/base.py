@@ -27,17 +27,27 @@ class TextBlock():
     @property
     def text_with_print_color(self):
         color_mapping = {
-            'text': "TEXTLONG_COLOR_TEXT",
-            'code': "TEXTLONG_COLOR_INFO",
-            'tool_resp': "TEXTLONG_COLOR_INFO",
-            'tool_resp_chunk': "TEXTLONG_COLOR_INFO",
-            'tools_call': "TEXTLONG_COLOR_INFO",
-            'tools_call_final': "TEXTLONG_COLOR_INFO",
-            'info': "TEXTLONG_COLOR_INFO",
-            'warn': "TEXTLONG_COLOR_WARN",
-            'final': "TEXTLONG_COLOR_FINAL",
-            'chunk': "TEXTLONG_COLOR_CHUNK",
+            # markdown 配置头
             'front_matter': "TEXTLONG_COLOR_FRONT_MATTER",
+            # 工具回调过程中产生的片段，这可能是工具执行过程中的碎片信息
+            'tool_resp_chunk': "TEXTLONG_COLOR_CHUNK",
+            # 工具回调最终结果，一般不是直接由片段合成
+            'tool_resp_final': "TEXTLONG_COLOR_FINAL",
+            # 大模型推理要求的工具片段文本
+            'tools_call_chunk': "TEXTLONG_COLOR_CHUNK",
+            # 大模型推理要求的工具最终结果
+            'tools_call_final': "TEXTLONG_COLOR_FINAL",
+            # 直接输出的文本
+            'text': "TEXTLONG_COLOR_TEXT",
+            # 大模型推理的中间结果片段文本
+            'chunk': "TEXTLONG_COLOR_CHUNK",
+            # 大模型推理的最终结果
+            'final': "TEXTLONG_COLOR_FINAL",
+            # 提示信息
+            'info': "TEXTLONG_COLOR_INFO",
+            # 警告信息
+            'warn': "TEXTLONG_COLOR_WARN",
+            # 结束信息
             'END': "TEXTLONG_COLOR_INFO"
         }
 

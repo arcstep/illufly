@@ -43,7 +43,7 @@ def zhipu(
                             "arguments": func.function.arguments
                         }
                     }
-                    yield TextBlock("tools_call", json.dumps(func_json, ensure_ascii=False))
+                    yield TextBlock("tools_call_chunk", json.dumps(func_json, ensure_ascii=False))
             else:
                 content = ai_output.content
                 if content:
