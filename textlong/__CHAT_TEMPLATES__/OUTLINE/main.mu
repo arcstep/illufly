@@ -12,5 +12,4 @@
 **你的任务是:**
 {{task}}
 
-{{> knowledge}}
 {{> example}}

@@ -1,9 +1,8 @@
 from typing import Callable
 import json
 import multiprocessing
-from .base import BaseLog
-from .block import TextBlock
-from .json import merge_blocks_by_index
+from .base import BaseLog, TextBlock
+from .utils import merge_blocks_by_index
 
 class QueueLog(BaseLog):
     def __init__(self, queue: multiprocessing.Queue=None, timeout: int=None, *args, **kwargs):

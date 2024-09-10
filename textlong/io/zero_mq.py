@@ -1,9 +1,8 @@
 from typing import Callable
 import json
 import zmq
-from .base import BaseLog
-from .block import TextBlock
-from .json import merge_blocks_by_index
+from .base import BaseLog, TextBlock
+from .utils import merge_blocks_by_index
 
 class ZeroMQLog(BaseLog):
     def __init__(self, context=None, timeout: int=None, *args, **kwargs):

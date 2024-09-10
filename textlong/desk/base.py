@@ -8,21 +8,20 @@ from typing import List, Union, Dict, Any
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from ..config import get_env
-from ..io import chk_tail, yield_block
+from ..io import create_chk_block, merge_blocks_by_index, TextBlock
 from ..hub import load_chat_template
 from ..llm import qwen
-from ..llm.tools import create_python_code_tool
+from ..tools import create_python_code_tool
 from ..utils import compress_text
 
 from .markdown import Markdown, parse_markdown
 from .history import History
 from .state import State
-from ..io import BaseLog, StreamLog
 
 import pandas as pd
 
 class Desk:
-    def __init__(self, llm, toolkits: list=[], tools: list=[], k: int=10, logger: BaseLog=None, history: History=None, **model_kwargs):
+    def __init__(self, llm, toolkits: list=[], tools: list=[], k: int=10, history: History=None, **model_kwargs):
         """
         Args:
         - llm: 调用模型的函数
@@ -41,7 +40,6 @@ class Desk:
 
         # 状态数据
         self.state = State()
-        self.logger = logger or StreamLog()
 
     def __str__(self):
         return f"Desk(state={self.state})"
@@ -57,12 +55,12 @@ class Desk:
     
     @property
     def tools(self):
-        python_code_tool = create_python_code_tool(self.state.data, self.llm, logger=self.logger, **self.model_kwargs)
+        python_code_tool = create_python_code_tool(self.state.data, self.llm, **self.model_kwargs)
         return self._tools + [convert_to_openai_tool(python_code_tool)]
     
     @property
     def toolkits(self):
-        python_code_tool = create_python_code_tool(self.state.data, self.llm, logger=self.logger, **self.model_kwargs)
+        python_code_tool = create_python_code_tool(self.state.data, self.llm, **self.model_kwargs)
         return self._toolkits + [python_code_tool]
 
     @property
@@ -139,8 +137,8 @@ class Desk:
             tools=tools + self.tools,
             **model_kwargs
         )
-        self.logger.end()
-        return resp
+        for x in resp:
+            yield x
 
     def awrite(self, input:Dict[str, Any], template: str=None, toolkits=[], tools=[], question:str=None, llm=None, **model_kwargs):
         """
@@ -187,8 +185,8 @@ class Desk:
         md = Markdown(resp[-1]['content'])
         self.state.markdown = md
 
-        self.logger.end()
-        return resp
+        for x in resp:
+            yield x
 
     def afrom_outline(self, toolkits=[], tools=[], question:str=None, llm=None, prev_k:int=1000, next_k:int=500, **model_kwargs):
         """
@@ -213,7 +211,6 @@ class Desk:
         if self.state.data:
             _question = "请根据需要调用工具查询真实数据。"
 
-
         if outline:
             for doc in outline:
                 # 初始化为空的消息列表
@@ -222,7 +219,7 @@ class Desk:
                 long_term_memory = self.state.from_outline[doc.metadata['id']]
 
                 (draft, task) = md.fetch_outline_task(doc, prev_k=prev_k, next_k=next_k)
-                self.logger(yield_block, "info", f"执行扩写任务：\n{task}")
+                yield TextBlock("info", f"执行扩写任务：\n{task}")
                 draft_md = f'```markdown\n{draft}\n```'
                 task_md = f'```markdown\n{task}\n```'
                 resp = self._write(
@@ -235,10 +232,10 @@ class Desk:
                     llm=llm or self.llm,
                     **self.model_kwargs
                 )
+                for x in resp:
+                    yield x
         else:
-            self.logger(yield_block, "info", f"没有提纲可供扩写")
-        
-        self.logger.end()
+            yield TextBlock("info", f"没有提纲可供扩写")
 
     def _write(self, input: Dict[str, Any], template: str = None, long_term_memory: List[Dict[str, Any]] = None, toolkits: list = [], question: str = None, llm = None, **model_kwargs):
         """
@@ -268,21 +265,41 @@ class Desk:
         # 构造一份短期记忆的拷贝
         short_term_memory = long_term_memory[None:None]
 
-        return self._call(llm, long_term_memory, short_term_memory, toolkits, **model_kwargs)
+        resp = self._call(llm, long_term_memory, short_term_memory, toolkits, **model_kwargs)
+        for x in resp:
+            yield x
 
     def _call(self, llm, long_term_memory, short_term_memory, toolkits, **model_kwargs):
         # 调用大模型
         while(True):
             to_continue_call_llm = False
-            log = self.logger(llm, short_term_memory, **model_kwargs)
-            if log['tools_call']:
+            output_text = ""
+            tools_call = []
+
+            for block in (llm(short_term_memory, **model_kwargs) or []):
+                yield block
+                if isinstance(block, TextBlock):
+                    if block.block_type in ['text', 'chunk', 'front_matter']:
+                        output_text += block.text
+                    
+                    if block.block_type in ['tools_call']:
+                        tools_call.append(json.loads(block.text))
+                else:
+                    output_text += block.text
+
+            final_tools_call = merge_blocks_by_index(tools_call)
+            if final_tools_call:
                 # 如果大模型的结果返回多个工具回调，则要逐个调用完成才能继续下一轮大模型的问调用。
-                for index, tool in log['tools_call'].items():
+                for index, tool in final_tools_call.items():
                     for struct_tool in toolkits:
                         if tool['function']['name'] == struct_tool.name:
                             args = json.loads(tool['function']['arguments'])
                             tool_resp = struct_tool.func(**args)
-                            self.logger(yield_block, "tool_resp", tool_resp)
+                            for x in tool_resp:
+                                if isinstance(x, TextBlock):
+                                    yield x
+                                else:
+                                    yield TextBlock("chunk", tool_resp)
                             tool_info = [
                                 {
                                     "role": "assistant",
@@ -301,18 +318,18 @@ class Desk:
             else:
                 long_term_memory.extend([{
                     'role': 'assistant',
-                    'content': log['output']
+                    'content': output_text
                 }])
                 short_term_memory.extend([{
                     'role': 'assistant',
-                    'content': log['output']
+                    'content': output_text
                 }])
                 # 补充校验的尾缀
-                self.logger(chk_tail, log['output'])
+                yield create_chk_block(output_text)
             
             # 只要不要求继续调用工具，就赶紧跳出循环
             if to_continue_call_llm:
                 continue
-            else:
-                return short_term_memory
+
+            break
 
