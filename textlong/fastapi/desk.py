@@ -2,12 +2,11 @@ from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Request
 from datetime import datetime, timedelta
 from typing import Dict
 
-from langserve import add_routes
-from langchain_core.runnables import Runnable
+from ..llm import fake_llm, zhipu, qwen, openai
 
 from .auth import verify_jwt, get_current_user
 from ..config import get_env
-from ..chain import create_qa_chain, create_chain
+from ..desk import Desk
 
 async def _config_modifier(config: Dict, request: Request) -> Dict:
     """Modify the config for each request."""
@@ -17,12 +16,7 @@ async def _config_modifier(config: Dict, request: Request) -> Dict:
     # config["configurable"]["user_id"] = user.username
     return config
 
-def add_one(x: int, config) -> int:
-    """Add one to an integer."""
-    print(config)
-    return x + 1
-
-def create_project_api(llm: Runnable):
+def create_desk_api(llm: Runnable):
     router = APIRouter()
     
     # 创作
@@ -35,14 +29,7 @@ def create_project_api(llm: Runnable):
         path = "/writing"
     )
 
-    @router.get("/projects")
-    async def _list_projects(user: dict = Depends(get_current_user)):
-        """
-        列举所有写作项目。
-        """
-        return list_projects()
-
-    @router.post("/projects")
+    @router.post("/chat")
     async def _init_project(project_id: str, user: dict = Depends(get_current_user)):
         """
         初始化新的写作项目。

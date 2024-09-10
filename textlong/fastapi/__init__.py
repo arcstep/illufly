@@ -18,4 +18,4 @@ app.include_router(create_project_api(llm))
 """
 
 from .auth import create_auth_api, get_current_user
-from .project import create_project_api
+from .desk import create_desk_api
