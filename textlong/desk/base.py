@@ -298,7 +298,7 @@ class Desk:
                     if block.block_type in ['text', 'chunk', 'front_matter']:
                         output_text += block.text
                     
-                    if block.block_type in ['tools_call']:
+                    if block.block_type in ['tools_call_chunk']:
                         tools_call.append(json.loads(block.text))
                 else:
                     output_text += block.text
@@ -312,11 +312,14 @@ class Desk:
                     for struct_tool in toolkits:
                         if tool['function']['name'] == struct_tool.name:
                             args = json.loads(tool['function']['arguments'])
-                            tool_resp = struct_tool.func(**args)
-                            for x in tool_resp:
+                            tool_resp = ""
+                            for x in struct_tool.func(**args):
                                 if isinstance(x, TextBlock):
+                                    if x.block_type == "tool_resp_final":
+                                        tool_resp = x.text
                                     yield x
                                 else:
+                                    tool_resp += x
                                     yield TextBlock("tool_resp_chunk", x)
                             tool_info = [
                                 {

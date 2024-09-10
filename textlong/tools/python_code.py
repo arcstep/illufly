@@ -3,8 +3,8 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.tools import StructuredTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
-from ..io import BaseLog, StreamLog, TextBlock
 from ..hub import load_chat_template
+from ..io import TextBlock
 
 import textwrap
 import pandas as pd
@@ -87,15 +87,18 @@ def create_python_code_tool(data: Dict[str, "Dataset"], llm: Any, **kwargs):
             }
         ]
 
-        for x in llm(messages, model=llm, **kwargs):
-            yield x
+        output_text = ''
+        for block in llm(messages, model=llm, **kwargs):
+            if block.block_type == 'chunk':
+                output_text += block.text
+            yield TextBlock("tool_resp_chunk", block.text)
 
-        code = parse_code(log_resp['output'])
+        code = parse_code(output_text)
         if code:
             resp = execute_code(data, code)
-            yield TextBlock("text", convert_to_text(resp))
+            yield TextBlock("tool_resp_final", convert_to_text(resp))
         else:
-            yield TextBlock("text", "没有正确生成python代码失败。")
+            yield TextBlock("warn", "没有正确生成python代码失败。")
 
     class PythonCodeInput(BaseModel):
         question: str = Field(description="任务或问题的描述")

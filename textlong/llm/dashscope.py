@@ -54,7 +54,7 @@ def qwen(
             ai_output = response.output.choices[0].message
             if 'tool_calls' in ai_output:
                 for func in ai_output.tool_calls:
-                    yield TextBlock("tools_call", json.dumps(func, ensure_ascii=False))
+                    yield TextBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
             else:
                 content = ai_output.content
                 yield TextBlock("chunk", content)

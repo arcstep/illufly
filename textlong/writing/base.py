@@ -19,7 +19,7 @@ from ..hub import load_prompt
 from ..importer import load_markdown
 from ..utils import extract_text, safety_path, compress_text
 from ..config import get_env
-from ..io import stream_log
+from ..io import log as stream_log
 
 def _create_chain(llm, prompt_template, **kwargs):
     if not llm:
