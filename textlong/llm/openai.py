@@ -21,7 +21,6 @@ class ChatOpenAI(ChatBase):
         **kwargs
     ):
         _prompt = prompt
-        model = kwargs.get("model", self.model)
         if isinstance(prompt, str):
             _prompt = [
                 {
@@ -30,16 +29,16 @@ class ChatOpenAI(ChatBase):
                 }
             ]
 
-        kwargs.update({
-            "model": model,
-            "messages": _prompt,
-            "stream": True
-            # temperature=0.8,
-            # top_p=0.8,
-            # 可选，配置以后会在流式输出的最后一行展示token使用信息
-            # stream_options={"include_usage": True}
-        })
-        completion = self.client.chat.completions.create(**kwargs)
+        _kwargs = {
+            "model": self.model,
+            "stream": True,
+            # "temperature": 0.8,
+            # "top_p": 0.8,
+            # # 可选，配置以后会在流式输出的最后一行展示token使用信息
+            # "stream_options": {"include_usage": True}
+        }
+        _kwargs.update({"messages": _prompt, **kwargs})
+        completion = self.client.chat.completions.create(**_kwargs)
 
         for response in completion:
             if response.choices:
