@@ -1,15 +1,15 @@
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Dict, Any
 import os
 import json
 
 from ..io import TextBlock
-from .base import ChatBase
+from .agent import ChatAgent
 
 from zhipuai import ZhipuAI
 
-class ChatZhipu(ChatBase):
+class ChatZhipu(ChatAgent):
     def __init__(self, model: str=None, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(threads_group="CHAT_ZHIPU", **kwargs)
         self.threads_group = "CHAT_ZHIPU"
         self.model = model or "glm-4-flash"
         self.api_key = kwargs.get("api_key", os.getenv("ZHIPUAI_API_KEY"))
@@ -17,23 +17,14 @@ class ChatZhipu(ChatBase):
 
     def generate(
         self,
-        prompt: Union[str, List[dict]],
+        messages: List[dict],
         **kwargs
     ):
-        _prompt = prompt
-        if isinstance(prompt, str):
-            _prompt = [
-                {
-                "role": "user",
-                "content": prompt
-                }
-            ]
-        
         _kwargs = {
             "model": self.model,
             "stream": True,
         }
-        _kwargs.update({"messages": _prompt, **kwargs})
+        _kwargs.update({"messages": messages, **kwargs})
 
         completion = self.client.chat.completions.create(**_kwargs)
 
