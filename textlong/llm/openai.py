@@ -11,8 +11,9 @@ from .base import ChatBase
 class ChatOpenAI(ChatBase):
     def __init__(self, model: str=None, **kwargs):
         super().__init__(**kwargs)
+        self.threads_group = "CHAT_OPENAI"
         self.model = model or "gpt-3.5-turbo"
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.client = OpenAI(api_key=kwargs.get("api_key", os.getenv("OPENAI_API_KEY")), **kwargs)
 
     def generate(
         self,
