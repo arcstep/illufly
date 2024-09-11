@@ -1,16 +1,17 @@
-from typing import Union, List, Optional
-from ..base import BaseChat
-from ..io import TextBlock
 import time
 
+from typing import Union, List, Optional
+from .base import ChatBase
+from ..io import TextBlock
 
-class FakeLLM(BaseChat):
+
+class FakeLLM(ChatBase):
     def __init__(self, sleep_time: float = 0):
         super().__init__()
         self.threads_group = "fake_llm"
         self.sleep_time = sleep_time if sleep_time > 0 else 0
 
-    def generate(self, prompt: Union[str, List[dict]], sleep_time: float = 0):
+    def generate(self, prompt: Union[str, List[dict]], sleep_time: float = 0, *args, **kwargs):
         # 生成info块
         if isinstance(prompt, str):
             yield TextBlock("info", prompt)

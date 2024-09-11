@@ -50,37 +50,3 @@ class CallBase(ABC):
     def shutdown_executors(cls):
         for executor in cls.executors.values():
             executor.shutdown(wait=True)
-
-class ChatBase(CallBase):
-    def __init__(self, memory: List[Dict[str, Any]]=None):
-        self.memory = memory or []
-        super().__init__(threads_group="base_llm")
-
-    def add_prompt_to_memory(self, prompt: Union[str, List[dict]]):
-        if isinstance(prompt, str):
-            new_memory = {"role": "user", "content": prompt}
-        else:
-            new_memory = prompt[-1]
-        self.memory.append(new_memory)
-    
-    def add_response_to_memory(self, response: Union[str, List[dict]]):
-        if isinstance(response, str):
-            new_memory = {"role": "assistant", "content": response}
-        else:
-            new_memory = response[-1]
-        self.memory.append(new_memory)
-
-    def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        self.add_prompt_to_memory(prompt)
-
-        full_content = ""
-        for block in self.generate(prompt, *args, **kwargs):
-            yield block
-            if block.block_type == "chunk":
-                full_content += block.content
-
-        self.add_response_to_memory(full_content)
-
-    @abstractmethod
-    def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        pass
