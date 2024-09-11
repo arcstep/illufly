@@ -21,7 +21,7 @@ from .state import State
 
 import pandas as pd
 
-class Desk:
+class Agent:
     def __init__(self, llm, toolkits: list=[], tools: list=[], k: int=10, history: History=None, **model_kwargs):
         """
         Args:
