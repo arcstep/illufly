@@ -1,15 +1,18 @@
 import json
 from typing import AsyncIterable, Union
-from .block import TextBlock
 import logging
 import asyncio
 
-async def event_stream(resp: AsyncIterable[Union[TextBlock, str]]):
+from .block import TextBlock
+from ..base import CallBase
+
+async def event_stream(call_obj: CallBase, *args, **kwargs):
     """
     针对任何回调函数，只要符合规范的返回TextBlock对象或str的生成器，就可以使用这个函数来
     生成事件流格式的数据。
     """
 
+    resp = call_obj.async_call(*args, **kwargs)
     async for block in resp:
         if isinstance(block, TextBlock):
             # logging.info(f"Sending block: {block.block_type} - {block.content}")

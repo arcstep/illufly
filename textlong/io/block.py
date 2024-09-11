@@ -47,7 +47,7 @@ class TextBlock():
             # 大模型推理的中间结果片段文本
             'chunk': "TEXTLONG_COLOR_CHUNK",
             # 大模型推理的最终结果
-            'final': "TEXTLONG_COLOR_FINAL",
+            'text_final': "TEXTLONG_COLOR_FINAL",
             # 提示信息
             'info': "TEXTLONG_COLOR_INFO",
             # 警告信息
