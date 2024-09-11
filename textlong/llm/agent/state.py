@@ -4,7 +4,7 @@ import pandas as pd
 import re
 import copy
 
-from ..utils import compress_text
+from ...utils import compress_text
 from .markdown import Markdown
 
 class Dataset:

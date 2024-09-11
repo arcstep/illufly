@@ -8,7 +8,7 @@ def process_block(block, last_block_type, output_text):
     if isinstance(block, TextBlock):
         if block.block_type in ['text', 'chunk', 'front_matter']:
             output_text += block.text
-        elif block.block_type in ['text_final', 'tool_resp_final']:
+        elif block.block_type in ['text_final', 'tools_call_final']:
             output_text = block.text
             
         if block.block_type in ['chunk', 'tool_resp_chunk']:

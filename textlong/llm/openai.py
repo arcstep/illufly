@@ -1,44 +1,31 @@
 import os
 import json
 
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Dict, Any
 from openai import OpenAI
 
 from ..io import TextBlock
-from .base import ChatBase
+from .agent import ChatAgent
 
 
-class ChatOpenAI(ChatBase):
+class ChatOpenAI(ChatAgent):
     def __init__(self, model: str=None, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(threads_group="CHAT_OPENAI", **kwargs)
         self.threads_group = "CHAT_OPENAI"
         self.model = model or "gpt-3.5-turbo"
         self.client = OpenAI(api_key=kwargs.get("api_key", os.getenv("OPENAI_API_KEY")), **kwargs)
 
     def generate(
         self,
-        prompt: Union[str, List[dict]],
+        messages: List[dict],
         *args,
         **kwargs
     ):
-        _prompt = prompt
-        if isinstance(prompt, str):
-            _prompt = [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-
         _kwargs = {
             "model": self.model,
             "stream": True,
-            # "temperature": 0.8,
-            # "top_p": 0.8,
-            # # 可选，配置以后会在流式输出的最后一行展示token使用信息
-            # "stream_options": {"include_usage": True}
         }
-        _kwargs.update({"messages": _prompt, **kwargs})
+        _kwargs.update({"messages": messages, **kwargs})
         completion = self.client.chat.completions.create(**_kwargs)
 
         for response in completion:

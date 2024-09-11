@@ -1,33 +1,24 @@
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Dict, Any
 
 from http import HTTPStatus
 from ..io import TextBlock
 from ..config import get_env
-from .base import ChatBase
+from .agent import ChatAgent
 
 import dashscope
 import json
 import os
 
-class ChatQwen(ChatBase):
+class ChatQwen(ChatAgent):
     def __init__(self, model: str=None, **kwargs):
-        super().__init__(**kwargs)
-        self.threads_group = "CHAT_QWEN"
+        super().__init__(threads_group="CHAT_QWEN", **kwargs)
         self.model = model or "qwen-max"
         self.api_key = kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))
 
     def generate(
         self,
-        prompt: Union[str, List[dict]],
+        messages: List[dict],
         **kwargs):
-
-        # 转换消息格式
-        _messages = None
-        _prompt = None
-        if isinstance(prompt, str):
-            _prompt = prompt
-        else:
-            _messages = prompt
 
         _kwargs = {
             "model": self.model,
@@ -35,13 +26,8 @@ class ChatQwen(ChatBase):
             "stream": True,
             "result_format": 'message',
             "incremental_output": True,
-            # "seed": 1234,
-            # "top_p": 0.8,
-            # "max_tokens": 1500,
-            # "temperature": 0.85,
-            # "repetition_penalty": 1.0,
         }
-        _kwargs.update({"messages": _messages, "prompt":_prompt, **kwargs})
+        _kwargs.update({"messages": messages, **kwargs})
 
         # 调用生成接口
         responses = dashscope.Generation.call(**_kwargs)
