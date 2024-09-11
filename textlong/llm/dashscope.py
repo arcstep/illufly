@@ -12,8 +12,9 @@ import os
 class ChatQwen(ChatBase):
     def __init__(self, model: str=None, **kwargs):
         super().__init__(**kwargs)
+        self.threads_group = "CHAT_QWEN"
         self.model = model or "qwen-max"
-        self.api_key = os.getenv("DASHSCOPE_API_KEY")
+        self.api_key = kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))
 
     def generate(
         self,
