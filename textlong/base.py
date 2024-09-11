@@ -3,9 +3,10 @@ import asyncio
 from typing import Union, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
+from functools import partial
 
 
-class BaseCall(ABC):
+class CallBase(ABC):
     # 声明一个类属性字典，用于存储不同组的线程池
     executors = {}
 
@@ -16,20 +17,19 @@ class BaseCall(ABC):
             self.executors[self.threads_group] = ThreadPoolExecutor(max_workers=max_workers)
         self.executor = self.executors[self.threads_group]
 
-    async def run_in_executor(self, sync_function, *args, **kwargs):
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(self.executor, sync_function, *args, **kwargs)
-        return result
-
     @abstractmethod
     def call(self, *args, **kwargs):
         yield "hello"
 
     async def async_call(self, *args, **kwargs):
         loop = asyncio.get_running_loop()
-        result = await self.run_in_executor(self.call, *args, **kwargs)
-        for block in result:
+        for block in await self.run_in_executor(self.call, *args, **kwargs):
             yield block
+
+    async def run_in_executor(self, sync_function, *args, **kwargs):
+        loop = asyncio.get_running_loop()
+        func = partial(sync_function, *args, **kwargs)
+        return await loop.run_in_executor(self.executor, func)
 
     @classmethod
     def monitor_executors(cls):
@@ -51,9 +51,8 @@ class BaseCall(ABC):
         for executor in cls.executors.values():
             executor.shutdown(wait=True)
 
-class BaseChat(BaseCall):
-    def __init__(self, model: str=None, memory: List[Dict[str, Any]]=None):
-        self.model = model
+class ChatBase(CallBase):
+    def __init__(self, memory: List[Dict[str, Any]]=None):
         self.memory = memory or []
         super().__init__(threads_group="base_llm")
 
@@ -77,7 +76,8 @@ class BaseChat(BaseCall):
         full_content = ""
         for block in self.generate(prompt, *args, **kwargs):
             yield block
-            full_content += block.content
+            if block.block_type == "chunk":
+                full_content += block.content
 
         self.add_response_to_memory(full_content)
 
