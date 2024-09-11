@@ -1,35 +1,26 @@
 from typing import Union, List, Optional
+from ..base import BaseChat
 from ..io import TextBlock
+import time
 
-def fake_llm(
-    prompt: Union[str, List[dict]],
-    model: str="fake",
-    **kwargs):
-    """
-    Args:
-    - prompt 支持字符串提示语或消息列表。
 
-    Example:
-        messages = [
-            {'role':'system','content':'you are a helpful assistant'},
-            {'role': 'user','content': '你是谁？'}
-        ]
+class FakeLLM(BaseChat):
+    def __init__(self, sleep_time: float = 0):
+        super().__init__()
+        self.threads_group = "fake_llm"
+        self.sleep_time = sleep_time if sleep_time > 0 else 0
 
-        stream(qwen, messages)
-    """
+    def generate(self, prompt: Union[str, List[dict]], sleep_time: float = 0):
+        # 生成info块
+        if isinstance(prompt, str):
+            yield TextBlock("info", prompt)
+        else:
+            for message in prompt:
+                yield TextBlock("info", f'{message["role"]}: {message["content"]}')
 
-    # 转换消息格式
-    if isinstance(prompt, str):
-        yield TextBlock("chunk", prompt)
-    else:
-        for message in prompt:
-            yield TextBlock("info", f'{message["role"]}: {message["content"]}')
-
-    # 调用生成接口
-    responses = ["这", "是", "一个", "模拟", "调用", "!"]
-
-    # 默认使用流输出
-    full_content = ""
-    for content in responses:
-        yield TextBlock("chunk", content)
-        full_content += content
+        # 调用生成接口
+        responses = ["这", "是", "一个", "模拟", "调用", "!"]
+        _sleep_time = self.sleep_time if sleep_time <= 0 else sleep_time
+        for content in responses:
+            time.sleep(_sleep_time)
+            yield TextBlock("chunk", content)
