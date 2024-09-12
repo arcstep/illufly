@@ -29,9 +29,7 @@ class ChatAgent(Runnable):
         new_chat = kwargs.pop("new_chat", False)
         locked_item = False
 
-        _prompt = self._prepare_prompt(prompt)
-
-        if isinstance(_prompt, List) and _prompt[0].get("role", "") == "system":
+        if isinstance(prompt, List) and prompt[0].get("role", "") == "system":
             new_chat = True
             locked_item = True
 
@@ -39,8 +37,30 @@ class ChatAgent(Runnable):
         if new_chat:
             self.memory.clear()
 
+        # 先按照默认转换 _prompt
+        if isinstance(prompt, str):
+            _prompt = [{"role": "user", "content": prompt}]
+        else:
+            _prompt = prompt
+
+        # 考虑是否补充 self.system_prompt
+        if not self.memory and self.system_prompt:
+            if isinstance(prompt, str) :
+                _prompt = [
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": prompt}
+                ]
+            elif isinstance(prompt, List) and prompt[0].get("role", "") != "system":
+                _prompt = [
+                    {"role": "system", "content": self.system_prompt},
+                    *prompt
+                ]
+
         toolkits = kwargs.get("toolkits", self.toolkits)
-        resp = self.tools_calling(_prompt, *args, **kwargs) if toolkits else self.chat(_prompt, *args, **kwargs)
+        if toolkits:
+            resp = self.tools_calling(_prompt, *args, **kwargs)
+        else:
+            resp = self.chat(_prompt, *args, **kwargs)
 
         for block in resp:
             yield block
@@ -53,19 +73,6 @@ class ChatAgent(Runnable):
         # 避免在提取短期记忆时被遗弃
         if locked_item:
             self.locked_items = len(self.memory)
-
-    def _prepare_prompt(self, prompt: Union[str, List[dict]]) -> List[dict]:
-        if isinstance(prompt, str) and self.system_prompt:
-            return [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt}
-            ]
-        elif isinstance(prompt, List) and self.system_prompt:
-            return [
-                {"role": "system", "content": self.system_prompt},
-                *prompt
-            ]
-        return prompt
 
     def chat(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_memory = self.get_chat_memory()
