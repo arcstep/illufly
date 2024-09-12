@@ -6,12 +6,32 @@ from typing import Union, List, Dict, Any
 from ...utils import merge_blocks_by_index
 from ...io import TextBlock, create_chk_block
 
-from .base import CallBase
+from .base import Runnable
 from .state import State
 from .history import History
 
 
-class ChatAgent(CallBase):
+class ChatAgent(Runnable):
+    """
+    对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
+    基于对话智能体可以实现多智能体协作。
+
+    **对话智能体只有一个 call 方法，用于生成对话内容**
+
+    该方法在不同参数配置下，可以实现不同的对话功能。
+    - :prompt: 提供 prompt 时，表示这是一个基本的对话功能。
+    - :tools: 增加 tools 参数，将有大模型决定是否使用工具回调，并给出工具提示。
+    - :toolkits: 增加 toolkits 参数，将不仅给出工具提示，还将进一步执行工具。
+    - :template: 增加 template 参数，将使用指定的模板来生成对话内容，并且每次执行时会清空对话内容。
+
+    **多智能体协作：核心概念是行为，可通过 action 参数指定行为。**
+
+    每个智能体有一组基本相同的行为能力。
+    1. 默认的行为是对话
+    2. 增加 template 参数后的行为是协作（清空对话重来）
+    3. 行为还包括扩写、评估等。
+    """
+
     def __init__(self, memory: List[Dict[str, Any]]=None, k: int=10, threads_group: str=None, tools=None, toolkits=None, **kwargs):
         """
         :param memory: 初始化记忆。
@@ -32,6 +52,10 @@ class ChatAgent(CallBase):
         self.locked_items = None
         self.remember_rounds = k
         self.state = State()
+    
+    @property
+    def output(self):
+        return self.memory[-1]['content'] if self.memory else ""
 
     def create_new_memory(self, prompt: Union[str, List[dict]]):
         if isinstance(prompt, str):
@@ -95,7 +119,6 @@ class ChatAgent(CallBase):
 
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         toolkits = kwargs.get("toolkits", self.toolkits)
-        print("toolkits", toolkits)
         if toolkits:
             resp = self.tools_calling(prompt, *args, **kwargs)
         else:
@@ -129,7 +152,6 @@ class ChatAgent(CallBase):
 
     def tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
         toolkits = kwargs.pop("toolkits", self.toolkits)
-        print("toolkits", toolkits)
 
         new_memory = self.get_chat_memory()
         new_memory.extend(self.create_new_memory(prompt))
@@ -141,7 +163,6 @@ class ChatAgent(CallBase):
             tools_call = []
 
             # 大模型推理
-            print("new_memory", new_memory)
             for block in self.generate(new_memory, *args, **kwargs):
                 yield block
                 if block.block_type == "chunk":
@@ -155,7 +176,6 @@ class ChatAgent(CallBase):
                 yield TextBlock("tools_call_final", json.dumps(final_tools_call, ensure_ascii=False))
                 # 如果大模型的结果返回多个工具回调，则要逐个调用完成才能继续下一轮大模型的问调用。
                 for index, tool in final_tools_call.items():
-                    print("tool", tool)
 
                     for struct_tool in toolkits:
                         if tool['function']['name'] == struct_tool.name:
