@@ -9,12 +9,8 @@ class Pipe(Runnable):
     Pipe 是 Runnable 的子类，因此可以作为 Runnable 使用。
     """
     def __init__(self):
+        super().__init__("PIPE")
         self.runnables = []
-        self.last_output = ""
-
-    @property
-    def output(self):
-        return self.last_output
 
     def start(self, run: Runnable):
         self.runnables.append(
@@ -33,18 +29,16 @@ class Pipe(Runnable):
         )
 
     def call(self, prompt: str, *args, **kwargs):
-        self.last_output = None
-        for run in self.runnables:
-            if self.last_output and run['prompt']:
-                info = f"节点: {compress_text(run['prompt'], 30, 30, 10)}"
-                yield TextBlock("info", info)
-
-                _prompt = f"我刚刚已经获得如下内容：\n{self.last_output}\n{run['prompt']}"
-            else:
+        for index, run in enumerate(self.runnables):
+            if index == 0:
                 yield TextBlock("info", "智能体管道开始")
                 _prompt = prompt
-            
+            else:
+                info = f"节点: {compress_text(run['prompt'], 30, 30, 10)}"
+                yield TextBlock("info", info)
+                _prompt = f"我刚刚已经获得如下内容：\n{self.output}\n{run['prompt']}"
+
+            self.create_new_memory(_prompt)
             for block in run['runnable'].call(_prompt, *args, **kwargs):
                 yield block
-            
-            self.last_output = run['runnable'].output
+            self.remember_response(run['runnable'].output)
