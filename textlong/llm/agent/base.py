@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from functools import partial
 
 
-class CallBase(ABC):
+class Runnable(ABC):
     # 声明一个类属性字典，用于存储不同组的线程池
     executors = {}
 
