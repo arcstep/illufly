@@ -35,7 +35,6 @@ class ChatOpenAI(ChatAgent):
                 ai_output = response.choices[0].delta
                 if ai_output.tool_calls:
                     for func in ai_output.tool_calls:
-                        print("func", func)
                         func_json = {
                             "index": func.index or 0,
                             "id": func.id or "",
