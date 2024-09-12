@@ -10,19 +10,21 @@ import json
 import os
 
 class ChatQwen(ChatAgent):
-    def __init__(self, model: str=None, **kwargs):
-        super().__init__(threads_group="CHAT_QWEN", **kwargs)
+    def __init__(self, model: str=None, tools=None, toolkits=None, **kwargs):
+        super().__init__(threads_group="CHAT_OPENAI", tools=tools, toolkits=toolkits, **kwargs)
         self.model = model or "qwen-max"
         self.api_key = kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))
 
     def generate(
         self,
         messages: List[dict],
+        *args,
         **kwargs):
 
         _kwargs = {
             "model": self.model,
             "api_key": self.api_key,
+            "tools": self.tools,
             "stream": True,
             "result_format": 'message',
             "incremental_output": True,

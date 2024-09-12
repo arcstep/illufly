@@ -3,14 +3,15 @@ import json
 
 from typing import Union, List, Optional, Dict, Any
 from openai import OpenAI
+from langchain_core.tools import BaseTool
 
 from ..io import TextBlock
 from .agent import ChatAgent
 
 
 class ChatOpenAI(ChatAgent):
-    def __init__(self, model: str=None, **kwargs):
-        super().__init__(threads_group="CHAT_OPENAI", **kwargs)
+    def __init__(self, model: str=None, tools=None, toolkits=None, **kwargs):
+        super().__init__(threads_group="CHAT_OPENAI", tools=tools, toolkits=toolkits, **kwargs)
         self.threads_group = "CHAT_OPENAI"
         self.model = model or "gpt-3.5-turbo"
         self.client = OpenAI(api_key=kwargs.get("api_key", os.getenv("OPENAI_API_KEY")), **kwargs)
@@ -23,6 +24,7 @@ class ChatOpenAI(ChatAgent):
     ):
         _kwargs = {
             "model": self.model,
+            "tools": self.tools,
             "stream": True,
         }
         _kwargs.update({"messages": messages, **kwargs})
@@ -33,13 +35,14 @@ class ChatOpenAI(ChatAgent):
                 ai_output = response.choices[0].delta
                 if ai_output.tool_calls:
                     for func in ai_output.tool_calls:
+                        print("func", func)
                         func_json = {
                             "index": func.index or 0,
+                            "id": func.id or "",
+                            "type": func.type or "function",
                             "function": {
-                                "id": func.id or "",
-                                "type": func.type or "function",
-                                "name": func.function.name,
-                                "arguments": func.function.arguments
+                                "name": func.function.name or "",
+                                "arguments": func.function.arguments or ""
                             }
                         }
                         yield TextBlock("tools_call_chunk", json.dumps(func_json, ensure_ascii=False))
