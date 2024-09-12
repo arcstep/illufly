@@ -18,7 +18,7 @@ class Runnable(ABC):
     # 声明一个类属性字典，用于存储不同组的线程池
     executors = {}
 
-    def __init__(self, threads_group: str=None, memory: List[Dict[str, Any]] = None, k: int = 1, end_chk: bool = False):
+    def __init__(self, threads_group: str=None, memory: List[Dict[str, Any]] = None, k: int = 10, end_chk: bool = False):
         """
         :param memory: 初始化记忆。
         :param k: 记忆轮数。
@@ -44,15 +44,15 @@ class Runnable(ABC):
 
     @property
     def output(self):
-        return self.memory[-1]['content'] if len(self.memory) > 0 else ""
+        return self.memory[-1]['content'] if self.memory else ""
 
     def create_new_memory(self, prompt: Union[str, List[dict]]):
         if isinstance(prompt, str):
-            new_memory = {"role": "user", "content": prompt}
+            new_memory = [{"role": "user", "content": prompt}]
         else:
-            new_memory = prompt[-1]
-        self.memory.append(new_memory)
-        return [new_memory]
+            new_memory = prompt
+        self.memory.extend(new_memory)
+        return new_memory
 
     def remember_response(self, response: Union[str, List[dict]]):
         if isinstance(response, str):

@@ -24,6 +24,18 @@ class ChatAgent(Runnable):
         self.toolkits = toolkits or []
     
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
+        # 开始新对话
+        new_chat = kwargs.pop("new_chat", False)
+        locked_item = False
+        if isinstance(prompt, List):
+            if prompt[0].get("role", "") == "system":
+                new_chat = True
+                locked_item = True
+
+        # TODO: 应当在清空前做好历史管理
+        if new_chat:
+            self.memory.clear()
+
         toolkits = kwargs.get("toolkits", self.toolkits)
         if toolkits:
             # 在推理出要使用的工具后，直接调用工具。
@@ -39,6 +51,11 @@ class ChatAgent(Runnable):
         # 补充校验的尾缀
         if self.end_chk:
             yield create_chk_block(self.output)
+        
+        # 锁定记忆中的条数
+        # 避免在提取短期记忆时被遗弃
+        if locked_item:
+            self.locked_items = len(self.memory)
 
     def chat(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_memory = self.get_chat_memory()
