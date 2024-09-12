@@ -12,7 +12,7 @@ class ChatAgent(Runnable):
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
     """
 
-    def __init__(self, threads_group: str=None, tools=None, toolkits=None, **kwargs):
+    def __init__(self, threads_group: str=None, tools=None, toolkits=None, prompt:str=None, **kwargs):
         """
         对话智能体的几种基本行为：
         - 仅对话，不调用工具：不要提供 tools 参数
@@ -22,28 +22,25 @@ class ChatAgent(Runnable):
         super().__init__(threads_group or "CHAT_AGENT", **kwargs)
         self.tools = tools or []
         self.toolkits = toolkits or []
-    
+        self.system_prompt = prompt
+
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         # 开始新对话
         new_chat = kwargs.pop("new_chat", False)
         locked_item = False
-        if isinstance(prompt, List):
-            if prompt[0].get("role", "") == "system":
-                new_chat = True
-                locked_item = True
+
+        _prompt = self._prepare_prompt(prompt)
+
+        if isinstance(_prompt, List) and _prompt[0].get("role", "") == "system":
+            new_chat = True
+            locked_item = True
 
         # TODO: 应当在清空前做好历史管理
         if new_chat:
             self.memory.clear()
 
         toolkits = kwargs.get("toolkits", self.toolkits)
-        if toolkits:
-            # 在推理出要使用的工具后，直接调用工具。
-            resp = self.tools_calling(prompt, *args, **kwargs)
-        else:
-            # 仅给出工具提示，不调用工具。
-            # 如果没有提供 tools，则不会进行工具推理
-            resp = self.chat(prompt, *args, **kwargs)
+        resp = self.tools_calling(_prompt, *args, **kwargs) if toolkits else self.chat(_prompt, *args, **kwargs)
 
         for block in resp:
             yield block
@@ -56,6 +53,19 @@ class ChatAgent(Runnable):
         # 避免在提取短期记忆时被遗弃
         if locked_item:
             self.locked_items = len(self.memory)
+
+    def _prepare_prompt(self, prompt: Union[str, List[dict]]) -> List[dict]:
+        if isinstance(prompt, str) and self.system_prompt:
+            return [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+        elif isinstance(prompt, List) and self.system_prompt:
+            return [
+                {"role": "system", "content": self.system_prompt},
+                *prompt
+            ]
+        return prompt
 
     def chat(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_memory = self.get_chat_memory()
