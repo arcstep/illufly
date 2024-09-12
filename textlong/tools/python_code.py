@@ -5,7 +5,7 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from ..hub import load_chat_template
 from ..io import TextBlock
-from ..llm.agent import ChatAgent, CallBase
+from ..llm.agent import ChatAgent, Runnable
 
 import textwrap
 import pandas as pd

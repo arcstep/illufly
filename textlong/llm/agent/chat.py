@@ -5,127 +5,39 @@ from typing import Union, List, Dict, Any
 
 from ...utils import merge_blocks_by_index
 from ...io import TextBlock, create_chk_block
-
 from .base import Runnable
-from .state import State
-from .history import History
-
 
 class ChatAgent(Runnable):
     """
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
-    基于对话智能体可以实现多智能体协作。
-
-    **对话智能体只有一个 call 方法，用于生成对话内容**
-
-    该方法在不同参数配置下，可以实现不同的对话功能。
-    - :prompt: 提供 prompt 时，表示这是一个基本的对话功能。
-    - :tools: 增加 tools 参数，将有大模型决定是否使用工具回调，并给出工具提示。
-    - :toolkits: 增加 toolkits 参数，将不仅给出工具提示，还将进一步执行工具。
-    - :template: 增加 template 参数，将使用指定的模板来生成对话内容，并且每次执行时会清空对话内容。
-
-    **多智能体协作：核心概念是行为，可通过 action 参数指定行为。**
-
-    每个智能体有一组基本相同的行为能力。
-    1. 默认的行为是对话
-    2. 增加 template 参数后的行为是协作（清空对话重来）
-    3. 行为还包括扩写、评估等。
     """
 
-    def __init__(self, memory: List[Dict[str, Any]]=None, k: int=10, threads_group: str=None, tools=None, toolkits=None, **kwargs):
+    def __init__(self, threads_group: str=None, tools=None, toolkits=None, **kwargs):
         """
-        :param memory: 初始化记忆。
-        :param k: 记忆轮数。
-        :param threads_group: 线程组名称。
-
-        可以在环境变量中配置默认的线程池数量。
-        例如：
-        DEFAULT_MAX_WORKERS_CHAT_OPENAI=10
-        可以配置CHAT_OPENAI线程池的最大线程数为10。
-
-        self.locked_items 是锁定的记忆条数，每次对话时将会保留。
+        对话智能体的几种基本行为：
+        - 仅对话，不调用工具：不要提供 tools 参数
+        - 推理出应当使用的工具，但不调用：仅提供 tools 参数，不提供 toolkits 参数
+        - 推理出应当使用的工具，并调用：提供 tools 参数，同时提供 toolkits 参数
         """
-        super().__init__(threads_group or "CHAT_AGENT")
+        super().__init__(threads_group or "CHAT_AGENT", **kwargs)
         self.tools = tools or []
         self.toolkits = toolkits or []
-        self.memory = memory or []
-        self.locked_items = None
-        self.remember_rounds = k
-        self.state = State()
     
-    @property
-    def output(self):
-        return self.memory[-1]['content'] if self.memory else ""
-
-    def create_new_memory(self, prompt: Union[str, List[dict]]):
-        if isinstance(prompt, str):
-            new_memory = {"role": "user", "content": prompt}
-        else:
-            new_memory = prompt[-1]
-        self.memory.append(new_memory)
-        return [new_memory]
-
-    def remember_response(self, response: Union[str, List[dict]]):
-        if isinstance(response, str):
-            new_memory = [{"role": "assistant", "content": response}]
-        else:
-            new_memory = response
-        self.memory.extend(new_memory)
-        return new_memory
-
-    def get_chat_memory(self, remember_rounds:int=None):
-        """
-        优化聊天记忆。
-
-        1. 如果记忆中包含系统消息，则只保留前 locked_items 条消息。
-        2. 否则，只保留最后 k 轮对话消息。
-        3. 如果有准备好的知识，则将知识追加到消息列表中。
-        4. TODO: 移除工具回调等过程细节消息。
-        5. TODO: 将对话历史制作成对应摘要，以提升对话质量。
-        6. TODO: 根据问题做「向量检索」，提升对话的理解能力。
-        7. TODO: 根据问题做「概念检索」，提升对话的理解能力。
-
-        """
-        _k = self.remember_rounds if remember_rounds is None else remember_rounds
-        final_k = 2 * _k if _k >= 1 else 1
-        if len(self.memory) > 0 and self.memory[0]['role'] == 'system':
-            new_memory = self.memory[:self.locked_items]
-            new_memory += self.memory[self.locked_items:][-final_k:]
-        else:
-            new_memory = self.memory[-final_k:]
-
-        self.add_knowledge(new_memory)
-
-        return new_memory
-
-    def add_knowledge(self, new_memory: List[Any]):
-        """
-        将知识库中的知识追加到消息列表中。
-        """
-        existing_contents = {msg['content'] for msg in new_memory if msg['role'] == 'user'}
-        
-        for kg in self.state.get_knowledge():
-            content = f'已知：{kg}'
-            if content not in existing_contents:
-                new_memory.extend([{
-                    'role': 'user',
-                    'content': content
-                },
-                {
-                    'role': 'assistant',
-                    'content': 'OK, 我将利用这个知识回答后面问题。'
-                }])
-        return new_memory
-
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         toolkits = kwargs.get("toolkits", self.toolkits)
         if toolkits:
+            # 在推理出要使用的工具后，直接调用工具。
             resp = self.tools_calling(prompt, *args, **kwargs)
         else:
+            # 仅给出工具提示，不调用工具。
+            # 如果没有提供 tools，则不会进行工具推理
             resp = self.chat(prompt, *args, **kwargs)
 
         for block in resp:
             yield block
+
+        # 补充校验的尾缀
+        yield create_chk_block(self.output)
 
     def chat(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_memory = self.get_chat_memory()
@@ -209,8 +121,6 @@ class ChatAgent(Runnable):
                             to_continue_call_llm = True
             else:
                 self.remember_response(output_text)
-                # 补充校验的尾缀
-                yield create_chk_block(output_text)
 
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
