@@ -37,7 +37,8 @@ class ChatAgent(Runnable):
             yield block
 
         # 补充校验的尾缀
-        yield create_chk_block(self.output)
+        if self.end_chk:
+            yield create_chk_block(self.output)
 
     def chat(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_memory = self.get_chat_memory()

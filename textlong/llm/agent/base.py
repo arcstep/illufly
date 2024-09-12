@@ -18,7 +18,7 @@ class Runnable(ABC):
     # 声明一个类属性字典，用于存储不同组的线程池
     executors = {}
 
-    def __init__(self, threads_group: str=None, memory: List[Dict[str, Any]] = None, k: int = 1):
+    def __init__(self, threads_group: str=None, memory: List[Dict[str, Any]] = None, k: int = 1, end_chk: bool = False):
         """
         :param memory: 初始化记忆。
         :param k: 记忆轮数。
@@ -39,11 +39,12 @@ class Runnable(ABC):
         self.memory = memory or []
         self.locked_items = None
         self.remember_rounds = k
+        self.end_chk = end_chk
         self.state = State()
 
     @property
     def output(self):
-        return self.memory[-1]['content'] if self.memory else ""
+        return self.memory[-1]['content'] if len(self.memory) > 0 else ""
 
     def create_new_memory(self, prompt: Union[str, List[dict]]):
         if isinstance(prompt, str):
@@ -110,10 +111,6 @@ class Runnable(ABC):
         # yield "hello"
         pass
     
-    @property
-    def output(self):
-        return ""
-
     async def async_call(self, *args, **kwargs):
         loop = asyncio.get_running_loop()
         for block in await self.run_in_executor(self.call, *args, **kwargs):
