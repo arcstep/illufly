@@ -27,6 +27,10 @@ class Runnable(ABC):
     @abstractmethod
     def call(self, *args, **kwargs):
         yield "hello"
+    
+    @property
+    def output(self):
+        return ""
 
     async def async_call(self, *args, **kwargs):
         loop = asyncio.get_running_loop()
