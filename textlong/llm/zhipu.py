@@ -8,8 +8,8 @@ from .agent import ChatAgent
 from zhipuai import ZhipuAI
 
 class ChatZhipu(ChatAgent):
-    def __init__(self, model: str=None, **kwargs):
-        super().__init__(threads_group="CHAT_ZHIPU", **kwargs)
+    def __init__(self, model: str=None, tools=None, toolkits=None, **kwargs):
+        super().__init__(threads_group="CHAT_ZHIPU", tools=tools, toolkits=toolkits, **kwargs)
         self.threads_group = "CHAT_ZHIPU"
         self.model = model or "glm-4-flash"
         self.api_key = kwargs.get("api_key", os.getenv("ZHIPUAI_API_KEY"))
@@ -18,11 +18,13 @@ class ChatZhipu(ChatAgent):
     def generate(
         self,
         messages: List[dict],
+        *args,
         **kwargs
     ):
         _kwargs = {
-            "model": self.model,
             "stream": True,
+            "model": self.model,
+            "tools": self.tools,
         }
         _kwargs.update({"messages": messages, **kwargs})
 
@@ -35,11 +37,11 @@ class ChatZhipu(ChatAgent):
                     for func in ai_output.tool_calls:
                         func_json = {
                             "index": func.index or 0,
+                            "id": func.id or "",
+                            "type": func.type or "function",
                             "function": {
-                                "id": func.id or "",
-                                "type": func.type or "function",
-                                "name": func.function.name,
-                                "arguments": func.function.arguments
+                                "name": func.function.name or "",
+                                "arguments": func.function.arguments or ""
                             }
                         }
                         yield TextBlock("tools_call_chunk", json.dumps(func_json, ensure_ascii=False))

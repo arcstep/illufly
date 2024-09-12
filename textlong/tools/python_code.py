@@ -5,6 +5,7 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from ..hub import load_chat_template
 from ..io import TextBlock
+from ..llm.agent import ChatAgent, CallBase
 
 import textwrap
 import pandas as pd
@@ -53,7 +54,7 @@ def execute_code(data: Dict[str, Any], code: str):
     return exec_namespace.get('result', "生成的代码已经执行，但返回了空结果。")
 
 
-def create_python_code_tool(data: Dict[str, "Dataset"], llm: Any, **kwargs):
+def create_python_code_tool(data: Dict[str, "Dataset"], llm: ChatAgent, **kwargs):
     # from ...desk.dataset import Dataset
 
     def data_desc():
@@ -88,7 +89,7 @@ def create_python_code_tool(data: Dict[str, "Dataset"], llm: Any, **kwargs):
         ]
 
         output_text = ''
-        for block in llm(messages, model=llm, **kwargs):
+        for block in llm.call(messages, **kwargs):
             if block.block_type == 'chunk':
                 output_text += block.text
             yield TextBlock("tool_resp_chunk", block.text)
