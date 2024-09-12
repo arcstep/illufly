@@ -24,7 +24,7 @@ class TextBlock():
             "content": self.content,
             "thread_id": self.thread_id
         })
-        
+
     @property
     def text(self):
         return self.content
