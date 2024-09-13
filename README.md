@@ -100,7 +100,10 @@ log(qwen, "你能帮我写一首关于兔子做梦的四句儿歌?")
 
 ### 3.2 创建连续对话
 
-`ChatQwen`是一个智能体对象，已经自带记忆、工具回调等能力。
+`ChatQwen`是一个基于通义千问大模型推理的智能体对象。
+所有智能体对象都已经封装了多轮对话、工具回调、知识增强等能力。
+
+请看连续对话的例子：
 
 ```python
 from illufly.agent import ChatQwen
@@ -146,7 +149,7 @@ log(qwen, "换成两条小鱼")
 
 ### 3.3 生成工具回调提示
 
-无需额外代码，`illufly`智能体已经支持工具回调，只需要提供`tools`参数和`toolkits`参数即可。
+要让`illufly`智能体支持工具回调，只需要提供`tools`参数。
 
 `illufly` 当前版本保留了少部份 `langchain` 定义工具的方法。<br>
 这部份可以参考`langchain`官网文档：[https://python.langchain.com/v0.2/docs/how_to/custom_tools/]。
@@ -178,7 +181,7 @@ log(ChatQwen(), "今天广州天气如何啊", tools=[convert_to_openai_tool(get
 
 还是那个`illufly` 智能体对象，但提供`toolkits`参数之后，就变成`Tools-Calling`风格的智能体，也可以叫做`OpenAI风格智能体`。这种智能体是由大模型在服务端推理时决定是否调用工具，比较适合对话场景。
 
-在未来的版本中，`illufly` 还将支持`ReAct`、`Plan and Excutor`等其他类型的智能体。
+在未来的版本中，`illufly` 还将支持`ReAct`、`Plan`等其他推理模式。
 
 ```python
 qwen = ChatQwen(
