@@ -6,23 +6,23 @@
 
 **illufly** 的目标是快速构建多智能体的对话和写作场景。
 
-# 《幻蝶智能体 - illufly 使用指南》
+# 《幻蝶智能体 - `illufly` 使用指南》
 
 ## 1. 模型支持
 
 目前，框架主要支持以下大模型接口：
 
-- OpenAI 或协议兼容的模型
-- 阿里云的通义千问
-- 智谱AI的GLM4
+- `ChatOpenAI`: OpenAI 或协议兼容的模型
+- `ChatQwen`: 阿里云的通义千问
+- `ChatZhipu`: 智谱AI的GLM4
 - （... 即将兼容 更多大模型）
 - （... 即将兼容 声、图、视频等多模态模型）
 
-## 2 illufly 的安装与加载
+## 2 `illufly` 的安装与加载
 
-### 2.1 安装 illufly 包
+### 2.1 安装 `illufly` 包
 
-在 Python 中安装 illufly 包非常简单，以下命令会尝试安装最新版本的 illufly：
+在 Python 中安装 `illufly` 包非常简单，以下命令会尝试安装最新版本的 `illufly`：
 
 ```sh
 pip install illufly
@@ -30,11 +30,12 @@ pip install illufly
 poetry add illufly
 ```
 
-## 2.2 推荐使用 dotenv 管理环境变量
+## 2.2 推荐使用 `dotenv` 管理环境变量
 
-将 APIKEY 和项目配置保存到`.env`文件，再加载到进程的环境变量中，这是很好的实践策略。
+将`APIKEY`和项目配置保存到`.env`文件，再加载到进程的环境变量中，这是很好的实践策略。
 
-创建和配置`.env`文件，你需要在你项目的根目录下创建一个名为`.env`的文件（注意，文件名以点开始）。在这个文件中，你可以定义你的环境变量，例如：
+创建和配置`.env`文件，你需要在你项目的根目录下创建一个名为`.env`的文件（注意，文件名以点开始）。<br>
+在这个文件中，你可以定义你的环境变量，例如：
 
 ```
 ## OpenAI 兼容的配置
@@ -48,7 +49,7 @@ DASHSCOPE_API_KEY="你的API_KEY"
 ZHIPUAI_API_KEY="你的API_KEY"
 ```
 
-为此，你可能需要先安装 python-dotenv 包：
+为此，你可能需要先安装 `python-dotenv` 包：
 
 ```bash
 pip install python-dotenv
@@ -75,13 +76,15 @@ for x in qwen.call("请你帮我写封情书"):
 
 ### 3.1 创建对话应用
 
-使用下面极简的代码，就可以构建基于通义千问大模型的对话应用。<br>
+使用极简的代码，就可以构建基于通义千问大模型的对话应用。
+
 下面的代码中使用了`log`函数，在执行代码的环境中才可以看到：输出实际上是一个字或一个词蹦出来的流式输出。
+
 ```python
 from illufly.agent import ChatQwen
 from illufly.io import log
 
- # 要使用这个通义千问，需要先安装 `dashtop` 包
+ # 要使用这个通义千问，需要先安装 `dashscope` 包
  # 并配置好相应的 DASHSCOPE_API_KEY
 qwen = ChatQwen()
 log(qwen, "你能帮我写一首关于兔子做梦的四句儿歌?")
@@ -97,7 +100,8 @@ log(qwen, "你能帮我写一首关于兔子做梦的四句儿歌?")
 
 ### 3.2 创建连续对话
 
-`ChatQwen`是一个智能体对象，已经自带了记忆、工具回调等能力。
+`ChatQwen`是一个智能体对象，已经自带记忆、工具回调等能力。
+
 ```python
 from illufly.agent import ChatQwen
 from illufly.io import log
@@ -142,9 +146,10 @@ log(qwen, "换成两条小鱼")
 
 ### 3.3 生成工具回调提示
 
-无需额外代码，`illufly`中的智能体对象已经支持工具的使用，只需要提供`tools`参数和`toolkits`参数即可。
+无需额外代码，`illufly`智能体已经支持工具回调，只需要提供`tools`参数和`toolkits`参数即可。
 
-`illufly` 保留了少部份 `langchain` 能力，定义工具的方法和类是其中之一，这部份可以参考`langchain`官网：[https://python.langchain.com/v0.2/docs/how_to/custom_tools/]。
+`illufly` 当前版本保留了少部份 `langchain` 定义工具的方法。<br>
+这部份可以参考`langchain`官网文档：[https://python.langchain.com/v0.2/docs/how_to/custom_tools/]。
 
 以下示例是定义工具和使用工具的过程：
 ```python
@@ -162,16 +167,18 @@ log(ChatQwen(), "今天广州天气如何啊", tools=[convert_to_openai_tool(get
 ```
 
 生成结果：
+
 ```md
 '{"0": {"index": 0, "id": "call_6d87845fd30b41208b9c83", "type": "function", "function": {"name": "get_current_weather", "arguments": "{\\"location\\": \\"广州\\"}"}}}'
 ```
 
-请注意：这里并没有真正执行工具，只是生成了工具提示。<br>
-想要执行，还需要你提供`toolkits`参数。
+请注意：这里并没有真正执行工具，只是生成了工具提示。想要执行，还需要你提供`toolkits`参数。
 
 ### 3.4 生成工具提示的同时，执行工具
 
-还是那个`illufly` 智能体对象，但提供`toolkits`参数之后，就变成了`Tools-Calling`风格的智能体。这在`langchain`中也被称为`OpenAI风格的智能体`。
+还是那个`illufly` 智能体对象，但提供`toolkits`参数之后，就变成`Tools-Calling`风格的智能体，也可以叫做`OpenAI风格智能体`。这种智能体是由大模型在服务端推理时决定是否调用工具，比较适合对话场景。
+
+在未来的版本中，`illufly` 还将支持`ReAct`、`Plan and Excutor`等其他类型的智能体。
 
 ```python
 qwen = ChatQwen(
@@ -182,7 +189,7 @@ qwen = ChatQwen(
 log(qwen, "今天广州可以晒被子吗？")
 ```
 
-生成结果（第一句是工具回调输出的结果，第二句是工具回调后大模型再次生成的流长文本）：
+生成结果：
 
 ```md
 广州今天是晴天。 
@@ -190,13 +197,15 @@ log(qwen, "今天广州可以晒被子吗？")
 今天广州是晴天，非常适合晒被子。可以放心地把被子拿出来晾晒。
 ```
 
+上面的结果中，第一句是工具回调输出的结果，第二句是工具回调后大模型再次生成的流长文本。
+
 你也可以通过设置`verbose=True`来查看工具调用详情：
 
 ```python
 log(qwen, "今天广州可以晒被子吗？", verbose=True)
 ```
 
-生成结果（增加的中括号开头部份，是大模型第一次推理得出的工具和参数要求）：
+生成结果：
 
 ```md
 [TOOLS_CALL_CHUNK] {"index": 0, "id": "call_8f5d146a77b24d9c97b7ec", "type": "function", "function": {"name": "get_current_weather", "arguments": ""}}
@@ -209,9 +218,12 @@ log(qwen, "今天广州可以晒被子吗？", verbose=True)
 今天广州是晴天，非常适合晒被子。
 ```
 
+生成的结果中，增加的`[TOOLS_CALL_CHUNK]...`部份，是大模型第一次推理得出的工具和参数要求，紧接着是工具回调的结果，最后是工具回调后大模型再次合成后的文本。
+
 ### 3.5 智能体团队：执行管道
 
-将前面用过的智能体连接起来，就可以形成多智能体团队。<br>
+将前面用过的智能体连接起来，就可以形成多智能体团队。
+
 `Pipe`对象会把多个智能体对象组织起来，分工协作，共同完成任务，使用方法也与普通智能体类似。
 
 ```python
@@ -228,6 +240,7 @@ log(pipe, "你能帮我写一首关于兔子做梦的？四句即可。")
 ```
 
 生成结果：
+
 ```md
 [AGENT] >>> Node 1: 我是一个儿童作家，擅长写儿歌。
 
@@ -269,6 +282,7 @@ log(writer, {"task": "写一首两段儿歌，每段20个字即可，策划简�
 由于上面的定义非常典型，因此未来会设计一个语法糖对象，在不隐藏细节的情况下将这部份代码进一步简化。
 
 生成结果是连续的（如果不通过指令控输出字数，可以轻松输出万字长文）：
+
 ```md
 [AGENT] >>> Node 1: Template
 [AGENT] >>> Node 2: ChatQwen
