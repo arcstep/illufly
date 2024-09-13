@@ -16,13 +16,17 @@ class Pipe(Runnable):
         """ 
         快速构造智能体运行管道
         """
+        for run in runnables:
+            if not isinstance(run, Runnable):
+                raise ValueError("runnables 必须是 Runnable 实例")
+
         super().__init__("PIPE")
         self.runnables = runnables
 
     def __str__(self):
         runnable_types = [type(run).__name__ for run in self.runnables]
         return f"Pipe({runnable_types})"
-    
+
     def __repr__(self):
         runnable_types = [type(run).__name__ for run in self.runnables]
         return f"Pipe({runnable_types})"
@@ -34,7 +38,7 @@ class Pipe(Runnable):
         prev_runnable = None
         for index, run in enumerate(self.runnables):
             info = self._get_node_info(index + 1, run)
-            yield TextBlock("info", info)
+            yield TextBlock("agent_node", info)
             if index == 0:
                 current_args = args
                 current_kwargs = kwargs

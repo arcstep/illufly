@@ -1,4 +1,5 @@
 import json
+import copy
 
 from abc import abstractmethod
 from typing import Union, List, Dict, Any
@@ -12,7 +13,7 @@ class ChatAgent(Runnable):
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
     """
 
-    def __init__(self, threads_group: str=None, tools=None, toolkits=None, prompt:str=None, **kwargs):
+    def __init__(self, threads_group: str=None, toolkits=None, prompt:str=None, **kwargs):
         """
         对话智能体的几种基本行为：
         - 仅对话，不调用工具：不要提供 tools 参数
@@ -20,9 +21,16 @@ class ChatAgent(Runnable):
         - 推理出应当使用的工具，并调用：提供 tools 参数，同时提供 toolkits 参数
         """
         super().__init__(threads_group or "CHAT_AGENT", **kwargs)
-        self.tools = tools or []
         self.toolkits = toolkits or []
         self.system_prompt = prompt
+
+        # 在子类中应当将模型参数保存到这个属性中，以便持久化管理
+        self.model_args = {}
+
+    def clone(self):
+        new_obj = super().clone()
+        new_obj.model_args = copy.deepcopy(self.model_args)
+        return new_obj
 
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         # 开始新对话
