@@ -10,11 +10,14 @@ import json
 
 
 class ChatOpenAI(ChatAgent):
-    def __init__(self, model: str=None, tools=None, toolkits=None, **kwargs):
-        super().__init__(threads_group="CHAT_OPENAI", tools=tools, toolkits=toolkits, **kwargs)
+    def __init__(self, model: str=None, tools=None, **kwargs):
+        super().__init__(threads_group="CHAT_OPENAI", **kwargs)
         self.threads_group = "CHAT_OPENAI"
-        self.model = model or "gpt-3.5-turbo"
-        self.client = OpenAI(api_key=kwargs.get("api_key", os.getenv("OPENAI_API_KEY")), **kwargs)
+        self.model_args = {
+            "model": model or "gpt-3.5-turbo",
+            "tools": tools,
+            "client": OpenAI(api_key=kwargs.get("api_key", os.getenv("OPENAI_API_KEY")), **kwargs)
+        }
 
     def generate(
         self,
@@ -22,13 +25,11 @@ class ChatOpenAI(ChatAgent):
         *args,
         **kwargs
     ):
-        _kwargs = {
-            "model": self.model,
-            "tools": self.tools,
-            "stream": True,
-        }
+        model_args = self.model_args.pop("client")
+        _kwargs = {"stream": True, **model_args}
         _kwargs.update({"messages": messages, **kwargs})
-        completion = self.client.chat.completions.create(**_kwargs)
+
+        completion = self.model_args["client"].chat.completions.create(**_kwargs)
 
         for response in completion:
             if response.choices:

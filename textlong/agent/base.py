@@ -1,5 +1,6 @@
 import os
 import asyncio
+import copy
 
 from typing import Union, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
@@ -18,7 +19,7 @@ class Runnable(ABC):
     # 声明一个类属性字典，用于存储不同组的线程池
     executors = {}
 
-    def __init__(self, threads_group: str=None, memory: List[Dict[str, Any]] = None, k: int = 10, end_chk: bool = False):
+    def __init__(self, threads_group: str=None, memory: List[Dict[str, Any]] = None, k: int = 10, end_chk: bool = False, **kwargs):
         """
         :param memory: 初始化记忆。
         :param k: 记忆轮数。
@@ -36,7 +37,7 @@ class Runnable(ABC):
             self.executors[self.threads_group] = ThreadPoolExecutor(max_workers=max_workers)
         self.executor = self.executors[self.threads_group]
 
-        self.memory = memory or []
+        self.memory = copy.deepcopy(memory) or []
         self.locked_items = None
         self.remember_rounds = k
         self.end_chk = end_chk
@@ -45,6 +46,21 @@ class Runnable(ABC):
     @property
     def output(self):
         return self.memory[-1]['content'] if self.memory else ""
+    
+    def clone(self):
+        """
+        原则上，只应当修改 Runnable 中的数据，以便子类在执行 clone 方法时可以覆盖到所有需要克隆的数据。
+
+        !! 如果子类中有单独保存的数据，就应当覆写 clone 方法。(实际上你应当遵循上述原则)
+        """
+        new_obj = self.__class__(
+            self.threads_group, 
+            memory=self.memory, 
+            k=self.remember_rounds,
+            end_chk=self.end_chk
+        )
+        new_obj.state = copy.deepcopy(self.state)
+        return new_obj
 
     def create_new_memory(self, prompt: Union[str, List[dict]]):
         if isinstance(prompt, str):
