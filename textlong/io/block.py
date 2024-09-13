@@ -48,6 +48,8 @@ class TextBlock():
             'chunk': "TEXTLONG_COLOR_CHUNK",
             # 大模型推理的最终结果
             'text_final': "TEXTLONG_COLOR_FINAL",
+            # 智能体节点
+            'agent_node': "TEXTLONG_COLOR_INFO",
             # 提示信息
             'info': "TEXTLONG_COLOR_INFO",
             # 警告信息
