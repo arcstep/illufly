@@ -1,14 +1,14 @@
-# 🦜🦜🦜 textlong
+# 🦜🦜🦜 illufly
 
-[![PyPI version](https://img.shields.io/pypi/v/textlong.svg)](https://pypi.org/project/textlong/)
+[![PyPI version](https://img.shields.io/pypi/v/illufly.svg)](https://pypi.org/project/illufly/)
 
-**textlong** 的目标是基于大语言模型提供结构化的长文本生成能力。
+**illufly** 的目标是基于大语言模型提供结构化的长文本生成能力。
 
 # 优化说明
 
 从 0.4.12 开始，使用较小的模型（例如，阿里云 QWen2 系列 0.5B/1.5B/7B/57B/72B 等）都已经可以获得较好生成效果。
 
-# 《textlong 使用指南》
+# 《illufly 使用指南》
 
 ## 1 环境准备
 
@@ -22,7 +22,7 @@
 
 ```
 ZHIPUAI_API_KEY="你的智谱AI API密钥"
-TEXTLONG_FOLDER="你的项目目录"
+ILLUFLY_FOLDER="你的项目目录"
 ```
 
 为此，你可能需要先安装 python-dotenv 包：
@@ -52,29 +52,29 @@ ZHIPUAI_API_KEY="YOUR_API_KEY_NAME"
 
 这种方式不仅能保护你的敏感信息，还能让你的代码更加整洁、易于管理。
 
-## 2 textlong 的安装与加载
+## 2 illufly 的安装与加载
 
-### 2.1 安装 textlong 包
+### 2.1 安装 illufly 包
 
-在 Python 中安装 textlong 包非常简单，以下命令会尝试安装最新版本的 textlong：
+在 Python 中安装 illufly 包非常简单，以下命令会尝试安装最新版本的 illufly：
 
 ```sh
-pip install textlong
+pip install illufly
 ```
 
 为了确保安装的是最新版本，可以在命令中添加`--upgrade`选项，如下：
 
 ```sh
-pip install --upgrade textlong
+pip install --upgrade illufly
 ```
 
-## 3 使用 textlong 创作长文
+## 3 使用 illufly 创作长文
 
-### 3.1 在 jupyter 环境中使用 textlong
+### 3.1 在 jupyter 环境中使用 illufly
 
 **安装 JupyterLab**
 
-在使用 textlong 之前，首先需要确保你的环境中安装了 JupyterLab。JupyterLab 是一个交互式的开发环境，非常适合进行数据分析和机器学习项目。你可以通过以下命令安装 JupyterLab：
+在使用 illufly 之前，首先需要确保你的环境中安装了 JupyterLab。JupyterLab 是一个交互式的开发环境，非常适合进行数据分析和机器学习项目。你可以通过以下命令安装 JupyterLab：
 
 ```sh
 pip install jupyterlab
@@ -88,7 +88,7 @@ jupyter-lab
 
 **建立笔记**
 
-在新的笔记中，首先需要导入 textlong 包。在进行导入之前，请确保已经按照前面的步骤正确安装了 textlong 包：
+在新的笔记中，首先需要导入 illufly 包。在进行导入之前，请确保已经按照前面的步骤正确安装了 illufly 包：
 
 首先，加载你的环境变量，这样你就可以安全地访问 API 密钥：
 
@@ -97,10 +97,10 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(), override=True)
 ```
 
-接下来，导入 textlong 包和所需的模型：
+接下来，导入 illufly 包和所需的模型：
 
 ```python
-from textlong import Project
+from illufly import Project
 from langchain_zhipu import ChatZhipuAI
 ```
 
@@ -111,22 +111,22 @@ p = Project(ChatZhipuAI(model="glm-4"), project_id="demo")
 p
 ```
 
-这里`project_id`是你为 textlong 项目指定的唯一标识符。确保你使用的是正确的 API 模型名称和项目 ID。
+这里`project_id`是你为 illufly 项目指定的唯一标识符。确保你使用的是正确的 API 模型名称和项目 ID。
 
-恭喜你，现在可以使用 textlong 包来创作长文了！
+恭喜你，现在可以使用 illufly 包来创作长文了！
 
 ### 3.2 创作提纲
 
 从一个简单的例子开始，假设我们要创作的是一部 10000 字的修仙小说，标题为《我修了个假仙》，主角是夏小兰，男一号是周成，每个章节都将以意外和打脸的线索推动情节。
 
-接下来，使用 textlong 的`outline`方法来创建提纲。
+接下来，使用 illufly 的`outline`方法来创建提纲。
 
 ```python
 task = "请帮我创作10000字的修仙小说，标题为《我修了个假仙》，主角是夏小兰，男一号是周成，每一个章节都适用意外、打脸的线索推动。"
 p.outline("提纲.md", task)
 ```
 
-当你运行上述代码后，textlong 会根据你的任务描述自动生成一份提纲。提纲将包括小说的章节划分和每个章节的关键情节。你可以根据这个提纲来进行文章的扩写。
+当你运行上述代码后，illufly 会根据你的任务描述自动生成一份提纲。提纲将包括小说的章节划分和每个章节的关键情节。你可以根据这个提纲来进行文章的扩写。
 
 生成的结果如下：
 
@@ -161,7 +161,7 @@ p.from_outline(
 )
 ```
 
-运行上述代码，textlong 将根据“提纲.md”中的结构，生成一篇名为“我修了个假仙人.md”的文章初稿。
+运行上述代码，illufly 将根据“提纲.md”中的结构，生成一篇名为“我修了个假仙人.md”的文章初稿。
 
 也许你希望对生成的文章进行微调，以更好地符合你的创作风格或文章需求。
 为此，你可以像下面这样调整`from_outline`方法的参数：
