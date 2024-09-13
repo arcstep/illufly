@@ -10,12 +10,9 @@ from ..chat import ChatAgent
 
 class ChatQwen(ChatAgent):
     def __init__(self, model: str=None, tools=None, **kwargs):
-        super().__init__(threads_group="CHAT_OPENAI", **kwargs)
-        self.model_args = {
-            "model": model or "qwen-max",
-            "tools": tools,
-            "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))
-        }
+        super().__init__(threads_group="CHAT_QWEN", tools=tools, **kwargs)
+        self.default_call_args = {"model": model or "qwen-max"}
+        self.model_args = {"api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))}
 
     def generate(
         self,
@@ -27,9 +24,10 @@ class ChatQwen(ChatAgent):
             "stream": True,
             "result_format": 'message',
             "incremental_output": True,
+            **self.default_call_args,
             **self.model_args
         }
-        _kwargs.update({"messages": messages, **kwargs})
+        _kwargs.update({"messages": messages, "tools": self.tools, **kwargs})
 
         # 调用生成接口
         responses = dashscope.Generation.call(**_kwargs)
