@@ -1,9 +1,9 @@
-import time
-
 from typing import Union, List, Optional, Dict, Any
-from .agent import ChatAgent
-from ..io import TextBlock
 
+from ...io import TextBlock
+from ..chat import ChatAgent
+
+import time
 
 class FakeLLM(ChatAgent):
     def __init__(self, sleep: float=0, **kwargs):

@@ -1,9 +1,9 @@
 from typing import Dict
 
 from .base import Runnable
-from ...io import TextBlock
-from ...utils import compress_text
-from ...hub import load_chat_template
+from ..io import TextBlock
+from ..utils import compress_text
+from ..hub import load_chat_template
 
 class Template(Runnable):
     """

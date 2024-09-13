@@ -1,13 +1,12 @@
-from typing import Union, List, Optional, Dict, Any
-
-from http import HTTPStatus
-from ..io import TextBlock
-from ..config import get_env
-from .agent import ChatAgent
-
-import dashscope
 import json
 import os
+
+from typing import Union, List, Optional, Dict, Any
+from http import HTTPStatus
+import dashscope
+
+from ...io import TextBlock
+from ..chat import ChatAgent
 
 class ChatQwen(ChatAgent):
     def __init__(self, model: str=None, tools=None, toolkits=None, **kwargs):
