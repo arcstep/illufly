@@ -3,8 +3,8 @@ import json
 from abc import abstractmethod
 from typing import Union, List, Dict, Any
 
-from ...utils import merge_blocks_by_index
-from ...io import TextBlock, create_chk_block
+from ..utils import merge_blocks_by_index
+from ..io import TextBlock, create_chk_block
 from .base import Runnable
 
 class ChatAgent(Runnable):

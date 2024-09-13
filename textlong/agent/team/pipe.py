@@ -1,9 +1,10 @@
 from typing import List, Union
-from .base import Runnable
+
 from ...io import TextBlock
 from ...utils import compress_text
-from .chat import ChatAgent
-from .template import Template
+from ..base import Runnable
+from ..chat import ChatAgent
+from ..template import Template
 
 class Pipe(Runnable):
     """

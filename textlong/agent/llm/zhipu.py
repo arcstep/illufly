@@ -1,20 +1,19 @@
+from typing import Union, List, Optional, Dict, Any
+from zhipuai import ZhipuAI
+
+from ...io import TextBlock
+from ..chat import ChatAgent
+
 import os
 import json
 
-from typing import Union, List, Optional, Dict, Any
-from openai import OpenAI
-from langchain_core.tools import BaseTool
-
-from ..io import TextBlock
-from .agent import ChatAgent
-
-
-class ChatOpenAI(ChatAgent):
+class ChatZhipu(ChatAgent):
     def __init__(self, model: str=None, tools=None, toolkits=None, **kwargs):
-        super().__init__(threads_group="CHAT_OPENAI", tools=tools, toolkits=toolkits, **kwargs)
-        self.threads_group = "CHAT_OPENAI"
-        self.model = model or "gpt-3.5-turbo"
-        self.client = OpenAI(api_key=kwargs.get("api_key", os.getenv("OPENAI_API_KEY")), **kwargs)
+        super().__init__(threads_group="CHAT_ZHIPU", tools=tools, toolkits=toolkits, **kwargs)
+        self.threads_group = "CHAT_ZHIPU"
+        self.model = model or "glm-4-flash"
+        self.api_key = kwargs.get("api_key", os.getenv("ZHIPUAI_API_KEY"))
+        self.client = ZhipuAI(api_key=self.api_key, **kwargs)
 
     def generate(
         self,
@@ -23,11 +22,12 @@ class ChatOpenAI(ChatAgent):
         **kwargs
     ):
         _kwargs = {
+            "stream": True,
             "model": self.model,
             "tools": self.tools,
-            "stream": True,
         }
         _kwargs.update({"messages": messages, **kwargs})
+
         completion = self.client.chat.completions.create(**_kwargs)
 
         for response in completion:

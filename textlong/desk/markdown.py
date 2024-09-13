@@ -6,9 +6,9 @@ from typing import Iterator, List, Union, Optional
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import TextSplitter
-from ..parser import parse_markdown, create_front_matter, list_markdown
-from ...config import get_env
-from ...utils import extract_text
+from .parser import parse_markdown, create_front_matter, list_markdown
+from ..config import get_env
+from ..utils import extract_text
 
 class Markdown():
     def __init__(self, doc_str: str=None):
