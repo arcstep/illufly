@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "textlong"
-version = "0.4.15"
-description = "A framework designed to produce long-texts with GPT or other large language models."
-authors = ["arcstep <43801@qq.com>"]
-homepage = "https://github.com/arcstep/textlong"
-repository = "https://github.com/arcstep/textlong.git"
+name = "illufly"
+version = "0.1.1"
+description = "A framework designed for multi agents with GPT or other large language models."
+authors = ["arcstep <xuehongwei@illufly.com>"]
+homepage = "https://github.com/arcstep/illufly"
+repository = "https://github.com/arcstep/illufly.git"
 license = "MIT"
 readme = "README.md"
 
@@ -47,4 +47,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [[tool.poetry.packages]]
-include = "textlong/**/*"
+include = "illufly/**/*"

@@ -7,8 +7,8 @@ load_dotenv(find_dotenv(), override=True)
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-from textlong.agent import Agent
-from textlong.llm import zhipu
+from illufly.agent import Agent
+from illufly.llm import zhipu
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse

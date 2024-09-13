@@ -16,10 +16,10 @@ from fastapi.responses import StreamingResponse
 import uuid
 import logging
 
-# 假设 Desk 类已经定义在 textlong.desk.base 模块中
-from textlong.desk import Desk
-from textlong.llm import qwen
-from textlong.io.event_stream import event_stream
+# 假设 Desk 类已经定义在 illufly.desk.base 模块中
+from illufly.agent import Agent
+from illufly.llm import qwen
+from illufly.io.event_stream import event_stream
 
 logging.basicConfig(level=logging.INFO)
 
