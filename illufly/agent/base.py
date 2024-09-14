@@ -2,12 +2,38 @@ import os
 import asyncio
 import copy
 
-from typing import Union, List, Dict, Any
+from typing import Union, List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
 from functools import partial
 
+from ..hub import Template
+
 from .state import State
+
+def convert_prompt_to_messages(prompt: Union[str, List[Union[str, dict, Template]]]):
+    """
+    将 prompt 转换为消息列表。
+    """
+    if isinstance(prompt, str):
+        return [{'role': 'user', 'content': prompt}]
+    
+    messages = []
+    roles = ['user', 'assistant']
+    for i, element in enumerate(prompt):
+        if i > 0 and messages[0].get('role') == 'system':
+            _i = i + 1
+        else:
+            _i = i
+        if isinstance(element, dict):
+            messages.append(element)
+        elif isinstance(element, str):
+            messages.append({'role': roles[_i % 2], 'content': element})
+        elif isinstance(element, Template):
+            role = 'system' if _i == 0 else roles[_i % 2]
+            messages.append({'role': role, 'content': element.get_prompt()})
+    
+    return messages
 
 class Runnable(ABC):
     """
@@ -19,7 +45,14 @@ class Runnable(ABC):
     # 声明一个类属性字典，用于存储不同组的线程池
     executors = {}
 
-    def __init__(self, threads_group: str=None, memory: List[Dict[str, Any]] = None, k: int = 10, end_chk: bool = False, **kwargs):
+    def __init__(
+        self,
+        threads_group: str=None,
+        memory: List[Union[str, "Template", Dict[str, Any]]] = None,
+        k: int = 10,
+        end_chk: bool = False,
+        **kwargs
+    ):
         """
         :param memory: 初始化记忆。
         :param k: 记忆轮数。
@@ -29,7 +62,7 @@ class Runnable(ABC):
         对于使用多线程实现的外部调用，可以在环境变量中配置默认的线程池数量。
         例如：
         DEFAULT_MAX_WORKERS_CHAT_OPENAI=10
-        可以配置CHAT_OPENAI线程池的最大线程数为10。
+        可以配CHAT_OPENAI线程池的��大线程数为10。
         """
         self.threads_group = threads_group or "DEFAULT"
         if self.threads_group not in self.executors:
@@ -123,7 +156,7 @@ class Runnable(ABC):
         return new_memory
 
     @abstractmethod
-    def call(self, *args, **kwargs):
+    def call(self, prompt: Union[str, List[dict], "Template"], *args, **kwargs):
         # yield "hello"
         pass
     
@@ -156,3 +189,4 @@ class Runnable(ABC):
     def shutdown_executors(cls):
         for executor in cls.executors.values():
             executor.shutdown(wait=True)
+
