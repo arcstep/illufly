@@ -11,30 +11,6 @@ from ..hub import Template
 
 from .state import State
 
-def convert_prompt_to_messages(prompt: Union[str, List[Union[str, dict, Template]]]):
-    """
-    将 prompt 转换为消息列表。
-    """
-    if isinstance(prompt, str):
-        return [{'role': 'user', 'content': prompt}]
-    
-    messages = []
-    roles = ['user', 'assistant']
-    for i, element in enumerate(prompt):
-        if i > 0 and messages[0].get('role') == 'system':
-            _i = i + 1
-        else:
-            _i = i
-        if isinstance(element, dict):
-            messages.append(element)
-        elif isinstance(element, str):
-            messages.append({'role': roles[_i % 2], 'content': element})
-        elif isinstance(element, Template):
-            role = 'system' if _i == 0 else roles[_i % 2]
-            messages.append({'role': role, 'content': element.get_prompt()})
-    
-    return messages
-
 class Runnable(ABC):
     """
     可运行的抽象类，定义了可运行的基本接口。
@@ -70,11 +46,84 @@ class Runnable(ABC):
             self.executors[self.threads_group] = ThreadPoolExecutor(max_workers=max_workers)
         self.executor = self.executors[self.threads_group]
 
-        self.memory = copy.deepcopy(memory) or []
+        self.input_memory = memory or []
+        self.memory = []
+
         self.locked_items = None
         self.remember_rounds = k
         self.end_chk = end_chk
         self.state = State()
+
+        self._task = None
+
+    @property
+    def desk(self):
+        return {
+            "task": self._task,
+            "output": self.output,
+            "data": self.state.data,
+        }
+    
+    @property
+    def desk_used_vars(self):
+        if self.input_memory:
+            if isinstance(self.input_memory, Template):
+                return self.input_memory.desk_used_vars
+            elif isinstance(self.input_memory, list):
+                _desk_used_vars = {}
+                for x in self.input_memory:
+                    if isinstance(x, Template):
+                        _desk_used_vars.update(x.desk_used_vars)
+                return _desk_used_vars
+        return {}
+
+    def set_task(self, task: str):
+        self._task = task
+
+    def confirm_input_memory(self):
+        if not self.memory and self.input_memory:
+            for x in self.convert_prompt_to_messages(self.input_memory):
+                self.memory.append(x)
+        return self.memory
+
+    def convert_prompt_to_messages(self, prompt: Union[str, List[Union[str, dict, Template]]]):
+        """
+        将 prompt 转换为消息列表。
+        """
+        # prompt 是 str
+        if isinstance(prompt, str):
+            return [{'role': 'system', 'content': prompt}]
+
+        # 
+        if isinstance(prompt, Template):
+            return [{'role': 'system', 'content': prompt.get_prompt()}]
+
+        # prompt 是 str 列表，且只有一个元素
+        if isinstance(prompt, list) and len(prompt) == 1 and isinstance(prompt[0], str):
+            return [{'role': 'system', 'content': prompt[0]}]
+
+        messages = []
+        roles = ['user', 'assistant']
+        for i, element in enumerate(prompt):
+            if i > 0 and messages[0].get('role') == 'system':
+                _i = i + 1
+            else:
+                _i = i
+            if isinstance(element, dict):
+                messages.append(element)
+            elif isinstance(element, str):
+                messages.append({'role': roles[_i % 2], 'content': element})
+            elif isinstance(element, Template):
+                # 为Template指定desk引用
+                # 这一步很重要，是动态合成提示语模板的关键
+                #
+                element.desk = self.desk
+                #
+
+                role = 'system' if _i == 0 else roles[_i % 2]
+                messages.append({'role': role, 'content': element.get_prompt()})
+
+        return messages
 
     @property
     def output(self):
@@ -96,19 +145,25 @@ class Runnable(ABC):
         return new_obj
 
     def create_new_memory(self, prompt: Union[str, List[dict]]):
-        if isinstance(prompt, str):
-            new_memory = [{"role": "user", "content": prompt}]
+        if prompt:
+            if isinstance(prompt, str):
+                new_memory = [{"role": "user", "content": prompt}]
+            else:
+                new_memory = prompt
+            self.memory.extend(new_memory)
         else:
-            new_memory = prompt
-        self.memory.extend(new_memory)
+            new_memory = []
         return new_memory
 
     def remember_response(self, response: Union[str, List[dict]]):
-        if isinstance(response, str):
-            new_memory = [{"role": "assistant", "content": response}]
+        if response:
+            if isinstance(response, str):
+                new_memory = [{"role": "assistant", "content": response}]
+            else:
+                new_memory = response
+            self.memory.extend(new_memory)
         else:
-            new_memory = response
-        self.memory.extend(new_memory)
+            new_memory = []
         return new_memory
 
     def get_chat_memory(self, remember_rounds:int=None):

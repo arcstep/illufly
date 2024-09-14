@@ -58,8 +58,8 @@ class Pipe(Runnable):
 
     def _get_node_info(self, index, run):
         if isinstance(run, ChatAgent):
-            if run.system_prompt:
-                info = f">>> Node {index}: {compress_text(run.system_prompt, 30, 30, 10)}"
+            if run.memory:
+                info = f">>> Node {index}: {compress_text(run.memory[0].get('content'), 30, 30, 10)}"
             else:
                 info = f">>> Node {index}: {run.__class__.__name__}"
         else:

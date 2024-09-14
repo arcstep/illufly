@@ -14,7 +14,7 @@ class ChatAgent(Runnable):
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
     """
 
-    def __init__(self, threads_group: str=None, tools=None, toolkits=None, prompt:str=None, **kwargs):
+    def __init__(self, threads_group: str=None, tools=None, toolkits=None, **kwargs):
         """
         对话智能体的几种基本行为：
         - 仅对话，不调用工具：不要提供 tools 参数
@@ -22,7 +22,6 @@ class ChatAgent(Runnable):
         - 推理出应当使用的工具，并调用：提供 tools 参数，同时提供 toolkits 参数
         """
         super().__init__(threads_group or "CHAT_AGENT", **kwargs)
-        self.system_prompt = prompt
 
         self._toolkits = toolkits or []
         self._tools = tools or []
@@ -59,6 +58,9 @@ class ChatAgent(Runnable):
         # 开始新对话
         new_chat = kwargs.pop("new_chat", False)
         locked_item = False
+        new_task_flag = False
+
+        self.set_task(prompt if isinstance(prompt, str) else prompt[-1].get("content"))
 
         if isinstance(prompt, List) and prompt[0].get("role", "") == "system":
             new_chat = True
@@ -67,31 +69,25 @@ class ChatAgent(Runnable):
         # TODO: 应当在清空前做好历史管理
         if new_chat:
             self.memory.clear()
+            new_task_flag = True
+        
+        if not self.memory:
+            new_task_flag = True
 
-        # 先按照默认转换 _prompt
-        if isinstance(prompt, str):
-            _prompt = [{"role": "user", "content": prompt}]
+        # 根据实例初始化时的 memory 考虑是否补充记忆
+        self.confirm_input_memory()
+
+        # 如果在提示语模板中已经被使用，就不再追加到记忆中
+        if new_task_flag and "task" in self.desk_used_vars:
+            _prompt = []
         else:
             _prompt = prompt
 
-        # 考虑是否补充 self.system_prompt
-        if not self.memory and self.system_prompt:
-            if isinstance(prompt, str) :
-                _prompt = [
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": prompt}
-                ]
-            elif isinstance(prompt, List) and prompt[0].get("role", "") != "system":
-                _prompt = [
-                    {"role": "system", "content": self.system_prompt},
-                    *prompt
-                ]
-
         toolkits = kwargs.get("toolkits", self.toolkits)
         if toolkits:
-            resp = self.tools_calling(_prompt, *args, **kwargs)
+            resp = self.chat_with_tools_calling(_prompt, *args, **kwargs)
         else:
-            resp = self.chat(_prompt, *args, **kwargs)
+            resp = self.only_chat(_prompt, *args, **kwargs)
 
         for block in resp:
             yield block
@@ -105,12 +101,13 @@ class ChatAgent(Runnable):
         if locked_item:
             self.locked_items = len(self.memory)
 
-    def chat(self, prompt: Union[str, List[dict]], *args, **kwargs):
+    def only_chat(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_memory = self.get_chat_memory()
         new_memory.extend(self.create_new_memory(prompt))
 
         output_text = ""
         tools_call = []
+        # 调用大模型
         for block in self.generate(new_memory, *args, **kwargs):
             yield block
             if block.block_type == "chunk":
@@ -128,7 +125,7 @@ class ChatAgent(Runnable):
                 self.remember_response(output_text)
                 yield TextBlock("text_final", output_text)
 
-    def tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
+    def chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
         toolkits = kwargs.pop("toolkits", self.toolkits)
 
         new_memory = self.get_chat_memory()

@@ -10,6 +10,8 @@ class Template:
         self.desk_map = desk_map or {}
         self.desk = desk or {}
 
+        self.desk_used_vars = {}
+
     def __str__(self):
         return self.template
 
@@ -39,11 +41,13 @@ class Template:
         for k, v in self.desk.items():
             if k not in self.desk_map and k in required_keys:
                 mapped_desk[k] = v
+                self.desk_used_vars[k] = v
 
         for k, v in self.desk_map.items():
             if k in required_keys:
                 keys = v.split('.')
                 mapped_desk[k] = get_nested_value(self.desk, keys)
+                self.desk_used_vars[v] = mapped_desk[k]
 
         filtered_kwargs = {k: v for k, v in {**kwargs, **mapped_desk}.items()}
 
