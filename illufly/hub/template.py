@@ -10,7 +10,7 @@ class Template:
         self.desk_map = desk_map or {}
         self.desk = desk or {}
 
-        self.desk_used_vars = {}
+        self.desk_vars_in_template = {}
 
     def __str__(self):
         return self.template
@@ -25,6 +25,14 @@ class Template:
             raise ValueError('template is not set')
         
         return mu
+    
+    def clone(self):
+        return self.__class__(
+            template_id=self.template_id,
+            template_text=self.template_text,
+            desk_map=self.desk_map,
+            desk=self.desk
+        )
 
     def get_prompt(self, **kwargs):
         def get_nested_value(d, keys):
@@ -41,13 +49,13 @@ class Template:
         for k, v in self.desk.items():
             if k not in self.desk_map and k in required_keys:
                 mapped_desk[k] = v
-                self.desk_used_vars[k] = v
+                self.desk_vars_in_template[k] = v
 
         for k, v in self.desk_map.items():
             if k in required_keys:
                 keys = v.split('.')
                 mapped_desk[k] = get_nested_value(self.desk, keys)
-                self.desk_used_vars[v] = mapped_desk[k]
+                self.desk_vars_in_template[v] = mapped_desk[k]
 
         filtered_kwargs = {k: v for k, v in {**kwargs, **mapped_desk}.items()}
 

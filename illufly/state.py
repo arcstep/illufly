@@ -39,12 +39,8 @@ class Knowledge:
 class State():
     def __init__(
         self,
-        markdown: str=None,
-        from_outline: Dict[str, Document]=None,
         data: Dict[str, Dataset]=None,
         knowledge: Set[Knowledge]=None,
-        messages: List[Any]=None,
-        reserved_k: int=None
     ):
         """    
         Args:

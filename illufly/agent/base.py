@@ -6,10 +6,40 @@ from typing import Union, List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
 from functools import partial
+import re
+import pandas as pd
 
 from ..hub import Template
 
-from .state import State
+
+class Dataset:
+    def __init__(self, df: Union[pd.DataFrame]=None, desc: str=None):
+        self.df = df
+        self.desc = desc
+    
+    def __str__(self):
+        return self.desc
+
+    def __repr__(self):
+        return f"Dataset(desc={self.desc})"
+
+class Knowledge:
+    def __init__(self, text: str):
+        self.text = text
+
+    def __str__(self):
+        return self.text
+
+    def __repr__(self):
+        return f"Knowledge(text={self.text})"
+
+    def __eq__(self, other):
+        if isinstance(other, Knowledge):
+            return self.text == other.text
+        return False
+
+    def __hash__(self):
+        return hash(self.text)
 
 class Runnable(ABC):
     """
@@ -27,6 +57,12 @@ class Runnable(ABC):
         memory: List[Union[str, "Template", Dict[str, Any]]] = None,
         k: int = 10,
         end_chk: bool = False,
+        knowledge: List[str] = None,
+        data: Dict[str, Any] = None,
+        task: str = None,
+        draft: str = None,
+        outline: str = None,
+        state: Dict[str, Any] = None,
         **kwargs
     ):
         """
@@ -52,35 +88,57 @@ class Runnable(ABC):
         self.locked_items = None
         self.remember_rounds = k
         self.end_chk = end_chk
-        self.state = State()
+        self.knowledge = knowledge or []
+        self.data = data or {}
+        self.state = state or {}
 
-        self._task = None
-
+        self._task = task or None
+        self._draft = draft or None
+        self._outline = outline or None
     @property
     def desk(self):
+        """
+        这些属性允许其他对象读取，但修改需要专门的方法，例如`self.set_task`
+        """
         return {
             "task": self._task,
+            "draft": self._draft,
+            "outline": self._outline,
             "output": self.output,
-            "data": self.state.data,
+            "data": self.data,
+            "knowledge": self.knowledge,
+            "state": self.state,
         }
-    
-    @property
-    def desk_used_vars(self):
-        if self.input_memory:
-            if isinstance(self.input_memory, Template):
-                return self.input_memory.desk_used_vars
-            elif isinstance(self.input_memory, list):
-                _desk_used_vars = {}
-                for x in self.input_memory:
-                    if isinstance(x, Template):
-                        _desk_used_vars.update(x.desk_used_vars)
-                return _desk_used_vars
-        return {}
 
     def set_task(self, task: str):
         self._task = task
 
-    def confirm_input_memory(self):
+    def set_draft(self, draft: str):
+        self._draft = draft
+
+    def set_outline(self, outline: str):
+        self._outline = outline
+
+    @property
+    def desk_vars_in_template(self):
+        """
+        确定哪些变量被提示语模板动态使用。
+        """
+        if self.input_memory:
+            if isinstance(self.input_memory, Template):
+                return self.input_memory.desk_vars_in_template
+            elif isinstance(self.input_memory, list):
+                _desk_vars_in_template = {}
+                for x in self.input_memory:
+                    if isinstance(x, Template):
+                        _desk_vars_in_template.update(x.desk_vars_in_template)
+                return _desk_vars_in_template
+        return {}
+
+    def confirm_memory_init(self):
+        """
+        确认记忆被正确初始化过。
+        """
         if not self.memory and self.input_memory:
             for x in self.convert_prompt_to_messages(self.input_memory):
                 self.memory.append(x)
@@ -137,11 +195,16 @@ class Runnable(ABC):
         """
         new_obj = self.__class__(
             self.threads_group, 
-            memory=self.memory, 
+            memory=copy.deepcopy(self.input_memory), 
             k=self.remember_rounds,
-            end_chk=self.end_chk
+            end_chk=self.end_chk,
+            knowledge=copy.deepcopy(self.knowledge),
+            data=copy.deepcopy(self.data),
+            state=copy.deepcopy(self.state),
+            task=self._task,
+            draft=self._draft
         )
-        new_obj.state = copy.deepcopy(self.state)
+        # new_obj.memory = copy.deepcopy(self.memory)
         return new_obj
 
     def create_new_memory(self, prompt: Union[str, List[dict]]):
@@ -191,13 +254,14 @@ class Runnable(ABC):
 
         return new_memory
 
+    # 管理知识
     def add_knowledge(self, new_memory: List[Any]):
         """
         将知识库中的知识追加到消息列表中。
         """
         existing_contents = {msg['content'] for msg in new_memory if msg['role'] == 'user'}
         
-        for kg in self.state.get_knowledge():
+        for kg in self.get_knowledge():
             content = f'已知：{kg}'
             if content not in existing_contents:
                 new_memory.extend([{
@@ -209,6 +273,30 @@ class Runnable(ABC):
                     'content': 'OK, 我将利用这个知识回答后面问题。'
                 }])
         return new_memory
+
+    def get_knowledge(self, filter: str=None):
+        if filter:
+            return [kg.text for kg in self.knowledge if re.search(filter, kg.text)]
+        else:
+            return [kg.text for kg in self.knowledge]
+
+    def clear_knowledge(self):
+        self.knowledge.clear()
+
+    # 管理数据集
+    def add_dataset(self, name: str, df: pd.DataFrame, desc: str=None):
+        self.data[name] = Dataset(df, desc or name)
+
+    def get_dataset(self, name: str):
+        return self.data.get(name)
+    
+    def get_dataset_names(self):
+        return list(self.data.keys())
+    
+    def clear_dataset(self):
+        self.data.clear()
+
+
 
     @abstractmethod
     def call(self, prompt: Union[str, List[dict], "Template"], *args, **kwargs):

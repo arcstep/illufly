@@ -4,7 +4,6 @@ from ...io import TextBlock
 from ...utils import compress_text
 from ..base import Runnable
 from ..chat import ChatAgent
-from ..template import Template
 
 class Pipe(Runnable):
     """
@@ -43,10 +42,7 @@ class Pipe(Runnable):
                 current_args = args
                 current_kwargs = kwargs
             else:
-                if isinstance(prev_runnable, Template):
-                    prompt = prev_runnable.memory
-                else:
-                    prompt = prev_runnable.output
+                prompt = prev_runnable.output
                 current_args = [prompt]
                 current_kwargs = {}
 

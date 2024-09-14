@@ -4,7 +4,6 @@ from ...io import TextBlock
 from ...utils import compress_text
 from ..base import Runnable
 from ..chat import ChatAgent
-from ..template import Template
 from ..markdown import Markdown
 from ..team import Pipe
 
@@ -14,15 +13,12 @@ class FromOutline(Runnable):
     """
     实现扩写：从输出结果提炼大纲，然后生成内容。
     """
-    def __init__(self, writer: ChatAgent, template: Template=None, prev_k:int=1000, next_k:int=500):
+    def __init__(self, writer: ChatAgent=None, prev_k:int=1000, next_k:int=500):
         if not isinstance(writer, ChatAgent):
-            raise ValueError("writer 必须是 ChatAgent 实例")
-        if template and not isinstance(template, Template):
-            raise ValueError("template 必须是 Template 实例")
+            raise ValueError("扩写智能体 writer 必须是 ChatAgent 实例")
 
         super().__init__("FROM_OUTLINE")
         self.writer = writer
-        self.template = template or Template(template_id="FROM_OUTLINE", role="system")
         self.prev_k = prev_k
         self.next_k = next_k
 
@@ -67,20 +63,19 @@ class FromOutline(Runnable):
             for doc in self.outline:
                 outline_id = doc.metadata['id']
 
-                _writer = self.writer.clone()
-                self.runnables[doc.metadata['id']] = _writer
-                pipe = Pipe(self.template.clone(), _writer)
+                segment_writer = self.writer.clone()
+                self.runnables[doc.metadata['id']] = segment_writer
 
-                (draft, task) = self.markdown.fetch_outline_task(doc, prev_k=self.prev_k, next_k=self.next_k)
-                draft_md = f'```markdown\n{draft}\n```'
-                task_md = f'```markdown\n{task}\n```'
+                (draft, outline) = self.markdown.fetch_outline_task(doc, prev_k=self.prev_k, next_k=self.next_k)
+                segment_writer.set_outline(f'```markdown\n{outline}\n```')
+                segment_writer.set_draft(f'```markdown\n{draft}\n```')
 
-                info = f"执行扩写任务 <{outline_id}>：\n{task}"
+                info = f"执行扩写任务 <{outline_id}>：\n{outline}"
                 yield TextBlock("agent", info)
                 self.create_new_memory(info)
-                for block in pipe.call({"draft": draft_md, "task": task_md}):
+                for block in segment_writer.call("请开始扩写"):
                     yield block
-                self.remember_response(_writer.output)
+                self.remember_response(segment_writer.output)
         else:
             yield TextBlock("info", f"没有提纲可供扩写")
 
