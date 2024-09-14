@@ -10,9 +10,13 @@ from ..chat import ChatAgent
 
 class ChatQwen(ChatAgent):
     def __init__(self, model: str=None, tools=None, **kwargs):
+        enable_search = kwargs.pop("enable_search", False)
         super().__init__(threads_group="CHAT_QWEN", tools=tools, **kwargs)
         self.default_call_args = {"model": model or "qwen-max"}
-        self.model_args = {"api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))}
+        self.model_args = {
+            "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY")),
+            "enable_search": enable_search
+        }
 
     def generate(
         self,
