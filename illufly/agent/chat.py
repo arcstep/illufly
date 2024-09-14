@@ -6,7 +6,8 @@ from typing import Union, List, Dict, Any
 
 from ..utils import merge_blocks_by_index, extract_text
 from ..io import TextBlock, create_chk_block
-from ..tools import convert_to_openai_tool, create_python_code_tool
+
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from .base import Runnable
 
 class ChatAgent(Runnable):
@@ -35,6 +36,8 @@ class ChatAgent(Runnable):
 
     @property
     def tools(self):
+        from ..tools.python_code import create_python_code_tool
+
         if self.data:
             python_code_tool = create_python_code_tool(self.data, self.clone())
             return self._tools + [convert_to_openai_tool(python_code_tool)]
@@ -43,6 +46,8 @@ class ChatAgent(Runnable):
     
     @property
     def toolkits(self):
+        from ..tools.python_code import create_python_code_tool
+
         if self.data:
             python_code_tool = create_python_code_tool(self.data, self.clone())
             return self._toolkits + [python_code_tool]
@@ -160,15 +165,17 @@ class ChatAgent(Runnable):
                 for index, tool in final_tools_call.items():
 
                     for struct_tool in toolkits:
-                        if tool['function']['name'] == struct_tool.name:
-                            args = json.loads(tool['function']['arguments'])
+                        if tool['function']['name'] == struct_tool.tool['function']['name']:
+                            tool_args = json.loads(tool['function']['arguments'])
                             tool_resp = ""
 
-                            tool_func_result = struct_tool.func(**args)
+                            tool_func_result = struct_tool.func(**tool_args)
                             for x in tool_func_result:
                                 if isinstance(x, TextBlock):
                                     if x.block_type == "tool_resp_final":
                                         tool_resp = x.text
+                                    elif x.block_type == "chunk":
+                                        tool_resp += x.text
                                     yield x
                                 else:
                                     tool_resp += x
