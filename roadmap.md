@@ -55,7 +55,7 @@
 **项目管理：**
 
 - 写作方法: idea, outline, from_outline ...
-- 本地提示语: hub.load_prompt, hub.save_prompt, hub.clone_prompt
+- 本地提示语: hub.load_template, hub.save_prompt, hub.clone_prompt
 - 项目恢复: init, save_project
 - 命令历史: load_commands, load_history
 - 批处理: save_script, load_script, run_script

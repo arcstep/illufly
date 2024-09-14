@@ -3,7 +3,7 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.tools import StructuredTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
-from ..hub import load_prompt
+from ..hub import load_template
 from ..io import TextBlock
 from ..agent import Runnable
 
@@ -72,7 +72,7 @@ def create_python_code_tool(data: Dict[str, "Dataset"], agent: "ChatAgent", **kw
         return '\n'.join(datasets)
 
     def python_code(question: str):
-        prompt_template = load_prompt("GEN_CODE_PANDAS")
+        prompt_template = load_template("GEN_CODE_PANDAS")
         system_prompt = prompt_template.format(datasets=data_desc(), question=question)
 
         messages = [

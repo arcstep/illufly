@@ -1,4 +1,6 @@
-from .chat_template import (
-  load_resource_prompt,
-  load_prompt
+from .base import (
+  load_resource_template,
+  load_template
 )
+
+from .template import Template

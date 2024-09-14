@@ -3,7 +3,7 @@ from typing import Dict
 from .base import Runnable
 from ..io import TextBlock
 from ..utils import compress_text
-from ..hub import load_prompt
+from ..hub import load_template
 
 class Template(Runnable):
     """
@@ -22,7 +22,7 @@ class Template(Runnable):
 
     def call(self, values: Dict[str, str], prompt: str=None, *args, **kwargs):
         user_prompt = prompt or "请开始"
-        system_template = load_prompt(self.template_id)
+        system_template = load_template(self.template_id)
         template_prompt = system_template.format(**values)
         # 构造提示语
         self.memory.clear()

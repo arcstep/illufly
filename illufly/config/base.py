@@ -12,7 +12,7 @@ def get_env(key: str=None):
         "ILLUFLY_ROOT": "./",
 
         # 提示语文件夹
-        "ILLUFLY_PROMPTS": "__PROMPTS__",
+        "ILLUFLY_PROMPTS": "__TEMPLATE_BASE__",
 
         # 项目文件夹
         "ILLUFLY_LOGS": "__LOG__",

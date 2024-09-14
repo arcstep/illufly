@@ -17,8 +17,8 @@ import json
 
 from ..config import get_folder_root, get_env
 
-PROMPT_WRITING_BASE = 'illufly.__PROMPTS__'
-def find_resource_prompt():
+PROMPT_WRITING_BASE = 'illufly.__PROMPT_TEMPLATES__'
+def find_resource_template():
     """
     过滤出提示语模板所在的目录清单。
     """
@@ -27,28 +27,28 @@ def find_resource_prompt():
     return [r for r in all_resources if not is_resource(f'{PROMPT_WRITING_BASE}', r)]
 
 
-def load_resource_prompt(prompt_id: str):
+def load_resource_template(template_id: str):
     """
     从python包资源文件夹加载提示语模板。
     """
-    if prompt_id not in find_resource_prompt():
-        raise ValueError(f"<{prompt_id}> prompt_id not exist !")
+    if template_id not in find_resource_template():
+        raise ValueError(f"<{template_id}> template_id not exist !")
 
-    def _get_prompt_str(res_file: str):
-        if (res_folder := f'{PROMPT_WRITING_BASE}.{prompt_id}') and is_resource(res_folder, res_file):
+    def _get_template_str(res_file: str):
+        if (res_folder := f'{PROMPT_WRITING_BASE}.{template_id}') and is_resource(res_folder, res_file):
             return read_text(res_folder, res_file)
         elif (res_folder := f'{PROMPT_WRITING_BASE}') and is_resource(res_folder, res_file):
             return read_text(res_folder, res_file)
         else:
             return ''
 
-    prompt_str = _get_prompt_str('main.mu')
+    prompt_str = _get_template_str('main.mu')
 
     # 替换 {{>include_name}} 变量
     include_dict = {}
     matches = re.findall(r'{{>(.*?)}}', prompt_str)
     for part_name in matches:
-        prmopt_str = _get_prompt_str(f'{part_name.strip()}.mu')
+        prmopt_str = _get_template_str(f'{part_name.strip()}.mu')
         if prmopt_str:
             include_dict[part_name] = prmopt_str
     for part_name, part_str in include_dict.items():
@@ -63,11 +63,11 @@ def load_resource_prompt(prompt_id: str):
 
     return template.partial(**kwargs)
 
-def _find_prompt_file(prompt_id: str, file_name, template_folder: str=None, sep: str=None, all_path: List[str]=[], force: bool=False):
+def _find_prompt_file(template_id: str, file_name, template_folder: str=None, sep: str=None, all_path: List[str]=[], force: bool=False):
     sep = sep or os.sep
-    prompt_id = prompt_id.strip(f'{sep}| ')
+    template_id = template_id.strip(f'{sep}| ')
 
-    prompt_folder = os.path.join(get_folder_root(), template_folder or "", prompt_id)
+    prompt_folder = os.path.join(get_folder_root(), template_folder or "", template_id)
     if sep != os.sep:
         prompt_folder = prompt_folder.replace(os.sep, sep).strip(sep)
 
@@ -76,14 +76,14 @@ def _find_prompt_file(prompt_id: str, file_name, template_folder: str=None, sep:
             return file_path
 
     all_path.append(prompt_folder)
-    if not prompt_id:
+    if not template_id:
         if force:
             raise ValueError(f"Can't find {file_name}(.mu, .mustache, .txt) in [ {', '.join(all_path)} ]!")
         else:
             return None
-    return _find_prompt_file(prompt_id.rpartition(sep)[0], file_name, template_folder, sep, all_path)
+    return _find_prompt_file(template_id.rpartition(sep)[0], file_name, template_folder, sep, all_path)
 
-def load_prompt(prompt_id: str, template_folder: str=None,):
+def load_template(template_id: str, template_folder: str=None,):
     """
     从模板文件夹加载提示语模板。
     
@@ -100,7 +100,7 @@ def load_prompt(prompt_id: str, template_folder: str=None,):
         - xxx, 必须填写的变量
     """
     template_folder = template_folder or get_env("ILLUFLY_PROMPTS")
-    main_prompt = _find_prompt_file(prompt_id, 'main', template_folder)
+    main_prompt = _find_prompt_file(template_id, 'main', template_folder)
 
     if main_prompt:
         template_format = 'mustache' if main_prompt.endswith('.mu') or  main_prompt.endswith('.mustache') else 'f-string'
@@ -112,7 +112,7 @@ def load_prompt(prompt_id: str, template_folder: str=None,):
                 include_dict = {}
                 matches = re.findall(r'{{>(.*?)}}', prompt_str)
                 for part_name in matches:
-                    part_file = _find_prompt_file(prompt_id, part_name.strip(), template_folder)
+                    part_file = _find_prompt_file(template_id, part_name.strip(), template_folder)
                     with open(part_file, 'r') as f:
                         include_dict[part_name] = f.read()
                 for part_name, part_str in include_dict.items():
@@ -127,8 +127,8 @@ def load_prompt(prompt_id: str, template_folder: str=None,):
 
             return template.partial(**kwargs)
     else:
-        template = load_resource_prompt(prompt_id)
+        template = load_resource_template(template_id)
         if template:
             return template
 
-    raise ValueError(f'无法构建模板：{prompt_id}')
+    raise ValueError(f'无法构建模板：{template_id}')
