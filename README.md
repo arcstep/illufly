@@ -234,9 +234,9 @@ from illufly.agent import ChatQwen, Pipe
 from illufly.io import log
 
 pipe = Pipe(
-    ChatQwen(prompt="我是一个儿童作家，擅长写儿歌。"),
-    ChatQwen(prompt="请你帮我评价文章特色，两句话即可"),
-    ChatQwen(prompt="请针对我的写作成果打一个分数，给出一句话的打分点，最终给出1分至5分")
+    ChatQwen(memory="我是一个儿童作家，擅长写儿歌。"),
+    ChatQwen(memory="请你帮我评价文章特色，两句话即可"),
+    ChatQwen(memory="请针对我的写作成果打一个分数，给出一句话的打分点，最终给出1分至5分")
 )
 
 log(pipe, "你能帮我写一首关于兔子做梦的？四句即可。")
@@ -261,30 +261,28 @@ log(pipe, "你能帮我写一首关于兔子做梦的？四句即可。")
 
 加入到 `Pipe` 中的智能体对象，都可以使用自己的大模型、提示语、工具箱。其协作过程就像流水线，前一个智能体的输出，直接作为下一个智能体的输入。这是多智能体协作方式的一种，称为`流水线协作`。
 
-`illufly` 中还支持其他协作方式，如`提纲扩写`、`讨论`、`汇总`等。
+`illufly` 中还支持其他协作方式，如`提纲扩写`、`讨论`等。
 
 ### 3.6 智能体团队：提纲扩写
 
-下面是一个根据提纲扩写的例子，主要包括生成提纲和扩写两个部份。但提纲部份使用了较复杂的提示语模板，因此单独使用了`Template`对象作为流水线协作的开始，这样可以接受多参数的输入。
+下面是一个根据提纲扩写的例子，主要包括生成提纲和扩写两个部份。这里专门指定了提示语模板名称，你也可以自己写一个。
 
-`illufly` 中类似的提示语模板还有很多，并支持对提示语模板的查看、克隆、自定义等管理功能。这些模板机制可以让作者按照自己的意愿精细控制写作过程。
+`illufly` 中还有很多内置的的提示语模板还有很多，并支持对提示语模板的查看、克隆、自定义等管理功能。这些模板机制可以让作者按照自己的意愿精细控制写作过程。
 
 ```python
 from illufly.agent import ChatQwen, Pipe, FromOutline, Template
 from illufly.io import log, alog
+from illufly.hub import Template
 
 writer = Pipe(
-    Template("OUTLINE"),
-    ChatQwen(),
-    FromOutline(ChatQwen())
+    ChatQwen(memory=[Template("OUTLINE"), "请开始扩写提纲"]),
+    FromOutline(ChatQwen(memory=[Template("FROM_OUTLINE")]))
 )
 
 log(writer, {"task": "写一首两段儿歌，每段20个字即可，策划简单一点"})
 ```
 
-由于上面的定义非常典型，因此未来会设计一个语法糖对象，在不隐藏细节的情况下将这部份代码进一步简化。
-
-生成结果是连续的（如果不通过指令控输出字数，可以轻松输出万字长文）：
+生成结果是连续的（实际上，这种方式可以轻松输出万字长文）：
 
 ```md
 [AGENT] >>> Node 1: Template
