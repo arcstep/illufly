@@ -105,6 +105,7 @@ class Messages:
     def length(self):
         return len(self.messages)
 
+    @property
     def input_vars(self):
         vars = {}
         for msg in self.messages:

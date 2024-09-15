@@ -58,6 +58,7 @@ class ChatAgent(Runnable):
         locked_item = False
         new_task_flag = False
 
+        # 此处设置工作台变量：task
         self.set_task(prompt if isinstance(prompt, str) else prompt[-1].get("content"))
 
         if isinstance(prompt, List) and prompt[0].get("role", "") == "system":
@@ -76,7 +77,7 @@ class ChatAgent(Runnable):
         self.confirm_memory_init()
 
         # 如果在提示语模板中已经被使用，就不再追加到记忆中
-        if new_task_flag and "task" in self.init_memory.input_vars():
+        if new_task_flag and "task" in self.init_memory.input_vars:
             _prompt = []
         else:
             _prompt = prompt
