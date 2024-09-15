@@ -6,8 +6,8 @@ from typing import Union, List, Dict, Any
 
 from ..utils import merge_blocks_by_index, extract_text
 from ..io import TextBlock, create_chk_block
+from ..tools import PythonCodeTool
 
-from langchain_core.utils.function_calling import convert_to_openai_tool
 from .base import Runnable
 
 class ChatAgent(Runnable):
@@ -15,7 +15,7 @@ class ChatAgent(Runnable):
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
     """
 
-    def __init__(self, threads_group: str=None, tools=None, toolkits=None, start_marker: str=None, end_marker: str=None, **kwargs):
+    def __init__(self, threads_group: str=None, start_marker: str=None, end_marker: str=None, **kwargs):
         """
         对话智能体的几种基本行为：
         - 仅对话，不调用工具：不要提供 tools 参数
@@ -24,8 +24,7 @@ class ChatAgent(Runnable):
         """
         super().__init__(threads_group or "CHAT_AGENT", **kwargs)
 
-        self._toolkits = toolkits or []
-        self._tools = tools or []
+        self.update_python_code_tool()
 
         self.start_marker = start_marker or "```"
         self.end_marker = end_marker or "```"
@@ -33,33 +32,21 @@ class ChatAgent(Runnable):
         # 在子类中应当将模型参数保存到这个属性中，以便持久化管理
         self.model_args = {}
         self.default_call_args = {}
-
-    @property
-    def tools(self):
-        from ..tools.python_code import create_python_code_tool
-
-        if self.data:
-            python_code_tool = create_python_code_tool(self.data, self.clone())
-            return self._tools + [convert_to_openai_tool(python_code_tool)]
-        else:
-            return self._tools
     
-    @property
-    def toolkits(self):
-        from ..tools.python_code import create_python_code_tool
-
+    def update_python_code_tool(self):
         if self.data:
-            python_code_tool = create_python_code_tool(self.data, self.clone())
-            return self._toolkits + [python_code_tool]
-        else:
-            return self._toolkits
+            agent = self.clone(memory=[Template(template_id or "GEN_CODE_PANDAS"), "请开始生成代码"])
+            self.prepared_tools = [PythonCodeTool(self.data, agent)]
+
+    def add_dataset(self, *args, **kwargs):
+        super().add_dataset(*args, **kwargs)
+        self.update_python_code_tool()
 
     def clone(self):
         new_obj = super().clone()
         new_obj.model_args = copy.deepcopy(self.model_args)
         new_obj.default_call_args = copy.deepcopy(self.default_call_args)
         new_obj._tools = copy.deepcopy(self._tools)
-        new_obj._toolkits = copy.deepcopy(self._toolkits)
         return new_obj
 
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
@@ -89,13 +76,13 @@ class ChatAgent(Runnable):
         self.confirm_memory_init()
 
         # 如果在提示语模板中已经被使用，就不再追加到记忆中
-        if new_task_flag and "task" in self.desk_vars_in_template:
+        if new_task_flag and "task" in self.init_memory.input_vars():
             _prompt = []
         else:
             _prompt = prompt
 
         toolkits = kwargs.get("toolkits", self.toolkits)
-        if toolkits:
+        if self.exec_tool and not kwargs.get("tools", None):
             resp = self.chat_with_tools_calling(_prompt, *args, **kwargs)
         else:
             resp = self.only_chat(_prompt, *args, **kwargs)
@@ -113,18 +100,20 @@ class ChatAgent(Runnable):
             self.locked_items = len(self.memory)
 
     def only_chat(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        new_memory = self.get_chat_memory()
-        new_memory.extend(self.create_new_memory(prompt))
+        messages = self.get_chat_memory(knowledge=self.get_knowledge())
+        messages.extend(self.create_new_memory(prompt))
 
         output_text = ""
         tools_call = []
         # 调用大模型
-        for block in self.generate(new_memory, *args, **kwargs):
+        for block in self.generate(messages, *args, **kwargs):
             yield block
             if block.block_type == "chunk":
                 output_text += block.content
-            if block.block_type == "tools_call_chunk":
+            elif block.block_type == "tools_call_chunk":
                 tools_call.append(json.loads(block.text))
+            elif block.block_type == "text_final":
+                output_text = block.text
 
         final_tools_call = merge_blocks_by_index(tools_call)
         if final_tools_call:
@@ -140,8 +129,8 @@ class ChatAgent(Runnable):
     def chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
         toolkits = kwargs.pop("toolkits", self.toolkits)
 
-        new_memory = self.get_chat_memory()
-        new_memory.extend(self.create_new_memory(prompt))
+        messages = self.get_chat_memory(knowledge=self.get_knowledge())
+        messages.extend(self.create_new_memory(prompt))
 
         to_continue_call_llm = True
         while(to_continue_call_llm):
@@ -150,20 +139,33 @@ class ChatAgent(Runnable):
             tools_call = []
 
             # 大模型推理
-            for block in self.generate(new_memory, *args, **kwargs):
+            for block in self.generate(messages, *args, **kwargs):
                 yield block
                 if block.block_type == "chunk":
                     output_text += block.content
-                if block.block_type == "tools_call_chunk":
+                elif block.block_type == "text_final":
+                    output_text = block.text
+                elif block.block_type == "tools_call_chunk":
                     tools_call.append(json.loads(block.text))
 
             # 合并工具回调
             final_tools_call = merge_blocks_by_index(tools_call)            
             if final_tools_call:
-                yield TextBlock("tools_call_final", json.dumps(final_tools_call, ensure_ascii=False))
+                # 记录工具回调提示
+                final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
+                yield TextBlock("tools_call_final", final_tools_call_text)
+                tools_call_message = [
+                    {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": final_tools_call_text
+                    }
+                ]
+                messages.extend(tools_call_message)
+                self.remember_response(tools_call_message)
+                # 执行工具回调
                 # 如果大模型的结果返回多个工具回调，则要逐个调用完成才能继续下一轮大模型的问调用。
                 for index, tool in final_tools_call.items():
-
                     for struct_tool in toolkits:
                         if tool['function']['name'] == struct_tool.tool['function']['name']:
                             tool_args = json.loads(tool['function']['arguments'])
@@ -182,23 +184,19 @@ class ChatAgent(Runnable):
                                     yield TextBlock("tool_resp_chunk", x)
                             tool_resp_message = [
                                 {
-                                    "role": "assistant",
-                                    "content": "",
-                                    "tool_calls": [tool]
-                                },
-                                {
                                     "tool_call_id": tool['id'],
                                     "role": "tool",
                                     "name": tool['function']['name'],
                                     "content": tool_resp
                                 }
                             ]
-                            new_memory.extend(tool_resp_message)
+                            messages.extend(tool_resp_message)
                             self.remember_response(tool_resp_message)
                             to_continue_call_llm = True
             else:
+                # 当前并没有需要回调的工具，直接记录大模型的输出
                 self.remember_response(output_text)
 
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        pass
+        raise NotImplementedError("子类必须实现 generate 方法")

@@ -1,5 +1,6 @@
 import re
-from typing import List, Any, Set
+from typing import List, Any, Set, Union
+
 
 class Knowledge:
     def __init__(self, text: str):
@@ -19,32 +20,25 @@ class Knowledge:
 
 
 class KnowledgeManager:
-    def __init__(self, knowledge: List[str] = None):
-        self.knowledge: Set[Knowledge] = set(Knowledge(text) for text in knowledge) if knowledge else set()
-    
-    def add_knowledge(self, text: str):
-        self.knowledge.add(Knowledge(text))
+    def __init__(self, knowledge: Union[List[str], Set[Knowledge]] = None):
+        if isinstance(knowledge, list):
+            for text in knowledge:
+                if not isinstance(text, str):
+                    raise ValueError("Knowledge must be a list of strings")
+            self._knowledge: Set[Knowledge] = set(Knowledge(text) for text in knowledge)
+        elif isinstance(knowledge, set):
+            self._knowledge: Set[Knowledge] = knowledge
+        else:
+            self._knowledge: Set[Knowledge] = set()
 
-    def append_knowledge_to_messages(self, new_memory: List[Any]):
-        existing_contents = {msg['content'] for msg in new_memory if msg['role'] == 'user'}
-        for kg in self.get_knowledge():
-            content = f'已知：{kg}'
-            if content not in existing_contents:
-                new_memory.extend([{
-                    'role': 'user',
-                    'content': content
-                },
-                {
-                    'role': 'assistant',
-                    'content': 'OK, 我将利用这个知识回答后面问题。'
-                }])
-        return new_memory
+    def add_knowledge(self, text: str):
+        self._knowledge.add(Knowledge(text))
 
     def get_knowledge(self, filter: str = None):
         if filter:
-            return [kg.text for kg in self.knowledge if re.search(filter, kg.text)]
+            return [kg.text for kg in self._knowledge if re.search(filter, kg.text)]
         else:
-            return [kg.text for kg in self.knowledge]
+            return [kg.text for kg in self._knowledge]
 
     def clear_knowledge(self):
-        self.knowledge.clear()
+        self._knowledge.clear()

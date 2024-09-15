@@ -14,7 +14,7 @@ from .knowledge_manager import KnowledgeManager
 from .dataset import Dataset
 
 class BaseTool:
-    def __init__(self, *, func: Callable = None, name: str = None, description: str = None, parameters: Dict[str, Any] = None):
+    def __init__(self, *, func: Callable = None, name: str = None, description: str = None, parameters: Dict[str, Any] = None, **kwargs):
         self.func = func or self.call
         self.name = name or (func.__name__ if func else self.__class__.__name__)
         self.arguments = func.__annotations__ if func else {}
@@ -48,6 +48,23 @@ class BaseTool:
             }
         }
 
+    def dataset_desc(self, data: Dict[str, "Dataset"]):
+        datasets = []
+        for ds in data.keys():
+            head = data[ds].df.head()
+            example_md = head.to_markdown(index=False)
+            datasets.append(textwrap.dedent(f"""
+            ------------------------------
+            **数据集名称：**
+            {ds}
+            
+            **部份数据样例：**
+
+            """) + example_md)
+
+        return '\n'.join(datasets)
+    
+
 class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
     """
     可运行的抽象类，定义了可运行的基本接口。
@@ -57,10 +74,14 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
 
     def __init__(
         self,
+        # 线程组
         threads_group: str = None,
+        # 记忆
         memory: List[Union[str, Template, Dict[str, Any]]] = None,
         k: int = 10,
+        # 是否生成尾标
         end_chk: bool = False,
+        # 工作台状态管理
         knowledge: List[str] = None,
         data: Dict[str, Any] = None,
         task: str = None,
@@ -68,18 +89,17 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
         outline: str = None,
         state: Dict[str, Any] = None,
         output: str = None,
+        # 关于Runnable的工具管理
+        tools=None,
+        exec_tool=True, 
         **kwargs
     ):
         """
-        :param memory: 初始化记忆。
-        :param k: 记忆轮数。
-
-        self.locked_items 是锁定的记忆条数，每次对话时将会保留。
-
-        对于使用多线程实现的外部调用，可以在环境变量中配置默认的线程池数量。
-        例如：
-        DEFAULT_MAX_WORKERS_CHAT_OPENAI=10
-        可以配CHAT_OPENAI线程池的最大线程数为10。
+        Runnable 的构造函数，主要包括：
+        - 初始化线程组
+        - 记忆：长期记忆、短期记忆
+        - 工作台数据：知识库、数据、状态、任务、草稿、提纲
+        - 工具：作为工具的Runnable列表，在发现工具后是否执行工具的标记等
         """
         ExecutorManager.__init__(self, threads_group)
         MemoryManager.__init__(self, memory, k)
@@ -95,23 +115,39 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
         self._draft = draft
         self._outline = outline
 
+        self._tools = tools or []
+        self.prepared_tools = []
+        self.exec_tool = exec_tool
+
         BaseTool.__init__(self, **kwargs)
 
     @property
     def desk(self) -> Dict[str, Any]:
         """
-        这些属性允许其他对象读取，但修改需要专门的方法，例如`self.set_task`
+        使用工作台变量实现跨智能体变量传递。
+        这是 Runnable 子类的实例对象多有的统一规格。
+        通过 obj.desk 可以访问工作台变量字典，这主要包括：
+
+        | 变量      | 类型          | 修改 |
+        |:----------|:-------------:|:------------------------------------------|
+        | knowledge | 可手工维护    | 执行方法 add_knowledge(knowledge: List[str]) |
+        | data      | 可手工维护    | 执行方法 add_data(data: pandas.DataFrame)    |
+        | task      | 运行时自动修改 | 大模型调用开始自动修改                         |
+        | output    | 运行时自动修改 | 大模型调用结束自动修改                         |
+        | draft     | 运行时自动修改 | FromOutline 任务中自动修改                   |
+        | outline   | 运行时自动修改 | FromOutline 任务中自动修改                   |
+        | state     | 定制时使用    | 建议使用的可定制状态字典                       |
         """
         return {
-            "knowledge": self.knowledge,
+            "knowledge": self._knowledge,
             "data": self.data,
-            "state": self.state,
             "task": self._task,
             "draft": self._draft,
             "outline": self._outline,
             "output": self.output,
+            "state": self.state,
         }
-
+    
     def set_task(self, task: str):
         self._task = task
 
@@ -121,30 +157,25 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
     def set_outline(self, outline: str):
         self._outline = outline
 
-    @property
-    def desk_vars_in_template(self) -> Dict[str, Any]:
-        if self.input_memory:
-            if isinstance(self.input_memory, Template):
-                return self.input_memory.desk_vars_in_template
-            elif isinstance(self.input_memory, list):
-                _desk_vars_in_template = {}
-                for x in self.input_memory:
-                    if isinstance(x, Template):
-                        _desk_vars_in_template.update(x.desk_vars_in_template)
-                return _desk_vars_in_template
-        return {}
+    def clone(self, **kwargs) -> "Runnable":
+        """
+        克隆当前对象，返回一个新的对象。
 
-    def clone(self) -> "Runnable":
+        如果提供 kwargs 参数，你就可以在克隆的同时修改对象属性。
+        """
         return self.__class__(
-            self.threads_group,
-            memory=copy.deepcopy(self.input_memory),
-            k=self.remember_rounds,
-            end_chk=self.end_chk,
-            knowledge=copy.deepcopy(self.knowledge),
-            data=copy.deepcopy(self.data),
-            state=copy.deepcopy(self.state),
-            task=self._task,
-            draft=self._draft
+            self.threads_group or kwargs.pop("threads_group"),
+            memory=copy.deepcopy(self.init_memory) or kwargs.pop("memory"),
+            k=self.remember_rounds or kwargs.pop("k"),
+            end_chk=self.end_chk or kwargs.pop("end_chk"),
+            knowledge=copy.deepcopy(self._knowledge) or kwargs.pop("knowledge"),
+            data=copy.deepcopy(self.data) or kwargs.pop("data"),
+            state=copy.deepcopy(self.state) or kwargs.pop("state"),
+            task=self._task or kwargs.pop("task"),
+            draft=self._draft or kwargs.pop("draft"),
+            outline=self._outline or kwargs.pop("outline"),
+            exec_tool=self.exec_tool or kwargs.pop("exec_tool"),
+            **kwargs
         )
 
     def add_dataset(self, name: str, df: pd.DataFrame, desc: str=None):
@@ -156,11 +187,29 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
     def get_dataset_names(self):
         return list(self.data.keys())
 
+    @property
+    def toolkits(self):
+        return self._tools + self.prepared_tools
+
+    def get_tools_desc(self, tools: List["Runnable"]=None):
+        if tools and (
+            not isinstance(tools, list) or
+            not all(isinstance(tool, Runnable) for tool in tools)
+        ):
+            raise ValueError("tools 必须是 Runnable 列表")
+        _tools = tools or []
+        return [t.tool for t in (self.toolkits + _tools)]
+
     @abstractmethod
     def call(self, prompt: Union[str, List[dict], Template], *args, **kwargs):
-        pass
+        raise NotImplementedError("子类必须实现 call 方法")
 
     async def async_call(self, *args, **kwargs):
+        """
+        默认的异步调用，通过多线程实现。
+        请注意，这会制造出大量线程，并不是最佳的性能优化方案。
+        虽然不适合大规模部署，但这一方案可以在无需额外开发的情况下支持在异步环境中调用，快速验证业务逻辑。
+        """
         loop = asyncio.get_running_loop()
         for block in await self.run_in_executor(self.call, *args, **kwargs):
             yield block
