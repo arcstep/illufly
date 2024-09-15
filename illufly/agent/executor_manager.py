@@ -2,6 +2,11 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 class ExecutorManager:
+    """
+    对于使用多线程实现的外部调用，可以在环境变量中配置默认的线程池数量。
+    例如：
+    DEFAULT_MAX_WORKERS_CHAT_OPENAI=10
+    """
     executors = {}
 
     def __init__(self, threads_group: str = None):

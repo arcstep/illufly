@@ -126,17 +126,18 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
         """
         使用工作台变量实现跨智能体变量传递。
         这是 Runnable 子类的实例对象多有的统一规格。
-        通过 obj.desk 可以访问工作台变量字典，这主要包括：
 
-        | 变量      | 类型          | 修改 |
-        |:----------|:-------------:|:------------------------------------------|
-        | knowledge | 可手工维护    | 执行方法 add_knowledge(knowledge: List[str]) |
-        | data      | 可手工维护    | 执行方法 add_data(data: pandas.DataFrame)    |
-        | task      | 运行时自动修改 | 大模型调用开始自动修改                         |
-        | output    | 运行时自动修改 | 大模型调用结束自动修改                         |
-        | draft     | 运行时自动修改 | FromOutline 任务中自动修改                   |
-        | outline   | 运行时自动修改 | FromOutline 任务中自动修改                   |
-        | state     | 定制时使用    | 建议使用的可定制状态字典                       |
+        obj.desk 是一个只读属性，可以访问工作台变量的字典，字典中的键值主要包括：
+
+        | 变量       | 生命周期       | 详细说明 |
+        |:----------|:-------------:|:---------------------------------------------------------|
+        | knowledge | 可手工维护    | 用于检索增强，添加方法 add_knowledge(knowledge: List[str])    |
+        | data      | 可手工维护    | 用于数据分析，添加执行方法 add_data(data: pandas.DataFrame)    |
+        | task      | 运行时修改    | 提问或输入，大模型调用开始自动修改                |
+        | output    | 运行时修改    | 结果或输出，大模型调用结束自动修改                |
+        | draft     | 运行时修改    | 写作任务中已完成的草稿，例如扩写任务中自动修改      |
+        | outline   | 运行时修改    | 扩写提纲，在扩写任务中自动生成                   |
+        | state     | 定制时使用    | 以上不够用时，建议使用state字典来定制状态数据      |
         """
         return {
             "knowledge": self._knowledge,
@@ -219,3 +220,16 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
         func = partial(sync_function, *args, **kwargs)
         return await loop.run_in_executor(self.executor, func)
 
+class Tool(Runnable):
+    def __init__(self, func: Callable=None, **kwargs):
+        super().__init__(func=func, **kwargs)
+    
+    def __str__(self):
+        return self.name
+    
+    def __repr__(self):
+        return f"<Tool {self.name}: {self.description}>"
+
+    def call(self, *args, **kwargs):
+        for block in self.func(*args, **kwargs):
+            yield block
