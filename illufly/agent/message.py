@@ -35,14 +35,23 @@ class Message:
         })
 
 class Messages:
+    """
+    使用 Messages 类可以简化消息列表的管理。
+
+    构造函数中的 messages 参数将作为原始的「只读对象」，被保存到 self._messages 中。
+    无论你提供的列表元素是字符串、模板、元组还是字典，都会在实例化完成后，生成 Message 对象列表，并被写入到 self.messages 中。
+    但类似 {"role": xx, "content": yy} 这种消息列表，是通过 self.to_list 方法「动态提取」的，这主要是为了兼容 Template 对象的模板变量。
+    """
+
     def __init__(self, messages: Union[Message, str, Template, Tuple[str, Union[str, Template]], List[Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]]]):
-        self._messages = messages
+        self._messages = messages or []
         self.messages = []
         self._convert_to_message_list()
 
     def _convert_to_message_list(self) -> None:
         if not isinstance(self._messages, list):
             self._messages = [self._messages]
+
         for i, msg in enumerate(self._messages):
             self.messages.append(self._convert_to_message(msg, i))
 
@@ -68,6 +77,7 @@ class Messages:
             else:
                 raise ValueError("Unsupported role type in tuple")
         else:
+            print("Unsupported message type: ", msg)
             raise ValueError("Unsupported message type")
 
     def _determine_role(self, index: int) -> str:
@@ -83,10 +93,28 @@ class Messages:
         return "\n".join([str(message) for message in self.messages])
 
     def __repr__(self):
-        return f"Messages(messages={self.messages})"
+        return f"<Messages({self.length} items)>"
     
     def to_list(self):
         return [msg.message for msg in self.messages]
     
     def to_json(self):
         return [msg.json for msg in self.messages]
+    
+    @property
+    def length(self):
+        return len(self.messages)
+
+    def input_vars(self):
+        vars = {}
+        for msg in self.messages:
+            if isinstance(msg.content, Template):
+                vars.update(msg.content.using_vars)
+        return vars
+
+    def append(self, message: Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]):
+        self.messages.append(self._convert_to_message(message, len(self.messages)))
+
+    def extend(self, messages: Union[Message, str, Template, Tuple[str, Union[str, Template]], List[Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]]]):
+        for msg in messages:
+            self.append(msg)
