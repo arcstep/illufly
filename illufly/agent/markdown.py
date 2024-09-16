@@ -3,10 +3,8 @@ import copy
 import os
 import yaml
 from typing import Iterator, List, Union, Optional
-from langchain_core.documents import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_text_splitters import TextSplitter
 from .parser import parse_markdown, create_front_matter, list_markdown
+from ..document import Document
 from ..config import get_env
 from ..utils import extract_text
 
@@ -43,7 +41,7 @@ class Markdown():
         if with_front_matter and 'type' in meta0 and meta0['type'] == 'front_matter':
             front_matter = create_front_matter(meta0)
 
-        return front_matter + sep.join([d.page_content for d in documents])
+        return front_matter + sep.join([d.text for d in documents])
 
     @property
     def text(self):
@@ -60,7 +58,7 @@ class Markdown():
         return [
             d
             for d in self.documents
-            if re.search(pattern or '.*', d.page_content)
+            if re.search(pattern or '.*', d.text)
         ]
 
     def get_outline(self, pattern: str=None):
@@ -68,7 +66,7 @@ class Markdown():
             d
             for d in self.documents
             if d.metadata['type'] == "OUTLINE"
-            and re.search(pattern or '.*', d.page_content)
+            and re.search(pattern or '.*', d.text)
         ]
     
     def fetch_outline_task(self, outline_doc: Document, prev_k: int=800, next_k: int=200):
@@ -87,7 +85,7 @@ class Markdown():
 
         docs.extend(self.get_prev_documents(outline_doc, k=prev_k))
 
-        outline = Document(page_content="<<<YOUR_TEXT>>>\n\n", metadata={"type": "paragraph"})
+        outline = Document(text="<<<YOUR_TEXT>>>\n\n", metadata={"type": "paragraph"})
         docs.append(outline)
 
         docs.extend(self.get_next_documents(outline_doc, k=next_k))
@@ -142,14 +140,14 @@ class Markdown():
         from_index = None
         if prev_heading:
             for i, d in enumerate(to_insert):
-                if d.page_content.strip() == prev_heading.page_content.strip():
+                if d.text.strip() == prev_heading.text.strip():
                     from_index = i + 1
                     break
 
         to_index = None
         if next_heading:
             for i, d in enumerate(reversed(to_insert)):
-                if d.page_content.strip() == next_heading.page_content.strip():
+                if d.text.strip() == next_heading.text.strip():
                     to_index = i
                     break
 
@@ -192,8 +190,8 @@ class Markdown():
             # 在token数量可承受范围内优先前文
             # 并且，在获得上下文内容时，下文内容中不出现<OUTLINE>
             if new_doc.metadata['type'] == 'OUTLINE':
-                new_doc.page_content = '...\n'
-            md = new_doc.page_content + md
+                new_doc.text = '...\n'
+            md = new_doc.text + md
             if len(md) <= k:
                 docs.append(new_doc)
                 continue
@@ -233,8 +231,8 @@ class Markdown():
 
             # 获得上下文内容时，下文内容中不出现<OUTLINE>
             if new_doc.metadata['type'] == 'OUTLINE':
-                new_doc.page_content = '...\n'
-            md = new_doc.page_content + md
+                new_doc.text = '...\n'
+            md = new_doc.text + md
             if len(md) <= k:
                 docs.append(new_doc)
             else:
