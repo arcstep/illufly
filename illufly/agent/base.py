@@ -2,6 +2,7 @@ import asyncio
 import copy
 import inspect
 import pandas as pd
+import json
 
 from typing import Union, List, Dict, Any, Callable
 from abc import ABC, abstractmethod
@@ -47,8 +48,42 @@ class BaseTool:
                 "parameters": self.parameters,
             }
         }
+    
+    @classmethod
+    def tools_desc(cls, tools: List["Runnable"]):
+        """
+        描述所有可选工具的具体情况。
+        """
+        tools_list = ",\n".join([json.dumps(t.tool, ensure_ascii=False) for t in tools])
+        return f'```json\n[{tools_list}]\n```'
 
-    def dataset_desc(self, data: Dict[str, "Dataset"]):
+    @classmethod
+    def tools_selected(cls, tools: List["Runnable"]):
+        """
+        描述工具选中的具体情况。
+        """
+        action_output = {
+            "index": "integer: index of selected function",
+            "function": {
+                "name": "(string): 填写选中参数名称",
+                "parameters": "(json): 填写具体参数值"
+            }
+        }
+        name_list = ",".join([a.name for a in tools])
+        example = '\n'.join([
+            '**工具函数输出示例：**',
+            '```json',
+            '[{"index": 0, "function": {"name": "get_current_weather", "parameters": "{\"location\": \"广州\"}"}},',
+            '{"index": 1, "function": {"name": "get_current_weather", "parameters": "{\"location\": \"上海\"}"}}]',
+            '```'
+        ])
+
+        output = f'```json <tools-calling>\n[{json.dumps(action_output, ensure_ascii=False)}]\n```'
+
+        return f'从列表 [{name_list}] 中选择一个或多个funciton，并按照下面的格式输出函数描述列表，描述每个函数的名称和参数：\n{output}\n{example}'
+
+    @classmethod
+    def dataset_desc(cls, data: Dict[str, "Dataset"]):
         datasets = []
         for ds in data.keys():
             head = data[ds].df.head()
@@ -82,16 +117,12 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
         # 是否生成尾标
         end_chk: bool = False,
         # 工作台状态管理
-        knowledge: List[str] = None,
-        data: Dict[str, Any] = None,
-        task: str = None,
-        draft: str = None,
-        outline: str = None,
-        state: Dict[str, Any] = None,
-        output: str = None,
+        desk: Dict[str, Any] = None,
         # 关于Runnable的工具管理
         tools=None,
         exec_tool=True, 
+        # 是否自动停止
+        continue_running=True,
         **kwargs
     ):
         """
@@ -101,25 +132,37 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
         - 工作台数据：知识库、数据、状态、任务、草稿、提纲
         - 工具：作为工具的Runnable列表，在发现工具后是否执行工具的标记等
         """
+        self._continue_running = continue_running
+
+        # 可进行 pub/sub 的变量
+        _desk = desk or {}
+        self.data = _desk.get("data", {})
+        self.state = _desk.get("state", {})
+        self._task = _desk.get("task", None)
+        self._draft = _desk.get("draft", None)
+        self._outline = _desk.get("outline", None)
+
         ExecutorManager.__init__(self, threads_group)
         MemoryManager.__init__(self, memory, k)
-        KnowledgeManager.__init__(self, knowledge)
+        KnowledgeManager.__init__(self, _desk.get("knowledge", []))
         self.end_chk = end_chk
 
-        # desk 值，使用方法填充
-        self.data = data or {}
-        self.state = state or {}
-
-        # desk 值，可设置
-        self._task = task
-        self._draft = draft
-        self._outline = outline
 
         self._tools = tools or []
         self.prepared_tools = []
         self.exec_tool = exec_tool
 
         BaseTool.__init__(self, **kwargs)
+
+    @property
+    def is_running(self):
+        return self._continue_running
+
+    def start(self):
+        self._continue_running = True
+
+    def stop(self):
+        self._continue_running = False
 
     @property
     def desk(self) -> Dict[str, Any]:
@@ -130,9 +173,9 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
         obj.desk 是一个只读属性，可以访问工作台变量的字典，字典中的键值主要包括：
 
         | 变量       | 生命周期       | 详细说明 |
-        |:----------|:-------------:|:---------------------------------------------------------|
-        | knowledge | 可手工维护    | 用于检索增强，添加方法 add_knowledge(knowledge: List[str])    |
-        | data      | 可手工维护    | 用于数据分析，添加执行方法 add_data(data: pandas.DataFrame)    |
+        |:----------|:-------------:|:-----------------------------------------------------|
+        | knowledge | 可手工维护    | 检索增强，添加方法 add_knowledge(knowledge: List[str])    |
+        | data      | 可手工维护    | 数据分析，添加执行方法 add_data(data: pandas.DataFrame)    |
         | task      | 运行时修改    | 提问或输入，大模型调用开始自动修改                |
         | output    | 运行时修改    | 结果或输出，大模型调用结束自动修改                |
         | draft     | 运行时修改    | 写作任务中已完成的草稿，例如扩写任务中自动修改      |
@@ -140,13 +183,15 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
         | state     | 定制时使用    | 以上不够用时，建议使用state字典来定制状态数据      |
         """
         return {
-            "knowledge": self._knowledge,
-            "data": self.data,
             "task": self._task,
             "draft": self._draft,
             "outline": self._outline,
-            "output": self.output,
+            "data": self.data,
             "state": self.state,
+            # knowledge 在 KnowledgeManager 中定义
+            "knowledge": self._knowledge,
+            # output 在 MemoryManager 中作为只读属性定义
+            "output": self.output,
         }
     
     def set_task(self, task: str):
@@ -165,17 +210,14 @@ class Runnable(ABC, BaseTool, ExecutorManager, MemoryManager, KnowledgeManager):
         如果提供 kwargs 参数，你就可以在克隆的同时修改对象属性。
         """
         return self.__class__(
-            self.threads_group or kwargs.pop("threads_group"),
-            memory=copy.deepcopy(self.init_memory) or kwargs.pop("memory"),
-            k=self.remember_rounds or kwargs.pop("k"),
-            end_chk=self.end_chk or kwargs.pop("end_chk"),
-            knowledge=copy.deepcopy(self._knowledge) or kwargs.pop("knowledge"),
-            data=copy.deepcopy(self.data) or kwargs.pop("data"),
-            state=copy.deepcopy(self.state) or kwargs.pop("state"),
-            task=self._task or kwargs.pop("task"),
-            draft=self._draft or kwargs.pop("draft"),
-            outline=self._outline or kwargs.pop("outline"),
-            exec_tool=self.exec_tool or kwargs.pop("exec_tool"),
+            threads_group=kwargs.pop("threads_group") or self.threads_group,
+            memory=kwargs.pop("memory") or copy.deepcopy(self.init_memory),
+            k=kwargs.pop("k") or self.remember_rounds,
+            end_chk=kwargs.pop("end_chk") or self.end_chk,
+            desk=kwargs.pop("desk") or copy.deepcopy(self.desk),
+            tools=kwargs.pop("tools") or self._tools,
+            exec_tool=kwargs.pop("exec_tool") or self.exec_tool,
+            continue_running=kwargs.pop("continue_running") or self._continue_running,
             **kwargs
         )
 

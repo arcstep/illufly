@@ -1,13 +1,18 @@
-from typing import Callable
-from ..config import get_env, color_code
-
+from typing import Any
 import json
 import hashlib
+import numpy as np
+import pandas as pd
+import copy
 from datetime import datetime
+
+from ..config import get_env, color_code
 
 class TextBlock():
     def __init__(self, block_type: str, content: str, thread_id: str=None):
-        self.content = str(content)
+        if content and not isinstance(content, str):
+            raise ValueError("content 必须是字符串类型")
+        self.content = content
         self.block_type = block_type
         self.thread_id = thread_id
         # self.created_at = datetime.now()
@@ -77,3 +82,32 @@ def create_chk_block(output_text: str):
     tail = f'【{get_env("ILLUFLY_AIGC_INFO_DECLARE")}，{get_env("ILLUFLY_AIGC_INFO_CHK")} {hash_code}】'
 
     return TextBlock("END", tail)
+
+def convert_to_text(d):    
+    if isinstance(d, (np.int64, np.int32, np.uint8)):
+        return str(int(d))
+    elif isinstance(d, (np.float64, np.float32)):
+        return str(float(d))
+    elif isinstance(d, dict):
+        new_d = copy.deepcopy(d)
+        for k, v in new_d.items():
+            new_d[k] = convert_to_text(v)
+        return json.dumps(new_d, ensure_ascii=False)
+    elif isinstance(d, list):
+        new_d = copy.deepcopy(d)
+        for v in new_d:
+            new_d[v] = convert_to_text(v)
+        return json.dumps(new_d, ensure_ascii=False)
+    elif isinstance(d, np.ndarray):
+        new_d = copy.deepcopy(d)
+        for v in new_d:
+            new_d[v] = convert_to_text(v)
+        return json.dumps(new_d, ensure_ascii=False)
+    elif isinstance(d, pd.DataFrame):
+        return "\n" + d.to_markdown(index=False)
+    elif isinstance(d, pd.Series):
+        return d.to_markdown(index=False)
+    elif isinstance(d, (str, int, float)):
+        return str(d)
+    else:
+        return str(d)  # Fallback to string conversion for any other type

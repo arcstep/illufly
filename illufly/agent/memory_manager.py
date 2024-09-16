@@ -40,6 +40,20 @@ class MemoryManager:
             return []
 
     def get_chat_memory(self, remember_rounds: int = None, knowledge: List[str] = None):
+        """
+        获取短时记忆。
+
+        主要用于构建对话时的历史记忆，并将其作为提示语中上下文的一部分。
+
+        优化策略：
+        - 已根据 rember_rounds 可以指定记忆的轮数，以避免对话历史过长
+        - 已根据 locked_items 可以锁定对话开始开始必须保留的上下文，例如，写作场景中可以锁定最初写作提纲
+        - 已根据 knowledge 可以补充遗漏的背景知识，并避免重复添加
+        - ... 还可以使用向量库，从知识库服务器检索强相关的内容
+        - ... 还可以使用向量库，查询强相关的历史记忆
+        - ... 还可以使用相似性比较，仅补充与问题相关的记忆
+        - ... 还可以剔除工具调用过程细节、对长对话做摘要等
+        """
         _k = self.remember_rounds if remember_rounds is None else remember_rounds
         final_k = 2 * _k if _k >= 1 else 1
         if len(self.memory) > 0 and self.memory[0]['role'] == 'system':

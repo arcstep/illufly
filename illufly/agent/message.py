@@ -14,21 +14,22 @@ class Message:
     def __repr__(self):
         return f"Message(role={self.role}, content={self.content})"
     
-    @property
-    def message(self):
+    def to_dict(self, input_vars: Dict[str, Any]=None):
         return {
             "role": self.role,
-            "content": self.text
+            "content": self.to_text(input_vars)
         }
 
-    @property
-    def text(self):
+    def to_text(self, input_vars: Dict[str, Any]=None):
         if isinstance(self.content, Template):
-            return self.content.get_prompt()
+            return self.content.format(input_vars)
         return self.content
 
-    @property
-    def json(self):
+    def to_json(self, input_vars: Dict[str, Any]=None):
+        if isinstance(self.content, Template):
+            content = self.content.format(input_vars)
+        else:
+            content = self.content
         return json.dumps({
             "role": self.role,
             "content": self.content
@@ -95,11 +96,11 @@ class Messages:
     def __repr__(self):
         return f"<Messages({self.length} items)>"
     
-    def to_list(self):
-        return [msg.message for msg in self.messages]
+    def to_list(self, input_vars: Dict[str, Any]=None):
+        return [msg.to_dict(input_vars) for msg in self.messages]
     
-    def to_json(self):
-        return [msg.json for msg in self.messages]
+    def to_json(self, input_vars: Dict[str, Any]=None):
+        return [msg.to_json(input_vars) for msg in self.messages]
     
     @property
     def length(self):
@@ -107,11 +108,12 @@ class Messages:
 
     @property
     def input_vars(self):
-        vars = {}
+        all_vars = set()
         for msg in self.messages:
             if isinstance(msg.content, Template):
-                vars.update(msg.content.using_vars)
-        return vars
+                for v in msg.content.using_vars_list:
+                    all_vars.add(v)
+        return list(all_vars)
 
     def append(self, message: Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]):
         self.messages.append(self._convert_to_message(message, len(self.messages)))
