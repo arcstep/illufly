@@ -3,7 +3,6 @@ import os
 import json
 import hashlib
 from typing import List, Union, Dict, Any
-from langchain_core.documents import Document
 from .config import get_env
 
 

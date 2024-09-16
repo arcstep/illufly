@@ -1,6 +1,5 @@
 from typing import Union, List, Optional, Dict, Any
 from openai import OpenAI
-from langchain_core.tools import BaseTool
 
 from ...io import TextBlock
 from ..chat import ChatAgent

@@ -1,26 +1,9 @@
 import re
 from typing import Any, Set, Union
-
-
-class Knowledge:
-    def __init__(self, text: str):
-        self.text = text
-
-    def __str__(self):
-        return self.text
-
-    def __repr__(self):
-        return f"Knowledge(text={self.text})"
-
-    def __eq__(self, other: Any) -> bool:
-        return isinstance(other, Knowledge) and self.text == other.text
-
-    def __hash__(self) -> int:
-        return hash(self.text)
-
+from ..document import Document
 
 class KnowledgeManager:
-    def __init__(self, knowledge: Union[Set[str], Set[Knowledge]] = None):
+    def __init__(self, knowledge: Union[Set[str], Set[Document]] = None):
         """
         知识库在内存中以集合的方式保存，确保了其具有唯一性。
         """
@@ -28,14 +11,19 @@ class KnowledgeManager:
             for text in knowledge:
                 if not isinstance(text, str):
                     raise ValueError("Knowledge must be a set of strings")
-            self._knowledge: Set[Knowledge] = set(Knowledge(text) for text in knowledge)
+            self._knowledge: Set[Document] = set(Document(text) for text in knowledge)
         elif isinstance(knowledge, set):
-            self._knowledge: Set[Knowledge] = knowledge
+            self._knowledge: Set[Document] = knowledge
         else:
-            self._knowledge: Set[Knowledge] = set()
+            self._knowledge: Set[Document] = set()
 
     def add_knowledge(self, text: str):
-        self._knowledge.add(Knowledge(text))
+        if isinstance(text, str):
+            self._knowledge.add(Document(text))
+        elif isinstance(text, Document):
+            self._knowledge.add(text)
+        else:
+            raise ValueError("Knowledge must be a string or a Document")
 
     def get_knowledge(self, filter: str = None):
         if filter:

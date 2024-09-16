@@ -7,7 +7,7 @@ import copy
 from mistune import markdown
 from mistune.renderers.markdown import MarkdownRenderer
 from mistune.core import BlockState
-from langchain_core.documents import Document
+from ..document import Document
 from ..config import get_env
 
 class SegmentsRenderer(MarkdownRenderer):
@@ -23,7 +23,7 @@ class SegmentsRenderer(MarkdownRenderer):
             tok.update({"id": doc_id})
             if tok['type'] == 'blank_line':
                 md = '\n'
-            documents.append(Document(page_content=md, metadata=tok))
+            documents.append(Document(text=md, metadata=tok))
         return documents
 
 def create_front_matter(dict_data: Dict[str, Any]):
@@ -73,7 +73,7 @@ def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
     if metadata:
         doc_id = next(doc_id_generator)
         metadata.update({"id": doc_id, "type": "front_matter"})
-        doc = Document(page_content='', metadata=metadata)
+        doc = Document(text='', metadata=metadata)
         documents.append(doc)
 
     # 从文本中提取标记内的内容
@@ -84,7 +84,7 @@ def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
             if before:
                 documents.extend(markdown(before, renderer=SegmentsRenderer(doc_id_generator)))
             doc_id = next(doc_id_generator)
-            doc = Document(page_content=outline_content+"\n\n", metadata={"id": doc_id, "type": 'OUTLINE'})
+            doc = Document(text=outline_content+"\n\n", metadata={"id": doc_id, "type": 'OUTLINE'})
             documents.append(doc)
             text = after
     if text:
@@ -101,4 +101,4 @@ def create_document_id():
         counter = 0 if counter == 999 else counter + 1
 
 def list_markdown(documents: List[Document]):
-    return [(d.metadata['type'][:2] + "-" + d.metadata['id'][-7:], d.page_content) for d in documents if d]
+    return [(d.metadata['type'][:2] + "-" + d.metadata['id'][-7:], d.text) for d in documents if d]
