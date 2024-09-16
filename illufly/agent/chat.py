@@ -83,7 +83,8 @@ class ChatAgent(Runnable):
             _prompt = prompt
 
         toolkits = kwargs.get("toolkits", self.toolkits)
-        if self.exec_tool and not kwargs.get("tools", None):
+        _having_toolkits = True if (kwargs.get("tools", None) or self.toolkits) else False
+        if kwargs.get('exec_tool', self.exec_tool) and _having_toolkits:
             resp = self.chat_with_tools_calling(_prompt, *args, **kwargs)
         else:
             resp = self.only_chat(_prompt, *args, **kwargs)
@@ -128,7 +129,6 @@ class ChatAgent(Runnable):
                 yield TextBlock("text_final", final_output_text)
 
     def chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        toolkits = kwargs.pop("toolkits", self.toolkits)
 
         messages = self.get_chat_memory(knowledge=self.get_knowledge())
         messages.extend(self.create_new_memory(prompt))
@@ -155,20 +155,23 @@ class ChatAgent(Runnable):
                 # 记录工具回调提示
                 final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
                 yield TextBlock("tools_call_final", final_tools_call_text)
-                tools_call_message = [
-                    {
-                        "role": "assistant",
-                        "content": "",
-                        "tool_calls": final_tools_call_text
-                    }
-                ]
-                messages.extend(tools_call_message)
-                self.remember_response(tools_call_message)
-                # 执行工具回调
                 # 如果大模型的结果返回多个工具回调，则要逐个调用完成才能继续下一轮大模型的问调用。
                 for index, tool in final_tools_call.items():
-                    for struct_tool in toolkits:
-                        if tool['function']['name'] == struct_tool.tool['function']['name']:
+                    # 追加工具提示部份到记忆
+                    tools_call_message = [
+                        {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [tool]
+                        }
+                    ]
+                    messages.extend(tools_call_message)
+                    self.remember_response(tools_call_message)
+
+                    # 执行工具回调
+                    tools_list = kwargs.get("tools", [self.toolkits])
+                    for struct_tool in tools_list:
+                        if tool['function']['name'] == struct_tool.name:
                             tool_args = json.loads(tool['function']['arguments'])
                             tool_resp = ""
 
@@ -183,6 +186,8 @@ class ChatAgent(Runnable):
                                 else:
                                     tool_resp += x
                                     yield TextBlock("tool_resp_chunk", x)
+
+                            # 追加工具返回消息部份到记忆
                             tool_resp_message = [
                                 {
                                     "tool_call_id": tool['id'],
