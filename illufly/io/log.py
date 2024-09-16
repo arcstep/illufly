@@ -4,9 +4,9 @@ from typing import Callable, Iterable, Union, AsyncIterable
 from .block import TextBlock
 from ..agent.base import Runnable
 
+__CHUNK_BLOCK_TYPES__ = ["chunk", "tool_resp_chunk"]
 __NOT_PRINT_BLOCK_TYPES__ = ["text_final"]
 __ALLWAYS_PRINT_BLOCK_TYPES__ = ["agent"]
-__CHUNK_BLOCK_TYPES__ = ["chunk", "tool_resp_chunk"]
 
 def process_block(block, last_block_type, verbose:bool):
     if isinstance(block, TextBlock):        

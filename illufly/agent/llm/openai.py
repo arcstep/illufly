@@ -1,5 +1,4 @@
 from typing import Union, List, Optional, Dict, Any
-from openai import OpenAI
 
 from ...io import TextBlock
 from ..chat import ChatAgent
@@ -10,6 +9,14 @@ import json
 
 class ChatOpenAI(ChatAgent):
     def __init__(self, model: str=None, tools=None, **kwargs):
+        try:
+            from openai import OpenAI
+        except ImportError:
+            raise RuntimeError(
+                "Could not import openai package. "
+                "Please install it via 'pip install -U openai'"
+            )
+
         super().__init__(threads_group="CHAT_OPENAI", tools=tools, **kwargs)
         self.threads_group = "CHAT_OPENAI"
         self.default_call_args = {"model": model or "gpt-3.5-turbo"}
