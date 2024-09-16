@@ -61,13 +61,16 @@ class MemoryManager:
             new_messages += self.memory[self.locked_items:][-final_k:]
         else:
             new_messages = self.memory[-final_k:]
-        # 调用 Runnable 类中的 append_knowledge_to_messages 方法
+        # 调用 BaseAgent 类中的 append_knowledge_to_messages 方法
         final_memory = self._append_knowledge_to_messages(new_messages, knowledge)
         return final_memory.to_list()
 
-    def _append_knowledge_to_messages(self, new_messages: List[Message], knowledge: List[str]):
-        existing_contents = {msg['content'] for msg in new_messages if msg['role'] == 'user'}
+    def _append_knowledge_to_messages(self, new_messages: List[Any], knowledge: List[str]):
         new_memory = Messages(new_messages)
+        if not knowledge:
+            return new_memory
+
+        existing_contents = {msg['content'] for msg in new_messages if msg['role'] == 'user'}
         for kg in knowledge:
             content = f'已知：{kg}'
             if content not in existing_contents:

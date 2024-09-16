@@ -4,21 +4,27 @@ from typing import Callable, Iterable, Union, AsyncIterable
 from .block import TextBlock
 from ..agent.base import Runnable
 
-def process_block(block, last_block_type, verbose:bool=True):
-    if isinstance(block, TextBlock):
-        if block.block_type in ['chunk', 'tool_resp_chunk']:
-            if last_block_type and last_block_type != block.block_type:
-                last_block_type = block.block_type
+__NOT_PRINT_BLOCK_TYPES__ = ["text_final"]
+__ALLWAYS_PRINT_BLOCK_TYPES__ = ["agent"]
+__CHUNK_BLOCK_TYPES__ = ["chunk", "tool_resp_chunk"]
+
+def process_block(block, last_block_type, verbose:bool):
+    if isinstance(block, TextBlock):        
+        if block.block_type in __CHUNK_BLOCK_TYPES__:
+            if last_block_type and last_block_type in __CHUNK_BLOCK_TYPES__ and last_block_type != block.block_type:
                 print("\n")
             print(block.text_with_print_color, end="")
-        elif verbose or block.block_type in ["agent"] and block.block_type not in ["text_final"]:
-            print(f'[{block.block_type.upper()}] {block.text_with_print_color}')
+        else:
+            if last_block_type in __CHUNK_BLOCK_TYPES__:
+                print("\n")
+            if (verbose or block.block_type in __ALLWAYS_PRINT_BLOCK_TYPES__):
+                print(f'[{block.block_type.upper()}] {block.text_with_print_color}')
     elif isinstance(block, str):
         print(block)
     else:
         raise ValueError(f"Unknown block type: {block}")
     
-    return last_block_type
+    return block.block_type
 
 def log(runnable: Runnable, *args, verbose: bool=False, **kwargs):
     """
@@ -33,9 +39,11 @@ def log(runnable: Runnable, *args, verbose: bool=False, **kwargs):
     last_block_type = ""
 
     for block in runnable.call(*args, **kwargs):
+        if isinstance(block, TextBlock) and block.block_type in __NOT_PRINT_BLOCK_TYPES__:
+            continue
         last_block_type = process_block(block, last_block_type, verbose=verbose)
         
-    if last_block_type in ["chunk", "tool_resp_chunk"]:
+    if last_block_type in __CHUNK_BLOCK_TYPES__:
         print("\n")
     
     return runnable.output
@@ -52,9 +60,11 @@ async def alog(runnable: Runnable, *args, verbose: bool=False, **kwargs):
 
     resp = runnable.async_call(*args, **kwargs)
     async for block in resp:
+        if isinstance(block, TextBlock) and block.block_type in __NOT_PRINT_BLOCK_TYPES__:
+            continue
         last_block_type = process_block(block, last_block_type, verbose=verbose)
         
-    if last_block_type in ["chunk", "tool_resp_chunk"]:
+    if last_block_type in __CHUNK_BLOCK_TYPES__:
         print("\n")
     
     return runnable.output

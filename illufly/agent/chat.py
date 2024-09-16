@@ -8,21 +8,33 @@ from ..utils import merge_blocks_by_index, extract_text
 from ..io import TextBlock, create_chk_block
 from ..tools import PythonCodeTool
 
-from .base import Runnable
+from .base import BaseAgent, Runnable
 
-class ChatAgent(Runnable):
+class ChatAgent(BaseAgent):
     """
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
     """
 
-    def __init__(self, threads_group: str=None, start_marker: str=None, end_marker: str=None, **kwargs):
+    def __init__(
+        self,
+        tools=None,
+        exec_tool=True, 
+        end_chk: bool = False,
+        start_marker: str=None,
+        end_marker: str=None,
+        **kwargs
+    ):
         """
         对话智能体的几种基本行为：
         - 仅对话，不调用工具：不要提供 tools 参数
         - 推理出应当使用的工具，但不调用：仅提供 tools 参数，不提供 toolkits 参数
         - 推理出应当使用的工具，并调用：提供 tools 参数，同时提供 toolkits 参数
         """
-        super().__init__(threads_group or "CHAT_AGENT", **kwargs)
+        super().__init__(**kwargs)
+        self.tools = tools or []
+        self.prepared_tools = []
+        self.exec_tool = exec_tool
+        self.end_chk = end_chk
 
         self.update_python_code_tool()
 
@@ -32,7 +44,20 @@ class ChatAgent(Runnable):
         # 在子类中应当将模型参数保存到这个属性中，以便持久化管理
         self.model_args = {}
         self.default_call_args = {}
-    
+
+    @property
+    def toolkits(self):
+        return self.tools + self.prepared_tools
+
+    def get_tools_desc(self, tools: List["Runnable"]=None):
+        if tools and (
+            not isinstance(tools, list) or
+            not all(isinstance(tool, Runnable) for tool in tools)
+        ):
+            raise ValueError("tools 必须是 Runnable 列表")
+        _tools = tools or []
+        return [t.tool for t in (self.toolkits + _tools)]
+
     def update_python_code_tool(self):
         if self.data:
             agent = self.clone(memory=[Template(template_id or "GEN_CODE_PANDAS"), "请开始生成代码"])
@@ -42,11 +67,13 @@ class ChatAgent(Runnable):
         super().add_dataset(*args, **kwargs)
         self.update_python_code_tool()
 
-    def clone(self):
-        new_obj = super().clone()
+    def clone(self, *args, **kwargs):
+        new_obj = super().clone(*args, **kwargs)
         new_obj.model_args = copy.deepcopy(self.model_args)
         new_obj.default_call_args = copy.deepcopy(self.default_call_args)
-        new_obj._tools = copy.deepcopy(self._tools)
+        new_obj.tools = kwargs.pop("tools") or self.tools
+        new_obj.exec_tool = kwargs.pop("exec_tool") or self.exec_tool
+        new_obj.end_chk = kwargs.pop("end_chk") or self.end_chk
         return new_obj
 
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
@@ -169,7 +196,7 @@ class ChatAgent(Runnable):
                     self.remember_response(tools_call_message)
 
                     # 执行工具回调
-                    tools_list = kwargs.get("tools", [self.toolkits])
+                    tools_list = kwargs.get("tools", self.toolkits)
                     for struct_tool in tools_list:
                         if tool['function']['name'] == struct_tool.name:
                             tool_args = json.loads(tool['function']['arguments'])

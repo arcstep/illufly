@@ -1,6 +1,6 @@
-from ..agent import Runnable
+from ..agent import BaseAgent
 
-class BaseEmbeddings(Runnable):
+class BaseEmbeddings(BaseAgent):
     """
     向量模型。
     """
