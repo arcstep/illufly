@@ -24,35 +24,23 @@ class ZhipuEmbeddings(BaseEmbeddings):
                 "Please install it via 'pip install -U zhipuai'"
             )
 
-    def call(self, text: str, *args, **kwargs) -> List[float]:
+    def query(self, text: str, *args, **kwargs) -> List[float]:
         """
         查询文本向量。
         """
-        response = client.embeddings.create(
+        response = self.client.embeddings.create(
             model=self.model,
             input=[text]
         )
-        if response.status_code != HTTPStatus.OK:
-            raise Exception('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
-                response.request_id, response.status_code,
-                response.code, response.message
-            ))
-
-        return response['data']
+        return response.data[0].embedding
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """
         编码文本向量。
         """
-        response = client.embeddings.create(
+        response = self.client.embeddings.create(
             model=self.model,
             input=texts
         )
-        if response.status_code != HTTPStatus.OK:
-            raise Exception('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
-                response.request_id, response.status_code,
-                response.code, response.message
-            ))
-
-        return response['data']
+        return [ed.embedding for ed in response.data]
 
