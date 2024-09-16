@@ -1,4 +1,5 @@
-from ..agent import BaseAgent
+from typing import List, Union
+from ..base import BaseAgent
 
 class BaseEmbeddings(BaseAgent):
     """
@@ -10,7 +11,10 @@ class BaseEmbeddings(BaseAgent):
         self.model = model
         self.api_key = api_key
 
-    def call(self, text: str, *args, **kwargs) -> List[float]:
+    def call(self, prompt: Union[str, List[dict], "Template"], *args, **kwargs):
+        raise NotImplementedError("暂时没有可用的方法")
+
+    def query(self, text: str, *args, **kwargs) -> List[float]:
         """Embed query text."""
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:

@@ -16,8 +16,8 @@ class DashScopeEmbeddings(BaseEmbeddings):
         )
 
         try:
-            from dashscope import TextEmbedding
-            self.client = TextEmbedding(api_key=api_key)
+            import dashscope
+            dashscope.api_key = self.api_key
         except ImportError:
             raise RuntimeError(
                 "Could not import dashscope package. "
@@ -25,11 +25,12 @@ class DashScopeEmbeddings(BaseEmbeddings):
             )
 
 
-    def call(self, text: str, *args, **kwargs) -> List[float]:
+    def query(self, text: str, *args, **kwargs) -> List[float]:
         """
         查询文本向量。
         """
-        response = self.client.call(
+        from dashscope import TextEmbedding
+        response = TextEmbedding.call(
             model=self.model,
             input=text,
             text_type="query",
@@ -46,7 +47,8 @@ class DashScopeEmbeddings(BaseEmbeddings):
         """
         编码文本向量。
         """
-        response = self.client.call(
+        from dashscope import TextEmbedding
+        response = TextEmbedding.call(
             model=self.model,
             input=texts,
             text_type="document"
