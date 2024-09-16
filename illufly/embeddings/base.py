@@ -1,5 +1,5 @@
 from typing import List, Union
-from ..base import BaseAgent
+from ..agent import BaseAgent
 
 class BaseEmbeddings(BaseAgent):
     """
