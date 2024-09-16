@@ -31,7 +31,11 @@ class ChatQwen(ChatAgent):
             **self.default_call_args,
             **self.model_args
         }
-        _kwargs.update({"messages": messages, "tools": self.tools, **kwargs})
+        _kwargs.update({
+            "messages": messages,
+            "tools": self.get_tools_desc(kwargs.pop('tools', [])),
+            **kwargs
+        })
 
         # 调用生成接口
         responses = dashscope.Generation.call(**_kwargs)

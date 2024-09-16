@@ -16,7 +16,7 @@ class Template:
 
         self.template = self._get_template(self.template_id, self.template_text)
         self.input_mapping = self._get_desk_map(self.template, input_mapping or {})
-        self.using_vars = self._get_using_vars(self.template, self.input_mapping or {})
+        self.using_vars_list = self._get_using_vars(self.template, self.input_mapping or {})
 
     def _get_template(self, template_id, template_text):
         if template_id:

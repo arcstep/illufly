@@ -20,8 +20,12 @@ class ChatZhipu(ChatAgent):
         *args,
         **kwargs
     ):
-        _kwargs = {"stream": True, "tools": self.tools, **self.default_call_args}
-        _kwargs.update({"messages": messages, **kwargs})
+        _kwargs = {"stream": True, **self.default_call_args}        
+        _kwargs.update({
+            "messages": messages,
+            "tools": self.get_tools_desc(kwargs.pop('tools', [])),
+            **kwargs
+        })
 
         client = ZhipuAI(**self.model_args)
         completion = client.chat.completions.create(**_kwargs)

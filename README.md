@@ -1,4 +1,4 @@
-# 🦋✨ illufly
+# ✨🦋 illufly
 
 [![PyPI version](https://img.shields.io/pypi/v/illufly.svg)](https://pypi.org/project/illufly/)
 

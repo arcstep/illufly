@@ -1,5 +1,5 @@
 import re
-from typing import List, Any, Set, Union
+from typing import Any, Set, Union
 
 
 class Knowledge:
@@ -20,11 +20,14 @@ class Knowledge:
 
 
 class KnowledgeManager:
-    def __init__(self, knowledge: Union[List[str], Set[Knowledge]] = None):
-        if isinstance(knowledge, list):
+    def __init__(self, knowledge: Union[Set[str], Set[Knowledge]] = None):
+        """
+        知识库在内存中以集合的方式保存，确保了其具有唯一性。
+        """
+        if isinstance(knowledge, set):
             for text in knowledge:
                 if not isinstance(text, str):
-                    raise ValueError("Knowledge must be a list of strings")
+                    raise ValueError("Knowledge must be a set of strings")
             self._knowledge: Set[Knowledge] = set(Knowledge(text) for text in knowledge)
         elif isinstance(knowledge, set):
             self._knowledge: Set[Knowledge] = knowledge

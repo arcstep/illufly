@@ -7,9 +7,7 @@ from langchain_community.document_loaders import (
     UnstructuredMarkdownLoader,
 )
 from langchain_core.embeddings import Embeddings
-from langchain_core.runnables import Runnable
 from langchain_community.document_loaders.base import BaseLoader
-from langchain_community.document_loaders.excel import UnstructuredExcelLoader
 from langchain_text_splitters import TextSplitter
 
 from ..config import get_folder_root, get_env
