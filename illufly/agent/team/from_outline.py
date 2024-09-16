@@ -2,14 +2,14 @@ from typing import List, Union
 
 from ...io import TextBlock
 from ...utils import compress_text
-from ..base import Runnable
+from ..base import BaseAgent
 from ..chat import ChatAgent
 from ..markdown import Markdown
 from ..team import Pipe
 
 import copy
 
-class FromOutline(Runnable):
+class FromOutline(BaseAgent):
     """
     实现扩写：从输出结果提炼大纲，然后生成内容。
     """

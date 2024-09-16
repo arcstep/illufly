@@ -2,22 +2,22 @@ from typing import List, Union
 
 from ...io import TextBlock
 from ...utils import compress_text
-from ..base import Runnable
+from ..base import BaseAgent
 from ..chat import ChatAgent
 
-class Pipe(Runnable):
+class Pipe(BaseAgent):
     """
     智能体管道，用于将多个智能体节点连接起来，形成一个智能体管道。
 
-    Pipe 是 Runnable 的子类，因此可以作为 Runnable 使用。
+    Pipe 是 BaseAgent 的子类，因此可以作为 BaseAgent 使用。
     """
     def __init__(self, *runnables):
         """ 
         快速构造智能体运行管道
         """
         for run in runnables:
-            if not isinstance(run, Runnable):
-                raise ValueError("runnables 必须是 Runnable 实例")
+            if not isinstance(run, BaseAgent):
+                raise ValueError("runnables 必须是 BaseAgent 实例")
 
         super().__init__("PIPE")
         self.runnables = runnables

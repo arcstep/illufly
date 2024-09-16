@@ -11,25 +11,25 @@ class KnowledgeManager:
             for text in knowledge:
                 if not isinstance(text, str):
                     raise ValueError("Knowledge must be a set of strings")
-            self._knowledge: Set[Document] = set(Document(text) for text in knowledge)
+            self.knowledge: Set[Document] = set(Document(text) for text in knowledge)
         elif isinstance(knowledge, set):
-            self._knowledge: Set[Document] = knowledge
+            self.knowledge: Set[Document] = knowledge
         else:
-            self._knowledge: Set[Document] = set()
+            self.knowledge: Set[Document] = set()
 
     def add_knowledge(self, text: str):
         if isinstance(text, str):
-            self._knowledge.add(Document(text))
+            self.knowledge.add(Document(text))
         elif isinstance(text, Document):
-            self._knowledge.add(text)
+            self.knowledge.add(text)
         else:
             raise ValueError("Knowledge must be a string or a Document")
 
     def get_knowledge(self, filter: str = None):
         if filter:
-            return [kg.text for kg in self._knowledge if re.search(filter, kg.text)]
+            return [kg.text for kg in self.knowledge if re.search(filter, kg.text)]
         else:
-            return [kg.text for kg in self._knowledge]
+            return [kg.text for kg in self.knowledge]
 
     def clear_knowledge(self):
-        self._knowledge.clear()
+        self.knowledge.clear()

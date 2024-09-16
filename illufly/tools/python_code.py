@@ -2,7 +2,7 @@ from typing import Dict, Any
 
 from ..hub import load_template
 from ..io import TextBlock
-from ..agent import Runnable, BaseTool
+from ..agent import BaseAgent, BaseTool
 from ..hub import Template
 
 import textwrap
@@ -51,7 +51,7 @@ def execute_code(data: Dict[str, Any], code: str):
 
     return exec_namespace.get('result', "生成的代码已经执行，但返回了空结果。")
 
-class PythonCodeTool(Runnable):
+class PythonCodeTool(BaseAgent):
     def __init__(self, data: Dict[str, "Dataset"], agent: "ChatAgent", name: str=None, description: str=None, template_id: str=None, **kwargs):
         super().__init__(func=self.python_code, **kwargs)
 

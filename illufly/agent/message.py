@@ -44,7 +44,16 @@ class Messages:
     但类似 {"role": xx, "content": yy} 这种消息列表，是通过 self.to_list 方法「动态提取」的，这主要是为了兼容 Template 对象的模板变量。
     """
 
-    def __init__(self, messages: Union[Message, str, Template, Tuple[str, Union[str, Template]], List[Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]]]):
+    def __init__(
+        self,
+        messages: Union[
+            Message,
+            str,
+            Template,
+            Tuple[str, Union[str, Template]],
+            List[Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]]
+        ]=None
+    ):
         self._messages = messages or []
         self.messages = []
         self._convert_to_message_list()
