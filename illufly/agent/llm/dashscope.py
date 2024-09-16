@@ -3,13 +3,20 @@ import os
 
 from typing import Union, List, Optional, Dict, Any
 from http import HTTPStatus
-import dashscope
 
 from ...io import TextBlock
 from ..chat import ChatAgent
 
 class ChatQwen(ChatAgent):
     def __init__(self, model: str=None, tools=None, **kwargs):
+        try:
+            import dashscope
+        except ImportError:
+            raise RuntimeError(
+                "Could not import dashscope package. "
+                "Please install it via 'pip install -U dashscope'"
+            )
+
         enable_search = kwargs.pop("enable_search", False)
         super().__init__(threads_group="CHAT_QWEN", tools=tools, **kwargs)
         self.default_call_args = {"model": model or "qwen-max"}

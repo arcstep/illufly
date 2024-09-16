@@ -1,5 +1,4 @@
 from typing import Union, List, Optional, Dict, Any
-from zhipuai import ZhipuAI
 
 from ...io import TextBlock
 from ..chat import ChatAgent
@@ -9,6 +8,14 @@ import json
 
 class ChatZhipu(ChatAgent):
     def __init__(self, model: str=None, tools=None, **kwargs):
+        try:
+            from zhipuai import ZhipuAI
+        except ImportError:
+            raise RuntimeError(
+                "Could not import zhipuai package. "
+                "Please install it via 'pip install -U zhipuai'"
+            )
+
         super().__init__(threads_group="CHAT_ZHIPU", tools=tools, **kwargs)
         self.threads_group = "CHAT_ZHIPU"
         self.default_call_args = {"model": model or "glm-4-flash"}
