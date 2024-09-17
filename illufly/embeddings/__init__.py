@@ -1,3 +1,2 @@
-from .base import BaseEmbeddings
-from .zhipu import ZhipuEmbeddings
-from .dashscope import DashScopeEmbeddings
+from ..community.zhipu import ZhipuEmbeddings
+from ..community.dashscope import DashScopeEmbeddings

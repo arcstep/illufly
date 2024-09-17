@@ -2,8 +2,8 @@ from typing import Dict, Any
 
 from ..hub import load_template
 from ..io import TextBlock
-from ..agent import BaseAgent, BaseTool
-from ..hub import Template
+from ..core.agent import BaseAgent, BaseTool
+from ..core.template import Template
 
 import textwrap
 import pandas as pd

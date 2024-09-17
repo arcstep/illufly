@@ -2,7 +2,7 @@ import json
 
 from typing import Callable, Iterable, Union, AsyncIterable
 from .block import TextBlock
-from ..agent.base import Runnable
+from ..core.agent.base import Runnable
 
 __CHUNK_BLOCK_TYPES__ = ["chunk", "tool_resp_chunk"]
 __NOT_PRINT_BLOCK_TYPES__ = ["text_final"]

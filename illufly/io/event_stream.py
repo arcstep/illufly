@@ -4,7 +4,7 @@ import logging
 import asyncio
 
 from .block import TextBlock
-from ..agent import Runnable
+from ..core.agent import Runnable
 
 async def event_stream(runnable: Runnable, *args, **kwargs):
     """
