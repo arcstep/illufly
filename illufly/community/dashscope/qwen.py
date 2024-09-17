@@ -29,7 +29,8 @@ class ChatQwen(ChatAgent):
         self,
         messages: List[dict],
         *args,
-        **kwargs):
+        **kwargs
+    ):
         import dashscope
         dashscope.api_key = self.model_args["api_key"]
 
