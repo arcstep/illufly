@@ -78,6 +78,12 @@ def get_env(key: str=None):
         "FASTAPI_SECRET_KEY": "Your-Secret-Key",
         "FASTAPI_ALGORITHM": "HS256",
         "FASTAPI_TOKEN_WHITELIST": "token_whitelist.json",
+
+        # HTTP
+        "HTTP_CHECK_RESULT_SECONDS": 2,
+
+        # DashScope
+        "DASHSCOPE_BASE_URL": "https://dashscope.aliyuncs.com/api/v1"
     }
     if key:
         if key not in default_values:
