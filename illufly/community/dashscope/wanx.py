@@ -20,7 +20,48 @@ WANX_SIZE = {
     "1280*720": "1280*720",
 }
 
+CHECK_RESULT_SECONDS = 2
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
+DEFAULT_MODEL = "wanx-sketch-to-image-v1"
+COSPLAY_MODEL = "wanx-style-cosplay-v1"
+TEXT2IMAGE_MODEL = "wanx-v1"
+DEFAULT_FACE_IMAGE_URL = "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png"
+DEFAULT_TEMPLATE_IMAGE_URL = "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png"
+DEFAULT_SIZE = "1024*1024"
+DEFAULT_REF_MODE = "repaint"
+
+def get_headers(api_key: str) -> Dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "X-DashScope-Async": "enable"
+    }
+
+def validate_output_path(output_path: Union[str, List[str]], n: int) -> List[str]:
+    if isinstance(output_path, str):
+        output_path = [output_path]
+    if output_path and len(output_path) != n:
+        raise ValueError(f"Invalid output_path: {output_path}, please ensure the number of images is consistent with the n value")
+    return output_path
+
+def save_image(url: str, path: str):
+    folder = os.path.dirname(path)
+    if folder and not os.path.exists(folder):
+        os.makedirs(folder)
+    with open(path, 'wb+') as f:
+        f.write(requests.get(url).content)
+        yield TextBlock("info", f'output image to {path}')
+
+async def async_save_image(url: str, path: str):
+    folder = os.path.dirname(path)
+    if folder and not os.path.exists(folder):
+        os.makedirs(folder)
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            content = await response.read()
+            with open(path, 'wb+') as f:
+                f.write(content)
+                yield TextBlock("info", f'output image to {path}')
 
 class Text2ImageWanx(BaseAgent):
     """
@@ -39,23 +80,19 @@ class Text2ImageWanx(BaseAgent):
 
         super().__init__(threads_group="WANX", **kwargs)
         self.default_call_args = {
-            "model": model or "wanx-sketch-to-image-v1"
+            "model": model or DEFAULT_MODEL
         }
         self.model_args = {
             "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))
         }
     
     def call(self, prompt: str, negative_prompt: Optional[str] = None, ref_img: Optional[str] = None, 
-             style: Optional[str] = None, size: Optional[str] = "1024*1024", n: int = 1, 
-             seed: Optional[int] = None, ref_strength: Optional[float] = None, ref_mode: Optional[str] = "repaint",
+             style: Optional[str] = None, size: Optional[str] = DEFAULT_SIZE, n: int = 1, 
+             seed: Optional[int] = None, ref_strength: Optional[float] = None, ref_mode: Optional[str] = DEFAULT_REF_MODE,
              output_path: Optional[Union[str, List[str]]] = None):
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.model_args['api_key']}",
-            "X-DashScope-Async": "enable"
-        }
+        headers = get_headers(self.model_args['api_key'])
         data = {
-            "model": "wanx-v1",
+            "model": TEXT2IMAGE_MODEL,
             "input": {
                 "prompt": prompt,
                 "negative_prompt": negative_prompt,
@@ -82,7 +119,7 @@ class Text2ImageWanx(BaseAgent):
             yield TextBlock("usage", json.dumps(result["usage"]))
 
         while True:
-            time.sleep(2)
+            time.sleep(CHECK_RESULT_SECONDS)
             status_response = requests.get(f"{DASHSCOPE_BASE_URL}/tasks/{task_id}", headers=headers)
             status_result = status_response.json()
             yield TextBlock("info", f'{task_id}: {status_result["output"]["task_status"]}')
@@ -104,16 +141,12 @@ class Text2ImageWanx(BaseAgent):
                 yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
     async def async_call(self, prompt: str, negative_prompt: Optional[str] = None, ref_img: Optional[str] = None, 
-                         style: Optional[str] = None, size: Optional[str] = "1024*1024", n: int = 1, 
-                         seed: Optional[int] = None, ref_strength: Optional[float] = None, ref_mode: Optional[str] = "repaint",
+                         style: Optional[str] = None, size: Optional[str] = DEFAULT_SIZE, n: int = 1, 
+                         seed: Optional[int] = None, ref_strength: Optional[float] = None, ref_mode: Optional[str] = DEFAULT_REF_MODE,
                          output_path: Optional[Union[str, List[str]]] = None):
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.model_args['api_key']}",
-            "X-DashScope-Async": "enable"
-        }
+        headers = get_headers(self.model_args['api_key'])
         data = {
-            "model": "wanx-v1",
+            "model": TEXT2IMAGE_MODEL,
             "input": {
                 "prompt": prompt,
                 "negative_prompt": negative_prompt,
@@ -141,7 +174,7 @@ class Text2ImageWanx(BaseAgent):
                     yield TextBlock("usage", json.dumps(result["usage"]))
 
                 while True:
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(CHECK_RESULT_SECONDS)
                     async with session.get(f"{DASHSCOPE_BASE_URL}/tasks/{task_id}", headers=headers) as status_response:
                         status_result = await status_response.json()
                         yield TextBlock("info", f'{task_id}: {status_result["output"]["task_status"]}')
@@ -157,36 +190,10 @@ class Text2ImageWanx(BaseAgent):
                             parsed_url = urlparse(url)
                             filename = os.path.basename(parsed_url.path)
                             output_path = [f"{filename.rsplit('.', 1)[0]}_{i}.{filename.rsplit('.', 1)[1]}" for i in range(n)]
-                        async for block in self.async_save_image(url, output_path[i]):
+                        async for block in async_save_image(url, output_path[i]):
                             yield block
                     if 'usage' in status_result:
                         yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
-
-    async def async_save_image(self, url: str, path: str):
-        folder = os.path.dirname(path)
-        if folder and not os.path.exists(folder):
-            os.makedirs(folder)
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                content = await response.read()
-                with open(path, 'wb+') as f:
-                    f.write(content)
-                    yield TextBlock("info", f'output image to {path}')
-
-def save_image(url: str, path: str):
-    folder = os.path.dirname(path)
-    if folder and not os.path.exists(folder):
-        os.makedirs(folder)
-    with open(path, 'wb+') as f:
-        f.write(requests.get(url).content)
-        yield TextBlock("info", f'output image to {path}')
-
-def validate_output_path(output_path: Union[str, List[str]], n: int) -> List[str]:
-    if isinstance(output_path, str):
-        output_path = [output_path]
-    if output_path and len(output_path) != n:
-        raise ValueError(f"Invalid output_path: {output_path}, please ensure the number of images is consistent with the n value")
-    return output_path
 
 class CosplayWanx(BaseAgent):
     """
@@ -206,7 +213,7 @@ class CosplayWanx(BaseAgent):
 
         super().__init__(threads_group="WANX", **kwargs)
         self.default_call_args = {
-            "model": model or "wanx-sketch-to-image-v1"
+            "model": model or DEFAULT_MODEL
         }
         self.model_args = {
             "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))
@@ -214,16 +221,12 @@ class CosplayWanx(BaseAgent):
     
     def call(self, face_image_url: str=None, template_image_url: str=None, model_index: int = 1, 
              output_path: Optional[Union[str, List[str]]] = None):
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.model_args['api_key']}",
-            "X-DashScope-Async": "enable"
-        }
+        headers = get_headers(self.model_args['api_key'])
         data = {
-            "model": "wanx-style-cosplay-v1",
+            "model": COSPLAY_MODEL,
             "input": {
-                "face_image_url": face_image_url or "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png",
-                "template_image_url": template_image_url or "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png",
+                "face_image_url": face_image_url or DEFAULT_FACE_IMAGE_URL,
+                "template_image_url": template_image_url or DEFAULT_TEMPLATE_IMAGE_URL,
                 "model_index": model_index
             }
         }
@@ -239,7 +242,7 @@ class CosplayWanx(BaseAgent):
             yield TextBlock("usage", json.dumps(result["usage"]))
 
         while True:
-            time.sleep(2)
+            time.sleep(CHECK_RESULT_SECONDS)
             status_response = requests.get(f"{DASHSCOPE_BASE_URL}/tasks/{task_id}", headers=headers)
             status_result = status_response.json()
             yield TextBlock("info", f'{task_id}: {status_result["output"]["task_status"]}')
@@ -259,16 +262,12 @@ class CosplayWanx(BaseAgent):
 
     async def async_call(self, face_image_url: str=None, template_image_url: str=None, model_index: int = 1, 
                          output_path: Optional[Union[str, List[str]]] = None):
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.model_args['api_key']}",
-            "X-DashScope-Async": "enable"
-        }
+        headers = get_headers(self.model_args['api_key'])
         data = {
-            "model": "wanx-style-cosplay-v1",
+            "model": COSPLAY_MODEL,
             "input": {
-                "face_image_url": face_image_url or "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png",
-                "template_image_url": template_image_url or "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png",
+                "face_image_url": face_image_url or DEFAULT_FACE_IMAGE_URL,
+                "template_image_url": template_image_url or DEFAULT_TEMPLATE_IMAGE_URL,
                 "model_index": model_index
             }
 
@@ -285,7 +284,7 @@ class CosplayWanx(BaseAgent):
                     yield TextBlock("usage", json.dumps(result["usage"]))
 
                 while True:
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(CHECK_RESULT_SECONDS)
                     async with session.get(f"{DASHSCOPE_BASE_URL}/tasks/{task_id}", headers=headers) as status_response:
                         status_result = await status_response.json()
                         yield TextBlock("info", f'{task_id}: {status_result["output"]["task_status"]}')
@@ -298,19 +297,9 @@ class CosplayWanx(BaseAgent):
 
                     parsed_url = urlparse(url)
                     _output_path = output_path or os.path.basename(parsed_url.path)
-                    async for block in self.async_save_image(url, output_path):
+                    async for block in async_save_image(url, _output_path):
                         yield block
                     if 'usage' in status_result:
                         yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
-    async def async_save_image(self, url: str, path: str):
-        folder = os.path.dirname(path)
-        if folder and not os.path.exists(folder):
-            os.makedirs(folder)
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                content = await response.read()
-                with open(path, 'wb+') as f:
-                    f.write(content)
-                    yield TextBlock("info", f'output image to {path}')
 
