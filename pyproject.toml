@@ -18,10 +18,10 @@ pandas = "^2.2.2"
 openpyxl = "^3.1.4"
 python-jose = "^3.3.0"
 fastapi = "^0.111.0"
-dashscope = "^1.20.6"
 
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "^1.0.1"
+dashscope = "^1.20.6"
 pydot = "^2.0.0"
 fastapi = "^0.111.0"
 asyncio = "^3.4.3"
