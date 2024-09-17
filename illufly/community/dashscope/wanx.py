@@ -187,3 +187,130 @@ def validate_output_path(output_path: Union[str, List[str]], n: int) -> List[str
     if output_path and len(output_path) != n:
         raise ValueError(f"Invalid output_path: {output_path}, please ensure the number of images is consistent with the n value")
     return output_path
+
+class CosplayWanx(BaseAgent):
+    """
+    通义万相-Cosplay动漫人物生成通过输入人像图片和卡通形象图片，可快速生成人物卡通写真。目前支持3D卡通形象风格。
+    一张人像照片 + 一张卡通风格 = 一张卡通写真
+
+    详细调用参数可参考通义万相 Cosplay API。
+    """
+    def __init__(self, model: str=None, **kwargs):
+        try:
+            import dashscope
+        except ImportError:
+            raise RuntimeError(
+                "Could not import dashscope package. "
+                "Please install it via 'pip install -U dashscope'"
+            )
+
+        super().__init__(threads_group="WANX", **kwargs)
+        self.default_call_args = {
+            "model": model or "wanx-sketch-to-image-v1"
+        }
+        self.model_args = {
+            "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))
+        }
+    
+    def call(self, face_image_url: str=None, template_image_url: str=None, model_index: int = 1, 
+             output_path: Optional[Union[str, List[str]]] = None):
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.model_args['api_key']}",
+            "X-DashScope-Async": "enable"
+        }
+        data = {
+            "model": "wanx-style-cosplay-v1",
+            "input": {
+                "face_image_url": face_image_url or "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png",
+                "template_image_url": template_image_url or "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png",
+                "model_index": model_index
+            }
+        }
+
+        response = requests.post(f"{DASHSCOPE_BASE_URL}/services/aigc/image-generation/generation", 
+                                 headers=headers, json=data)
+        result = response.json()
+        yield TextBlock("info", f'{json.dumps(result, ensure_ascii=False)}')
+        task_id = result['output']['task_id']
+        
+        yield TextBlock("info", f'{task_id}: {result["output"]["task_status"]}')
+        if "usage" in result:
+            yield TextBlock("usage", json.dumps(result["usage"]))
+
+        while True:
+            time.sleep(2)
+            status_response = requests.get(f"{DASHSCOPE_BASE_URL}/tasks/{task_id}", headers=headers)
+            status_result = status_response.json()
+            yield TextBlock("info", f'{task_id}: {status_result["output"]["task_status"]}')
+            if status_result['output']['task_status'] in ['SUCCEEDED', 'FAILED']:
+                break
+
+        if status_result['output']['task_status'] == 'SUCCEEDED':
+            url = status_result['output']['result_url']
+            yield TextBlock("image_url", url)
+
+            parsed_url = urlparse(url)
+            _output_path = output_path or os.path.basename(parsed_url.path)
+            for block in save_image(url, _output_path):
+                yield block
+            if 'usage' in status_result:
+                yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
+
+    async def async_call(self, face_image_url: str=None, template_image_url: str=None, model_index: int = 1, 
+                         output_path: Optional[Union[str, List[str]]] = None):
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.model_args['api_key']}",
+            "X-DashScope-Async": "enable"
+        }
+        data = {
+            "model": "wanx-style-cosplay-v1",
+            "input": {
+                "face_image_url": face_image_url or "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png",
+                "template_image_url": template_image_url or "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png",
+                "model_index": model_index
+            }
+
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{DASHSCOPE_BASE_URL}/services/aigc/image-generation/generation", 
+                                    headers=headers, json=data) as response:
+                result = await response.json()
+                yield TextBlock("info", f'{json.dumps(result, ensure_ascii=False)}')
+                task_id = result['output']['task_id']
+                
+                yield TextBlock("info", f'{task_id}: {result["output"]["task_status"]}')
+                if "usage" in result:
+                    yield TextBlock("usage", json.dumps(result["usage"]))
+
+                while True:
+                    await asyncio.sleep(2)
+                    async with session.get(f"{DASHSCOPE_BASE_URL}/tasks/{task_id}", headers=headers) as status_response:
+                        status_result = await status_response.json()
+                        yield TextBlock("info", f'{task_id}: {status_result["output"]["task_status"]}')
+                        if status_result['output']['task_status'] in ['SUCCEEDED', 'FAILED']:
+                            break
+
+                if status_result['output']['task_status'] == 'SUCCEEDED':
+                    url = status_result['output']['result_url']
+                    yield TextBlock("image_url", url)
+
+                    parsed_url = urlparse(url)
+                    _output_path = output_path or os.path.basename(parsed_url.path)
+                    async for block in self.async_save_image(url, output_path):
+                        yield block
+                    if 'usage' in status_result:
+                        yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
+
+    async def async_save_image(self, url: str, path: str):
+        folder = os.path.dirname(path)
+        if folder and not os.path.exists(folder):
+            os.makedirs(folder)
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                content = await response.read()
+                with open(path, 'wb+') as f:
+                    f.write(content)
+                    yield TextBlock("info", f'output image to {path}')
+
