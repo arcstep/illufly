@@ -38,9 +38,6 @@ class ChatOpenAI(ChatAgent):
             **kwargs
         })
 
-        print("model args", self.model_args)
-        print("call args", _kwargs)
-        print("messages", messages)
         client = OpenAI(**self.model_args)
         completion = client.chat.completions.create(**_kwargs)
 

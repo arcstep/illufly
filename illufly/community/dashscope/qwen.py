@@ -37,8 +37,8 @@ class ChatQwen(ChatAgent):
             "stream": True,
             "result_format": 'message',
             "incremental_output": True,
+            **self.model_args,
             **self.default_call_args,
-            **self.model_args
         }
         tools_desc = self.get_tools_desc(kwargs.pop('tools', []))
         _kwargs.update({
