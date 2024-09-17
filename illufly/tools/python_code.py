@@ -2,7 +2,7 @@ from typing import Dict, Any
 
 from ..hub import load_template
 from ..io import TextBlock
-from ..core.agent import BaseAgent, BaseTool
+from ..core.agent import BaseAgent
 from ..core.template import Template
 
 import textwrap
@@ -60,7 +60,7 @@ class PythonCodeTool(BaseAgent):
         self.data = data
 
         self.name = name or "python_code"
-        self.description = description or f"回答关于[{dataset_names}]等数据集的问题。\n具体包括：{BaseTool.dataset_desc(self.data)}"
+        self.description = description or f"回答关于[{dataset_names}]等数据集的问题。\n具体包括：{self.__class__.dataset_desc(self.data)}"
 
     def call(self, question: str, *args, **kwargs):
         dataset_names = ', '.join(self.data.keys())
