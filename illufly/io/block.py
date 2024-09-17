@@ -49,6 +49,7 @@ class TextBlock():
             'tools_call_final': "ILLUFLY_COLOR_FINAL",
             # 直接输出的文本
             'text': "ILLUFLY_COLOR_TEXT",
+            'image_url': "ILLUFLY_COLOR_TEXT",
             # 大模型推理的中间结果片段文本
             'chunk': "ILLUFLY_COLOR_CHUNK",
             # 大模型推理的最终结果
@@ -59,6 +60,8 @@ class TextBlock():
             'info': "ILLUFLY_COLOR_INFO",
             # 警告信息
             'warn': "ILLUFLY_COLOR_WARN",
+            # 使用信息
+            'usage': "ILLUFLY_COLOR_INFO",
             # 结束信息
             'END': "ILLUFLY_COLOR_INFO"
         }

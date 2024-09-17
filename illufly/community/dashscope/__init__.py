@@ -1,2 +1,3 @@
 from .embeddings import DashScopeEmbeddings
-from .chat import ChatQwen
+from .qwen import ChatQwen
+from .wanx import ImageWanx
