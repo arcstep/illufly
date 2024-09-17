@@ -6,7 +6,7 @@ from ..core.agent.base import Runnable
 
 __CHUNK_BLOCK_TYPES__ = ["chunk", "tool_resp_chunk"]
 __NOT_PRINT_BLOCK_TYPES__ = ["text_final"]
-__ALLWAYS_PRINT_BLOCK_TYPES__ = ["agent"]
+__ALLWAYS_PRINT_BLOCK_TYPES__ = ["agent", "warn", "error", "image_url"]
 
 def process_block(block, last_block_type, verbose:bool):
     if isinstance(block, TextBlock):        
