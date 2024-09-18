@@ -27,32 +27,20 @@ class DashScopeEmbeddings(BaseEmbeddings):
         """
         查询文本向量。
         """
+        return self.embed_documents([text], text_type="query")[0]
+
+    def embed_documents(self, texts: List[str], text_type: str="document") -> List[List[float]]:
+        """
+        编码文本向量。
+        """
         import dashscope
         dashscope.api_key = self.api_key
         from dashscope import TextEmbedding
 
         response = TextEmbedding.call(
             model=self.model,
-            input=text,
-            text_type="query",
-            **kwargs
-        )
-        if response.status_code != HTTPStatus.OK:
-            raise Exception('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
-                response.request_id, response.status_code,
-                response.code, response.message
-            ))
-
-        return response.output['embeddings'][0]['embedding']
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """
-        编码文本向量。
-        """
-        from dashscope import TextEmbedding
-        response = TextEmbedding.call(
-            model=self.model,
             input=texts,
-            text_type="document"
+            text_type=text_type
         )       
         if response.status_code != HTTPStatus.OK:
             raise Exception('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
