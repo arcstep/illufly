@@ -10,14 +10,14 @@
 from typing import List, Dict, Any, Union
 from importlib.resources import read_text, is_resource, contents
 from chevron.renderer import render as mustache_render
+from ..config import get_folder_root, get_env
 
 import os
 import re
 import json
 
-from ..config import get_folder_root, get_env
-
 PROMPT_WRITING_BASE = 'illufly.__PROMPT_TEMPLATES__'
+
 def find_resource_template():
     """
     过滤出提示语模板所在的目录清单。
@@ -25,7 +25,6 @@ def find_resource_template():
 
     all_resources = contents(f'{PROMPT_WRITING_BASE}')
     return [r for r in all_resources if not is_resource(f'{PROMPT_WRITING_BASE}', r)]
-
 
 def load_resource_template(template_id: str):
     """
@@ -79,7 +78,7 @@ def _find_prompt_file(template_id: str, file_name, template_folder: str=None, se
 def load_template(template_id: str, template_folder: str=None,):
     """
     从模板文件夹加载提示语模板。
-    
+
     提示语模板中的约定：
     1. 加载模板时，从模板路径开始寻找，如果找不到会向上查找文件，直至模板根文件夹
     2. 提示语模板的主文件是 main.mu
@@ -90,20 +89,18 @@ def load_template(template_id: str, template_folder: str=None,):
     main_prompt = _find_prompt_file(template_id, 'main', template_folder)
 
     if main_prompt:
-        template_format = 'mustache' if main_prompt.endswith('.mu') or  main_prompt.endswith('.mustache') else 'f-string'
         with open(main_prompt, 'r') as f:
             prompt_str = f.read()
 
-            if template_format == 'mustache':
-                # 替换 {{>include_name}} 变量
-                include_dict = {}
-                matches = re.findall(r'{{>(.*?)}}', prompt_str)
-                for part_name in matches:
-                    part_file = _find_prompt_file(template_id, part_name.strip(), template_folder)
-                    with open(part_file, 'r') as f:
-                        include_dict[part_name] = f.read()
-                for part_name, part_str in include_dict.items():
-                    prompt_str = prompt_str.replace("{{>" + part_name + "}}", part_str)
+            # 替换 {{>include_name}} 变量
+            include_dict = {}
+            matches = re.findall(r'{{>(.*?)}}', prompt_str)
+            for part_name in matches:
+                part_file = _find_prompt_file(template_id, part_name.strip(), template_folder)
+                with open(part_file, 'r') as f:
+                    include_dict[part_name] = f.read()
+            for part_name, part_str in include_dict.items():
+                prompt_str = prompt_str.replace("{{>" + part_name + "}}", part_str)
 
             return prompt_str
     else:
@@ -112,3 +109,19 @@ def load_template(template_id: str, template_folder: str=None,):
             return prompt_str
 
     raise ValueError(f'无法构建模板：{template_id}')
+
+def get_template_variables(template_text: str):
+    vars: Set[str] = set()
+    section_depth = 0
+    for type, key in mustache_tokenize(template_text):
+        if type == "end":
+            section_depth -= 1
+        elif (
+            type in ("variable", "section", "inverted section", "no escape")
+            and key != "."
+            and section_depth == 0
+        ):
+            vars.add(key.split(".")[0])
+        if type in ("section", "inverted section"):
+            section_depth += 1
+    return vars
