@@ -1,8 +1,10 @@
 from typing import Dict, Any
-from langchain.prompts import PromptTemplate
 
 from ..hub import load_resource_template, load_template
 from ..utils import compress_text
+
+from chevron.renderer import render as mustache_render
+from chevron.tokenizer import tokenize as mustache_tokenize
 
 class Template:
     """
@@ -11,38 +13,46 @@ class Template:
     结合工作台映射，可以动态填充提示语模板。
     """
     def __init__(self, template_id: str=None, template_text: str=None, input_mapping: Dict[str, Any]=None):
-        self.template_id = template_id
-        self.template_text = template_text
-
-        self.template = self._get_template(self.template_id, self.template_text)
-        self.input_mapping = self._get_desk_map(self.template, input_mapping or {})
-        self.using_vars_list = self._get_using_vars(self.template, self.input_mapping or {})
-
-    def _get_template(self, template_id, template_text):
         if template_id:
-            mu = load_template(template_id)
+            self.template_text = load_template(template_id)
         elif template_text:
-            mu = PromptTemplate.from_template(template_text, template_format='mustache')
+            self.template_text = template_text
         else:
             raise ValueError('template is not set')
-        return mu
 
-    def _get_desk_map(self, template, input_mapping):
-        return {**input_mapping, **{k: k for k in template.input_variables if k not in input_mapping}}
+        self.input_variables = self.get_template_variables(self.template_text)
+        self.input_mapping = self._get_desk_map(self.input_variables, input_mapping or {})
+        self.using_vars_list = self._get_using_vars(self.input_variables, self.input_mapping or {})
+
+    def _get_desk_map(self, input_variables, input_mapping):
+        return {**input_mapping, **{k: k for k in input_variables if k not in input_mapping}}
     
-    def _get_using_vars(self, template,input_mapping):
-        mapping = [v for k, v in input_mapping.items() if k in template.input_variables]
-        not_mapping = [k for k in template.input_variables if k not in input_mapping]
+    def _get_using_vars(self, input_variables, input_mapping):
+        mapping = [v for k, v in input_mapping.items() if k in input_variables]
+        not_mapping = [k for k in input_variables if k not in input_mapping]
         return mapping + not_mapping
 
     def __str__(self):
-        return compress_text(self.template.format())
+        return compress_text(mustache_render(template=self.template_text))
     
     def __repr__(self):
-        if self.template_id:
-            return f"<Template template_id='{self.template_id}'>"
-        else:
-            return f"<Template template_text='{compress_text(self.template_text)}'>"
+        return f"<Template input_variables={self.input_variables} template_text='{compress_text(self.template_text)}'>"
+    
+    def get_template_variables(self, template_text: str):
+        vars: Set[str] = set()
+        section_depth = 0
+        for type, key in mustache_tokenize(template_text):
+            if type == "end":
+                section_depth -= 1
+            elif (
+                type in ("variable", "section", "inverted section", "no escape")
+                and key != "."
+                and section_depth == 0
+            ):
+                vars.add(key.split(".")[0])
+            if type in ("section", "inverted section"):
+                section_depth += 1
+        return vars
 
     def clone(self):
         return self.__class__(
@@ -60,14 +70,14 @@ class Template:
                     break
             return new_desk
         
-        input_vars = {}
-        if input_vars:
+        _input_vars = input_vars or {}
+        if _input_vars:
             for k, v in self.input_mapping.items():
                 if '.' in v:
                     keys = v.split('.')
-                    input_vars[k] = get_nested_value(input_vars, keys)
+                    _input_vars[k] = get_nested_value(_input_vars, keys)
                 else:
-                    input_vars[k] = input_vars.get(v, '')
+                    _input_vars[k] = _input_vars.get(v, '')
 
-        return self.template.format(**input_vars)
+        return mustache_render(template=self.template_text, data=_input_vars)
 
