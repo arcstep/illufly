@@ -9,7 +9,7 @@
 
 from typing import List, Dict, Any, Union
 from importlib.resources import read_text, is_resource, contents
-from langchain.prompts import PromptTemplate
+from chevron.renderer import render as mustache_render
 
 import os
 import re
@@ -54,14 +54,7 @@ def load_resource_template(template_id: str):
     for part_name, part_str in include_dict.items():
         prompt_str = prompt_str.replace("{{>" + part_name + "}}", part_str)
 
-    template = PromptTemplate.from_template(prompt_str, template_format='mustache')
-
-    kwargs = {}
-    for key in template.input_variables:
-        if key.endswith('_'):
-            kwargs[key] = ''
-
-    return template.partial(**kwargs)
+    return prompt_str
 
 def _find_prompt_file(template_id: str, file_name, template_folder: str=None, sep: str=None, all_path: List[str]=[], force: bool=False):
     sep = sep or os.sep
@@ -88,16 +81,10 @@ def load_template(template_id: str, template_folder: str=None,):
     从模板文件夹加载提示语模板。
     
     提示语模板中的约定：
-    1. 尽管资源库中只使用 mustache 语法的模板，但自定义模板同时支持 f-string(*.txt) 和 mustache(*.mu) 两种语法
-    2. 加载模板时，从模板路径开始寻找，如果找不到会向上查找文件，直至模板根文件夹
-    3. 提示语模板的主文件是 main.txt 或 main.mu，如果都存在就优先用 main.mu
-    4. 预处理 main.mu 中的 {{>include_name}} 语法
-    5. 使用 PromptTemplate 和 core.utils.mustache 处理其他语法
-        - 这包括 mustache 中的一般变量、partial变量和判断变量是否存在的逻辑等
-    6. 变量命名时的约定
-        - xxx__, 由系统内部的方法填写，请不要试图赋值（即使你手工赋值，也会被内部逻辑覆盖）
-        - xxx_, 可选变量，加载时会被赋默认值为：""
-        - xxx, 必须填写的变量
+    1. 加载模板时，从模板路径开始寻找，如果找不到会向上查找文件，直至模板根文件夹
+    2. 提示语模板的主文件是 main.mu
+    3. 预处理 main.mu 中的 {{>include_name}} 语法
+    4. 如果找不到 main.mu 文件，则从资源文件夹中加载
     """
     template_folder = template_folder or get_env("ILLUFLY_PROMPTS")
     main_prompt = _find_prompt_file(template_id, 'main', template_folder)
@@ -118,17 +105,10 @@ def load_template(template_id: str, template_folder: str=None,):
                 for part_name, part_str in include_dict.items():
                     prompt_str = prompt_str.replace("{{>" + part_name + "}}", part_str)
 
-            template = PromptTemplate.from_template(prompt_str, template_format=template_format)
-
-            kwargs = {}
-            for key in template.input_variables:
-                if key.endswith('_'):
-                    kwargs[key] = ''
-
-            return template.partial(**kwargs)
+            return prompt_str
     else:
-        template = load_resource_template(template_id)
-        if template:
-            return template
+        prompt_str = load_resource_template(template_id)
+        if prompt_str:
+            return prompt_str
 
     raise ValueError(f'无法构建模板：{template_id}')
