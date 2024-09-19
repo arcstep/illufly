@@ -4,9 +4,8 @@ import logging
 import asyncio
 
 from .block import TextBlock
-from ..core.agent import Runnable
 
-async def event_stream(runnable: Runnable, *args, **kwargs):
+async def event_stream(runnable: "Runnable", *args, **kwargs):
     """
     针对任何回调函数，只要符合规范的返回 TextBlock 对象或 str 的生成器，就可以使用这个函数来
     生成事件流格式的数据。
