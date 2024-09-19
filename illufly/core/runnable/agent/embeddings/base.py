@@ -24,32 +24,38 @@ class BaseEmbeddings(BaseAgent):
         return self._output
 
     def query(self, text: str, *args, **kwargs) -> List[float]:
-        """
-        从向量数据库查询之前，将字符串转换为文本向量。
-        """
+        """将文本转换为向量，以便查询"""
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Embed search docs."""
+        """将文本转换为向量，以便入库"""
 
-    def get_embeddings_folder(self):
+    def _get_embeddings_folder(self):
         return os.path.join(get_env("ILLUFLY_CACHE_EMBEDDINGS"), self.__class__.__name__, self.model)
 
-    def call(self, docs: Union[List[str], List[Document]], batch_mode: bool=False, batch_size=None, **kwargs):
+    def call(self, docs: Union[str, List[str], List[Document]], batch_mode: bool=False, batch_size=None, **kwargs) -> List[Document]:
         """
-        将向量文本嵌入到数据库。
+        将文本字符串转换为文本向量。
 
-        在 RAG 应用中，需要先将资料做向量编码，然后入库到向量数据库，然后才是查询。
-        因此，将 BaseEmbedding.call 方法的功能定义为：加载数据、转换为向量，以便录入到向量数据库。
+        由于有些向量模型对查询和存储的编码方式不同，因此要求其分别实现 query 方法和 embed_documents 方法。
 
-        其行为是：
-        - 将给定字符串列表转换为向量，并返回一个新的 Document 列表
-        - 如果已经存在缓存，则直接读取，而不需要再做向量编码
-        - 如果指定了 batch_mode 为 True，则先批量生成缓存，再读取
+        因此，这里也有一些重要约定：
+        - 如果 docs 是 Document 类型，且 metadata.source 的值为 __query__，则按照查询模式编码
+        - 如果 docs 是作为一个字符串提供，就在转换时自动补充一个 __query__ 的值（在使用中应当尽量按这样的方式使用查询模式）
+        - 如果 docs 的 metadata.source 是其他值，则按照存储编码来做转换
+        - 无论哪种类型，如果缓存中已经转换过就不再重新转换（除非清理缓存）
+        - 如果指定了 batch_mode 为 True，则分批次转换
+
+        返回值是包含了向量转换的 Document 列表。
         """
+        if isinstance(docs, str):
+            docs = [Document(docs, metadata={'source': '__query__'})]
+        elif isinstance(docs, Document):
+            docs.metadata['source'] = '__query__'
+
         if not isinstance(docs, list):
             raise ValueError("docs 必须是字符串或 Document 类型列表，但实际为: {type(docs)}")
 
-        vector_folder = self.get_embeddings_folder()
+        vector_folder = self._get_embeddings_folder()
 
         for index, d in enumerate(docs):
             if isinstance(d, str):
@@ -98,7 +104,10 @@ class BaseEmbeddings(BaseAgent):
                         continue
                     d.metadata['embeddings'] = embeddings
             else:
-                vectors = self.embed_documents([d.text])
+                if d.metadata['source'] == '__query__':
+                    vectors = self.query(d.text)
+                else:
+                    vectors = self.embed_documents([d.text])
                 os.makedirs(os.path.dirname(cache_path), exist_ok=True)
                 with open(cache_path, 'wb') as f:
                     d.metadata['embeddings'] = vectors[0]
