@@ -36,7 +36,8 @@ class ZhipuEmbeddings(BaseEmbeddings):
         """
         response = self.client.embeddings.create(
             model=self.model,
-            input=texts
+            input=texts,
+            dimension=self.dim
         )
         return [ed.embedding for ed in response.data]
 

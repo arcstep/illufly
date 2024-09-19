@@ -13,15 +13,11 @@ class BaseEmbeddings(BaseAgent):
     句子嵌入模型。
     """
 
-    def __init__(self, model: str=None, api_key: str=None, *args, **kwargs):
+    def __init__(self, model: str=None, api_key: str=None, dim: int=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.dim = dim if dim else 1024
         self.model = model
         self.api_key = api_key
-        self._output = []
-
-    @property
-    def output(self):
-        return self._output
 
     def query(self, text: str, *args, **kwargs) -> List[float]:
         """将文本转换为向量，以便查询"""
@@ -32,7 +28,13 @@ class BaseEmbeddings(BaseAgent):
     def _get_embeddings_folder(self):
         return os.path.join(get_env("ILLUFLY_CACHE_EMBEDDINGS"), self.__class__.__name__, self.model)
 
-    def call(self, docs: Union[str, List[str], List[Document]], batch_mode: bool=False, batch_size=None, **kwargs) -> List[Document]:
+    def call(
+        self,
+        docs: Union[str, List[str], List[Document]],
+        batch_mode: bool=False,
+        batch_size=None,
+        **kwargs
+    ) -> List[Document]:
         """
         将文本字符串转换为文本向量。
 
@@ -47,6 +49,7 @@ class BaseEmbeddings(BaseAgent):
 
         返回值是包含了向量转换的 Document 列表。
         """
+
         if isinstance(docs, str):
             docs = [Document(docs, metadata={'source': '__query__'})]
         elif isinstance(docs, Document):
