@@ -4,10 +4,11 @@ import copy
 from abc import abstractmethod
 from typing import Union, List, Dict, Any
 
-from ...utils import merge_blocks_by_index, extract_text
-from ...io import TextBlock, create_chk_block
+from ....utils import merge_blocks_by_index, extract_text
+from ....io import TextBlock, create_chk_block
 
-from .base import BaseAgent, Runnable
+from ..base import Runnable
+from .base import BaseAgent
 
 class ChatAgent(BaseAgent):
     """
@@ -58,7 +59,7 @@ class ChatAgent(BaseAgent):
         return [t.tool for t in (self.toolkits + _tools)]
 
     def update_python_code_tool(self):
-        from ...tools import PythonCodeTool
+        from ....tools import PythonCodeTool
         
         if self.data:
             agent = self.clone(memory=[Template(template_id or "GEN_CODE_PANDAS"), "请开始生成代码"])

@@ -1,7 +1,7 @@
 from typing import Union, List, Optional, Dict, Any
 
 from ...io import TextBlock
-from ...core.agent import ChatAgent
+from ...core.runnable.agent import ChatAgent
 
 import time
 

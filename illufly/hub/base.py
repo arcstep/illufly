@@ -10,6 +10,7 @@
 from typing import List, Dict, Any, Union
 from importlib.resources import read_text, is_resource, contents
 from chevron.renderer import render as mustache_render
+from chevron.tokenizer import tokenize as mustache_tokenize
 from ..config import get_folder_root, get_env
 
 import os

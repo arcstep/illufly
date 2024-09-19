@@ -10,7 +10,7 @@ from urllib.parse import urlparse, unquote
 from pathlib import PurePosixPath
 import requests
 
-from ...core.agent import BaseAgent
+from ...types import BaseAgent
 from ..http import (
     TextBlock,
 

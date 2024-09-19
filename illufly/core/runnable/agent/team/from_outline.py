@@ -1,11 +1,11 @@
 from typing import List, Union
 
-from ....io import TextBlock
-from ....utils import compress_text
-from ...parser import Markdown
+from .....io import TextBlock
+from .....utils import compress_text
+from ....parser import Markdown
 from ..base import BaseAgent
 from ..chat import ChatAgent
-from ..team import Pipe
+from .pipe import Pipe
 
 import copy
 

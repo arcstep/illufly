@@ -1,7 +1,7 @@
 from typing import List, Union
 
-from ....io import TextBlock
-from ....utils import compress_text
+from .....io import TextBlock
+from .....utils import compress_text
 from ..chat import ChatAgent
 
 class Discuss():
