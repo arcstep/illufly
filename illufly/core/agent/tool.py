@@ -3,7 +3,7 @@ from typing import Callable
 from .base import BaseAgent
 
 class ToolAgent(BaseAgent):
-    def __init__(self, func: Callable=None, **kwargs):
+    def __init__(self, func: Callable, **kwargs):
         super().__init__(func=func, **kwargs)
     
     def __str__(self):
