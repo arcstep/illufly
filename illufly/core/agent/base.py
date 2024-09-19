@@ -25,9 +25,9 @@ class Runnable(ABC, ToolAbility, ExecutorManager):
     def __init__(
         self,
         # 线程组
-        threads_group: str = None,
+        threads_group: str=None,
         # 是否自动停止
-        continue_running=True,
+        continue_running: bool=True,
         **kwargs
     ):
         """
@@ -43,6 +43,10 @@ class Runnable(ABC, ToolAbility, ExecutorManager):
     def __call__(self, *args, verbose:bool=False, handler:Callable=None, **kwargs):
         handler = handler or log
         return handler(self, *args, verbose=verbose, **kwargs)
+
+    @property
+    def output(self):
+        return None
 
     @property
     def is_running(self):
