@@ -21,6 +21,7 @@ class ChatOpenAI(ChatAgent):
         self.threads_group = "CHAT_OPENAI"
         self.default_call_args = {"model": model or "gpt-3.5-turbo"}
         self.model_args = {"api_key": kwargs.pop("api_key", os.getenv("OPENAI_API_KEY"))}
+        self.client = OpenAI(**self.model_args)
 
     def generate(
         self,
@@ -38,8 +39,7 @@ class ChatOpenAI(ChatAgent):
             **kwargs
         })
 
-        client = OpenAI(**self.model_args)
-        completion = client.chat.completions.create(**_kwargs)
+        completion = self.client.chat.completions.create(**_kwargs)
 
         for response in completion:
             if response.choices:

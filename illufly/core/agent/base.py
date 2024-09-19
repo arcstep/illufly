@@ -14,6 +14,7 @@ from .memory_manager import MemoryManager
 from .knowledge_manager import KnowledgeManager
 from ..template import Template
 from ..dataset import Dataset
+from ...io import log, alog, event_stream
 
 class Runnable(ABC, ToolAbility, ExecutorManager):
     """
@@ -39,6 +40,10 @@ class Runnable(ABC, ToolAbility, ExecutorManager):
         ExecutorManager.__init__(self, threads_group)
         ToolAbility.__init__(self, **kwargs)
 
+    def __call__(self, *args, verbose:bool=False, handler:Callable=None, **kwargs):
+        handler = handler or log
+        return handler(self, *args, verbose=verbose, **kwargs)
+
     @property
     def is_running(self):
         return self.continue_running
@@ -51,6 +56,9 @@ class Runnable(ABC, ToolAbility, ExecutorManager):
 
     @abstractmethod
     def call(self, prompt: Union[str, List[dict], Template], *args, **kwargs):
+        """
+        这是同步调用的主入口，默认必须实现该方法。
+        """
         raise NotImplementedError("子类必须实现 call 方法")
 
     async def async_call(self, *args, **kwargs):

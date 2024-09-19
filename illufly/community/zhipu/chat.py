@@ -20,6 +20,7 @@ class ChatZhipu(ChatAgent):
         self.threads_group = "CHAT_ZHIPU"
         self.default_call_args = {"model": model or "glm-4-flash"}
         self.model_args = {"api_key": kwargs.get("api_key", os.getenv("ZHIPUAI_API_KEY"))}
+        self.client = ZhipuAI(**self.model_args)
 
     def generate(
         self,
@@ -36,9 +37,9 @@ class ChatZhipu(ChatAgent):
             "tools": tools_desc,
             **kwargs
         })
+        print("call_args", _kwargs)
 
-        client = ZhipuAI(**self.model_args)
-        completion = client.chat.completions.create(**_kwargs)
+        completion = self.client.chat.completions.create(**_kwargs)
 
         for response in completion:
             if response.choices:

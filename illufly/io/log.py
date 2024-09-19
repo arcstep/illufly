@@ -3,7 +3,6 @@ import time
 
 from typing import Callable, Iterable, Union, AsyncIterable
 from .block import TextBlock
-from ..core.agent.base import Runnable
 
 __CHUNK_BLOCK_TYPES__ = ["chunk", "tool_resp_chunk"]
 __NOT_PRINT_BLOCK_TYPES__ = ["text_final"]
@@ -28,15 +27,13 @@ def process_block(block, last_block_type, verbose:bool, start_time:float):
     
     return block.block_type
 
-def log(runnable: Runnable, *args, verbose: bool=False, **kwargs):
+def log(runnable: "Runnable", *args, verbose: bool=False, **kwargs):
     """
     针对任何回调函数，只要符合规范的返回TextBlock对象的生成器，就可以使用这个函数来
     打印流式日志。
 
     返回值中，tools_call可以方便处理智能体的工具回调。
     """
-    if not isinstance(runnable, Runnable):
-        raise ValueError("call_obj 必须是 Runnable 实例")
 
     last_block_type = ""
     start_time = time.time()
@@ -51,7 +48,7 @@ def log(runnable: Runnable, *args, verbose: bool=False, **kwargs):
     
     return runnable.output
 
-async def alog(runnable: Runnable, *args, verbose: bool=False, **kwargs):
+async def alog(runnable: "Runnable", *args, verbose: bool=False, **kwargs):
     """
     针对任何回调函数，只要符合规范的返回TextBlock对象的生成器，就可以使用这个函数来
     打印流式日志。
