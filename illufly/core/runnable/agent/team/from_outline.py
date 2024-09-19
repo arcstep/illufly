@@ -2,7 +2,7 @@ from typing import List, Union
 
 from .....io import TextBlock
 from .....utils import compress_text
-from ....parser import Markdown
+from ....markdown import Markdown
 from ..base import BaseAgent
 from ..chat import ChatAgent
 from .pipe import Pipe
