@@ -20,7 +20,12 @@ class ToolAbility:
         self.parameters = parameters
 
     @property
-    def tool(self) -> Dict[str, Any]:
+    def tool_desc(self) -> Dict[str, Any]:
+        """
+        当作为工具时的自描述信息。
+
+        内容参考了 openai 的工具描述规格生成。
+        """
         if not self.parameters:
             self.parameters = {
                 "type": "object",
@@ -48,53 +53,23 @@ class ToolAbility:
             }
         }
     
-    @classmethod
-    def tools_desc(cls, tools: List["Runnable"]):
-        """
-        描述所有可选工具的具体情况。
-        """
-        tools_list = ",\n".join([json.dumps(t.tool, ensure_ascii=False) for t in tools])
-        return f'```json\n[{tools_list}]\n```'
-
-    @classmethod
-    def tools_selected(cls, tools: List["Runnable"]):
-        """
-        描述工具选中的具体情况。
-        """
-        action_output = {
-            "index": "integer: index of selected function",
-            "function": {
-                "name": "(string): 填写选中参数名称",
-                "parameters": "(json): 填��具体参数值"
-            }
-        }
-        name_list = ",".join([a.name for a in tools])
-        example = '\n'.join([
-            '**工具函数输出示例：**',
-            '```json',
-            '[{"index": 0, "function": {"name": "get_current_weather", "parameters": "{\"location\": \"广州\"}"}},',
-            '{"index": 1, "function": {"name": "get_current_weather", "parameters": "{\"location\": \"上海\"}"}}]',
-            '```'
-        ])
-
-        output = f'```json <tools-calling>\n[{json.dumps(action_output, ensure_ascii=False)}]\n```'
-
-        return f'从列表 [{name_list}] 中选择一个或多个funciton，并按照下面的格式输出函数描述列表，描述每个函数的名称和参数：\n{output}\n{example}'
-
-    @classmethod
-    def dataset_desc(cls, data: Dict[str, "Dataset"]):
-        datasets = []
-        for ds in data.keys():
-            head = data[ds].df.head()
-            example_md = head.to_markdown(index=False)
-            datasets.append(textwrap.dedent(f"""
-            ------------------------------
-            **数据集名称：**
-            {ds}
+    # @classmethod
+    # def dataset_desc(cls, data: Dict[str, "Dataset"]):
+    #     """
+    #     作为可以使用工具的智能体，罗列所有可用数据集的描述信息。
+    #     """
+    #     datasets = []
+    #     for ds in data.keys():
+    #         head = data[ds].df.head()
+    #         example_md = head.to_markdown(index=False)
+    #         datasets.append(textwrap.dedent(f"""
+    #         ------------------------------
+    #         **数据集名称：**
+    #         {ds}
             
-            **部份数据样例：**
+    #         **部份数据样例：**
 
-            """) + example_md)
+    #         """) + example_md)
 
-        return '\n'.join(datasets)
+    #     return '\n'.join(datasets)
     
