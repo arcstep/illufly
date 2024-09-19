@@ -25,6 +25,8 @@ class Template(Runnable):
         self.input_mapping = self._get_desk_map(self.input_variables, input_mapping or {})
         self.using_vars_list = self._get_using_vars(self.input_variables, self.input_mapping or {})
 
+        self._output = self.format()
+
     def _get_desk_map(self, input_variables, input_mapping):
         return {**input_mapping, **{k: k for k in input_variables if k not in input_mapping}}
 
@@ -39,6 +41,10 @@ class Template(Runnable):
     def __repr__(self):
         return f"<Template input_variables={self.input_variables} template_text='{compress_text(self.template_text)}'>"
 
+    @property
+    def output(self):
+        return self._output
+
     def clone(self):
         return self.__class__(
             template_id=self.template_id,
@@ -47,7 +53,8 @@ class Template(Runnable):
         )
 
     def call(self, *args, **kwargs):
-        yield TextBlock("info", self.format(*args, **kwargs))
+        self._output = self.format(*args, **kwargs)
+        yield TextBlock("info", self._output)
 
     def format(self, input_vars: Dict[str, Any]=None):
         def get_nested_value(d, keys):
