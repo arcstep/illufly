@@ -1,7 +1,7 @@
 from typing import List, Union
 from ..base import BaseAgent
 from .....core.document import Document
-from .....utils import get_env, hash_text, clean_filename
+from .....utils import get_env, hash_text, clean_filename, compress_text
 from .....config import get_env
 from .....io import TextBlock
 
@@ -11,11 +11,6 @@ import pickle
 class BaseEmbeddings(BaseAgent):
     """
     句子嵌入模型。
-
-    如果当作BaseAgent来使用，其行为是：
-    - 将给定字符串列表转换为向量，并返回一个新的 Document 列表
-    - 如果已经存在缓存，则直接读取，而不需要再做向量编码
-    - 如果指定了 batch_mode 为 True，则先批量生成缓存，再读取
     """
 
     def __init__(self, model: str=None, api_key: str=None, *args, **kwargs):
@@ -29,7 +24,9 @@ class BaseEmbeddings(BaseAgent):
         return self._output
 
     def query(self, text: str, *args, **kwargs) -> List[float]:
-        """Embed query text."""
+        """
+        从向量数据库查询之前，将字符串转换为文本向量。
+        """
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Embed search docs."""
@@ -40,6 +37,14 @@ class BaseEmbeddings(BaseAgent):
     def call(self, docs: Union[List[str], List[Document]], batch_mode: bool=False, batch_size=None, **kwargs):
         """
         将向量文本嵌入到数据库。
+
+        在 RAG 应用中，需要先将资料做向量编码，然后入库到向量数据库，然后才是查询。
+        因此，将 BaseEmbedding.call 方法的功能定义为：加载数据、转换为向量，以便录入到向量数据库。
+
+        其行为是：
+        - 将给定字符串列表转换为向量，并返回一个新的 Document 列表
+        - 如果已经存在缓存，则直接读取，而不需要再做向量编码
+        - 如果指定了 batch_mode 为 True，则先批量生成缓存，再读取
         """
         if not isinstance(docs, list):
             raise ValueError("docs 必须是字符串或 Document 类型列表，但实际为: {type(docs)}")
@@ -60,7 +65,7 @@ class BaseEmbeddings(BaseAgent):
             for d in docs:
                 text_length = len(d.text)
                 if batch_texts and texts_size + text_length > max_batch_size:
-                    print("batch ", batch_texts)
+                    yield TextBlock("info", f"文本向量转换 {texts_size} 字 / {len(batch_texts)} 个文件")
                     vectors = self.embed_documents(batch_texts)
                     for block in self._save_vectors_to_cache(docs, batch_texts, vectors, vector_folder):
                         yield block
@@ -69,7 +74,7 @@ class BaseEmbeddings(BaseAgent):
                 batch_texts.append(d.text)
                 texts_size += text_length
             if batch_texts:
-                print("batch2 ", batch_texts)
+                yield TextBlock("info", f"文本向量转换 {texts_size} 字 / {len(batch_texts)} 个文件")
                 vectors = self.embed_documents(batch_texts)
                 for block in self._save_vectors_to_cache(docs, batch_texts, vectors, vector_folder):
                     yield block
