@@ -1,7 +1,7 @@
 from typing import Union, List, Dict, Any
 import copy
 from ..template import Template
-from ..message import Messages, Message
+from .message import Messages, Message
 
 class MemoryManager:
     def __init__(self, memory: List[Union[str, "Template", Dict[str, Any]]] = None, k: int = 10):

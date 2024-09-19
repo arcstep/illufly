@@ -5,7 +5,7 @@ from typing import Union, List, Optional, Dict, Any
 from http import HTTPStatus
 
 from ...io import TextBlock
-from ...core.agent import ChatAgent
+from ...types import ChatAgent
 
 class ChatQwen(ChatAgent):
     def __init__(self, model: str=None, tools=None, **kwargs):

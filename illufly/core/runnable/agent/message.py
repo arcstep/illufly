@@ -1,7 +1,7 @@
 import json
 from typing import Union, Dict, Any, List, Tuple
 
-from .template import Template
+from ...runnable.template import Template
 
 class Message:
     def __init__(self, role: str, content: Union[str, Template]):

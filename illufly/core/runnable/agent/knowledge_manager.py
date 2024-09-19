@@ -1,6 +1,6 @@
 import re
 from typing import Any, Set, Union
-from ..document import Document
+from ...document import Document
 
 class KnowledgeManager:
     def __init__(self, knowledge: Union[Set[str], Set[Document]] = None):

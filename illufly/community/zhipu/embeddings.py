@@ -2,7 +2,7 @@ from typing import Any, List
 from http import HTTPStatus
 
 import os
-from ...core.embeddings.base import BaseEmbeddings
+from ...types import BaseEmbeddings
 
 class ZhipuEmbeddings(BaseEmbeddings):
     """支持最新的阿里云模型服务灵积API的文本向量模型"""

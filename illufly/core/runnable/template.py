@@ -1,12 +1,14 @@
 from typing import Dict, Any
 
-from ..utils import compress_text
-from ..hub import load_resource_template, load_template, get_template_variables
+from ...utils import compress_text
+from ...hub import load_resource_template, load_template, get_template_variables
+from ...io import TextBlock
+from .base import Runnable
 
 from chevron.renderer import render as mustache_render
 from chevron.tokenizer import tokenize as mustache_tokenize
 
-class Template:
+class Template(Runnable):
     """
     提示语模板可以作为消息生成消息列表。
     结合工作台映射，可以动态填充提示语模板。
@@ -43,6 +45,9 @@ class Template:
             template_text=self.template_text,
             input_mapping=self.input_mapping
         )
+
+    def call(self, *args, **kwargs):
+        yield TextBlock("info", self.format(*args, **kwargs))
 
     def format(self, input_vars: Dict[str, Any]=None):
         def get_nested_value(d, keys):
