@@ -29,6 +29,7 @@ class Runnable(ABC, ToolAbility, ExecutorManager):
         - 工具：作为工具的Runnable列表，在发现工具后是否执行工具的标记等
         """
         self.continue_running = continue_running
+        self._output = None
 
         ExecutorManager.__init__(self, threads_group)
         ToolAbility.__init__(self, **kwargs)
@@ -39,7 +40,7 @@ class Runnable(ABC, ToolAbility, ExecutorManager):
 
     @property
     def output(self):
-        return None
+        return self._output
 
     @property
     def is_running(self):

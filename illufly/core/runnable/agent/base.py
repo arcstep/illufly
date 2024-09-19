@@ -19,7 +19,7 @@ class BaseAgent(Runnable, KnowledgeManager, MemoryManager):
         self,
         *args,
         memory: List[Union[str, "Template", Dict[str, Any]]] = None,
-        k: int = 10,
+        remember_rounds: int = 10,
         desk: Dict[str, Any] = None,
         **kwargs
     ):
@@ -31,7 +31,7 @@ class BaseAgent(Runnable, KnowledgeManager, MemoryManager):
         self.state = desk.get('state', {})
 
         super().__init__(*args, **kwargs)
-        MemoryManager.__init__(self, memory, k)
+        MemoryManager.__init__(self, memory, remember_rounds)
         KnowledgeManager.__init__(self, desk.get('knowledge', []))
 
     def clone(self, **kwargs) -> "BaseAgent":
@@ -48,7 +48,7 @@ class BaseAgent(Runnable, KnowledgeManager, MemoryManager):
             # 以下为 MemoryManager参数
             memory=kwargs.pop("memory") or copy.deepcopy(self.init_memory),
             # 以下为 BaseAgent 的参数
-            k=kwargs.pop("k") or self.remember_rounds,
+            remember_rounds=kwargs.pop("remember_rounds") or self.remember_rounds,
             desk=kwargs.pop("desk") or copy.deepcopy(self.desk),
             **kwargs
         )
