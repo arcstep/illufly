@@ -3,7 +3,7 @@ import copy
 import os
 import yaml
 from typing import Iterator, List, Union, Optional
-from .base import parse_markdown, create_front_matter, list_markdown
+from .utils import parse_markdown, create_front_matter, list_markdown
 from ..document import Document
 from ...config import get_env
 from ...utils import extract_text
@@ -152,16 +152,6 @@ class Markdown():
                     break
 
         to_insert_docs = to_insert[from_index:to_index]
-
-        ##
-        # print("\n", "-"*80)
-        # print(list_markdown([prev_heading, next_heading]))
-        # print("\n", "-"*80)
-        # print(list_markdown(to_insert[:3]))
-        # print(list_markdown(to_insert[-3:]))
-        # print("\n", "-"*80)
-        # print(from_index, to_index)
-        # print(list_markdown(to_insert_docs))
 
         self.documents = prev_docs + to_insert_docs + next_docs
         return to_insert_docs
