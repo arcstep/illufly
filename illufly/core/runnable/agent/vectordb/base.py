@@ -23,4 +23,5 @@ class VectorDB(BaseAgent):
             for block in self.embeddings.call(text):
                 yield block
         emb_str = self.embeddings.output
-        self.query(emb_str)
+        for block in self.query(emb_str):
+            yield block
