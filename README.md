@@ -6,36 +6,22 @@
 
 **illufly** 的目标是快速构建多智能体的对话和写作场景。
 
-# 《幻蝶智能体 - `illufly` 使用指南》
+- [用户指南](https://github.com/arcstep/illufly/wiki)
+- [安装配置](https://github.com/arcstep/illufly/wiki/%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97)
+- [概念解释](https://github.com/arcstep/illufly/wiki/%E6%A6%82%E5%BF%B5)
+- [支持的模型列表](https://github.com/arcstep/illufly/wiki/%E6%A8%A1%E5%9E%8B%E5%88%97%E8%A1%A8)
 
-## 1. 模型支持
+# 快速体验
 
-目前，框架主要支持以下大模型接口：
-
-- `ChatOpenAI`: OpenAI 或协议兼容的模型
-- `ChatQwen`: 阿里云的通义千问
-- `ChatZhipu`: 智谱AI的GLM4
-- （... 即将兼容 更多大模型）
-- （... 即将兼容 声、图、视频等多模态模型）
-
-## 2 `illufly` 的安装与加载
-
-### 2.1 安装 `illufly` 包
-
-在 Python 中安装 `illufly` 包非常简单，以下命令会尝试安装最新版本的 `illufly`：
+## 安装 `illufly` 包
 
 ```sh
 pip install illufly
-# 或者使用 poetry 安装
-poetry add illufly
 ```
 
-## 2.2 推荐使用 `dotenv` 管理环境变量
+### 推荐使用 `dotenv` 管理环境变量
 
 将`APIKEY`和项目配置保存到`.env`文件，再加载到进程的环境变量中，这是很好的实践策略。
-
-创建和配置`.env`文件，你需要在你项目的根目录下创建一个名为`.env`的文件（注意，文件名以点开始）。<br>
-在这个文件中，你可以定义你的环境变量，例如：
 
 ```
 ## OpenAI 兼容的配置
@@ -49,45 +35,28 @@ DASHSCOPE_API_KEY="你的API_KEY"
 ZHIPUAI_API_KEY="你的API_KEY"
 ```
 
-为此，你可能需要先安装 `python-dotenv` 包：
-
-```bash
-pip install python-dotenv
-```
-
-然后在 Python 代码中，使用以下代码片段来加载`.env`文件中的环境变量：
+在 Python 代码中，使用以下代码片段来加载`.env`文件中的环境变量：
 
 ```python
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(), override=True)
 ```
 
-## 3 使用示例
+## 使用示例
 
-`illufly`中的所有智能体都使用流输出，并支持异步和SSE调用。<br>
-因为流输出就是迭代器，想要打印结果就要写类似下面的代码：
-
-```python
-for x in qwen.call("请你帮我写封情书"):
-    print(x, end="")
-```
-
-这类代码太常见，因此 `illufly` 中提供了`log`语法糖函数来替代。
-
-### 3.1 创建对话应用
+### 创建对话应用
 
 使用极简的代码，就可以构建基于通义千问大模型的对话应用。
 
-下面的代码中使用了`log`函数，在执行代码的环境中才可以看到：输出实际上是一个字或一个词蹦出来的流式输出。
+下面的代码中使用了流式输出，在执行代码的环境中可以看到：输出是一个字、个词蹦出来的。
 
 ```python
-from illufly.agent import ChatQwen
-from illufly.io import log
+from illufly.chat import ChatQwen
 
  # 要使用这个通义千问，需要先安装 `dashscope` 包
  # 并配置好相应的 DASHSCOPE_API_KEY
 qwen = ChatQwen()
-log(qwen, "你能帮我写一首关于兔子做梦的四句儿歌?")
+qwen("你能帮我写一首关于兔子做梦的四句儿歌?")
 ```
 
 生成结果：
@@ -100,18 +69,18 @@ log(qwen, "你能帮我写一首关于兔子做梦的四句儿歌?")
 
 ### 3.2 创建连续对话
 
-`ChatQwen`是一个基于通义千问大模型推理的智能体对象。
+`ChatQwen`是一个基于通义千问的对话模型。
+
 所有智能体对象都已经封装了多轮对话、工具回调、知识增强等能力。
 
 请看连续对话的例子：
 
 ```python
-from illufly.agent import ChatQwen
-from illufly.io import log
+from illufly.chat import ChatQwen
 
 # 简单的系统提示语可以在智能体定义时声明，帮助确定角色、任务等
-qwen = ChatQwen(prompt="你是一个专门写儿歌的作家，请根据我的提示写作。")
-log(qwen, "来一首关于兔子的，四句")
+qwen = ChatQwen(memory="你是一个专门写儿歌的作家，请根据我的提示写作。")
+qwen("来一首关于兔子的，四句")
 ```
 
 生成结果：
@@ -124,7 +93,7 @@ log(qwen, "来一首关于兔子的，四句")
 
 连续提问，它依然懂你：
 ```python
-log(qwen, "换成两条小鱼")
+qwen("换成两条小鱼")
 ```
 
 生成结果：
@@ -151,45 +120,17 @@ log(qwen, "换成两条小鱼")
 
 要让`illufly`智能体支持工具回调，只需要提供`tools`参数。
 
-`illufly` 当前版本保留了少部份 `langchain` 定义工具的方法。<br>
-这部份可以参考`langchain`官网文档：[https://python.langchain.com/v0.2/docs/how_to/custom_tools/]。
-
 以下示例是定义工具和使用工具的过程：
 ```python
-from illufly.tools import tool, convert_to_openai_tool
-from illufly.agent import ChatQwen
-from illufly.io import log
-import json
+from illufly.chat import ChatQwen
+from types import ToolAgent
 
-@tool
 def get_current_weather(location: str=None):
     """获取城市的天气情况"""
     return f"{location}今天是晴天。 "
 
-log(ChatQwen(), "今天广州天气如何啊", tools=[convert_to_openai_tool(get_current_weather)])
-```
-
-生成结果：
-
-```md
-'{"0": {"index": 0, "id": "call_6d87845fd30b41208b9c83", "type": "function", "function": {"name": "get_current_weather", "arguments": "{\\"location\\": \\"广州\\"}"}}}'
-```
-
-请注意：这里并没有真正执行工具，只是生成了工具提示。想要执行，还需要你提供`toolkits`参数。
-
-### 3.4 生成工具提示的同时，执行工具
-
-还是那个`illufly` 智能体对象，但提供`toolkits`参数之后，就变成`Tools-Calling`风格的智能体，也可以叫做`OpenAI风格智能体`。这种智能体是由大模型在服务端推理时决定是否调用工具，比较适合对话场景。
-
-在未来的版本中，`illufly` 还将支持`ReAct`、`Plan`等其他推理模式。
-
-```python
-qwen = ChatQwen(
-    tools=[convert_to_openai_tool(get_current_weather)],
-    toolkits=[get_current_weather]
-)
-
-log(qwen, "今天广州可以晒被子吗？")
+q = ChatQwen(tools=[ToolAgent(get_current_weather)])
+q("今天广州可以晒被子吗？")
 ```
 
 生成结果：
@@ -205,7 +146,7 @@ log(qwen, "今天广州可以晒被子吗？")
 你也可以通过设置`verbose=True`来查看工具调用详情：
 
 ```python
-log(qwen, "今天广州可以晒被子吗？", verbose=True)
+q("今天广州可以晒被子吗？", verbose=True)
 ```
 
 生成结果：
@@ -223,15 +164,14 @@ log(qwen, "今天广州可以晒被子吗？", verbose=True)
 
 生成的结果中，增加的`[TOOLS_CALL_CHUNK]...`部份，是大模型第一次推理得出的工具和参数要求，紧接着是工具回调的结果，最后是工具回调后大模型再次合成后的文本。
 
-### 3.5 智能体团队：执行管道
+### 智能体团队：执行管道
 
 将前面用过的智能体连接起来，就可以形成多智能体团队。
 
-`Pipe`对象会把多个智能体对象组织起来，分工协作，共同完成任务，使用方法也与普通智能体类似。
+`Pipe` 对象会把多个智能体对象组织起来，分工协作，共同完成任务，使用方法也与普通智能体类似。
 
 ```python
-from illufly.agent import ChatQwen, Pipe
-from illufly.io import log
+from illufly.chat import ChatQwen, Pipe
 
 pipe = Pipe(
     ChatQwen(memory="我是一个儿童作家，擅长写儿歌。"),
@@ -239,7 +179,7 @@ pipe = Pipe(
     ChatQwen(memory="请针对我的写作成果打一个分数，给出一句话的打分点，最终给出1分至5分")
 )
 
-log(pipe, "你能帮我写一首关于兔子做梦的？四句即可。")
+pipe("你能帮我写一首关于兔子做梦的？四句即可。")
 ```
 
 生成结果：
@@ -263,82 +203,3 @@ log(pipe, "你能帮我写一首关于兔子做梦的？四句即可。")
 
 `illufly` 中还支持其他协作方式，如`提纲扩写`、`讨论`等。
 
-### 3.6 智能体团队：提纲扩写
-
-下面是一个根据提纲扩写的例子，主要包括生成提纲和扩写两个部份。这里专门指定了提示语模板名称，你也可以自己写一个。
-
-`illufly` 中还有很多内置的的提示语模板还有很多，并支持对提示语模板的查看、克隆、自定义等管理功能。这些模板机制可以让作者按照自己的意愿精细控制写作过程。
-
-```python
-from illufly.agent import ChatQwen, Pipe, FromOutline, Template
-from illufly.io import log, alog
-from illufly.hub import Template
-
-writer = Pipe(
-    ChatQwen(memory=[Template("OUTLINE"), "请开始扩写提纲"]),
-    FromOutline(ChatQwen(memory=[Template("FROM_OUTLINE")]))
-)
-
-log(writer, {"task": "写一首两段儿歌，每段20个字即可，策划简单一点"})
-```
-
-生成结果是连续的（实际上，这种方式可以轻松输出万字长文）：
-
-```md
-[AGENT] >>> Node 1: Template
-[AGENT] >>> Node 2: ChatQwen
-
-> # 儿歌：小星星的夜游
->
-> ## 第一段：星星醒来
-> <OUTLINE>
-> 扩写要求：
-> - 描述夜晚降临，星星出现在天空的情景
-> - 引入主角小星星，它眨着眼睛好奇世界
-> - 预估字数：20字
-> </OUTLINE>
-
-> ## 第二段：月亮朋友
-> <OUTLINE>
-> 扩写要求：
-> - 介绍小星星遇到月亮，它们在夜空玩耍
-> - 表达友谊与快乐的氛围
-> - 预估字数：20字
-> </OUTLINE>
-
-[AGENT] >>> Node 3: FromOutline
-[AGENT] 执行扩写任务 <0169-399-003>：
-
-> 扩写要求：
-> - 描述夜晚降临，星星出现在天空的情景
-> - 引入主角小星星，它眨着眼睛好奇世界
-> - 预估字数：20字
-
-[AGENT] >>> Node 1: Template
-[AGENT] >>> Node 2: ChatQwen
-
-> 夜幕轻垂，万籁俱寂，星空渐渐亮起眼眸。小星星闪耀登场，好奇地眨，探秘夜的温柔。
-
-[AGENT] 执行扩写任务 <0169-572-006>：
-
-> 扩写要求：
-> - 介绍小星星遇到月亮，它们在夜空玩耍
-> - 表达友谊与快乐的氛围
-> - 预估字数：20字
-
-[AGENT] >>> Node 1: Template
-[AGENT] >>> Node 2: ChatQwen
-
-> 小星星遇见了月亮姐姐，手拉手舞动在夜空，欢笑声响彻云霄。
-```
-
-### 3.7 智能体团队：多模态输出
-
-事实上，通过`illufly`可以进一步控制扩写的每个段落，以及对每个段落进行重写，而通过多智能体机制，也可以融合多模态输出到写作过程。
-
-例如：
-
-```python
-# 例子很快到来
-# 请耐心等待 ...
-```
