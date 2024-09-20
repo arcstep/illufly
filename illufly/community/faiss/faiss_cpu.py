@@ -15,7 +15,7 @@ class FaissDB(VectorDB):
                 "Could not import faiss package. "
                 "Please install it via 'pip install -U faiss-cpu faiss-gpu'"
             )
-        
+
         docs = [d.metadata['embeddings'] for d in self.embeddings.output]
         docs = np.array(docs, dtype='float32')  # 将列表转换为NumPy数组
         self.index = faiss.IndexFlatL2(self.dim) 
