@@ -4,6 +4,7 @@ from .core.runnable.agent.message import Message, Messages
 from .core.runnable.template import Template
 from .core.markdown import Markdown
 from .core.document import Document
+from .io import TextBlock
 
 __all__ = [
     "Runnable",
@@ -17,4 +18,5 @@ __all__ = [
     "Template",
     "Markdown",
     "Document",
+    "TextBlock"
 ]
