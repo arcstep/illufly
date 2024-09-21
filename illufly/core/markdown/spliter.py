@@ -1,7 +1,6 @@
 from typing import Union, List
-from .base import Markdown
 
-def split_markdown(content: Union[str, Markdown], chunk_size: int=None, chunk_overlap: int=None) -> List[str]:
+def split_markdown(content: Union[str, "Markdown"], chunk_size: int=None, chunk_overlap: int=None) -> List[str]:
     """
     按照指定规则分割Markdown文档。
 
@@ -12,7 +11,7 @@ def split_markdown(content: Union[str, Markdown], chunk_size: int=None, chunk_ov
     chunk_size = chunk_size or 1024
     chunk_overlap = chunk_overlap or 20
 
-    if isinstance(content, Markdown):
+    if isinstance(content, "Markdown"):
         text = content.text
     elif isinstance(content, str):
         text = content

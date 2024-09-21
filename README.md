@@ -8,11 +8,11 @@
 
 ## 详细文档导航
 
-* [illufly 概览](https://github.com/arcstep/illufly/wiki/Home)
+* [《illufly 快速指南》](https://github.com/arcstep/illufly/wiki/Home)
 
 **入门指南**
 * [安装配置指南](https://github.com/arcstep/illufly/wiki/安装指南)
-* [必读的概念解释](https://github.com/arcstep/illufly/wiki/概念)
+* [模块导入参考](https://github.com/arcstep/illufly/wiki/模块参考)
 * [开箱即用的流输出](https://github.com/arcstep/illufly/wiki/流输出)
 * [大模型支持](https://github.com/arcstep/illufly/wiki/模型列表)
 * [使用检索增强（RAG）](https://github.com/arcstep/illufly/wiki/RAG)
