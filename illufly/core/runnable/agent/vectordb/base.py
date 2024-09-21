@@ -22,6 +22,6 @@ class VectorDB(BaseAgent):
         if text:
             for block in self.embeddings.call(text):
                 yield block
-        emb_str = self.embeddings.output
+        emb_str = self.embeddings.last_output
         for block in self.query(emb_str):
             yield block

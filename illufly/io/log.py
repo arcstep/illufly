@@ -46,7 +46,7 @@ def log(runnable: "Runnable", *args, verbose: bool=False, **kwargs):
     if last_block_type in __CHUNK_BLOCK_TYPES__:
         print("\n")
     
-    return runnable.output
+    return runnable.last_output
 
 async def alog(runnable: "Runnable", *args, verbose: bool=False, **kwargs):
     """
@@ -68,4 +68,4 @@ async def alog(runnable: "Runnable", *args, verbose: bool=False, **kwargs):
     if last_block_type in __CHUNK_BLOCK_TYPES__:
         print("\n")
     
-    return runnable.output
+    return runnable.last_output

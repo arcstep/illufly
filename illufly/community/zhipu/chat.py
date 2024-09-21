@@ -25,7 +25,6 @@ class ChatZhipu(ChatAgent):
     def generate(
         self,
         messages: List[dict],
-        *args,
         **kwargs
     ):
         from zhipuai import ZhipuAI

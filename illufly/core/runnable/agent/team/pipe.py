@@ -11,23 +11,23 @@ class Pipe(BaseAgent):
 
     Pipe 是 BaseAgent 的子类，因此可以作为 BaseAgent 使用。
     """
-    def __init__(self, *runnables):
+    def __init__(self, *agents):
         """ 
         快速构造智能体运行管道
         """
-        for run in runnables:
+        for run in agents:
             if not isinstance(run, BaseAgent):
-                raise ValueError("runnables 必须是 BaseAgent 实例")
+                raise ValueError("agents 必须是 BaseAgent 实例")
 
         super().__init__("PIPE")
-        self.runnables = runnables
+        self.agents = agents
 
     def __str__(self):
-        runnable_types = [type(run).__name__ for run in self.runnables]
+        runnable_types = [type(run).__name__ for run in self.agents]
         return f"Pipe({runnable_types})"
 
     def __repr__(self):
-        runnable_types = [type(run).__name__ for run in self.runnables]
+        runnable_types = [type(run).__name__ for run in self.agents]
         return f"Pipe({runnable_types})"
 
     def call(self, *args, **kwargs):
@@ -35,21 +35,21 @@ class Pipe(BaseAgent):
         执行智能体管道。
         """
         prev_runnable = None
-        for index, run in enumerate(self.runnables):
+        for index, run in enumerate(self.agents):
             info = self._get_node_info(index + 1, run)
             yield TextBlock("agent", info)
             if index == 0:
                 current_args = args
                 current_kwargs = kwargs
             else:
-                prompt = prev_runnable.output
+                prompt = prev_runnable.last_output
                 current_args = [prompt]
                 current_kwargs = {}
 
             self.create_new_memory(f"节点 <{index}> 正在处理任务...")
             for block in run.call(*current_args, **current_kwargs):
                 yield block
-            self.remember_response(run.output)
+            self.remember_response(run.last_output)
             prev_runnable = run
 
     def _get_node_info(self, index, run):

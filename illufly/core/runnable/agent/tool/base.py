@@ -1,6 +1,6 @@
 from typing import Callable
 
-from .base import BaseAgent
+from .. import BaseAgent
 
 class ToolAgent(BaseAgent):
     def __init__(self, func: Callable, **kwargs):

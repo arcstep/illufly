@@ -5,20 +5,35 @@ from typing import Union, List, Dict, Any, Callable
 from abc import ABC, abstractmethod
 from functools import partial
 
-from .tool_ability import ToolAbility
 from .executor_manager import ExecutorManager
 from ...io import log
 
-class Runnable(ABC, ToolAbility, ExecutorManager):
+class Runnable(ABC, ExecutorManager):
     """
     实现基本可运行类，定义了可运行的基本接口。
     只要继承该类，就可以作为智能体的工具使用。
+
+    实现机制：
+    - 支持 TextBlock 流式输出句法
+    - 实现 __call__ 方法，来简化流输出调用
+    - 通过 _last_input 保存当次调用的输入结果，并使用 last_input 属性方法来获取
+    - 通过 _last_output 保存当次调用的输出结果，并使用 last_output 属性方法来获取
+    - 支持 call 同步方法调用
+    - 支持 async_call 方法调用，并在 Runnable 中已实现默认版本
+    - 支持 stop 方法来停止仍在进行的异步调用
+
+    什么时候直接从 Runnable 继承？
+    - 如果需要支持流式输出
+    - 仅仅做数据处理，而没有过多服务端调度逻辑
+
+    什么时候转而使用BaseAgent？
+    - 如果需要在多智能体中协同处理
+    - 如果包含服务端调度逻辑
+
     """
 
     def __init__(
         self,
-        # 线程组
-        threads_group: str=None,
         # 是否自动停止
         continue_running: bool=True,
         **kwargs
@@ -28,28 +43,29 @@ class Runnable(ABC, ToolAbility, ExecutorManager):
         - 初始化线程组
         - 工具：作为工具的Runnable列表，在发现工具后是否执行工具的标记等
         """
-        self.continue_running = continue_running
-        self._output = None
+        ExecutorManager.__init__(self, **kwargs)
 
-        ExecutorManager.__init__(self, threads_group)
-        ToolAbility.__init__(self, **kwargs)
+        self.continue_running = continue_running
+        self._last_input = None
+        self._last_output = None
 
     def __call__(self, *args, verbose:bool=False, handler:Callable=None, **kwargs):
         handler = handler or log
         return handler(self, *args, verbose=verbose, **kwargs)
 
     @property
-    def output(self):
-        return self._output
+    def last_input(self):
+        return self._last_input
+
+    @property
+    def last_output(self):
+        return self._last_output
 
     @property
     def is_running(self):
         return self.continue_running
 
-    def start(self):
-        self.continue_running = True
-
-    def stop(self):
+    def halt(self):
         self.continue_running = False
 
     @abstractmethod

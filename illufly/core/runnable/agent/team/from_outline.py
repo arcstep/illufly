@@ -28,10 +28,10 @@ class FromOutline(BaseAgent):
         # 执行 call 调用时生成
         self.markdown = Markdown()
         self.outline = []
-        self.runnables = {}
+        self.agents = {}
 
     @property
-    def output(self):
+    def last_output(self):
         """
         从 Markdown 生成当前的文本输出内容。
         如果当前有提纲，则将提纲中的内容替换为实际内容。
@@ -39,8 +39,8 @@ class FromOutline(BaseAgent):
         if self.outline:
             md = copy.deepcopy(self.markdown)
             for doc in self.outline:
-                if doc.metadata['id'] in self.runnables:
-                    from_outline_text = self.runnables[doc.metadata['id']].memory[-1]['content']
+                if doc.metadata['id'] in self.agents:
+                    from_outline_text = self.agents[doc.metadata['id']].memory[-1]['content']
                     md.replace_documents(doc, doc, from_outline_text)
             return md.text
         else:
@@ -64,7 +64,7 @@ class FromOutline(BaseAgent):
                 outline_id = doc.metadata['id']
 
                 segment_writer = self.writer.clone()
-                self.runnables[doc.metadata['id']] = segment_writer
+                self.agents[doc.metadata['id']] = segment_writer
 
                 (draft, outline) = self.markdown.fetch_outline_task(doc, prev_k=self.prev_k, next_k=self.next_k)
                 segment_writer.set_outline(f'```markdown\n{outline}\n```')
@@ -75,7 +75,7 @@ class FromOutline(BaseAgent):
                 self.create_new_memory(info)
                 for block in segment_writer.call("请开始扩写"):
                     yield block
-                self.remember_response(segment_writer.output)
+                self.remember_response(segment_writer.last_output)
         else:
             yield TextBlock("info", f"没有提纲可供扩写")
 

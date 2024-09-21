@@ -28,7 +28,6 @@ class ChatQwen(ChatAgent):
     def generate(
         self,
         messages: List[dict],
-        *args,
         **kwargs
     ):
         import dashscope

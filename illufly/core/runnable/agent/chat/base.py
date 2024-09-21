@@ -4,39 +4,38 @@ import copy
 from abc import abstractmethod
 from typing import Union, List, Dict, Any
 
-from ....utils import merge_blocks_by_index, extract_text
-from ....io import TextBlock, EndBlock
+from .....utils import merge_blocks_by_index, extract_text
+from .....io import TextBlock, EndBlock
 
-from ..base import Runnable
-from .base import BaseAgent
+from ..base import BaseAgent
+from .memory_manager import MemoryManager
+from .knowledge_manager import KnowledgeManager
+from .tools_manager import ToolsManager
 
-class ChatAgent(BaseAgent):
+class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     """
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
     """
 
     def __init__(
         self,
-        tools=None,
-        exec_tool=True, 
         end_chk: bool = False,
         start_marker: str=None,
         end_marker: str=None,
         **kwargs
     ):
         """
-        对话智能体的几种基本行为：
-        - 仅对话，不调用工具：不要提供 tools 参数
-        - 推理出应当使用的工具，但不调用：仅提供 tools 参数，不提供 toolkits 参数
-        - 推理出应当使用的工具，并调用：提供 tools 参数，同时提供 toolkits 参数
+        对话智能体支持的核心能力包括：
+        - tools：工具调用
+        - memory：记忆管理
+        - knowledge：知识管理
         """
-        super().__init__(**kwargs)
-        self.tools = tools or []
-        self.prepared_tools = []
-        self.exec_tool = exec_tool
-        self.end_chk = end_chk
+        BaseAgent.__init__(self, **kwargs)
+        MemoryManager.__init__(self, **kwargs)
+        KnowledgeManager.__init__(self, **kwargs)
+        ToolsManager.__init__(self, **kwargs)
 
-        self.update_python_code_tool()
+        self.end_chk = end_chk
 
         self.start_marker = start_marker or "```"
         self.end_marker = end_marker or "```"
@@ -46,71 +45,10 @@ class ChatAgent(BaseAgent):
         self.default_call_args = {}
 
     @property
-    def toolkits(self):
-        return self.tools + self.prepared_tools
-    
-    def get_tools(self, tools: List["Runnable"]=None):
-        if tools and (
-            not isinstance(tools, list) or
-            not all(isinstance(tool, Runnable) for tool in tools)
-        ):
-            raise ValueError("tools 必须是 Runnable 列表")
-        else:
-            tools = []
-        return self.toolkits + tools
+    def last_output(self):
+        return self.memory[-1]['content'] if self.memory else ""
 
-    def get_tools_name(self, tools: List["Runnable"]=None):
-        return ",".join([a.name for a in self.get_tools(tools)])
-
-    def get_tools_desc(self, tools: List["Runnable"]=None):
-        return [t.tool_desc for t in self.get_tools(tools)]
-
-    def get_tools_instruction(self, tools: List["Runnable"]=None):
-        """
-        描述工具调用的具体情况。
-        """
-        action_output = {
-            "index": "integer: index of selected function",
-            "function": {
-                "name": "(string): 填写选中工具的参数名称",
-                "parameters": "(json): 填写具体参数值"
-            }
-        }
-        name_list = ",".join([a.name for a in self.get_tools(tools)])
-        example = '\n'.join([
-            '**工具函数输出示例：**',
-            '```json',
-            '[{"index": 0, "function": {"name": "get_current_weather", "parameters": "{\"location\": \"广州\"}"}},',
-            '{"index": 1, "function": {"name": "get_current_weather", "parameters": "{\"location\": \"上海\"}"}}]',
-            '```'
-        ])
-
-        output = f'```json <tools-calling>\n[{json.dumps(action_output, ensure_ascii=False)}]\n```'
-
-        return f'从列表 [{name_list}] 中选择一个或多个funciton，并按照下面的格式输出函数描述列表，描述每个函数的名称和参数：\n{output}\n{example}'
-
-
-    def update_python_code_tool(self):
-        from ....tools import PythonCodeTool
-        
-        if self.data:
-            agent = self.clone(memory=[Template(template_id or "GEN_CODE_PANDAS"), "请开始生成代码"])
-            self.prepared_tools = [PythonCodeTool(self.data, agent)]
-
-    def add_dataset(self, *args, **kwargs):
-        super().add_dataset(*args, **kwargs)
-        self.update_python_code_tool()
-
-    def clone(self, *args, **kwargs):
-        new_obj = super().clone(*args, **kwargs)
-        new_obj.model_args = copy.deepcopy(self.model_args)
-        new_obj.default_call_args = copy.deepcopy(self.default_call_args)
-        new_obj.tools = kwargs.pop("tools") or self.tools
-        new_obj.exec_tool = kwargs.pop("exec_tool") or self.exec_tool
-        new_obj.end_chk = kwargs.pop("end_chk") or self.end_chk
-        return new_obj
-
-    def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
+    def call(self, prompt: Union[str, List[dict]], **kwargs):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError("prompt 必须是字符串或消息列表")
 
@@ -120,7 +58,7 @@ class ChatAgent(BaseAgent):
         new_task_flag = False
 
         # 此处设置工作台变量：task
-        self.set_task(prompt if isinstance(prompt, str) else prompt[-1].get("content"))
+        self._last_input = prompt if isinstance(prompt, str) else prompt[-1].get("content")
 
         if isinstance(prompt, List) and prompt[0].get("role", "") == "system":
             new_chat = True
@@ -143,26 +81,26 @@ class ChatAgent(BaseAgent):
         else:
             _prompt = prompt
 
-        toolkits = kwargs.get("toolkits", self.toolkits)
-        _having_toolkits = True if (kwargs.get("tools", None) or self.toolkits) else False
+        toolkits = self.get_tools(kwargs.get("tools", []))
+        _having_toolkits = True if toolkits else False
         if kwargs.get('exec_tool', self.exec_tool) and _having_toolkits:
-            resp = self.chat_with_tools_calling(_prompt, *args, **kwargs)
+            resp = self.chat_with_tools_calling(_prompt, **kwargs)
         else:
-            resp = self.only_chat(_prompt, *args, **kwargs)
+            resp = self.only_chat(_prompt, **kwargs)
 
         for block in resp:
             yield block
 
         # 补充校验的尾缀
         if self.end_chk:
-            yield EndBlock(self.output)
+            yield EndBlock(self.last_output)
         
         # 锁定记忆中的条数
         # 避免在提取短期记忆时被遗弃
         if locked_item:
             self.locked_items = len(self.memory)
 
-    def only_chat(self, prompt: Union[str, List[dict]], *args, **kwargs):
+    def only_chat(self, prompt: Union[str, List[dict]], **kwargs):
         messages = self.get_chat_memory(knowledge=self.get_knowledge())
         messages.extend(self.create_new_memory(prompt))
 
@@ -179,6 +117,7 @@ class ChatAgent(BaseAgent):
                 output_text = block.text
 
         final_tools_call = merge_blocks_by_index(tools_call)
+
         if final_tools_call:
             content = json.dumps(final_tools_call, ensure_ascii=False)
             self.remember_response(content)
@@ -189,7 +128,7 @@ class ChatAgent(BaseAgent):
                 self.remember_response(final_output_text)
                 yield TextBlock("text_final", final_output_text)
 
-    def chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
+    def chat_with_tools_calling(self, prompt: Union[str, List[dict]], **kwargs):
 
         messages = self.get_chat_memory(knowledge=self.get_knowledge())
         messages.extend(self.create_new_memory(prompt))
@@ -201,7 +140,7 @@ class ChatAgent(BaseAgent):
             tools_call = []
 
             # 大模型推理
-            for block in self.generate(messages, *args, **kwargs):
+            for block in self.generate(messages, **kwargs):
                 yield block
                 if block.block_type == "chunk":
                     output_text += block.content
@@ -211,7 +150,7 @@ class ChatAgent(BaseAgent):
                     tools_call.append(json.loads(block.text))
 
             # 合并工具回调
-            final_tools_call = merge_blocks_by_index(tools_call)            
+            final_tools_call = merge_blocks_by_index(tools_call)
             if final_tools_call:
                 # 记录工具回调提示
                 final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
@@ -230,7 +169,7 @@ class ChatAgent(BaseAgent):
                     self.remember_response(tools_call_message)
 
                     # 执行工具回调
-                    tools_list = kwargs.get("tools", self.toolkits)
+                    tools_list = kwargs.get("tools", self.tools)
                     for struct_tool in tools_list:
                         if tool['function']['name'] == struct_tool.name:
                             tool_args = json.loads(tool['function']['arguments'])
@@ -265,5 +204,5 @@ class ChatAgent(BaseAgent):
                 self.remember_response(output_text)
 
     @abstractmethod
-    def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
+    def generate(self, prompt: Union[str, List[dict]], **kwargs):
         raise NotImplementedError("子类必须实现 generate 方法")

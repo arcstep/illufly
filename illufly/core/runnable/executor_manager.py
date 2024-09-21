@@ -9,7 +9,7 @@ class ExecutorManager:
     """
     executors = {}
 
-    def __init__(self, threads_group: str = None):
+    def __init__(self, threads_group: str = None, **kwargs):
         self.threads_group = threads_group or "DEFAULT"
         if self.threads_group not in self.executors:
             max_workers = int(os.getenv(f"DEFAULT_MAX_WORKERS_{self.threads_group.upper()}", 5))
