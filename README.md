@@ -2,24 +2,43 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/illufly.svg)](https://pypi.org/project/illufly/)
 
-`illufly` 是 `illution butterfly` 的缩写，中文为“幻蝶”。
+`illufly` 是 `illution butterfly` 的缩写，中文为"幻蝶"。
 
 **illufly** 的目标是快速构建多智能体的对话和写作场景。
 
-- [用户指南](https://github.com/arcstep/illufly/wiki)
-- [安装配置](https://github.com/arcstep/illufly/wiki/%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97)
-- [概念解释](https://github.com/arcstep/illufly/wiki/%E6%A6%82%E5%BF%B5)
-- [支持的模型列表](https://github.com/arcstep/illufly/wiki/%E6%A8%A1%E5%9E%8B%E5%88%97%E8%A1%A8)
+## 开发指南
 
-# 快速体验
+* [illufly 概览](illufly.wiki/Home)
 
-## 安装 `illufly` 包
+**入门指南**
+* [安装配置指南](illufly.wiki/安装指南)
+* [必读的概念解释](illufly.wiki/概念)
+* [开箱即用的流输出](illufly.wiki/流输出)
+* [大模型支持](illufly.wiki/模型列表)
+* [使用检索增强（RAG）](illufly.wiki/RAG)
+
+**实践案例**
+* [连续对话案例](illufly.wiki/对话)
+* [长文写作案例](illufly.wiki/长文写作)
+* [多智能体协作案例](illufly.wiki/多智能体)
+
+**高级主题**
+* [illufly 的设计理念](illufly.wiki/设计理念)
+* [illufly 的工作流设计](illufly.wiki/工作流)
+* [illufly 的推理模式实现](illufly.wiki/推理模式)
+* [自定义提示语模板](illufly.wiki/提示语模板)
+* [自定义大模型](illufly.wiki/自定义大模型)
+
+
+## 快速体验
+
+### 安装 `illufly` 包
 
 ```sh
 pip install illufly
 ```
 
-### 推荐使用 `dotenv` 管理环境变量
+#### 推荐使用 `dotenv` 管理环境变量
 
 将`APIKEY`和项目配置保存到`.env`文件，再加载到进程的环境变量中，这是很好的实践策略。
 
@@ -42,9 +61,9 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(), override=True)
 ```
 
-## 使用示例
+### 使用示例
 
-### 创建对话应用
+#### 创建对话应用
 
 使用极简的代码，就可以构建基于通义千问大模型的对话应用。
 
@@ -53,8 +72,8 @@ load_dotenv(find_dotenv(), override=True)
 ```python
 from illufly.chat import ChatQwen
 
- # 要使用这个通义千问，需要先安装 `dashscope` 包
- # 并配置好相应的 DASHSCOPE_API_KEY
+# 要使用通义千问，需要先安装 `dashscope` 包
+# 并配置好相应的 DASHSCOPE_API_KEY
 qwen = ChatQwen()
 qwen("你能帮我写一首关于兔子做梦的四句儿歌?")
 ```
@@ -67,7 +86,7 @@ qwen("你能帮我写一首关于兔子做梦的四句儿歌?")
 醒来笑，梦真妙。
 ```
 
-### 3.2 创建连续对话
+#### 创建连续对话
 
 `ChatQwen`是一个基于通义千问的对话模型。
 
@@ -113,10 +132,10 @@ qwen("换成两条小鱼")
   'content': '小白兔，蹦蹦跳，  \n耳朵长，尾巴小。  \n爱吃萝卜和青菜，  \n快乐生活在林梢。'},
  {'role': 'user', 'content': '换成两条小鱼'},
  {'role': 'assistant',
-  'content': '两条小鱼，游啊游，  \n水中穿梭，乐悠悠。  \n摇摇尾巴，吐泡泡，  \n大海深处是故乡。'}]
+  'content': '两条小鱼，游啊游，  \n水中穿梭��乐悠悠。  \n摇摇尾巴，吐泡泡，  \n大海深处是故乡。'}]
 ```
 
-### 3.3 生成工具回调提示
+#### 生成工具回调提示
 
 要让`illufly`智能体支持工具回调，只需要提供`tools`参数。
 
@@ -127,7 +146,7 @@ from types import ToolAgent
 
 def get_current_weather(location: str=None):
     """获取城市的天气情况"""
-    return f"{location}今天是晴天。 "
+    return f"{location}今天是晴天。"
 
 q = ChatQwen(tools=[ToolAgent(get_current_weather)])
 q("今天广州可以晒被子吗？")
@@ -162,9 +181,9 @@ q("今天广州可以晒被子吗？", verbose=True)
 今天广州是晴天，非常适合晒被子。
 ```
 
-生成的结果中，增加的`[TOOLS_CALL_CHUNK]...`部份，是大模型第一次推理得出的工具和参数要求，紧接着是工具回调的结果，最后是工具回调后大模型再次合成后的文本。
+生成的结果中，增加的`[TOOLS_CALL_CHUNK]...`部分，是大模型第一次推理得出的工具和参数要求，紧接着是工具回调的结果，最后是工具回调后大模型再次合成后的文本。
 
-### 智能体团队：执行管道
+#### 智能体团队：执行管道
 
 将前面用过的智能体连接起来，就可以形成多智能体团队。
 
