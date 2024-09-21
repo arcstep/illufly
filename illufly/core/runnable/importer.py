@@ -10,5 +10,5 @@ class Importer(Runnable):
         super().__init__(*args, **kwargs)
 
     def call(self, text: str, **kwargs):
-        self._output = text
+        self._last_output = text
         yield TextBlock("chunk", compress_text(text))

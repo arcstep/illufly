@@ -1,9 +1,9 @@
 import re
 from typing import Any, Set, Union
-from ...document import Document
+from ....document import Document
 
 class KnowledgeManager:
-    def __init__(self, knowledge: Union[Set[str], Set[Document]] = None):
+    def __init__(self, knowledge: Union[Set[str], Set[Document]] = None, **kwargs):
         """
         知识库在内存中以集合的方式保存，确保了其具有唯一性。
         """

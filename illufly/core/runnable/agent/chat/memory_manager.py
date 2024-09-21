@@ -1,14 +1,14 @@
 from typing import Union, List, Dict, Any
 import copy
-from ..template import Template
+from ...template import Template
 from .message import Messages, Message
 
 class MemoryManager:
-    def __init__(self, memory: List[Union[str, "Template", Dict[str, Any]]] = None, k: int = 10):
+    def __init__(self, memory: List[Union[str, "Template", Dict[str, Any]]]=None, remember_rounds: int=None, **kwargs):
         self.init_memory = Messages(memory)
         self.memory = []
         self.locked_items = self.init_memory.length
-        self.remember_rounds = k
+        self.remember_rounds = remember_rounds if remember_rounds is not None else 10
 
     def confirm_memory_init(self):
         if not self.memory and self.init_memory:
@@ -49,10 +49,11 @@ class MemoryManager:
         - 已根据 rember_rounds 可以指定记忆的轮数，以避免对话历史过长
         - 已根据 locked_items 可以锁定对话开始开始必须保留的上下文，例如，写作场景中可以锁定最初写作提纲
         - 已根据 knowledge 可以补充遗漏的背景知识，并避免重复添加
-        - ... 还可以使用向量库，从知识库服务器检索强相关的内容
-        - ... 还可以使用向量库，查询强相关的历史记忆
-        - ... 还可以使用相似性比较，仅补充与问题相关的记忆
-        - ... 还可以剔除工具调用过程细节、对长对话做摘要等
+        - ...
+        - 还可以: 使用向量库，从知识库服务器检索强相关的内容
+        - 还可以: 使用向量库，查询强相关的历史记忆
+        - 还可以: 使用相似性比较，仅补充与问题相关的记忆
+        - 还可以: 剔除工具调用过程细节、对长对话做摘要等
         """
         _k = self.remember_rounds if remember_rounds is None else remember_rounds
         final_k = 2 * _k if _k >= 1 else 1
@@ -79,7 +80,3 @@ class MemoryManager:
                     ("assistant", 'OK, 我将利用这个知识回答后面问题。')
                 ])
         return new_memory
-
-    @property
-    def output(self):
-        return self.memory[-1]['content'] if self.memory else ""

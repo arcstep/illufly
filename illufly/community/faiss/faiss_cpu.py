@@ -16,7 +16,7 @@ class FaissDB(VectorDB):
                 "Please install it via 'pip install -U faiss-cpu faiss-gpu'"
             )
 
-        docs = [d.metadata['embeddings'] for d in self.embeddings.output]
+        docs = [d.metadata['embeddings'] for d in self.embeddings.last_output]
         docs = np.array(docs, dtype='float32')  # 将列表转换为NumPy数组
         self.index = faiss.IndexFlatL2(self.dim) 
         if train:
@@ -38,6 +38,6 @@ class FaissDB(VectorDB):
 
         # 筛选出文档
         valid_indices = sorted_indices[sorted_indices > 0]
-        self._output = [self.embeddings.output[i] for i in valid_indices]
+        self._last_output = [self.embeddings.last_output[i] for i in valid_indices]
 
-        return self._output
+        return self._last_output

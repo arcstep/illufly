@@ -16,7 +16,7 @@ class MarkdownFileImporter(Importer):
             if os.path.exists(file_path):
                 with open(file_path, 'r', encoding='utf-8') as f:
                     txt = f.read()
-                    self._output = txt
+                    self._last_output = txt
                     yield TextBlock("chunk", compress_text(txt))
         
-        self._output = Markdown(txt).split()
+        self._last_output = Markdown(txt).split()

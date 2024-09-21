@@ -26,7 +26,6 @@ class ChatOpenAI(ChatAgent):
     def generate(
         self,
         messages: List[dict],
-        *args,
         **kwargs
     ):
         from openai import OpenAI
