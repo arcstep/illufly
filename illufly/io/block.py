@@ -37,80 +37,44 @@ class TextBlock():
     @property
     def text_with_print_color(self):
         color_mapping = {
-            # markdown 配置头
-            'front_matter': "ILLUFLY_COLOR_FRONT_MATTER",
-            # 工具回调过程中产生的片段，这可能是工具执行过程中的碎片信息
-            'tool_resp_chunk': "ILLUFLY_COLOR_CHUNK",
-            # 工具回调最终结果，一般不是直接由片段合成
-            'tool_resp_final': "ILLUFLY_COLOR_FINAL",
-            # 大模型推理要求的工具片段文本
+            # 过程片段
+            'chunk': "ILLUFLY_COLOR_CHUNK",
             'tools_call_chunk': "ILLUFLY_COLOR_CHUNK",
-            # 大模型推理要求的工具最终结果
+            'tool_resp_chunk': "ILLUFLY_COLOR_CHUNK",
+            # 将片段累积后的输出
+            'text_final': "ILLUFLY_COLOR_FINAL",
             'tools_call_final': "ILLUFLY_COLOR_FINAL",
+            'tool_resp_final': "ILLUFLY_COLOR_FINAL",
             # 直接输出的文本
             'text': "ILLUFLY_COLOR_TEXT",
             'image_url': "ILLUFLY_COLOR_TEXT",
-            # 大模型推理的中间结果片段文本
-            'chunk': "ILLUFLY_COLOR_CHUNK",
-            # 大模型推理的最终结果
-            'text_final': "ILLUFLY_COLOR_FINAL",
-            # 智能体节点
-            'agent': "ILLUFLY_COLOR_INFO",
-            # 提示信息
-            'info': "ILLUFLY_COLOR_INFO",
             # 警告信息
             'warn': "ILLUFLY_COLOR_WARN",
-            # 使用信息
-            'usage': "ILLUFLY_COLOR_INFO",
-            # 结束信息
-            'END': "ILLUFLY_COLOR_INFO"
+            # 其他信息
+            'unknown': "ILLUFLY_COLOR_INFO",
         }
 
-        env_var_name = color_mapping.get(self.block_type, "ILLUFLY_COLOR_DEFAULT")
+        env_var_name = color_mapping.get(self.block_type, "ILLUFLY_COLOR_INFO")
         color = get_env(env_var_name)
         return color_code(color) + self.content + "\033[0m"
 
-def create_chk_block(output_text: str):
-    """
-    生成哈希值
-    """
-    # 移除前后空格以确保唯一性
-    trimmed_output_text = output_text.strip()
-    hash_object = hashlib.sha256(trimmed_output_text.encode())
-    # 获取十六进制哈希值
-    hash_hex = hash_object.hexdigest()
-    # 转换为8位数字哈希值
-    hash_code = int(hash_hex, 16) % (10 ** 8)
+class EndBlock(TextBlock):
+    def __init__(self, output_text: str):
+        tail_text = self.create_chk_block(output_text)
+        super().__init__("END", tail_text)
 
-    tail = f'【{get_env("ILLUFLY_AIGC_INFO_DECLARE")}，{get_env("ILLUFLY_AIGC_INFO_CHK")} {hash_code}】'
+    def create_chk_block(self, output_text: str):
+        """
+        生成哈希值
+        """
+        # 移除前后空格以确保唯一性
+        trimmed_output_text = output_text.strip()
+        hash_object = hashlib.sha256(trimmed_output_text.encode())
+        # 获取十六进制哈希值
+        hash_hex = hash_object.hexdigest()
+        # 转换为8位数字哈希值
+        hash_code = int(hash_hex, 16) % (10 ** 8)
 
-    return TextBlock("END", tail)
+        tail = f'【{get_env("ILLUFLY_AIGC_INFO_DECLARE")}，{get_env("ILLUFLY_AIGC_INFO_CHK")} {hash_code}】'
 
-def convert_to_text(d):    
-    if isinstance(d, (np.int64, np.int32, np.uint8)):
-        return str(int(d))
-    elif isinstance(d, (np.float64, np.float32)):
-        return str(float(d))
-    elif isinstance(d, dict):
-        new_d = copy.deepcopy(d)
-        for k, v in new_d.items():
-            new_d[k] = convert_to_text(v)
-        return json.dumps(new_d, ensure_ascii=False)
-    elif isinstance(d, list):
-        new_d = copy.deepcopy(d)
-        for v in new_d:
-            new_d[v] = convert_to_text(v)
-        return json.dumps(new_d, ensure_ascii=False)
-    elif isinstance(d, np.ndarray):
-        new_d = copy.deepcopy(d)
-        for v in new_d:
-            new_d[v] = convert_to_text(v)
-        return json.dumps(new_d, ensure_ascii=False)
-    elif isinstance(d, pd.DataFrame):
-        return "\n" + d.to_markdown(index=False)
-    elif isinstance(d, pd.Series):
-        return d.to_markdown(index=False)
-    elif isinstance(d, (str, int, float)):
-        return str(d)
-    else:
-        return str(d)  # Fallback to string conversion for any other type
+        return tail

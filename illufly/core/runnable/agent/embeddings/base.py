@@ -18,6 +18,10 @@ class BaseEmbeddings(BaseAgent):
         self.dim = dim if dim else 1024
         self.model = model
         self.api_key = api_key
+        self.clear()
+    
+    def clear(self):
+        self._output = []
 
     def query(self, text: str, *args, **kwargs) -> List[float]:
         """将文本转换为向量，以便查询"""
@@ -117,7 +121,7 @@ class BaseEmbeddings(BaseAgent):
                     pickle.dump(vectors[0], f)
                     yield TextBlock('info', f'wrote embedding cache {cache_path} {d.text[0:50]}{"..." if len(d.text) > 50 else ""}')
 
-        self._output = docs
+        self._output.extend(docs)
 
     def _save_vectors_to_cache(self, docs, batch_texts, vectors, vector_folder):
         for index, text in enumerate(batch_texts):

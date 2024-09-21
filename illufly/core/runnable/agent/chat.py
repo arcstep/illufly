@@ -5,7 +5,7 @@ from abc import abstractmethod
 from typing import Union, List, Dict, Any
 
 from ....utils import merge_blocks_by_index, extract_text
-from ....io import TextBlock, create_chk_block
+from ....io import TextBlock, EndBlock
 
 from ..base import Runnable
 from .base import BaseAgent
@@ -155,7 +155,7 @@ class ChatAgent(BaseAgent):
 
         # 补充校验的尾缀
         if self.end_chk:
-            yield create_chk_block(self.output)
+            yield EndBlock(self.output)
         
         # 锁定记忆中的条数
         # 避免在提取短期记忆时被遗弃

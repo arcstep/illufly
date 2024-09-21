@@ -4,32 +4,35 @@ import os
 import yaml
 from typing import Iterator, List, Union, Optional
 from .utils import parse_markdown, create_front_matter, list_markdown
+from .spliter import split_markdown
 from ..document import Document
 from ...config import get_env
 from ...utils import extract_text
 
 class Markdown():
-    def __init__(self, doc_str: str=None):
+    def __init__(self, doc_str: str=None, md_file: str=None):
         self.documents = []
         self.doc_str = doc_str
-        self.import_markdown(doc_str)
+        self.md_file = md_file
+        self.import_markdown(doc_str, md_file)
 
-    def import_markdown(self, doc_str: str=None):
+    def import_markdown(self, doc_str: str=None, md_file: str=None):
         """
         导入Markdown文档。
         """
-        filename = doc_str
-        if filename and os.path.isfile(filename) and os.path.exists(doc_str):
-            if filename.endswith(".md") or filename.endswith(".MD"):
-                md_file = filename
+        _doc_str = doc_str or self.doc_str
+        _md_file = md_file or self.md_file
+        if _md_file and os.path.isfile(_md_file) and os.path.exists(_md_file):
+            with open(_md_file, 'r') as file:
+                _doc_str = file.read()
 
-                with open(md_file, 'r') as file:
-                    doc_str = file.read()
-
-        if doc_str:
-            self.documents = parse_markdown(doc_str)
+        if _doc_str:
+            self.documents = parse_markdown(_doc_str)
 
         return self.documents
+    
+    def split(self, chunk_size: int=None, chunk_overlap: int=None):
+        return split_markdown(self.text, chunk_size, chunk_overlap)
 
     @classmethod
     def to_text(cls, documents: List[Document], sep: str="", with_front_matter: bool=False):
