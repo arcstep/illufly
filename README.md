@@ -8,26 +8,26 @@
 
 ## 开发指南
 
-* [illufly 概览](illufly.wiki/Home)
+* [illufly 概览](https://github.com/arcstep/illufly/wiki/Home)
 
 **入门指南**
-* [安装配置指南](illufly.wiki/安装指南)
-* [必读的概念解释](illufly.wiki/概念)
-* [开箱即用的流输出](illufly.wiki/流输出)
-* [大模型支持](illufly.wiki/模型列表)
-* [使用检索增强（RAG）](illufly.wiki/RAG)
+* [安装配置指南](https://github.com/arcstep/illufly/wiki/安装指南)
+* [必读的概念解释](https://github.com/arcstep/illufly/wiki/概念)
+* [开箱即用的流输出](https://github.com/arcstep/illufly/wiki/流输出)
+* [大模型支持](https://github.com/arcstep/illufly/wiki/模型列表)
+* [使用检索增强（RAG）](https://github.com/arcstep/illufly/wiki/RAG)
 
 **实践案例**
-* [连续对话案例](illufly.wiki/对话)
-* [长文写作案例](illufly.wiki/长文写作)
-* [多智能体协作案例](illufly.wiki/多智能体)
+* [连续对话案例](https://github.com/arcstep/illufly/wiki/对话)
+* [长文写作案例](https://github.com/arcstep/illufly/wiki/长文写作)
+* [多智能体协作案例](https://github.com/arcstep/illufly/wiki/多智能体)
 
 **高级主题**
-* [illufly 的设计理念](illufly.wiki/设计理念)
-* [illufly 的工作流设计](illufly.wiki/工作流)
-* [illufly 的推理模式实现](illufly.wiki/推理模式)
-* [自定义提示语模板](illufly.wiki/提示语模板)
-* [自定义大模型](illufly.wiki/自定义大模型)
+* [illufly 的设计理念](https://github.com/arcstep/illufly/wiki/设计理念)
+* [illufly 的工作流设计](https://github.com/arcstep/illufly/wiki/工作流)
+* [illufly 的推理模式实现](https://github.com/arcstep/illufly/wiki/推理模式)
+* [自定义提示语模板](https://github.com/arcstep/illufly/wiki/提示语模板)
+* [自定义大模型](https://github.com/arcstep/illufly/wiki/自定义大模型)
 
 
 ## 快速体验
@@ -117,7 +117,7 @@ qwen("换成两条小鱼")
 
 生成结果：
 ```md
-两条小鱼，游啊游，  
+两条��鱼，游啊游，  
 水中穿梭，乐悠悠。  
 摇摇尾巴，吐泡泡，  
 大海深处是故乡。
@@ -132,7 +132,7 @@ qwen("换成两条小鱼")
   'content': '小白兔，蹦蹦跳，  \n耳朵长，尾巴小。  \n爱吃萝卜和青菜，  \n快乐生活在林梢。'},
  {'role': 'user', 'content': '换成两条小鱼'},
  {'role': 'assistant',
-  'content': '两条小鱼，游啊游，  \n水中穿梭��乐悠悠。  \n摇摇尾巴，吐泡泡，  \n大海深处是故乡。'}]
+  'content': '两条小鱼，游啊游，  \n水中穿梭乐悠悠。  \n摇摇尾巴，吐泡泡，  \n大海深处是故乡。'}]
 ```
 
 #### 生成工具回调提示
