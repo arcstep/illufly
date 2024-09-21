@@ -48,7 +48,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     def last_output(self):
         return self.memory[-1]['content'] if self.memory else ""
 
-    def call(self, prompt: Union[str, List[dict]], **kwargs):
+    def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError("prompt 必须是字符串或消息列表")
 
@@ -84,9 +84,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         toolkits = self.get_tools(kwargs.get("tools", []))
         _having_toolkits = True if toolkits else False
         if kwargs.get('exec_tool', self.exec_tool) and _having_toolkits:
-            resp = self.chat_with_tools_calling(_prompt, **kwargs)
+            resp = self.chat_with_tools_calling(_prompt, *args, **kwargs)
         else:
-            resp = self.only_chat(_prompt, **kwargs)
+            resp = self.only_chat(_prompt, *args, **kwargs)
 
         for block in resp:
             yield block
@@ -100,7 +100,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         if locked_item:
             self.locked_items = len(self.memory)
 
-    def only_chat(self, prompt: Union[str, List[dict]], **kwargs):
+    def only_chat(self, prompt: Union[str, List[dict]], *args, **kwargs):
         messages = self.get_chat_memory(knowledge=self.get_knowledge())
         messages.extend(self.create_new_memory(prompt))
 
@@ -128,7 +128,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 self.remember_response(final_output_text)
                 yield TextBlock("text_final", final_output_text)
 
-    def chat_with_tools_calling(self, prompt: Union[str, List[dict]], **kwargs):
+    def chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
 
         messages = self.get_chat_memory(knowledge=self.get_knowledge())
         messages.extend(self.create_new_memory(prompt))
@@ -140,7 +140,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             tools_call = []
 
             # 大模型推理
-            for block in self.generate(messages, **kwargs):
+            for block in self.generate(messages, *args, **kwargs):
                 yield block
                 if block.block_type == "chunk":
                     output_text += block.content
@@ -204,5 +204,5 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 self.remember_response(output_text)
 
     @abstractmethod
-    def generate(self, prompt: Union[str, List[dict]], **kwargs):
+    def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
         raise NotImplementedError("子类必须实现 generate 方法")
