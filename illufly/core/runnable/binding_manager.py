@@ -56,8 +56,19 @@ class BindingManager:
         """
         绑定其他 runnable 的字典变量，动态获取 runnable 中的变量，并通过 input_mapping 实现映射转换。
         """
-        _binding_map = binding_map or {}
-        for runnable in runnables:
+        if isinstance(runnables[-1], dict):
+            # 如果最后一个参数使用顺序参数，需要判断最后一个参数是否 binding_map
+            # 这可以方便书写类似的情况：
+            # obj.bind_runnables(runnable1, runnable2, {"task": "last_input"})
+            # 正确识别出最后一个字典是 binding_map 而不是 runnable
+            _binding_map = runnables[-1]
+            _runnables = runnables[:-1]
+        else:
+            # 如果最后一个参数使用键值参数，指明 binding_map
+            _binding_map = binding_map or {}
+            _runnables = runnables
+
+        for runnable in _runnables:
             if runnable not in self.runnables:
                 filtered_binding_map = {k: v for k, v in _binding_map.items() if v in runnable.exported_vars}
                 self.runnables.append((runnable, filtered_binding_map))
