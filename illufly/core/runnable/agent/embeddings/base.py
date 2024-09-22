@@ -121,7 +121,7 @@ class BaseEmbeddings(BaseAgent):
                     pickle.dump(vectors[0], f)
                     yield TextBlock('info', f'wrote embedding cache {cache_path} {d.text[0:50]}{"..." if len(d.text) > 50 else ""}')
 
-        self._last_output.extend(docs)
+        self._last_output = docs
 
     def _save_vectors_to_cache(self, docs, batch_texts, vectors, vector_folder):
         for index, text in enumerate(batch_texts):

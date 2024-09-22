@@ -25,8 +25,7 @@ class BaseAgent(Runnable, ToolAbility):
 
     def __init__(
         self,
-        *args,
         **kwargs
     ):
-        Runnable.__init__(self, *args, **kwargs)
+        Runnable.__init__(self, **kwargs)
         ToolAbility.__init__(self, **kwargs)

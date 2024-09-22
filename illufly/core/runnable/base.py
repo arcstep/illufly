@@ -5,10 +5,12 @@ from typing import Union, List, Dict, Any, Callable
 from abc import ABC, abstractmethod
 from functools import partial
 
+from .binding_manager import BindingManager
 from .executor_manager import ExecutorManager
 from ...io import log
 
-class Runnable(ABC, ExecutorManager):
+
+class Runnable(ABC, ExecutorManager, BindingManager):
     """
     实现基本可运行类，定义了可运行的基本接口。
     只要继承该类，就可以作为智能体的工具使用。
@@ -18,8 +20,8 @@ class Runnable(ABC, ExecutorManager):
     - 实现 __call__ 方法，来简化流输出调用
     - 通过 _last_input 保存当次调用的输入结果，并使用 last_input 属性方法来获取
     - 通过 _last_output 保存当次调用的输出结果，并使用 last_output 属性方法来获取
-    - 支持 publish_vars 方法，来动态发布变量
-    - 支持 subscribe_vars 方法，来动态订阅变量
+    - 支持 bind 方法，来动态发布变量
+    - 支持 bound_vars 方法，来动态绑定变量
     - 支持 call 同步方法调用
     - 支持 async_call 方法调用，并在 Runnable 中已实现默认版本
     - 支持 stop 方法来停止仍在进行的异步调用
@@ -37,9 +39,7 @@ class Runnable(ABC, ExecutorManager):
     def __init__(
         self,
         *,
-        # 是否自动停止
         continue_running: bool=True,
-        subscribe_runnables: List["Runnable"]=None,
         **kwargs
     ):
         """
@@ -48,49 +48,13 @@ class Runnable(ABC, ExecutorManager):
         - 工具：作为工具的Runnable列表，在发现工具后是否执行工具的标记等
         """
         ExecutorManager.__init__(self, **kwargs)
+        BindingManager.__init__(self, **kwargs)
 
         self.continue_running = continue_running
-        self._last_input = None
-        self._last_output = None
-        self._subscribe_runnables = subscribe_runnables or []
 
     def __call__(self, *args, verbose:bool=False, handler:Callable=None, **kwargs):
         handler = handler or log
         return handler(self, *args, verbose=verbose, **kwargs)
-
-    @property
-    def last_input(self):
-        return self._last_input
-
-    @property
-    def last_output(self):
-        return self._last_output
-    
-    @property
-    def publish_vars(self):
-        """
-        发布变量，将 kwargs 中的变量合并发布给订阅的 runnable。
-        """
-        return {
-            "last_input": self.last_input,
-            "last_output": self.last_output
-        }
-    
-    def subscribe(self, *runnables: "Runnable", input_mapping: Dict[str, str]=None):
-        """
-        订阅变量，动态获取 runnables 中的变量，并通过 input_mapping 实现映射转换。
-        """
-        for runnable in runnables:
-            self._subscribe_runnables.append(runnable)
-        return self._subscribe_runnables
-    
-    @property
-    def subscribe_vars(self):
-        subscribe_vars = {}
-        for runnable in self._subscribe_runnables:
-            for key, value in runnable.publish_vars.items():
-                subscribe_vars[key] = value
-        return subscribe_vars
 
     @property
     def is_running(self):
@@ -120,15 +84,3 @@ class Runnable(ABC, ExecutorManager):
         loop = asyncio.get_running_loop()
         func = partial(sync_function, *args, **kwargs)
         return await loop.run_in_executor(self.executor, func)
-
-    def clone(self, **kwargs) -> "Runnable":
-        """
-        克隆当前对象，返回一个新的对象。
-
-        如果提供 kwargs 参数，你就可以在克隆的同时修改对象属性。
-        """
-        return self.__class__(
-            threads_group=kwargs.pop("threads_group") or self.threads_group,
-            continue_running=kwargs.pop("continue_running") or self.continue_running,
-            **kwargs
-        )

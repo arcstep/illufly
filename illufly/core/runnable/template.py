@@ -13,7 +13,8 @@ class Template(Runnable):
     提示语模板可以作为消息生成消息列表。
     结合工作台映射，可以动态填充提示语模板。
     """
-    def __init__(self, template_id: str=None, template_text: str=None, input_mapping: Dict[str, Any]=None):
+    def __init__(self, template_id: str=None, template_text: str=None, input_mapping: Dict[str, Any]=None, **kwargs):
+        super().__init__(**kwargs)
         if template_id:
             self.template_text = load_template(template_id)
         elif template_text:
