@@ -1,14 +1,14 @@
 from typing import List, Union
-from ..base import BaseAgent
-from .....core.document import Document
-from .....utils import get_env, hash_text, clean_filename
-from .....config import get_env
-from .....io import TextBlock
+from ..base import Runnable
+from ....core.document import Document
+from ....utils import get_env, hash_text, clean_filename
+from ....config import get_env
+from ....io import TextBlock
 
 import os
 import pickle
 
-class BaseEmbeddings(BaseAgent):
+class BaseEmbeddings(Runnable):
     """
     句子嵌入模型。
     """

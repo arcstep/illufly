@@ -1,8 +1,8 @@
 from typing import List, Union
-from ..base import BaseAgent
+from ..base import Runnable
 from ..embeddings import BaseEmbeddings
 
-class VectorDB(BaseAgent):
+class VectorDB(Runnable):
     """
     向量数据库。
     """

@@ -1,7 +1,6 @@
-from .core.runnable import Runnable
-from .core.runnable.agent import BaseAgent, ChatAgent, ToolAgent, BaseEmbeddings, VectorDB
+from .core.runnable import Runnable, BaseEmbeddings, VectorDB, Template
+from .core.runnable.agent import BaseAgent, ChatAgent, ToolAgent
 from .core.runnable.agent.chat.message import Message, Messages
-from .core.runnable.template import Template
 from .core.markdown import Markdown
 from .core.document import Document
 from .io import TextBlock, EndBlock
