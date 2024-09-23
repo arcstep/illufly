@@ -1,21 +1,25 @@
 from typing import Union, List, Dict, Any
 import copy
 from ...template import Template
+from .....hub import get_template_variables
 from .message import Messages, Message
 
 class MemoryManager:
     def __init__(self, memory: List[Union[str, "Template", Dict[str, Any]]]=None, remember_rounds: int=None, **kwargs):
-        self.init_memory = Messages(memory)
         self.memory = []
-        self.locked_items = self.init_memory.length
+        self.bound_vars = set() # 被消息列表中的 Template 绑定的变量清单
+        self.init_messages = Messages(memory)
+        self.locked_items = self.init_messages.length
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
 
-    def confirm_memory_init(self):
-        if not self.memory and self.init_memory:
-            self.memory = self.init_memory.to_list()
-        return self.memory
+        for template in self.init_messages.all_templates:
+            template.bind_runnables(self)
+            self.bound_vars.update(get_template_variables(template.template_text))
 
     def create_new_memory(self, prompt: Union[str, List[dict]]):
+        """
+        创建新的记忆。
+        """
         if prompt:
             if isinstance(prompt, str):
                 new_memory = Messages([("user", prompt)])
@@ -28,14 +32,17 @@ class MemoryManager:
             return []
 
     def remember_response(self, response: Union[str, List[dict]]):
+        """
+        将回答添加到记忆中。
+        """
         if response:
             if isinstance(response, str):
-                new_memory = Messages([("assistant", response)])
+                new_memory = Messages([("assistant", response)]).to_list()
             else:
-                new_memory = Messages(response)
+                new_memory = response
 
-            self.memory.extend(new_memory.to_list())
-            return new_memory.to_list()
+            self.memory.extend(new_memory)
+            return new_memory
         else:
             return []
 
@@ -67,6 +74,9 @@ class MemoryManager:
         return final_memory.to_list()
 
     def _append_knowledge_to_messages(self, new_messages: List[Any], knowledge: List[str]):
+        """
+        构造短期记忆时，将知识库中的内容添加到消息列表中。
+        """
         new_memory = Messages(new_messages)
         if not knowledge:
             return new_memory

@@ -10,7 +10,7 @@ class ToolsManager:
 
     def __init__(self, tools=None, exec_tool=None, **kwargs):
         self.tools = tools or []
-        self.exec_tool = exec_tool or True
+        self.exec_tool = True if exec_tool is None else exec_tool
 
     def get_tools(self, tools: List["ToolAgent"]=None):
         if tools and (

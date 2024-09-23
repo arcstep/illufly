@@ -27,11 +27,14 @@ class BindingManager:
     def exported_vars(self):
         """
         用于被其他 runnable 对象绑定的变量。
+        实现绑定变量的传递：将导入的变量合并后作为导出的变量。
         """
-        return {
+        vars = {
             "last_input": self.last_input,
             "last_output": self.last_output
         }
+
+        return {**self.imported_vars, **vars}
 
     @property
     def imported_vars(self):
