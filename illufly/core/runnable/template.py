@@ -1,6 +1,6 @@
 from typing import Dict, Any
 
-from ...utils import compress_text
+from ...utils import minify_text
 from ...hub import load_resource_template, load_template, get_template_variables
 from ...io import TextBlock
 from .base import Runnable
@@ -27,7 +27,7 @@ class Template(Runnable):
         return self.format()
 
     def __repr__(self):
-        return f"<Template input_variables={self.template_variables} template_text='{compress_text(self.template_text)}'>"
+        return f"<Template input_variables={self.template_variables} template_text='{minify_text(self.template_text)}'>"
 
 
     def call(self, *args, **kwargs):

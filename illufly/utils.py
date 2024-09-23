@@ -50,6 +50,25 @@ def clean_filename(filename: str):
 def safety_path(path: str):
     return os.path.normpath(re.sub(r"\.\.+", ".", path)) if path else ''
 
+def minify_text(text: str, limit: int=100) -> str:
+    """
+    压缩文本，剔除左右两侧的空格和换行，仅保留第一个换行之前的文字，超出后limit后用省略号代替。
+    """
+    raw_len = len(text)
+    if not text:
+        return ''
+    
+    text = text.strip()
+    first_newline_index = text.find('\n')
+    if first_newline_index != -1:
+        text = text[:first_newline_index]
+    
+    minified_text = text[:limit]
+    if len(minified_text) < raw_len:
+        minified_text += f'...省略{raw_len-len(minified_text)}字'
+    
+    return minified_text
+
 def compress_text(text: str, start_limit: int=100, end_limit: int=100, delta: int=50) -> str:
     """
     压缩文本，如果文本长度超过指定限制，则只保留前后部分，并用省略号连接。

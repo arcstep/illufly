@@ -1,6 +1,6 @@
 from .base import Runnable
 from ...io import TextBlock
-from ...utils import compress_text
+from ...utils import minify_text
 
 class Importer(Runnable):
     """
@@ -11,4 +11,4 @@ class Importer(Runnable):
 
     def call(self, text: str, **kwargs):
         self._last_output = text
-        yield TextBlock("chunk", compress_text(text))
+        yield TextBlock("chunk", minify_text(text))

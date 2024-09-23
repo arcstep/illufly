@@ -8,16 +8,14 @@ def get_env(key: str=None):
     环境变量的默认值。
     """
     default_values = {
-        # 根文件夹配置
+        # 文件夹配置
         "ILLUFLY_ROOT": "./",
-
-        # 提示语文件夹
+        "ILLUFLY_DOCS": "__DOCS__",
         "ILLUFLY_PROMPTS": "__TEMPLATE_BASE__",
 
         # 项目文件夹
         "ILLUFLY_LOGS": "__LOG__",
         "ILLUFLY_SHARE": "__SHARE__",
-        "ILLUFLY_DOCS": "__DOCS__",
         "ILLUFLY_QA": "__QA__",
 
         # 大模型

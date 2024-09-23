@@ -50,7 +50,7 @@ def split_markdown(documents: List[Document], chunk_size: int=None, chunk_overla
             heading_level = doc.metadata.get('attrs', {}).get('level', 1)
             while heading_stack and heading_stack[-1][1] >= heading_level:
                 heading_stack.pop()
-            heading_stack.append((doc.text, heading_level))
+            heading_stack.append((doc.text.strip(), heading_level))
             current_chunk.append(doc.text)
         elif doc.metadata['type'] == 'paragraph':
             if len(doc.text) > chunk_size:

@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from ..utils import compress_text
+from ..utils import minify_text
 import json
 
 class Document():
@@ -8,7 +8,7 @@ class Document():
         self.metadata = metadata or {}
 
     def __repr__(self):
-        return f"Document(text='{compress_text(self.text)}', metadata='{compress_text(json.dumps(self.metadata))}')"
+        return f"Document(text='{minify_text(self.text)}', metadata='{minify_text(json.dumps(self.metadata, ensure_ascii=False))}')"
 
     def __str__(self):
         return self.text

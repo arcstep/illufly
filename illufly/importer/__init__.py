@@ -1,5 +1,5 @@
-from .md import load_markdown
+from .md import MarkdownFileImporter
 
 __all__ = [
-    "load_markdown",
+    "MarkdownFileImporter",
 ]

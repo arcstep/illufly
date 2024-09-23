@@ -1,7 +1,7 @@
 from typing import List, Union
 from ..base import BaseAgent
 from .....core.document import Document
-from .....utils import get_env, hash_text, clean_filename, compress_text
+from .....utils import get_env, hash_text, clean_filename
 from .....config import get_env
 from .....io import TextBlock
 

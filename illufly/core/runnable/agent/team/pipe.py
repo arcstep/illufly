@@ -1,7 +1,7 @@
 from typing import List, Union
 
 from .....io import TextBlock
-from .....utils import compress_text
+from .....utils import minify_text
 from ..base import BaseAgent
 from ..chat import ChatAgent
 
@@ -55,7 +55,7 @@ class Pipe(BaseAgent):
     def _get_node_info(self, index, run):
         if isinstance(run, ChatAgent):
             if run.memory:
-                info = f">>> Node {index}: {compress_text(run.memory[0].get('content'), 30, 30, 10)}"
+                info = f">>> Node {index}: {minify_text(run.memory[0].get('content'), 30, 30, 10)}"
             else:
                 info = f">>> Node {index}: {run.__class__.__name__}"
         else:
