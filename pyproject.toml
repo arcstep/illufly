@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "illufly"
-version = "0.1.4"
+version = "0.2.1"
 description = "A framework designed for multi-agents with GPT and other LLMs."
 authors = ["arcstep <xuehongwei@illufly.com>"]
 homepage = "https://github.com/arcstep/illufly"
@@ -10,12 +10,8 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4"
-pydantic = ">=1,<3"
-langchain = ">=0.1.0,<0.3.0"
-langchain-community = ">=0.0.38,<0.3.0"
 mistune = "^3.0.2"
 pandas = "^2.2.2"
-openpyxl = "^3.1.4"
 python-jose = "^3.3.0"
 fastapi = "^0.111.0"
 chevron = "^0.14.0"
