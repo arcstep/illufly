@@ -5,7 +5,6 @@ import hashlib
 from typing import List, Union, Dict, Any
 from .config import get_env
 
-
 def raise_not_install(packages):
     print(f"please install package: '{packages}' with pip or poetry")
     # auto install package

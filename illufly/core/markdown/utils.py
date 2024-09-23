@@ -11,16 +11,17 @@ from ..document import Document
 from ...config import get_env
 
 class SegmentsRenderer(MarkdownRenderer):
-    def __init__(self, doc_id_generator):
+    def __init__(self, doc_id_generator, source: str=None):
         super().__init__()
         self.doc_id_generator = doc_id_generator
+        self.source = source or 'unknown'
 
     def __call__(self, tokens: Iterable[Dict[str, Any]], state: BlockState) -> str:
         documents = []
         for tok in tokens:
             md = self.render_token(tok, state)
             doc_id = next(self.doc_id_generator)
-            tok.update({"id": doc_id})
+            tok.update({"id": doc_id, "source": self.source})
             if tok['type'] == 'blank_line':
                 md = '\n'
             documents.append(Document(text=md, metadata=tok))
@@ -57,7 +58,7 @@ def fetch_front_matter(text: str):
     else:
         return {}, text
 
-def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
+def parse_markdown(text: str, start_tag: str=None, end_tag: str=None, source: str=None):
     """
     你可以修改 start_tag/end_tag, 使用 <<<< ... >>>> 或 {{ ... }} 等其他方案来标记提纲内容，
     默认为 <OUTLINE> ... </OUTLINE> 的形式。
@@ -72,7 +73,7 @@ def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
     metadata, text = fetch_front_matter(text)
     if metadata:
         doc_id = next(doc_id_generator)
-        metadata.update({"id": doc_id, "type": "front_matter"})
+        metadata.update({"id": doc_id, "type": "front_matter", "source": source})
         doc = Document(text='', metadata=metadata)
         documents.append(doc)
 
@@ -82,13 +83,13 @@ def parse_markdown(text: str, start_tag: str=None, end_tag: str=None):
         if match:
             before, outline_content, after = match.groups()
             if before:
-                documents.extend(markdown(before, renderer=SegmentsRenderer(doc_id_generator)))
+                documents.extend(markdown(before, renderer=SegmentsRenderer(doc_id_generator, source)))
             doc_id = next(doc_id_generator)
-            doc = Document(text=outline_content+"\n\n", metadata={"id": doc_id, "type": 'OUTLINE'})
+            doc = Document(text=outline_content+"\n\n", metadata={"id": doc_id, "type": 'OUTLINE', "source": source})
             documents.append(doc)
             text = after
     if text:
-        documents.extend(markdown(text, renderer=SegmentsRenderer(doc_id_generator)))
+        documents.extend(markdown(text, renderer=SegmentsRenderer(doc_id_generator, source)))
     return documents
 
 def create_document_id():
