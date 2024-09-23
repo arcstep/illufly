@@ -83,8 +83,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             ## 补充初始记忆
             if not is_prompt_using_system_role and self.init_messages.length > 0:
                 # 如果需要在模板中使用了 task 变量，就将 prompt 赋值给 task，并将 prompt 设置为空
-                # 在接下来使用 init_messagess.to_list 构建历史记忆时，会通过绑定变量使用到 task 变量
-                # 进而作为历史记忆的一部份传递给模型做推理计算
+                # 在接下来使用 init_messagess.to_list 构建记忆表，会通过绑定变量使用到 task 变量
+                # 进而作为记忆表的一部份传递给模型做推理计算
                 if "task" in self.bound_vars:
                     if isinstance(prompt, str):
                         self.task = prompt
@@ -111,17 +111,14 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             self.locked_items = len(self.memory)
 
     def chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
-
         messages = self.get_chat_memory(knowledge=self.get_knowledge())
         messages.extend(self.create_new_memory(prompt))
 
         to_continue_call_llm = True
-        while(to_continue_call_llm):
+        while to_continue_call_llm:
             to_continue_call_llm = False
-            output_text = ""
-            tools_call = []
+            output_text, tools_call = "", []
 
-            # 大模型推理
             for block in self.generate(messages, *args, **kwargs):
                 yield block
                 if block.block_type == "chunk":
@@ -130,64 +127,69 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     output_text = block.text
                 elif block.block_type == "tools_call_chunk":
                     tools_call.append(json.loads(block.text))
-            
+
             final_tools_call = merge_blocks_by_index(tools_call)
             if final_tools_call:
-                # 记录工具回调提示
-                final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
-                yield TextBlock("tools_call_final", final_tools_call_text)
-
-            # 合并工具回调
-                for index, tool in final_tools_call.items():
-                    # 如果大模型的结果返回多个工具回调，则要逐个调用完成才能继续下一轮大模型的问调用。
-                    # 追加工具提示部份到记忆
-                    tools_call_message = [
-                        {
-                            "role": "assistant",
-                            "content": "",
-                            "tool_calls": [tool]
-                        }
-                    ]
-                    messages.extend(tools_call_message)
-                    self.remember_response(tools_call_message)
-
-                    if self.exec_tool:
-                        # 执行工具回调
-                        tools_list = kwargs.get("tools", self.tools)
-                        for struct_tool in tools_list:
-                            if tool['function']['name'] == struct_tool.name:
-                                tool_args = json.loads(tool['function']['arguments'])
-                                tool_resp = ""
-
-                                tool_func_result = struct_tool.func(**tool_args)
-                                for x in tool_func_result:
-                                    if isinstance(x, TextBlock):
-                                        if x.block_type == "tool_resp_final":
-                                            tool_resp = x.text
-                                        elif x.block_type == "chunk":
-                                            tool_resp += x.text
-                                        yield x
-                                    else:
-                                        tool_resp += x
-                                        yield TextBlock("tool_resp_chunk", x)
-
-                                # 追加工具返回消息部份到记忆
-                                tool_resp_message = [
-                                    {
-                                        "tool_call_id": tool['id'],
-                                        "role": "tool",
-                                        "name": tool['function']['name'],
-                                        "content": tool_resp
-                                    }
-                                ]
-                                messages.extend(tool_resp_message)
-                                self.remember_response(tool_resp_message)
-                                to_continue_call_llm = True
+                yield from self.handle_tools_call(final_tools_call, messages, kwargs)
+                to_continue_call_llm = True
             else:
-                # 当前并没有需要回调的工具，直接记录大模型的输出
                 final_output_text = extract_text(output_text, self.start_marker, self.end_marker)
                 self.remember_response(final_output_text)
                 yield TextBlock("text_final", final_output_text)
+
+    def handle_tools_call(self, final_tools_call, messages, kwargs):
+        final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
+        yield TextBlock("tools_call_final", final_tools_call_text)
+
+        for index, tool in final_tools_call.items():
+            tools_call_message = self.create_tools_call_message(tool)
+            messages.extend(tools_call_message)
+            self.remember_response(tools_call_message)
+
+            if self.exec_tool:
+                yield from self.execute_tool(tool, messages, kwargs)
+
+    def create_tools_call_message(self, tool):
+        return [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [tool]
+            }
+        ]
+
+    def execute_tool(self, tool, messages, kwargs):
+        tools_list = kwargs.get("tools", self.tools)
+        for struct_tool in tools_list:
+            if tool['function']['name'] == struct_tool.name:
+                tool_args = json.loads(tool['function']['arguments'])
+                tool_resp = ""
+
+                tool_func_result = struct_tool.func(**tool_args)
+                for x in tool_func_result:
+                    if isinstance(x, TextBlock):
+                        if x.block_type == "tool_resp_final":
+                            tool_resp = x.text
+                        elif x.block_type == "chunk":
+                            tool_resp += x.text
+                        yield x
+                    else:
+                        tool_resp += x
+                        yield TextBlock("tool_resp_chunk", x)
+
+                tool_resp_message = self.create_tool_resp_message(tool, tool_resp)
+                messages.extend(tool_resp_message)
+                self.remember_response(tool_resp_message)
+
+    def create_tool_resp_message(self, tool, tool_resp):
+        return [
+            {
+                "tool_call_id": tool['id'],
+                "role": "tool",
+                "name": tool['function']['name'],
+                "content": tool_resp
+            }
+        ]
 
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
