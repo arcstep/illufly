@@ -1,7 +1,6 @@
 from typing import List, Union
 
 from .....io import TextBlock
-from .....utils import compress_text
 from ....markdown import Markdown
 from ..base import BaseAgent
 from ..chat import ChatAgent
