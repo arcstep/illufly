@@ -10,10 +10,11 @@ from ...config import get_env
 from ...utils import extract_text
 
 class Markdown():
-    def __init__(self, doc_str: str=None, md_file: str=None):
+    def __init__(self, doc_str: str=None, md_file: str=None, source: str=None):
         self.documents = []
         self.doc_str = doc_str
         self.md_file = md_file
+        self.source = source or md_file
         self.import_markdown(doc_str, md_file)
 
     def import_markdown(self, doc_str: str=None, md_file: str=None):
@@ -27,12 +28,12 @@ class Markdown():
                 _doc_str = file.read()
 
         if _doc_str:
-            self.documents = parse_markdown(_doc_str)
+            self.documents = parse_markdown(_doc_str, source=self.source)
 
         return self.documents
     
     def split(self, chunk_size: int=None, chunk_overlap: int=None):
-        return split_markdown(self.text, chunk_size, chunk_overlap)
+        return split_markdown(self.documents, chunk_size, chunk_overlap)
 
     @classmethod
     def to_text(cls, documents: List[Document], sep: str="", with_front_matter: bool=False):
