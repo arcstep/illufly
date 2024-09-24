@@ -18,8 +18,13 @@ class ChatZhipu(ChatAgent):
 
         super().__init__(threads_group="CHAT_ZHIPU", tools=tools, **kwargs)
         self.threads_group = "CHAT_ZHIPU"
-        self.default_call_args = {"model": model or "glm-4-flash"}
-        self.model_args = {"api_key": kwargs.get("api_key", os.getenv("ZHIPUAI_API_KEY"))}
+        self.default_call_args = {
+            "model": model or "glm-4-flash"
+        }
+        self.model_args = {
+            "api_key": kwargs.get("api_key", os.getenv("ZHIPUAI_API_KEY")),
+            "base_url": kwargs.get("base_url", os.getenv("ZHIPUAI_BASE_URL"))
+        }
         self.client = ZhipuAI(**self.model_args)
 
     def generate(

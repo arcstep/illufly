@@ -72,8 +72,7 @@ class FromOutline(BaseAgent):
                 info = f"执行扩写任务 <{outline_id}>：\n{outline}"
                 yield TextBlock("agent", info)
                 self.create_new_memory(info)
-                for block in segment_writer.call("请开始扩写"):
-                    yield block
+                yield from segment_writer.call("请开始扩写")
                 self.remember_response(segment_writer.last_output)
         else:
             yield TextBlock("info", f"没有提纲可供扩写")

@@ -42,8 +42,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         self.end_marker = end_marker or "```"
 
         # 在子类中应当将模型参数保存到这个属性中，以便持久化管理
-        self.model_args = {}
-        self.default_call_args = {}
+        self.model_args = {"base_url": None, "api_key": None}
+        self.default_call_args = {"model": None}
 
         # 增加的可绑定变量
         self.task = ""
@@ -58,6 +58,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             **super().exported_vars,
             "task": self.task
         }
+
+    @abstractmethod
+    def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
+        raise NotImplementedError("子类必须实现 generate 方法")
 
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
@@ -96,10 +100,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 is_prompt_using_system_role = True
                 self.memory = self.init_messages.to_list()
 
-        resp = self.chat_with_tools_calling(prompt, *args, **kwargs)
-
-        for block in resp:
-            yield block
+        yield from self.chat_with_tools_calling(prompt, *args, **kwargs)
 
         # 补充校验的尾缀
         if self.end_chk:
@@ -111,15 +112,15 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             self.locked_items = len(self.memory)
 
     def chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        messages = self.get_chat_memory(knowledge=self.get_knowledge())
-        messages.extend(self.create_new_memory(prompt))
+        chat_memory = self.get_chat_memory(knowledge=self.get_knowledge())
+        chat_memory.extend(self.create_new_memory(prompt))
 
         to_continue_call_llm = True
         while to_continue_call_llm:
             to_continue_call_llm = False
             output_text, tools_call = "", []
 
-            for block in self.generate(messages, *args, **kwargs):
+            for block in self.generate(chat_memory, *args, **kwargs):
                 yield block
                 if block.block_type == "chunk":
                     output_text += block.content
@@ -130,38 +131,79 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             final_tools_call = merge_blocks_by_index(tools_call)
             if final_tools_call:
-                yield from self.handle_tools_call(final_tools_call, messages, kwargs)
-                to_continue_call_llm = True
+                for block in self.handle_tools_call(final_tools_call, chat_memory, kwargs):
+                    if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                        to_continue_call_llm = True
+                    yield block
             else:
                 final_output_text = extract_text(output_text, self.start_marker, self.end_marker)
+                chat_memory.append({
+                    "role": "assistant",
+                    "content": final_output_text
+                })
                 self.remember_response(final_output_text)
                 yield TextBlock("text_final", final_output_text)
 
-    def handle_tools_call(self, final_tools_call, messages, kwargs):
+                # 检查 final_output_text 的文本结果中是否包含 <tool_call> 结构
+                # 示例如下：
+                # <tool_call>
+                # {"name": "get_current_weather", "arguments": {"location": "Paris", "unit": "celsius"}}
+                # </tool_call>
+                #
+                # 如果包含，仍然需要执行工具调用
+                # 这主要是为了兼容 Ollama 等兼容 openai 接口协议的情况
+                # 但其工具回调返回的是 <tool_call> 结构，而非 openai 协议现有的结构
+                tool_call_start = final_output_text.find("<tool_call>")
+                tool_call_end = final_output_text.find("</tool_call>")
+                if tool_call_start != -1 and tool_call_end != -1:
+                    tool_call_json = final_output_text[tool_call_start + len("<tool_call>"):tool_call_end]
+                    tool_call_func = json.loads(tool_call_json)
+                    try:
+                        tool_call = {
+                            "function": {
+                                "name": tool_call_func.get("name"),
+                                "arguments": json.dumps(tool_call_func.get("arguments", "[]"), ensure_ascii=False)
+                            }
+                        }
+                        for block in self.handle_embedded_tool_call(tool_call, chat_memory, kwargs):
+                            if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                                to_continue_call_llm = True
+                            yield block
+                        # to_continue_call_llm = True
+                    except json.JSONDecodeError:
+                        pass
+
+    def handle_tools_call(self, final_tools_call, chat_memory, kwargs):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
         yield TextBlock("tools_call_final", final_tools_call_text)
 
         for index, tool in final_tools_call.items():
-            tools_call_message = self.create_tools_call_message(tool)
-            messages.extend(tools_call_message)
-            self.remember_response(tools_call_message)
-
-            if self.exec_tool:
-                yield from self.execute_tool(tool, messages, kwargs)
-
-    def create_tools_call_message(self, tool):
-        return [
-            {
+            tools_call_message = [{
                 "role": "assistant",
                 "content": "",
                 "tool_calls": [tool]
-            }
-        ]
+            }]
+            chat_memory.extend(tools_call_message)
+            self.remember_response(tools_call_message)
 
-    def execute_tool(self, tool, messages, kwargs):
+            if self.exec_tool:
+                for block in self.execute_tool(tool, chat_memory, kwargs):
+                    if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                        tool_resp = block.text
+                        tool_resp_message = [{
+                            "tool_call_id": tool['id'],
+                            "role": "tool",
+                            "name": tool['function']['name'],
+                            "content": tool_resp
+                        }]
+                        chat_memory.extend(tool_resp_message)
+                        self.remember_response(tool_resp_message)
+                    yield block
+
+    def execute_tool(self, tool, chat_memory, kwargs):
         tools_list = kwargs.get("tools", self.tools)
         for struct_tool in tools_list:
-            if tool['function']['name'] == struct_tool.name:
+            if tool.get('function', {}).get('name') == struct_tool.name:
                 tool_args = json.loads(tool['function']['arguments'])
                 tool_resp = ""
 
@@ -177,20 +219,19 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         tool_resp += x
                         yield TextBlock("tool_resp_chunk", x)
 
-                tool_resp_message = self.create_tool_resp_message(tool, tool_resp)
-                messages.extend(tool_resp_message)
-                self.remember_response(tool_resp_message)
+                yield TextBlock("tool_resp_final", tool_resp)
 
-    def create_tool_resp_message(self, tool, tool_resp):
-        return [
-            {
-                "tool_call_id": tool['id'],
-                "role": "tool",
-                "name": tool['function']['name'],
-                "content": tool_resp
-            }
-        ]
-
-    @abstractmethod
-    def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        raise NotImplementedError("子类必须实现 generate 方法")
+    def handle_embedded_tool_call(self, tool_call, chat_memory, kwargs):
+        if self.exec_tool:
+            for block in self.execute_tool(tool_call, chat_memory, kwargs):
+                if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                    tool_resp = block.text
+                    tool_resp_message = [
+                        {
+                            "role": "user",
+                            "content": f'<tool_resp>{tool_resp}</tool_resp>'
+                        }
+                    ]
+                    chat_memory.extend(tool_resp_message)
+                    self.remember_response(tool_resp_message)
+                yield block

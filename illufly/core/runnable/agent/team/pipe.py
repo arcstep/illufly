@@ -47,8 +47,7 @@ class Pipe(BaseAgent):
                 current_kwargs = {}
 
             self.create_new_memory(f"节点 <{index}> 正在处理任务...")
-            for block in run.call(*current_args, **current_kwargs):
-                yield block
+            yield from run.call(*current_args, **current_kwargs)
             self.remember_response(run.last_output)
             prev_runnable = run
 
