@@ -16,6 +16,7 @@ python-jose = "^3.3.0"
 fastapi = "^0.111.0"
 chevron = "^0.14.0"
 faiss-cpu = "^1.8.0.post1"
+tiktoken = "^0.7.0"
 
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "^1.0.1"
