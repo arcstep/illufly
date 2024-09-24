@@ -3,8 +3,7 @@ import copy
 import os
 import yaml
 from typing import Iterator, List, Union, Optional
-from .utils import parse_markdown, create_front_matter, list_markdown
-from .spliter import split_markdown
+from .utils import parse_markdown, create_front_matter
 from ..document import Document
 from ...config import get_env
 from ...utils import extract_text
@@ -32,9 +31,6 @@ class Markdown():
 
         return self.documents
     
-    def split(self, chunk_size: int=None, chunk_overlap: int=None):
-        return split_markdown(self.documents, chunk_size, chunk_overlap)
-
     @classmethod
     def to_text(cls, documents: List[Document], sep: str="", with_front_matter: bool=False):
         if not documents:

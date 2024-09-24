@@ -12,3 +12,6 @@ class Document():
 
     def __str__(self):
         return self.text
+    
+    def __len__(self):
+        return len(self.text)
