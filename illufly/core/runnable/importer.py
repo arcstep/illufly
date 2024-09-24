@@ -4,7 +4,7 @@ from ...utils import minify_text
 
 class Importer(Runnable):
     """
-    导入器。
+    文档导入。
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
