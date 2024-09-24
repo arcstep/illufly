@@ -19,9 +19,12 @@ class ChatQwen(ChatAgent):
 
         enable_search = kwargs.pop("enable_search", False)
         super().__init__(threads_group="CHAT_QWEN", tools=tools, **kwargs)
-        self.default_call_args = {"model": model or "qwen-max"}
+        self.default_call_args = {
+            "model": model or "qwen-max"
+        }
         self.model_args = {
             "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY")),
+            "base_url": kwargs.get("base_url", os.getenv("DASHSCOPE_BASE_URL")),
             "enable_search": enable_search
         }
 

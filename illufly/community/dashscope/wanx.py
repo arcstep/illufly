@@ -94,8 +94,7 @@ class Text2ImageWanx(BaseAgent):
                     parsed_url = urlparse(url)
                     filename = os.path.basename(parsed_url.path)
                     output_path = [f"{filename.rsplit('.', 1)[0]}_{i}.{filename.rsplit('.', 1)[1]}" for i in range(n)]
-                for block in save_image(url, output_path[i]):
-                    yield block
+                yield from save_image(url, output_path[i])
             if 'usage' in status_result:
                 yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
@@ -188,8 +187,7 @@ class CosplayWanx(BaseAgent):
 
             parsed_url = urlparse(url)
             _output_path = output_path or os.path.basename(parsed_url.path)
-            for block in save_image(url, _output_path):
-                yield block
+            yield from save_image(url, _output_path)
             if 'usage' in status_result:
                 yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 

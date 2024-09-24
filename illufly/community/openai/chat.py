@@ -8,7 +8,17 @@ import json
 
 
 class ChatOpenAI(ChatAgent):
-    def __init__(self, model: str=None, tools=None, **kwargs):
+    def __init__(self, model: str=None, tools=None, imitator: str=None, **kwargs):
+        """
+        使用 imitator 参数指定兼容 OpenAI 接口协议的模型来源，默认 imitator="OPENAI"。
+        只需要在环境变量中配置 imitator 对应的 API_KEY 和 BASE_URL 即可。
+        
+        例如：
+        QWEN_API_KEY=sk-...
+        QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+
+        然后使用类似 `ChatOpenAI(imitator="QWEN")` 的代码就可以使用千问系列模型。
+        """
         try:
             from openai import OpenAI
         except ImportError:
@@ -17,10 +27,16 @@ class ChatOpenAI(ChatAgent):
                 "Please install it via 'pip install -U openai'"
             )
 
-        super().__init__(threads_group="CHAT_OPENAI", tools=tools, **kwargs)
-        self.threads_group = "CHAT_OPENAI"
-        self.default_call_args = {"model": model or "gpt-3.5-turbo"}
-        self.model_args = {"api_key": kwargs.pop("api_key", os.getenv("OPENAI_API_KEY"))}
+        imitator = (imitator or "").upper() or "OPENAI"
+        super().__init__(threads_group=f"CHAT_{imitator}", tools=tools, **kwargs)
+
+        self.default_call_args = {
+            "model": model or os.getenv(f"{imitator}_MODEL_ID") or "gpt-3.5-turbo"
+        }
+        self.model_args = {
+            "base_url": kwargs.pop("base_url", os.getenv(f"{imitator}_BASE_URL")),
+            "api_key": kwargs.pop("api_key", os.getenv(f"{imitator}_API_KEY"))
+        }
         self.client = OpenAI(**self.model_args)
 
     def generate(
@@ -34,9 +50,10 @@ class ChatOpenAI(ChatAgent):
         tools_desc = self.get_tools_desc(kwargs.pop('tools', []))
         _kwargs.update({
             "messages": messages,
-            "tools": tools_desc,
+            "tools": tools_desc or None,
             **kwargs
         })
+        # print("_kwargs", _kwargs)
 
         completion = self.client.chat.completions.create(**_kwargs)
 

@@ -13,5 +13,4 @@ class ToolAgent(BaseAgent):
         return f"<Tool {self.name}: {self.description}>"
 
     def call(self, *args, **kwargs):
-        for block in self.func(*args, **kwargs):
-            yield block
+        yield from self.func(*args, **kwargs)

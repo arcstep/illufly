@@ -20,8 +20,6 @@ class VectorDB(Runnable):
 
     def call(self, text: str, *args, **kwargs):
         if text:
-            for block in self.embeddings.call(text):
-                yield block
+            yield from self.embeddings.call(text)
         emb_str = self.embeddings.last_output
-        for block in self.query(emb_str):
-            yield block
+        yield from self.query(emb_str)

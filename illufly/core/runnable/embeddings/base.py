@@ -80,8 +80,7 @@ class BaseEmbeddings(Runnable):
                 if batch_texts and texts_size + text_length > max_batch_size:
                     yield TextBlock("info", f"文本向量转换 {texts_size} 字 / {len(batch_texts)} 个文件")
                     vectors = self.embed_documents(batch_texts)
-                    for block in self._save_vectors_to_cache(docs, batch_texts, vectors, vector_folder):
-                        yield block
+                    yield from self._save_vectors_to_cache(docs, batch_texts, vectors, vector_folder)
                     batch_texts = []
                     texts_size = 0
                 batch_texts.append(d.text)
@@ -89,8 +88,7 @@ class BaseEmbeddings(Runnable):
             if batch_texts:
                 yield TextBlock("info", f"文本向量转换 {texts_size} 字 / {len(batch_texts)} 个文件")
                 vectors = self.embed_documents(batch_texts)
-                for block in self._save_vectors_to_cache(docs, batch_texts, vectors, vector_folder):
-                    yield block
+                yield from self._save_vectors_to_cache(docs, batch_texts, vectors, vector_folder)
 
         warn_times = 0
         for d in docs:
