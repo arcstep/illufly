@@ -2,6 +2,7 @@ import re
 import os
 import json
 import hashlib
+import tiktoken
 from typing import List, Union, Dict, Any
 from .config import get_env
 
@@ -65,7 +66,7 @@ def minify_text(text: str, limit: int=100) -> str:
     
     minified_text = text[:limit]
     if len(minified_text) < raw_len:
-        minified_text += f'...省略{raw_len-len(minified_text)}字'
+        minified_text += f'...'
     
     return minified_text
 
@@ -150,3 +151,20 @@ def merge_blocks_by_index(blocks: List[Dict[str, Any]]) -> Dict[int, List[Dict[s
     
     merged_results = {index: merge_tool_calls(group) for index, group in index_groups.items()}
     return merged_results
+
+def count_tokens(text: str):
+    """
+    计算文本的 token 数量
+    """
+    return len(get_token_ids(text))
+
+def get_token_ids(text: str, token_encoding: str=None, allowed_special: str=None, disallowed_special: str=None) -> List[int]:
+    """
+    获取文本的 token ID 列表
+    """
+    encoding_model = tiktoken.get_encoding(token_encoding or 'cl100k_base')
+    return encoding_model.encode(
+        text,
+        allowed_special = allowed_special or set(),
+        disallowed_special = disallowed_special or "all",
+    )
