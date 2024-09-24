@@ -92,8 +92,8 @@ class MarkdownFileImporter(Importer):
 
             if current_length + line_length > self.chunk_size:
                 chunks.append(create_chunk(current_chunk))
-                overlap_start = max(0, len(current_chunk) - self.chunk_overlap)
-                current_chunk = current_chunk[overlap_start:] if len(current_chunk) > self.chunk_overlap else []
+                overlap_start = max(0, count_tokens(current_chunk) - self.chunk_overlap)
+                current_chunk = current_chunk[overlap_start:] if count_tokens(current_chunk) > self.chunk_overlap else []
                 current_length = sum(count_tokens(l) for l in current_chunk)
 
             current_chunk.append(line)
