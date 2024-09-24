@@ -18,10 +18,13 @@ class FaissDB(VectorDB):
             )
 
         docs = [d.metadata['embeddings'] for d in self.embeddings.last_output]
+        if len(docs) == 0:
+            raise ValueError("No embeddings found")
         docs = np.array(docs, dtype='float32')  # 将列表转换为NumPy数组
         self.index = faiss.IndexFlatL2(self.dim) 
         if train:
             self.index.train(docs)
+        print("docs", docs)
         self.index.add(docs)
 
     def query(self, text: str, top_k: int=None, **kwargs):
