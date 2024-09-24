@@ -58,6 +58,7 @@ class ChatOpenAI(ChatAgent):
         completion = self.client.chat.completions.create(**_kwargs)
 
         for response in completion:
+            # print("response", response)
             if response.choices:
                 ai_output = response.choices[0].delta
                 if ai_output.tool_calls:

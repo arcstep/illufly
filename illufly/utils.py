@@ -83,6 +83,36 @@ def compress_text(text: str, start_limit: int=100, end_limit: int=100, delta: in
         # 否则，保留前后部分并用省略号连接
         return text[:start_limit] + f"\n...(省略{len(text)-start_limit-end_limit}字)\n" + text[-end_limit:]
 
+def merge_tool_calls(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    merged_results = []
+    current_result = None
+
+    for block in blocks:
+        if current_result is None or (block.get('id') and block['id'] != current_result['id']):
+            if current_result:
+                merged_results.append(current_result)
+            current_result = block.copy()
+        else:
+            for key, value in block.items():
+                if isinstance(value, dict):
+                    if key == 'function':
+                        current_result[key] = merge_function_fields(current_result.get(key, {}), value)
+                    else:
+                        current_result[key] = merge_json_blocks([current_result.get(key, {}), value])
+                elif isinstance(value, str):
+                    if key in ['type'] and value:
+                        if value != current_result.get(key, ''):
+                            current_result[key] = value 
+                    else:
+                        current_result[key] = current_result.get(key, '') + value
+                else:
+                    current_result[key] = value
+
+    if current_result:
+        merged_results.append(current_result)
+
+    return merged_results
+
 def merge_json_blocks(blocks: List[Dict[str, Any]]) -> Dict[str, Any]:
     merged_result = {}
 
@@ -92,15 +122,24 @@ def merge_json_blocks(blocks: List[Dict[str, Any]]) -> Dict[str, Any]:
                 merged_result[key] = value
             else:
                 if isinstance(value, dict) and isinstance(merged_result[key], dict):
-                    merged_result[key] = merge_json_blocks([merged_result[key], value])
-                elif key not in ['type'] and isinstance(value, str) and isinstance(merged_result[key], str):
-                    merged_result[key] += value
+                    if key == 'function':
+                        merged_result[key] = merge_function_fields(merged_result[key], value)
+                    else:
+                        merged_result[key] = merge_json_blocks([merged_result[key], value])
                 elif value != merged_result[key]:
                     merged_result[key] = value
 
     return merged_result
 
-def merge_blocks_by_index(blocks: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+def merge_function_fields(original: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
+    merged_function = original.copy()
+    if 'name' in new:
+        merged_function['name'] = original.get('name', '') + new['name']
+    if 'arguments' in new:
+        merged_function['arguments'] = original.get('arguments', '') + new['arguments']
+    return merged_function
+
+def merge_blocks_by_index(blocks: List[Dict[str, Any]]) -> Dict[int, List[Dict[str, Any]]]:
     index_groups = {}
     for block in blocks:
         index = block.get('index')
@@ -109,5 +148,5 @@ def merge_blocks_by_index(blocks: List[Dict[str, Any]]) -> Dict[int, Dict[str, A
                 index_groups[index] = []
             index_groups[index].append(block)
     
-    merged_results = {index: merge_json_blocks(group) for index, group in index_groups.items()}
+    merged_results = {index: merge_tool_calls(group) for index, group in index_groups.items()}
     return merged_results
