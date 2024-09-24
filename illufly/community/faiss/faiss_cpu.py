@@ -1,5 +1,6 @@
 from typing import List
-from ...types import VectorDB
+from ...utils import minify_text
+from ...types import VectorDB, TextBlock
 from ...io import log, alog
 
 import time
@@ -23,13 +24,13 @@ class FaissDB(VectorDB):
             self.index.train(docs)
         self.index.add(docs)
 
-    def call(self, text: str, top_k: int=5, **kwargs):
+    def query(self, text: str, top_k: int=None, **kwargs):
         """
         查询向量。
         """
         vectors = [self.embeddings.query(text)]
         vectors = np.array(vectors, dtype='float32')  # 将查询向量转换为NumPy数组
-        distances, indices = self.index.search(vectors, top_k)
+        distances, indices = self.index.search(vectors, top_k or self.top_k)
 
         # 按距离排序
         sorted_indices = np.argsort(distances[0])
@@ -39,5 +40,5 @@ class FaissDB(VectorDB):
         # 筛选出文档
         valid_indices = sorted_indices[sorted_indices > 0]
         self._last_output = [self.embeddings.last_output[i] for i in valid_indices]
-
-        return self._last_output
+        for doc in self._last_output:
+            yield TextBlock("info", f"{doc.metadata['source']}: {minify_text(doc.text)}")
