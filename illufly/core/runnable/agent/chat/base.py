@@ -4,7 +4,7 @@ import copy
 from abc import abstractmethod
 from typing import Union, List, Dict, Any
 
-from .....utils import merge_blocks_by_index, extract_text
+from .....utils import merge_tool_calls, extract_text
 from .....io import TextBlock, EndBlock
 
 from ..base import BaseAgent
@@ -129,7 +129,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 elif block.block_type == "tools_call_chunk":
                     tools_call.append(json.loads(block.text))
 
-            final_tools_call = merge_blocks_by_index(tools_call)
+            final_tools_call = merge_tool_calls(tools_call)
             if final_tools_call:
                 for block in self.handle_tools_call(final_tools_call, chat_memory, kwargs):
                     if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
@@ -145,39 +145,19 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 yield TextBlock("text_final", final_output_text)
 
                 # 检查 final_output_text 的文本结果中是否包含 <tool_call> 结构
-                # 示例如下：
-                # <tool_call>
-                # {"name": "get_current_weather", "arguments": {"location": "Paris", "unit": "celsius"}}
-                # </tool_call>
-                #
-                # 如果包含，仍然需要执行工具调用
-                # 这主要是为了兼容 Ollama 等兼容 openai 接口协议的情况
-                # 但其工具回调返回的是 <tool_call> 结构，而非 openai 协议现有的结构
-                tool_call_start = final_output_text.find("<tool_call>")
-                tool_call_end = final_output_text.find("</tool_call>")
-                if tool_call_start != -1 and tool_call_end != -1:
-                    tool_call_json = final_output_text[tool_call_start + len("<tool_call>"):tool_call_end]
-                    tool_call_func = json.loads(tool_call_json)
-                    try:
-                        tool_call = {
-                            "function": {
-                                "name": tool_call_func.get("name"),
-                                "arguments": json.dumps(tool_call_func.get("arguments", "[]"), ensure_ascii=False)
-                            }
-                        }
+                tool_calls = self.extract_tool_calls(final_output_text)
+                if tool_calls:
+                    for tool_call in tool_calls:
                         for block in self.handle_embedded_tool_call(tool_call, chat_memory, kwargs):
                             if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
                                 to_continue_call_llm = True
                             yield block
-                        # to_continue_call_llm = True
-                    except json.JSONDecodeError:
-                        pass
 
     def handle_tools_call(self, final_tools_call, chat_memory, kwargs):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
         yield TextBlock("tools_call_final", final_tools_call_text)
 
-        for index, tool in final_tools_call.items():
+        for index, tool in enumerate(final_tools_call):
             tools_call_message = [{
                 "role": "assistant",
                 "content": "",
@@ -204,7 +184,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         tools_list = kwargs.get("tools", self.tools)
         for struct_tool in tools_list:
             if tool.get('function', {}).get('name') == struct_tool.name:
-                tool_args = json.loads(tool['function']['arguments'])
+                tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
                 tool_func_result = struct_tool.func(**tool_args)
@@ -235,3 +215,27 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     chat_memory.extend(tool_resp_message)
                     self.remember_response(tool_resp_message)
                 yield block
+
+    def extract_tool_calls(self, text: str) -> List[Dict[str, Any]]:
+        tool_calls = []
+        start_marker = "<tool_call>"
+        end_marker = "</tool_call>"
+        start = text.find(start_marker)
+        while start != -1:
+            end = text.find(end_marker, start)
+            if end != -1:
+                tool_call_json = text[start + len(start_marker):end]
+                try:
+                    tool_call = json.loads(tool_call_json)
+                    tool_calls.append({
+                        "function": {
+                            "name": tool_call.get("name"),
+                            "arguments": json.dumps(tool_call.get("arguments", "[]"), ensure_ascii=False)
+                        }
+                    })
+                except json.JSONDecodeError:
+                    pass
+                start = text.find(start_marker, end)
+            else:
+                break
+        return tool_calls
