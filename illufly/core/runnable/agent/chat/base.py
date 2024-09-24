@@ -131,7 +131,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             final_tools_call = merge_tool_calls(tools_call)
             if final_tools_call:
-                for block in self.handle_tools_call(final_tools_call, chat_memory, kwargs):
+                for block in self.handle_openai_style_tools_call(final_tools_call, chat_memory, kwargs):
                     if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
                         to_continue_call_llm = True
                     yield block
@@ -145,15 +145,22 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 yield TextBlock("text_final", final_output_text)
 
                 # 检查 final_output_text 的文本结果中是否包含 <tool_call> 结构
-                tool_calls = self.extract_tool_calls(final_output_text)
+                tool_calls = self.extract_in_text_tool_calls(final_output_text)
                 if tool_calls:
-                    for tool_call in tool_calls:
-                        for block in self.handle_embedded_tool_call(tool_call, chat_memory, kwargs):
+                    for index, tool_call in enumerate(tool_calls):
+                        if index > 0:
+                            new_task = f'请继续: {json.dumps(tool_call, ensure_ascii=False)}'
+                            chat_memory.append({
+                                "role": "assistant",
+                                "content": new_task
+                            })
+                            self.remember_response(new_task)
+                        for block in self.handle_in_text_tool_call(tool_call, chat_memory, kwargs):
                             if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
                                 to_continue_call_llm = True
                             yield block
 
-    def handle_tools_call(self, final_tools_call, chat_memory, kwargs):
+    def handle_openai_style_tools_call(self, final_tools_call, chat_memory, kwargs):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
         yield TextBlock("tools_call_final", final_tools_call_text)
 
@@ -201,7 +208,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
                 yield TextBlock("tool_resp_final", tool_resp)
 
-    def handle_embedded_tool_call(self, tool_call, chat_memory, kwargs):
+    def handle_in_text_tool_call(self, tool_call, chat_memory, kwargs):
         if self.exec_tool:
             for block in self.execute_tool(tool_call, chat_memory, kwargs):
                 if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
@@ -216,7 +223,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     self.remember_response(tool_resp_message)
                 yield block
 
-    def extract_tool_calls(self, text: str) -> List[Dict[str, Any]]:
+    def extract_in_text_tool_calls(self, text: str) -> List[Dict[str, Any]]:
         tool_calls = []
         start_marker = "<tool_call>"
         end_marker = "</tool_call>"
