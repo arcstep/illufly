@@ -27,10 +27,11 @@ class BaseEmbeddings(Runnable):
     ```
     """
 
-    def __init__(self, model: str=None, api_key: str=None, dim: int=None, max_lines: int=None, **kwargs):
+    def __init__(self, model: str=None, base_url: str=None, api_key: str=None, dim: int=None, max_lines: int=None, **kwargs):
         super().__init__(**kwargs)
-        self.dim = dim or 1024
+        self.dim = dim
         self.model = model
+        self.base_url = base_url
         self.api_key = api_key
         self.max_lines = max_lines or 5
         self.clear_output()
