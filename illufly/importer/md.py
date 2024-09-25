@@ -37,23 +37,22 @@ class MarkdownFileImporter(Importer):
         self.documents.clear()
 
         files = self.get_files(self.directory, self.filename_filter, self.extensions)
-        print("files", files)
         for file in files:
+            abs_file = os.path.abspath(file)
             try:
-                if not os.path.exists(file):
-                    yield(TextBlock("warn", f"文件不存在 {file}"))
+                if not os.path.exists(abs_file):
+                    yield(TextBlock("warn", f"文件不存在 {abs_file}"))
                     continue
 
-                with open(file, 'r', encoding='utf-8') as f:
+                with open(abs_file, 'r', encoding='utf-8') as f:
                     txt = f.read()
-                    if txt.strip() == "":
+                    if str(txt).strip() == "":
                         yield(TextBlock("warn", f"文件内容为空 {file}"))
                         continue
-                    markdown = Markdown(txt, source=file)
-                    docs = self.split_markdown(markdown.text, markdown.source)
+                    docs = self.split_markdown(txt, file)
                     self.documents.extend(docs)
             except Exception as e:
-                yield(TextBlock("warn", f"读取文件失败 {file}: {e}"))
+                yield(TextBlock("warn", f"读取文件失败 {abs_file}: {e}"))
 
     def get_files(self, directory, filename_filter, extensions):
         matches = []
@@ -69,17 +68,21 @@ class MarkdownFileImporter(Importer):
         """
         按照指定规则分割Markdown文档。
 
-        :return: 分割后的Document对象列表
+        :return: 分割后Document对象列表
         """
-        chunks = []
-        if not text or text.strip() == "":
-            return chunks
-
         def split_text(text: str) -> List[str]:
             return text.split('\n')
 
         def create_chunk(lines: List[str]) -> Document:
             return Document(text='\n'.join(lines), metadata={"source": source})
+
+        chunks = []
+
+        if not isinstance(text, str):
+            raise ValueError("split_markdown的参数 text 必须是字符串")
+
+        if not text or text.strip() == "":
+            return chunks
 
         lines = split_text(text)
         current_chunk = []
@@ -91,15 +94,26 @@ class MarkdownFileImporter(Importer):
                 continue  # 忽略超过chunk_size的最小单位
 
             if current_length + line_length > self.chunk_size:
-                chunks.append(create_chunk(current_chunk))
-                overlap_start = max(0, count_tokens(current_chunk) - self.chunk_overlap)
-                current_chunk = current_chunk[overlap_start:] if count_tokens(current_chunk) > self.chunk_overlap else []
-                current_length = sum(count_tokens(l) for l in current_chunk)
+                docs = [d for (l, d) in current_chunk]
+                chunks.append(create_chunk(docs))
+                
+                # 计算重叠部分
+                overlap_length = 0
+                overlap_chunk = []
+                for l, d in reversed(current_chunk):
+                    overlap_length += l
+                    overlap_chunk.insert(0, d)
+                    if overlap_length >= self.chunk_overlap or overlap_length >= self.chunk_size / 2:
+                        break
 
-            current_chunk.append(line)
+                current_chunk = [(count_tokens(d), d) for d in overlap_chunk]
+                current_length = sum(l for l, _ in current_chunk)
+                continue
+
+            current_chunk.append((line_length, line))
             current_length += line_length
-
         if current_chunk:
-            chunks.append(create_chunk(current_chunk))
+            docs = [d for l, d in current_chunk]
+            chunks.append(create_chunk(docs))
 
         return chunks
