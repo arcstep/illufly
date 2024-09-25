@@ -2,6 +2,7 @@ from typing import List, Union
 from ...utils import minify_text
 from ...types import VectorDB, TextBlock, Document
 from ...io import log, alog
+from ...importer import MarkdownFileImporter
 
 import time
 import numpy as np
@@ -43,6 +44,11 @@ class FaissDB(VectorDB):
                 self.index.train(vectors)
             self.index.add(vectors)
             self.documents.extend(docs)
+    
+    def add_files(self, dir: str, filter: str=None, exts: list = None, chunk_size: int=None, chunk_overlap: int=None, **kwargs):
+        md_importer = MarkdownFileImporter(dir, filter, exts, chunk_size, chunk_overlap, **kwargs)
+        md_importer()
+        return self.add(md_importer.last_output)
 
     def _process_embeddings(self, docs: List[Document]):
         """
