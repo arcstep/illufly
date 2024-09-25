@@ -7,11 +7,10 @@ from ...types import BaseEmbeddings
 class DashScopeEmbeddings(BaseEmbeddings):
     """支持最新的阿里云模型服务灵积API的文本向量模型"""
 
-    def __init__(self, model: str=None, api_key: str=None, output_type: str="dense", *args, **kwargs):
+    def __init__(self, model: str=None, api_key: str=None, output_type: str="dense", **kwargs):
         super().__init__(
             model=model or "text-embedding-v3",
             api_key=api_key or os.getenv("DASHSCOPE_API_KEY"),
-            *args,
             **kwargs
         )
         self.output_type = output_type
@@ -28,9 +27,9 @@ class DashScopeEmbeddings(BaseEmbeddings):
         """
         查询文本向量。
         """
-        return self.embed_documents([text], text_type="query")[0]
+        return self.embed_documents([text], text_type="query", **kwargs)[0]
 
-    def embed_documents(self, texts: List[str], text_type: str="document") -> List[List[float]]:
+    def embed_documents(self, texts: List[str], text_type: str="document", **kwargs) -> List[List[float]]:
         """
         编码文本向量。
         """
@@ -43,7 +42,8 @@ class DashScopeEmbeddings(BaseEmbeddings):
             input=texts,
             text_type=text_type,
             dimension=self.dim,
-            output_type=self.output_type
+            output_type=self.output_type,
+            **kwargs
         )
         if response.status_code != HTTPStatus.OK:
             raise Exception('Request id: %s, Status code: %s, error code: %s, error message: %s' % (

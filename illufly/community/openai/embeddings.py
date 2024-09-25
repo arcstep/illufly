@@ -4,27 +4,36 @@ from http import HTTPStatus
 import os
 from ...types import BaseEmbeddings
 
-class ZhipuEmbeddings(BaseEmbeddings):
+class OpenAIEmbeddings(BaseEmbeddings):
     """支持最新的阿里云模型服务灵积API的文本向量模型"""
 
-    def __init__(self, model: str=None, api_key: str=None, dim: int=None, **kwargs):
+    def __init__(
+        self,
+        model: str=None,
+        base_url: str=None,
+        api_key: str=None,
+        imitator: str=None,
+        **kwargs
+    ):
+        imitator = (imitator or "").upper() or "OPENAI"
         super().__init__(
-            model=model or "embedding-3",
-            api_key=api_key or os.getenv("ZHIPUAI_API_KEY"),
-            dim=dim,
+            model=model or "text-embedding-ada-002",
+            base_url=base_url or os.getenv(f"{imitator}_BASE_URL"),
+            api_key=api_key or os.getenv(f"{imitator}_API_KEY"),
             **kwargs
         )
-
         try:
-            from zhipuai import ZhipuAI
-            self.client = ZhipuAI(api_key=api_key)
+            from openai import OpenAI
         except ImportError:
             raise RuntimeError(
-                "Could not import zhipuai package. "
-                "Please install it via 'pip install -U zhipuai'"
+                "Could not import openai package. "
+                "Please install it via 'pip install -U openai'"
             )
+        
+        self.client = OpenAI(base_url=self.base_url, api_key=self.api_key, **kwargs)
 
-    def query(self, text: str, **kwargs) -> List[float]:
+
+    def query(self, text: str,  **kwargs) -> List[float]:
         """
         查询文本向量。
         """
@@ -37,7 +46,6 @@ class ZhipuEmbeddings(BaseEmbeddings):
         response = self.client.embeddings.create(
             model=self.model,
             input=texts,
-            dimensions=self.dim,
             **kwargs
         )
         return [ed.embedding for ed in response.data]
