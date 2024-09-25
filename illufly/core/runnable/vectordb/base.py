@@ -9,6 +9,7 @@ class VectorDB(Runnable):
 
     def __init__(self, embeddings: BaseEmbeddings, top_k: int=None, **kwargs):
         super().__init__(**kwargs)
+        self.documents = []
         self.embeddings = embeddings
         self.dim = self.embeddings.dim
         self.top_k = top_k or 5
