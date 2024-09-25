@@ -58,7 +58,7 @@ class FaissDB(VectorDB):
         not_embedded_docs = [d for d in docs if 'embeddings' not in d.metadata]
 
         if not_embedded_docs:
-            new_embeddings = self.embeddings(not_embedded_docs)
+            new_embeddings = self.embeddings(not_embedded_docs, verbose=self.verbose)
             embedded_docs.extend(new_embeddings)
 
         if embedded_docs:
