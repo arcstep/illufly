@@ -49,6 +49,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         self.task = ""
 
     @property
+    def last_input(self):
+        return self._last_input.last_content() if self._last_input else None
+
+    @property
     def last_output(self):
         return self.memory[-1]['content'] if self.memory else ""
 
@@ -78,6 +82,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         # 条件2：提供的提示语内容使用 system 角色
         new_chat = kwargs.pop("new_chat", False) or not self.memory
         new_task_flag = False
+        self._last_input = Messages(prompt)
 
         if new_chat:
             # TODO: 应当在清空前做好历史管理
@@ -112,7 +117,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             self.locked_items = len(self.memory)
 
     def chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        chat_memory = self.get_chat_memory(knowledge=self.get_knowledge())
+        chat_memory = self.get_chat_memory(
+            remember_rounds=self.remember_rounds,
+            knowledge=self.get_knowledge(self.last_input)
+        )
         chat_memory.extend(self.create_new_memory(prompt))
 
         to_continue_call_llm = True

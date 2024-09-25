@@ -83,10 +83,10 @@ class MemoryManager:
 
         existing_contents = {msg['content'] for msg in new_messages if msg['role'] == 'user'}
         for kg in knowledge:
-            content = f'已知：{kg}'
+            content = f'已知知识：\n{kg}'
             if content not in existing_contents:
-                new_memory.append([
+                new_memory.extend([
                     ("user", content),
-                    ("assistant", 'OK, 我将利用这个知识回答后面问题。')
+                    ("assistant", 'OK')
                 ])
         return new_memory

@@ -71,20 +71,22 @@ class FaissDB(VectorDB):
         查询向量。
         """
         if len(self.documents) == 0:
-            yield TextBlock("info", "FaissDB 中没有数据")
-            return
+            self._last_output = []
+            yield TextBlock("warn", "FaissDB 中没有数据")
+        elif not text or len(text.strip()) == 0:
+            yield TextBlock("warn", "输入的查询文本不能为空")
+        else:
+            # 对输入字符串做向量编码并查询
+            vectors = [self.embeddings.query(text)]
+            vectors = np.array(vectors, dtype='float32')  # 将查询向量转换为NumPy数组
+            distances, indices = self.index.search(vectors, top_k or self.top_k)
 
-        # 对输入字符串做向量编码并查询
-        vectors = [self.embeddings.query(text)]
-        vectors = np.array(vectors, dtype='float32')  # 将查询向量转换为NumPy数组
-        distances, indices = self.index.search(vectors, top_k or self.top_k)
-
-        # 筛选出文档
-        valid_indices = indices[0][indices[0] >= 0]
-        self._last_output = [(distances[0][i], self.documents[valid_indices[i]]) for i in range(len(valid_indices))]
-        
-        # 按距离排序
-        self._last_output.sort(key=lambda x: x[0])
-        
-        for distance, doc in self._last_output:
-            yield TextBlock("info", f"[{distance:.3f}] {doc.metadata['source']}: {minify_text(doc.text)}")
+            # 筛选出文档
+            valid_indices = indices[0][indices[0] >= 0]
+            self._last_output = [(distances[0][i], self.documents[valid_indices[i]]) for i in range(len(valid_indices))]
+            
+            # 按距离排序
+            self._last_output.sort(key=lambda x: x[0])
+            
+            for distance, doc in self._last_output:
+                yield TextBlock("info", f"[{distance:.3f}] {doc.metadata['source']}: {minify_text(doc.text)}")
