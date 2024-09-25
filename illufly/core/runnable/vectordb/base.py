@@ -21,4 +21,4 @@ class VectorDB(Runnable):
         pass
 
     def call(self, text: str, top_k: int=None, **kwargs):
-        yield from self.query(text, top_k)
+        yield from self.query(text, top_k or self.top_k)
