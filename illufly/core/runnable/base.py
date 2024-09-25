@@ -51,9 +51,11 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         BindingManager.__init__(self, **kwargs)
 
         self.continue_running = continue_running
+        self.verbose = False
 
     def __call__(self, *args, verbose:bool=False, handler:Callable=None, **kwargs):
         handler = handler or log
+        self.verbose = verbose
         return handler(self, *args, verbose=verbose, **kwargs)
 
     @property
