@@ -11,7 +11,7 @@ from ..config import get_env
 CHECK_RESULT_SECONDS = get_env("HTTP_CHECK_RESULT_SECONDS")
 DASHSCOPE_BASE_URL = get_env("DASHSCOPE_BASE_URL")
 
-def cofirm_upload_file(model: str=None, image_path: str=None, api_key: str=None):
+def confirm_upload_file(model: str=None, image_path: str=None, api_key: str=None):
     try:
         from dashscope.utils.oss_utils import upload_file
     except ImportError:
@@ -24,7 +24,8 @@ def cofirm_upload_file(model: str=None, image_path: str=None, api_key: str=None)
         return image_path
     if os.path.exists(image_path):
         image = f"file://{os.path.abspath(image_path)}"
-        return upload_file(model, image_path, api_key)
+        path = upload_file(model, image, api_key)
+        return path
     else:
         raise ValueError(f"Invalid image path: {image_path}")
 

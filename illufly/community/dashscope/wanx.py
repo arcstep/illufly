@@ -26,20 +26,12 @@ from ..http import (
     async_save_image,
 
     DASHSCOPE_BASE_URL,
-    cofirm_upload_file
+    confirm_upload_file
 )
-
-COSPLAY_MODEL = "wanx-style-cosplay-v1"
-TEXT2IMAGE_MODEL = "wanx-v1"
-DEFAULT_FACE_IMAGE_URL = "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png"
-DEFAULT_TEMPLATE_IMAGE_URL = "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png"
-DEFAULT_SIZE = "1024*1024"
-DEFAULT_REF_MODE = "repaint"
 
 class Text2ImageWanx(BaseAgent):
     """
     支持风格包括：水彩、油画、中国画、素描、扁平插画、二次元、3D卡通。
-
     [详细调用参数可参考通义万相文生图 API](https://help.aliyun.com/zh/dashscope/developer-reference/api-details-9)
     """
     def __init__(self, model: str=None, api_key: str=None, **kwargs):
@@ -57,7 +49,7 @@ class Text2ImageWanx(BaseAgent):
 
     def get_data(self, input: Dict[str, Any], parameters: Dict[str, Any]=None):
         ref_img = input.get("ref_img", None)
-        ref_img_url = cofirm_upload_file(self.model, ref_img, self.api_key) if ref_img else None
+        ref_img_url = confirm_upload_file(self.model, ref_img, self.api_key) if ref_img else None
         input.update({"ref_img": ref_img_url})
         return {
             "model": self.model,
@@ -70,8 +62,6 @@ class Text2ImageWanx(BaseAgent):
         if status_result['output']['task_status'] == 'SUCCEEDED':
             results = status_result['output']['results']
             for result_index, result in enumerate(results):
-                print("output", output)
-                print("result_index", result_index)
                 url = result['url']
                 yield TextBlock("image_url", url)
                 if not output or result_index >= len(output):
@@ -146,95 +136,48 @@ class Text2ImageWanx(BaseAgent):
         for block in self.parse_result(status_result, output):
             yield block
 
-class CosplayWanx(BaseAgent):
+class CosplayWanx(Text2ImageWanx):
     """
     通义万相-Cosplay动漫人物生成通过输入人像图片和卡通形象图片，可快速生成人物卡通写真。目前支持3D卡通形象风格。
-
     一张人像照片 + 一张卡通风格 = 一张卡通写真
-
     详细调用参数可参考通义万相 Cosplay API。
     """
     def __init__(self, model: str=None, **kwargs):
-        super().__init__(threads_group="WANX", **kwargs)
-        self.default_call_args = {
-            "model": model or DEFAULT_MODEL
-        }
-        self.model_args = {
-            "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))
-        }
+        super().__init__(model=(model or "wanx-style-cosplay-v1"), **kwargs)
 
-    def get_headers(self):
+    @property
+    def aigc_base_url(self):
+        return f"{DASHSCOPE_BASE_URL}/services/aigc/image-generation/generation"
+
+    def get_data(self, input: Dict[str, Any], parameters: Dict[str, Any]=None):
+        face_image = input.get("face_image_url", None)
+        if not face_image:
+            file = input.get("face_image", None)
+            face_image = confirm_upload_file(self.model, file, self.api_key)
+        template_image = input.get("template_image_url", None)
+        if not template_image:
+            file = input.get("template_image", None)
+            template_image = confirm_upload_file(self.model, file, self.api_key)
         return {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.model_args['api_key']}",
-            "X-DashScope-OssResourceResolve": "enable",
-            "X-DashScope-Async": "enable"
-        }
-
-    def call(self, face_image: str=None, template_image: str=None, model_index: int = 1, 
-             output_path: Optional[Union[str, List[str]]] = None):
-        face_image_url, template_image_url = self.upload(face_image, template_image)
-
-        headers = get_headers(self.model_args['api_key'])
-        data = {
-            "model": COSPLAY_MODEL,
+            "model": self.model,
             "input": {
-                "face_image_url": face_image_url or DEFAULT_FACE_IMAGE_URL,
-                "template_image_url": template_image_url or DEFAULT_TEMPLATE_IMAGE_URL,
-                "model_index": model_index
+                "face_image_url": face_image,
+                "template_image_url": template_image,
+                "model_index": input.get("model_index", 1)
             }
         }
 
-        result = send_request(f"{DASHSCOPE_BASE_URL}/services/aigc/image-generation/generation", headers, data)
-        yield TextBlock("info", f'{json.dumps(result, ensure_ascii=False)}')
-        task_id = result['output']['task_id']
-        
-        yield TextBlock("info", f'{task_id}: {result["output"]["task_status"]}')
-        if "usage" in result:
-            yield TextBlock("usage", json.dumps(result["usage"]))
-
-        status_result = check_task_status(task_id, headers)
+    def parse_result(self, status_result, output):
+        n = len(output or [])
         if status_result['output']['task_status'] == 'SUCCEEDED':
             url = status_result['output']['result_url']
             yield TextBlock("image_url", url)
-
-            parsed_url = urlparse(url)
-            _output_path = output_path or os.path.basename(parsed_url.path)
-            yield from save_image(url, _output_path)
+            if not output:
+                parsed_url = urlparse(url)
+                filename = os.path.basename(parsed_url.path)
+                output_path = f"{filename.rsplit('.', 1)[0]}.{filename.rsplit('.', 1)[1]}"
+            else:
+                output_path = output[0]
+            yield from save_image(url, output_path)
             if 'usage' in status_result:
                 yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
-
-    async def async_call(self, face_image: str=None, template_image: str=None, model_index: int = 1, 
-                         output_path: Optional[Union[str, List[str]]] = None):
-        face_image_url, template_image_url = self.upload(face_image, template_image)
-
-        headers = get_headers(self.model_args['api_key'])
-        data = {
-            "model": COSPLAY_MODEL,
-            "input": {
-                "face_image_url": face_image_url or DEFAULT_FACE_IMAGE_URL,
-                "template_image_url": template_image_url or DEFAULT_TEMPLATE_IMAGE_URL,
-                "model_index": model_index
-            }
-
-        }
-        result = await async_send_request(f"{DASHSCOPE_BASE_URL}/services/aigc/image-generation/generation", headers, data)
-        yield TextBlock("info", f'{json.dumps(result, ensure_ascii=False)}')
-        task_id = result['output']['task_id']
-        
-        yield TextBlock("info", f'{task_id}: {result["output"]["task_status"]}')
-        if "usage" in result:
-            yield TextBlock("usage", json.dumps(result["usage"]))
-
-        status_result = await async_check_task_status(task_id, headers)
-        if status_result['output']['task_status'] == 'SUCCEEDED':
-            url = status_result['output']['result_url']
-            yield TextBlock("image_url", url)
-
-            parsed_url = urlparse(url)
-            _output_path = output_path or os.path.basename(parsed_url.path)
-            async for block in async_save_image(url, _output_path):
-                yield block
-            if 'usage' in status_result:
-                yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
-
