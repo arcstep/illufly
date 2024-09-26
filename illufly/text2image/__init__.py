@@ -1,6 +1,4 @@
-from .embeddings import TextEmbeddings
-from .qwen import ChatQwen
-from .wanx import (
+from .dashscope import (
     Text2ImageWanx,
     CosplayWanx,
     RepaintWanx,
