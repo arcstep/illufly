@@ -23,14 +23,12 @@ from ..http import (
 
     async_send_request,
     async_check_task_status,
-    async_save_image
+    async_save_image,
+
+    DASHSCOPE_BASE_URL,
+    cofirm_upload_file
 )
 
-from ...config import get_env
-
-DASHSCOPE_BASE_URL = get_env("DASHSCOPE_BASE_URL")
-
-DEFAULT_MODEL = "wanx-sketch-to-image-v1"
 COSPLAY_MODEL = "wanx-style-cosplay-v1"
 TEXT2IMAGE_MODEL = "wanx-v1"
 DEFAULT_FACE_IMAGE_URL = "https://public-vigen-video.oss-cn-shanghai.aliyuncs.com/public/dashscope/test.png"
@@ -38,110 +36,115 @@ DEFAULT_TEMPLATE_IMAGE_URL = "https://public-vigen-video.oss-cn-shanghai.aliyunc
 DEFAULT_SIZE = "1024*1024"
 DEFAULT_REF_MODE = "repaint"
 
-
 class Text2ImageWanx(BaseAgent):
     """
     支持风格包括：水彩、油画、中国画、素描、扁平插画、二次元、3D卡通。
 
     [详细调用参数可参考通义万相文生图 API](https://help.aliyun.com/zh/dashscope/developer-reference/api-details-9)
     """
-    def __init__(self, model: str=None, **kwargs):
+    def __init__(self, model: str=None, api_key: str=None, **kwargs):
         super().__init__(threads_group="WANX", **kwargs)
-        self.default_call_args = {
-            "model": model or DEFAULT_MODEL
+        self.model = model or "wanx-v1"
+        self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
+    
+    def get_headers(self):
+        return {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+            "X-DashScope-OssResourceResolve": "enable",
+            "X-DashScope-Async": "enable"
         }
-        self.model_args = {
-            "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))
+
+    def get_data(self, input: Dict[str, Any], parameters: Dict[str, Any]=None):
+        ref_img = input.get("ref_img", None)
+        ref_img_url = cofirm_upload_file(self.model, ref_img, self.api_key) if ref_img else None
+        input.update({"ref_img": ref_img_url})
+        return {
+            "model": self.model,
+            "input": input,
+            "parameters": parameters or {}
         }
     
-    def call(self, prompt: str, negative_prompt: Optional[str] = None, ref_img: Optional[str] = None, 
-             style: Optional[str] = None, size: Optional[str] = DEFAULT_SIZE, n: int = 1, 
-             seed: Optional[int] = None, ref_strength: Optional[float] = None, ref_mode: Optional[str] = DEFAULT_REF_MODE,
-             output_path: Optional[Union[str, List[str]]] = None):
-        headers = get_headers(self.model_args['api_key'])
-        data = {
-            "model": TEXT2IMAGE_MODEL,
-            "input": {
-                "prompt": prompt,
-                "negative_prompt": negative_prompt,
-                "ref_img": ref_img
-            },
-            "parameters": {
-                "style": style,
-                "size": size,
-                "n": n,
-                "seed": seed,
-                "ref_strength": ref_strength,
-                "ref_mode": ref_mode
-            }
-        }
-        result = send_request(f"{DASHSCOPE_BASE_URL}/services/aigc/text2image/image-synthesis", headers, data)
-        yield TextBlock("info", f'{json.dumps(result, ensure_ascii=False)}')
-        task_id = result['output']['task_id']
-        output_path = validate_output_path(output_path, n)
-        
-        yield TextBlock("info", f'{task_id}: {result["output"]["task_status"]}')
-        if "usage" in result:
-            yield TextBlock("usage", json.dumps(result["usage"]))
-
-        status_result = check_task_status(task_id, headers)
+    def parse_result(self, status_result, output):
+        n = len(output or [])
         if status_result['output']['task_status'] == 'SUCCEEDED':
             results = status_result['output']['results']
-            for i, result in enumerate(results):
+            for result_index, result in enumerate(results):
+                print("output", output)
+                print("result_index", result_index)
                 url = result['url']
                 yield TextBlock("image_url", url)
-                if not output_path:
+                if not output or result_index >= len(output):
                     parsed_url = urlparse(url)
                     filename = os.path.basename(parsed_url.path)
-                    output_path = [f"{filename.rsplit('.', 1)[0]}_{i}.{filename.rsplit('.', 1)[1]}" for i in range(n)]
-                yield from save_image(url, output_path[i])
+                    output_path = f"{filename.rsplit('.', 1)[0]}.{filename.rsplit('.', 1)[1]}"
+                else:
+                    output_path = output[result_index]
+                yield from save_image(url, output_path)
             if 'usage' in status_result:
                 yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
-    async def async_call(self, prompt: str, negative_prompt: Optional[str] = None, ref_img: Optional[str] = None, 
-                         style: Optional[str] = None, size: Optional[str] = DEFAULT_SIZE, n: int = 1, 
-                         seed: Optional[int] = None, ref_strength: Optional[float] = None, ref_mode: Optional[str] = DEFAULT_REF_MODE,
-                         output_path: Optional[Union[str, List[str]]] = None):
-        headers = get_headers(self.model_args['api_key'])
-        data = {
-            "model": TEXT2IMAGE_MODEL,
-            "input": {
-                "prompt": prompt,
-                "negative_prompt": negative_prompt,
-                "ref_img": ref_img
-            },
-            "parameters": {
-                "style": style,
-                "size": size,
-                "n": n,
-                "seed": seed,
-                "ref_strength": ref_strength,
-                "ref_mode": ref_mode
-            }
-        }
-        output_path = validate_output_path(output_path, n)
-        result = await async_send_request(f"{DASHSCOPE_BASE_URL}/services/aigc/text2image/image-synthesis", headers, data)
-        yield TextBlock("info", f'{json.dumps(result, ensure_ascii=False)}')
-        task_id = result['output']['task_id']
-        
-        yield TextBlock("info", f'{task_id}: {result["output"]["task_status"]}')
-        if "usage" in result:
-            yield TextBlock("usage", json.dumps(result["usage"]))
+    def parse_resp(self, resp):
+        yield TextBlock("info", f'{json.dumps(resp, ensure_ascii=False)}')
+        # 解析提交结果
+        task_id = resp['output']['task_id']        
+        yield TextBlock("info", f'{task_id}: {resp["output"]["task_status"]}')
+        if "usage" in resp:
+            yield TextBlock("usage", json.dumps(resp["usage"]))
+    
+    @property
+    def aigc_base_url(self):
+        return f"{DASHSCOPE_BASE_URL}/services/aigc/text2image/image-synthesis"
+    
+    def call(
+        self, 
+        input: Dict[str, Any],
+        parameters: Optional[Dict[str, Any]]=None,
+        output: Optional[Union[str, List[str]]] = None,
+        **kwargs
+    ):
+        parameters = parameters or {}
+        if isinstance(output, str):
+            output = [output]
 
-        status_result = await async_check_task_status(task_id, headers)
-        if status_result['output']['task_status'] == 'SUCCEEDED':
-            results = status_result['output']['results']
-            for i, result in enumerate(results):
-                url = result['url']
-                yield TextBlock("image_url", url)
-                if not output_path:
-                    parsed_url = urlparse(url)
-                    filename = os.path.basename(parsed_url.path)
-                    output_path = [f"{filename.rsplit('.', 1)[0]}_{i}.{filename.rsplit('.', 1)[1]}" for i in range(n)]
-                async for block in async_save_image(url, output_path[i]):
-                    yield block
-            if 'usage' in status_result:
-                yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
+        # 异步提交生成请求
+        headers = self.get_headers()
+        data = self.get_data(input, parameters)
+        resp = send_request(self.aigc_base_url, headers, data)
+
+        # 解析异步提交响应
+        yield from self.parse_resp(resp)
+
+        # 等待异步生成结果
+        status_result = {}
+        yield from check_task_status(status_result, resp['output']['task_id'], headers)
+        yield from self.parse_result(status_result, output)
+
+    async def async_call(
+        self, 
+        input: Dict[str, Any]=None,
+        parameters: Optional[Dict[str, Any]]=None,
+        output: Optional[Union[str, List[str]]] = None,
+        **kwargs
+    ):
+        if isinstance(output, str):
+            output = [output]
+
+        # 异步提交生成请求
+        headers = self.get_headers()
+        data = self.get_data(input, parameters)
+        resp = await async_send_request(self.aigc_base_url, headers, data)
+
+        # 解析异步提交响应
+        for block in self.parse_resp(resp):
+            yield block
+
+        # 等待生成结果
+        status_result = {}
+        async for block in async_check_task_status(status_result, resp['output']['task_id'], headers):
+            yield block
+        for block in self.parse_result(status_result, output):
+            yield block
 
 class CosplayWanx(BaseAgent):
     """
@@ -159,9 +162,19 @@ class CosplayWanx(BaseAgent):
         self.model_args = {
             "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY"))
         }
-    
-    def call(self, face_image_url: str=None, template_image_url: str=None, model_index: int = 1, 
+
+    def get_headers(self):
+        return {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.model_args['api_key']}",
+            "X-DashScope-OssResourceResolve": "enable",
+            "X-DashScope-Async": "enable"
+        }
+
+    def call(self, face_image: str=None, template_image: str=None, model_index: int = 1, 
              output_path: Optional[Union[str, List[str]]] = None):
+        face_image_url, template_image_url = self.upload(face_image, template_image)
+
         headers = get_headers(self.model_args['api_key'])
         data = {
             "model": COSPLAY_MODEL,
@@ -191,8 +204,10 @@ class CosplayWanx(BaseAgent):
             if 'usage' in status_result:
                 yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
-    async def async_call(self, face_image_url: str=None, template_image_url: str=None, model_index: int = 1, 
+    async def async_call(self, face_image: str=None, template_image: str=None, model_index: int = 1, 
                          output_path: Optional[Union[str, List[str]]] = None):
+        face_image_url, template_image_url = self.upload(face_image, template_image)
+
         headers = get_headers(self.model_args['api_key'])
         data = {
             "model": COSPLAY_MODEL,

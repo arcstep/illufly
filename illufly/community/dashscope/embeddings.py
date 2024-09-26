@@ -4,7 +4,7 @@ from http import HTTPStatus
 import os
 from ...types import BaseEmbeddings
 
-class DashScopeEmbeddings(BaseEmbeddings):
+class TextEmbeddings(BaseEmbeddings):
     """支持最新的阿里云模型服务灵积API的文本向量模型"""
 
     def __init__(self, model: str=None, api_key: str=None, output_type: str="dense", **kwargs):
