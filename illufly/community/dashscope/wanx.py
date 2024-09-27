@@ -90,35 +90,43 @@ class Text2ImageWanx(BaseAgent):
     def parse_result(self, status_result, output):
         n = len(output or [])
         if status_result['output']['task_status'] == 'SUCCEEDED':
-            results = status_result['output']['results']
+            results = []
             if "results" in status_result['output']:
                 results = status_result['output']['results']
             elif "result_url" in status_result['output']:
-                results = [{"url": status_result['output']['result_url']}]
+                result_url = status_result['output']['result_url']
+                if isinstance(result_url, list):
+                    results = [{"url": r} for r in result_url]
+                elif isinstance(result_url, str):
+                    results = [{"url": result_url}]
+                else:
+                    raise Exception(f"output not be list or str, but got {type(result_url)}: output={result_url}")
             else:
                 yield TextBlock("warn", "生成失败")
 
-            for result_index, result in enumerate(results):
-                url = result['url']
-                yield TextBlock("image_url", url)
-                if not output or result_index >= len(output):
-                    parsed_url = urlparse(url)
-                    filename = os.path.basename(parsed_url.path)
-                    output_path = f"{filename.rsplit('.', 1)[0]}.{filename.rsplit('.', 1)[1]}"
-                else:
-                    output_path = output[result_index]
-                yield from save_image(url, output_path)
+            if results:
+                for result_index, result in enumerate(results):
+                    url = result['url']
+                    yield TextBlock("image_url", url)
+                    if not output or result_index >= len(output):
+                        parsed_url = urlparse(url)
+                        filename = os.path.basename(parsed_url.path)
+                        output_path = f"{filename.rsplit('.', 1)[0]}.{filename.rsplit('.', 1)[1]}"
+                    else:
+                        output_path = output[result_index]
+                    yield from save_image(url, output_path)
 
-            if 'usage' in status_result:
-                yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
+                if 'usage' in status_result:
+                    yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
     def parse_resp(self, resp):
         yield TextBlock("info", f'{json.dumps(resp, ensure_ascii=False)}')
         # 解析提交结果
-        task_id = resp['output']['task_id']        
-        yield TextBlock("info", f'{task_id}: {resp["output"]["task_status"]}')
-        if "usage" in resp:
-            yield TextBlock("usage", json.dumps(resp["usage"]))
+        if "output" in resp:
+            task_id = resp['output']['task_id']        
+            yield TextBlock("info", f'{task_id}: {resp["output"]["task_status"]}')
+            if "usage" in resp:
+                yield TextBlock("usage", json.dumps(resp["usage"]))
     
     @property
     def aigc_base_url(self):
@@ -140,13 +148,16 @@ class Text2ImageWanx(BaseAgent):
         data = self.get_data(input, parameters)
         resp = send_request(self.aigc_base_url, headers, data)
 
-        # 解析异步提交响应
-        yield from self.parse_resp(resp)
 
         # 等待异步生成结果
+        yield from self.parse_resp(resp)
         status_result = {}
-        yield from check_task_status(status_result, resp['output']['task_id'], headers)
-        yield from self.parse_result(status_result, output)
+        if "output" in resp:
+            yield from check_task_status(status_result, resp['output']['task_id'], headers)
+
+        # 解析最终结果
+        if "output" in status_result:
+            yield from self.parse_result(status_result, output)
 
     async def async_call(
         self, 
@@ -237,6 +248,10 @@ class RepaintWanx(CosplayWanx):
 class BackgroundWanx(Text2ImageWanx):
     """
     通义万相-图像背景生成可以基于输入的前景图像素材拓展生成背景信息，实现自然的光影融合效果，与细腻的写实画面生成。
+
+    :input.base_image_url: 透明背景的主体图像URL。
+    需要为带透明背景的RGBA 四通道图像，支持png格式，分辨率长边不超过2048像素。
+    输出图像的分辨率与该输入图相同。
     """
     def __init__(self, model: str=None, **kwargs):
         super().__init__(model=(model or "wanx-background-generation-v2"), **kwargs)
@@ -252,11 +267,11 @@ class BackgroundWanx(Text2ImageWanx):
                 "base_image_url": self.confirm_content_url(input, "base_image", "_url"),
                 "ref_image_url": self.confirm_content_url(input, "ref_image", "_url"),
                 "reference_edge": {
-                    "foreground_edge": self.confirm_content_url(input, "foregrund", "_edge"),
+                    "foreground_edge": self.confirm_content_url(input, "foreground", "_edge"),
                     "background_edge": self.confirm_content_url(input, "background", "_edge")
                 },
                 "neg_ref_prompt": input.get("neg_ref_prompt", "")[:70] or None,
-                "ref_prompt": input.get("template_image", "")[:70] or None,
+                "ref_prompt": input.get("ref_prompt", "")[:70] or None,
                 "title": input.get("title", "")[:8] or None,
                 "sub_title": input.get("sub_title", "")[:10] or None
             },
@@ -278,10 +293,11 @@ class AnyTextWanx(Text2ImageWanx):
         return f"{DASHSCOPE_BASE_URL}/services/aigc/anytext/generation/"
 
     def get_data(self, input: Dict[str, Any], parameters: Dict[str, Any]=None):
+        default_mask = "http://public-vigen-video.oss-cn-shanghai.aliyuncs.com/yuxiang.tyx/test_anytext/gen1.png"
         return {
             "model": self.model,
             "input": {
-                "mask_image_url": self.confirm_content_url(input, "mask_image", "_url"),
+                "mask_image_url": self.confirm_content_url(input, "mask_image", "_url") or default_mask,
                 "base_image_url": self.confirm_content_url(input, "base_image", "_url"),
                 "reference_edge": {
                     "foreground_edge": self.confirm_content_url(input, "foregrund", "_edge"),
