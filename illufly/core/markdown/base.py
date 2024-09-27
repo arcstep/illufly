@@ -47,13 +47,6 @@ class Markdown():
     def text(self):
         return self.__class__.to_text(self.documents)
 
-    @property
-    def types(self):
-        s = set()
-        for d in self.documents:
-            s.add(d.metadata['type'])
-        print(s)
-
     def get_all(self, pattern: str=None):
         return [
             d

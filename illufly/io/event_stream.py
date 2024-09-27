@@ -14,7 +14,7 @@ async def event_stream(runnable: "Runnable", *args, **kwargs):
     resp = runnable.async_call(*args, **kwargs)
     async for block in resp:
         if isinstance(block, TextBlock):
-            yield f"event: {block.block_type}\ndata: {block.content}\n\n"
+            yield f"event: {block.block_type}\ndata: {block.text}\n\n"
         elif isinstance(block, str):
             yield f"data: {block}\n\n"
         else:

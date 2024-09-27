@@ -9,30 +9,42 @@ from datetime import datetime
 from ..config import get_env, color_code
 
 class TextBlock():
-    def __init__(self, block_type: str, content: str, thread_id: str=None):
-        if content and not isinstance(content, str):
-            raise ValueError("content 必须是字符串类型")
+    def __init__(self, block_type: str, content: Any, thread_id: str=None):
         self.content = content
         self.block_type = block_type
         self.thread_id = thread_id
         # self.created_at = datetime.now()
 
     def __str__(self):
-        return self.content
+        return self.text
     
     def __repr__(self):
-        return f"TextBlock(block_type=<{self.block_type}>, content=<{self.content}>)"
+        return f"TextBlock(block_type=<{self.block_type}>, content=<{self.text}>)"
     
     def json(self):
         return json.dumps({
             "block_type": self.block_type,
-            "content": self.content,
+            "content": self.text,
             "thread_id": self.thread_id
         })
 
     @property
     def text(self):
-        return self.content
+        """
+        兼容多模态时返回图像、视频等情况
+        """
+        if isinstance(self.content, str):
+            return self.content
+        elif isinstance(self.content, list):
+            items = []
+            for item in self.content:
+                if isinstance(item, dict) and "text" in item:
+                    items.append(item["text"])
+                else:
+                    items.append(json.dumps(item, ensure_ascii=False))
+            return ",".join(items)
+        else:
+            return str(self.content)
     
     @property
     def text_with_print_color(self):
@@ -56,7 +68,7 @@ class TextBlock():
 
         env_var_name = color_mapping.get(self.block_type, "ILLUFLY_COLOR_INFO")
         color = get_env(env_var_name)
-        return color_code(color) + self.content + "\033[0m"
+        return color_code(color) + self.text + "\033[0m"
 
 class EndBlock(TextBlock):
     def __init__(self, output_text: str):

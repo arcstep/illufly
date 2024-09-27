@@ -74,6 +74,6 @@ class ChatOpenAI(ChatAgent):
                         }
                         yield TextBlock("tools_call_chunk", json.dumps(func_json, ensure_ascii=False))
                 else:
-                    content = ai_output.content
+                    content = ai_output.text
                     if content:
                         yield TextBlock("chunk", content)

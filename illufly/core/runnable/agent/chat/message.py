@@ -7,7 +7,8 @@ from ...template import Template
 class Message:
     def __init__(self, role: str, content: Union[str, Template]):
         self.role = role
-        self.content = content
+        self.content = content if not isinstance(content, Template) else None
+        self.template = content if isinstance(content, Template) else None
 
     def __str__(self):
         return f"{self.role}: {self.content}"
@@ -15,11 +16,33 @@ class Message:
     def __repr__(self):
         return f"Message(role={self.role}, content={self.content})"
     
-    def to_dict(self, input_vars: Dict[str, Any]=None):
+    def to_dict(self, input_vars: Dict[str, Any]=None, style: str=None):
+        if isinstance(self.content, list) and self.content:
+            if style == "openai":
+                self.content = [
+                    {
+                        "type": item.get("type", "image_url" if "image" in item else "text"),
+                        **({"image_url": item.get("image_url", {"url": item["image"]} if "image" in item else None)} if item.get("image_url") or "image" in item else {}),
+                        **({"text": item.get("text")} if item.get("text") is not None else {})
+                    }
+                    for item in self.content
+                ]
+            elif style == "qwen":
+                self.content = [
+                    {
+                        **({"image": item.get("image", item["image_url"]["url"] if "image_url" in item else None)} if item.get("image") or "image_url" in item else {}),
+                        **({"text": item.get("text")} if item.get("text") is not None else {})
+                    }
+                    for item in self.content
+                ]
+        elif self.template:
+            self.content = self.template.format(input_vars)
+
         return {
             "role": self.role,
-            "content": self.to_text(input_vars)
+            "content": self.content
         }
+
 
     def to_text(self, input_vars: Dict[str, Any]=None):
         if isinstance(self.content, Template):
@@ -51,12 +74,15 @@ class Messages:
         messages: Union[
             Message,
             str,
+            Dict[str, Any],
             Template,
             Tuple[str, Union[str, Template]],
-            List[Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]]
-        ]=None
+            List[Union[Message, str, Dict[str, Any], Template, Tuple[str, Union[str, Template]]]]
+        ]=None,
+        style: str=None
     ):
         self.raw_messages = messages or []
+        self.style = style or "openai"
 
         if not isinstance(self.raw_messages, list):
             self.raw_messages = [self.raw_messages]
@@ -66,29 +92,33 @@ class Messages:
             self.messages.append(self._convert_to_message(msg, i))
 
     def _convert_to_message(self, msg: Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]], index: int) -> Message:
+        message = None
         if isinstance(msg, Message):
-            return msg
+            message = msg
         elif isinstance(msg, str):
             role = self._determine_role(index)
-            return Message(role=role, content=msg)
+            message = Message(role=role, content=msg)
+        elif isinstance(msg, list):
+            role = self._determine_role(index)
+            message = Message(role=role, content=msg)
         elif isinstance(msg, Template):
             role = self._determine_role(index)
-            return Message(role=role, content=msg)
+            message = Message(role=role, content=msg)
         elif isinstance(msg, dict):
             if msg.get('role') == 'ai':
                 msg['role'] = 'assistant'
-            return Message(role=msg.get('role', 'user'), content=msg.get('content', ''))
+            message = Message(role=msg.get('role', 'user'), content=msg.get('content', ''))
         elif isinstance(msg, tuple) and len(msg) == 2:
             role, content = msg
             if role == 'ai':
                 role = 'assistant'
             if role in ['user', 'assistant', 'system']:
-                return Message(role=role, content=content)
+                message = Message(role=role, content=content)
             else:
-                raise ValueError("Unsupported role type in tuple")
+                raise ValueError("Unsupported role type in tuple", msg)
         else:
-            print("Unsupported message type: ", msg)
-            raise ValueError("Unsupported message type")
+            raise ValueError("Unsupported message type", msg)
+        return message
 
     def _determine_role(self, index: int) -> str:
         if index == 0:
@@ -109,7 +139,7 @@ class Messages:
         return f"<Messages({self.length} items)>"
     
     def to_list(self, input_vars: Dict[str, Any]=None):
-        return [msg.to_dict(input_vars) for msg in self.messages]
+        return [msg.to_dict(input_vars, self.style) for msg in self.messages]
     
     def to_json(self, input_vars: Dict[str, Any]=None):
         return [msg.to_json(input_vars) for msg in self.messages]
@@ -133,7 +163,13 @@ class Messages:
     def extend(self, messages: Union[Message, str, Template, Tuple[str, Union[str, Template]], List[Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]]]):
         for msg in messages:
             self.append(msg)
-    
+
+    def last_role(self):
+        if self.messages:
+            return self.messages[-1].role
+        else:
+            return None
+
     def last_content(self):
         if self.messages:
             return self.messages[-1].content
