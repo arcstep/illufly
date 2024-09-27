@@ -211,7 +211,7 @@ class CosplayWanx(Text2ImageWanx):
             }
         }
 
-class RepaintWanx(CosplayWanx):
+class StyleRepaintWanx(Text2ImageWanx):
     """
     通义万相-人像风格重绘可以将输入的人物图像进行多种风格化的重绘生成，
     使新生成的图像在兼顾原始人物相貌的同时，带来不同风格的绘画效果。
@@ -235,6 +235,10 @@ class RepaintWanx(CosplayWanx):
     def __init__(self, model: str=None, **kwargs):
         super().__init__(model=(model or "wanx-style-repaint-v1"), **kwargs)
 
+    @property
+    def aigc_base_url(self):
+        return f"{DASHSCOPE_BASE_URL}/services/aigc/image-generation/generation"
+
     def get_data(self, input: Dict[str, Any], parameters: Dict[str, Any]=None):
         return {
             "model": self.model,
@@ -243,6 +247,39 @@ class RepaintWanx(CosplayWanx):
                 "style_ref_url": self.confirm_content_url(input, "style_ref", "_url"),
                 "style_index": input.get("style_index", 1)
             }
+        }
+
+class RepaintWanx(Text2ImageWanx):
+    """
+    图像局部重绘是根据用户提供原始图片和局部涂抹图片，再加上文字描述，
+    然后在涂抹区域生成文字描述的内容，涂抹区域外没有变化。
+
+    :parameters.style: 涂抹修改区域的风格。目前支持以下风格取值：
+        - <auto> 默认
+        - <anime> 动画
+        - <3d cartoon> 3D卡通
+        - <oil painting> 油画
+        - <watercolor> 水彩
+        - <sketch> 素描
+        - <chinese painting> 中国画
+        - <flat illustration> 扁平插画
+    """
+    def __init__(self, model: str=None, **kwargs):
+        super().__init__(model=(model or "wanx-x-painting"), **kwargs)
+
+    @property
+    def aigc_base_url(self):
+        return f"{DASHSCOPE_BASE_URL}/services/aigc/image2image/image-synthesis"
+
+    def get_data(self, input: Dict[str, Any], parameters: Dict[str, Any]=None):
+        return {
+            "model": self.model,
+            "input": {
+                "base_image_url": self.confirm_content_url(input, "base_image", "_url"),
+                "mask_image_url": self.confirm_content_url(input, "mask_image", "_url"),
+                "prompt": input.get("prompt")
+            },
+            "parameters": parameters
         }
 
 class BackgroundWanx(Text2ImageWanx):
