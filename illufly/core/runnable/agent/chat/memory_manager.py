@@ -6,7 +6,7 @@ from .message import Messages, Message
 
 class MemoryManager:
     def __init__(self, style: str=None, memory: List[Union[str, "Template", Dict[str, Any]]]=None, remember_rounds: int=None, **kwargs):
-        self.style = style or "openai"
+        self.style = style
         self.memory = []
         self.bound_vars = set() # 被消息列表中的 Template 绑定的变量清单
         self.init_messages = Messages(memory, style=self.style)

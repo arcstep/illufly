@@ -19,7 +19,7 @@ class ChatQwen(ChatAgent):
             )
 
         enable_search = kwargs.pop("enable_search", False)
-        super().__init__(threads_group="CHAT_QWEN", style="qwen", tools=tools, **kwargs)
+        super().__init__(threads_group="CHAT_QWEN", tools=tools, **kwargs)
         self.default_call_args = {
             "model": model or "qwen-plus"
         }
@@ -82,7 +82,7 @@ class ChatQwenVL(ChatAgent):
             )
 
         enable_search = kwargs.pop("enable_search", False)
-        super().__init__(threads_group="CHAT_QWEN", style="qwen", tools=tools, **kwargs)
+        super().__init__(threads_group="CHAT_QWEN", style="qwen_vl", tools=tools, **kwargs)
         self.default_call_args = {
             "model": model or "qwen-vl-plus",
             "enable_search": enable_search
@@ -108,17 +108,15 @@ class ChatQwenVL(ChatAgent):
             **self.default_call_args,
         }
         tools_desc = self.get_tools_desc(kwargs.pop('tools', []))
-        has_upload = False
         for m in messages:
             if isinstance(m['content'], list):
                 for obj in m['content']:
                     if isinstance(obj, dict) and "image" in obj:
                         obj["image"] = confirm_upload_file(self.default_call_args['model'], obj["image"], self.model_args['api_key'])
-                        has_upload = True
         _kwargs.update({
             "messages": messages,
             "tools": tools_desc,
-            "headers": {"X-DashScope-OssResourceResolve": "enable"} if has_upload else {},
+            "headers": {"X-DashScope-OssResourceResolve": "enable"},
             **kwargs
         })
 
