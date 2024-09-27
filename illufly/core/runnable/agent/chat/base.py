@@ -1,5 +1,6 @@
 import json
 import copy
+import asyncio
 
 from abc import abstractmethod
 from typing import Union, List, Dict, Any
@@ -66,34 +67,54 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
         raise NotImplementedError("子类必须实现 generate 方法")
+    
+    async def async_generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
+        loop = asyncio.get_running_loop()
+        for block in await self.run_in_executor(self.generate, prompt, *args, **kwargs):
+            yield block
 
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError("prompt 必须是字符串或消息列表")
 
-        # 确认是否切换新的对话轮次
-        # 条件1：new_chat=True
-        # 条件2：提供的提示语内容使用 system 角色
+        new_chat, is_prompt_using_system_role = self._prepare_for_call(prompt, kwargs)
+
+        yield from self._chat_with_tools_calling(prompt, *args, **kwargs)
+
+        if self.end_chk:
+            yield EndBlock(self.last_output)
+
+        if is_prompt_using_system_role:
+            self.locked_items = len(self.memory)
+
+    async def async_call(self, prompt: Union[str, List[dict]], *args, **kwargs):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
+            raise ValueError("prompt 必须是字符串或消息列表")
+
+        new_chat, is_prompt_using_system_role = self._prepare_for_call(prompt, kwargs)
+
+        async for block in self._async_chat_with_tools_calling(prompt, *args, **kwargs):
+            yield block
+
+        if self.end_chk:
+            yield EndBlock(self.last_output)
+
+        if is_prompt_using_system_role:
+            self.locked_items = len(self.memory)
+
+    def _prepare_for_call(self, prompt, kwargs):
         new_chat = kwargs.pop("new_chat", False) or not self.memory
-        new_task_flag = False
         self._last_input = Messages(prompt)
 
-        # 如果重新构造 system 角色的消息，一般不使用模板构建
         is_prompt_using_system_role = False
         if self._last_input.last_role == "system":
             new_chat = True
             is_prompt_using_system_role = True
 
         if new_chat:
-            # TODO: 应当在清空前做好历史管理
             self.memory.clear()
-            new_task_flag = True
 
-            ## 补充初始记忆
             if not is_prompt_using_system_role and self.init_messages.length > 0:
-                # 如果需要在模板中使用了 task 变量，就将 prompt 赋值给 task，并将 prompt 设置为空
-                # 在接下来使用 init_messagess.to_list 构建记忆表，会通过绑定变量使用到 task 变量
-                # 进而作为记忆表的一部份传递给模型做推理计算
                 if "task" in self.bound_vars:
                     if isinstance(prompt, str):
                         self.task = prompt
@@ -105,18 +126,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 is_prompt_using_system_role = True
                 self.memory = self.init_messages.to_list()
 
-        yield from self.chat_with_tools_calling(prompt, *args, **kwargs)
+        return new_chat, is_prompt_using_system_role
 
-        # 补充校验的尾缀
-        if self.end_chk:
-            yield EndBlock(self.last_output)
-        
-        # 重新锁定当前记忆中的条数，包括刚刚获得的回答
-        # 避免在提取短期记忆时被遗弃
-        if is_prompt_using_system_role:
-            self.locked_items = len(self.memory)
-
-    def chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
+    def _chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
         chat_memory = self.get_chat_memory(
             remember_rounds=self.remember_rounds,
             knowledge=self.get_knowledge(self.last_input)
@@ -139,7 +151,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             final_tools_call = merge_tool_calls(tools_call)
             if final_tools_call:
-                for block in self.handle_openai_style_tools_call(final_tools_call, chat_memory, kwargs):
+                for block in self._handle_openai_style_tools_call(final_tools_call, chat_memory, kwargs):
                     if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
                         to_continue_call_llm = True
                     yield block
@@ -152,7 +164,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 self.remember_response(final_output_text)
                 yield TextBlock("text_final", final_output_text)
 
-                # 检查 final_output_text 的文本结果中是否包含 <tool_call> 结构
                 tool_calls = self.extract_in_text_tool_calls(final_output_text)
                 if tool_calls:
                     for index, tool_call in enumerate(tool_calls):
@@ -163,12 +174,63 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                                 "content": new_task
                             })
                             self.remember_response(new_task)
-                        for block in self.handle_in_text_tool_call(tool_call, chat_memory, kwargs):
+                        for block in self._handle_in_text_tool_call(tool_call, chat_memory, kwargs):
                             if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
                                 to_continue_call_llm = True
                             yield block
 
-    def handle_openai_style_tools_call(self, final_tools_call, chat_memory, kwargs):
+    async def _async_chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
+        chat_memory = self.get_chat_memory(
+            remember_rounds=self.remember_rounds,
+            knowledge=self.get_knowledge(self.last_input)
+        )
+        chat_memory.extend(self.create_new_memory(prompt))
+
+        to_continue_call_llm = True
+        while to_continue_call_llm:
+            to_continue_call_llm = False
+            output_text, tools_call = "", []
+
+            async for block in self.async_generate(chat_memory, *args, **kwargs):
+                yield block
+                if block.block_type == "chunk":
+                    output_text += block.text
+                elif block.block_type == "text_final":
+                    output_text = block.text
+                elif block.block_type == "tools_call_chunk":
+                    tools_call.append(json.loads(block.text))
+
+            final_tools_call = merge_tool_calls(tools_call)
+            if final_tools_call:
+                async for block in self._async_handle_openai_style_tools_call(final_tools_call, chat_memory, kwargs):
+                    if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                        to_continue_call_llm = True
+                    yield block
+            else:
+                final_output_text = extract_text(output_text, self.start_marker, self.end_marker)
+                chat_memory.append({
+                    "role": "assistant",
+                    "content": final_output_text
+                })
+                self.remember_response(final_output_text)
+                yield TextBlock("text_final", final_output_text)
+
+                tool_calls = self.extract_in_text_tool_calls(final_output_text)
+                if tool_calls:
+                    for index, tool_call in enumerate(tool_calls):
+                        if index > 0:
+                            new_task = f'请继续: {json.dumps(tool_call, ensure_ascii=False)}'
+                            chat_memory.append({
+                                "role": "assistant",
+                                "content": new_task
+                            })
+                            self.remember_response(new_task)
+                        async for block in self._async_handle_in_text_tool_call(tool_call, chat_memory, kwargs):
+                            if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                                to_continue_call_llm = True
+                            yield block
+
+    def _handle_openai_style_tools_call(self, final_tools_call, chat_memory, kwargs):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
         yield TextBlock("tools_call_final", final_tools_call_text)
 
@@ -182,7 +244,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             self.remember_response(tools_call_message)
 
             if self.exec_tool:
-                for block in self.execute_tool(tool, chat_memory, kwargs):
+                for block in self._execute_tool(tool, chat_memory, kwargs):
                     if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
                         tool_resp = block.text
                         tool_resp_message = [{
@@ -195,14 +257,41 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         self.remember_response(tool_resp_message)
                     yield block
 
-    def execute_tool(self, tool, chat_memory, kwargs):
+    async def _async_handle_openai_style_tools_call(self, final_tools_call, chat_memory, kwargs):
+        final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
+        yield TextBlock("tools_call_final", final_tools_call_text)
+
+        for index, tool in enumerate(final_tools_call):
+            tools_call_message = [{
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [tool]
+            }]
+            chat_memory.extend(tools_call_message)
+            self.remember_response(tools_call_message)
+
+            if self.exec_tool:
+                async for block in self._async_execute_tool(tool, chat_memory, kwargs):
+                    if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                        tool_resp = block.text
+                        tool_resp_message = [{
+                            "tool_call_id": tool['id'],
+                            "role": "tool",
+                            "name": tool['function']['name'],
+                            "content": tool_resp
+                        }]
+                        chat_memory.extend(tool_resp_message)
+                        self.remember_response(tool_resp_message)
+                    yield block
+
+    def _execute_tool(self, tool, chat_memory, kwargs):
         tools_list = kwargs.get("tools", self.tools)
         for struct_tool in tools_list:
             if tool.get('function', {}).get('name') == struct_tool.name:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
-                tool_func_result = struct_tool.func(**tool_args)
+                tool_func_result = struct_tool.call(**tool_args)
                 for x in tool_func_result:
                     if isinstance(x, TextBlock):
                         if x.block_type == "tool_resp_final":
@@ -216,9 +305,45 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
                 yield TextBlock("tool_resp_final", tool_resp)
 
-    def handle_in_text_tool_call(self, tool_call, chat_memory, kwargs):
+    async def _async_execute_tool(self, tool, chat_memory, kwargs):
+        tools_list = kwargs.get("tools", self.tools)
+        for struct_tool in tools_list:
+            if tool.get('function', {}).get('name') == struct_tool.name:
+                tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
+                tool_resp = ""
+
+                tool_func_result = struct_tool.async_call(**tool_args)
+                async for x in tool_func_result:
+                    if isinstance(x, TextBlock):
+                        if x.block_type == "tool_resp_final":
+                            tool_resp = x.text
+                        elif x.block_type == "chunk":
+                            tool_resp += x.text
+                        yield x
+                    else:
+                        tool_resp += x
+                        yield TextBlock("tool_resp_chunk", x)
+
+                yield TextBlock("tool_resp_final", tool_resp)
+
+    def _handle_in_text_tool_call(self, tool_call, chat_memory, kwargs):
         if self.exec_tool:
-            for block in self.execute_tool(tool_call, chat_memory, kwargs):
+            for block in self._execute_tool(tool_call, chat_memory, kwargs):
+                if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                    tool_resp = block.text
+                    tool_resp_message = [
+                        {
+                            "role": "user",
+                            "content": f'<tool_resp>{tool_resp}</tool_resp>'
+                        }
+                    ]
+                    chat_memory.extend(tool_resp_message)
+                    self.remember_response(tool_resp_message)
+                yield block
+
+    async def _async_handle_in_text_tool_call(self, tool_call, chat_memory, kwargs):
+        if self.exec_tool:
+            async for block in self._async_execute_tool(tool_call, chat_memory, kwargs):
                 if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
                     tool_resp = block.text
                     tool_resp_message = [

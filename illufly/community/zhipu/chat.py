@@ -41,6 +41,7 @@ class ChatZhipu(ChatAgent):
             "tools": tools_desc,
             **kwargs
         })
+        print("_kwargs", _kwargs)
 
         completion = self.client.chat.completions.create(**_kwargs)
 
