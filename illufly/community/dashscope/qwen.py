@@ -6,6 +6,7 @@ from http import HTTPStatus
 
 from ...io import TextBlock
 from ...types import ChatAgent
+from ..http import confirm_upload_file
 
 class ChatQwen(ChatAgent):
     def __init__(self, model: str=None, tools=None, **kwargs):
@@ -83,12 +84,12 @@ class ChatQwenVL(ChatAgent):
         enable_search = kwargs.pop("enable_search", False)
         super().__init__(threads_group="CHAT_QWEN", style="qwen", tools=tools, **kwargs)
         self.default_call_args = {
-            "model": model or "qwen-vl-plus"
+            "model": model or "qwen-vl-plus",
+            "enable_search": enable_search
         }
         self.model_args = {
             "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY")),
             "base_url": kwargs.get("base_url", os.getenv("DASHSCOPE_BASE_URL")),
-            "enable_search": enable_search
         }
 
     def generate(
@@ -107,9 +108,17 @@ class ChatQwenVL(ChatAgent):
             **self.default_call_args,
         }
         tools_desc = self.get_tools_desc(kwargs.pop('tools', []))
+        has_upload = False
+        for m in messages:
+            if isinstance(m['content'], list):
+                for obj in m['content']:
+                    if isinstance(obj, dict) and "image" in obj:
+                        obj["image"] = confirm_upload_file(self.default_call_args['model'], obj["image"], self.model_args['api_key'])
+                        has_upload = True
         _kwargs.update({
             "messages": messages,
             "tools": tools_desc,
+            "headers": {"X-DashScope-OssResourceResolve": "enable"} if has_upload else {},
             **kwargs
         })
 
