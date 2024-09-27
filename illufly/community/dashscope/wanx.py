@@ -62,10 +62,8 @@ class Text2ImageWanx(BaseAgent):
 
     def confirm_content_url(self, input: Dict[str, Any], key: str, tail: str="_url") -> str:
         url = input.get(f"{key}{tail}", None)
-        if not url:
-            file = input.get(key, None)
-            url = confirm_upload_file(self.model, file, self.api_key)
-        return url
+        file = input.get(key, None)
+        return confirm_upload_file(self.model, file, self.api_key) if file else url
 
     def get_headers(self):
         return {
@@ -93,6 +91,13 @@ class Text2ImageWanx(BaseAgent):
         n = len(output or [])
         if status_result['output']['task_status'] == 'SUCCEEDED':
             results = status_result['output']['results']
+            if "results" in status_result['output']:
+                results = status_result['output']['results']
+            elif "result_url" in status_result['output']:
+                results = [{"url": status_result['output']['result_url']}]
+            else:
+                yield TextBlock("warn", "生成失败")
+
             for result_index, result in enumerate(results):
                 url = result['url']
                 yield TextBlock("image_url", url)
@@ -103,6 +108,7 @@ class Text2ImageWanx(BaseAgent):
                 else:
                     output_path = output[result_index]
                 yield from save_image(url, output_path)
+
             if 'usage' in status_result:
                 yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
@@ -194,21 +200,6 @@ class CosplayWanx(Text2ImageWanx):
             }
         }
 
-    def parse_result(self, status_result, output):
-        n = len(output or [])
-        if status_result['output']['task_status'] == 'SUCCEEDED':
-            url = status_result['output']['result_url']
-            yield TextBlock("image_url", url)
-            if not output:
-                parsed_url = urlparse(url)
-                filename = os.path.basename(parsed_url.path)
-                output_path = f"{filename.rsplit('.', 1)[0]}.{filename.rsplit('.', 1)[1]}"
-            else:
-                output_path = output[0]
-            yield from save_image(url, output_path)
-            if 'usage' in status_result:
-                yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
-
 class RepaintWanx(CosplayWanx):
     """
     通义万相-人像风格重绘可以将输入的人物图像进行多种风格化的重绘生成，
@@ -272,20 +263,6 @@ class BackgroundWanx(Text2ImageWanx):
             "parameters": parameters
         }
 
-    def parse_result(self, status_result, output):
-        n = len(output or [])
-        if status_result['output']['task_status'] == 'SUCCEEDED':
-            url = status_result['output']['result_url']
-            yield TextBlock("image_url", url)
-            if not output:
-                parsed_url = urlparse(url)
-                filename = os.path.basename(parsed_url.path)
-                output_path = f"{filename.rsplit('.', 1)[0]}.{filename.rsplit('.', 1)[1]}"
-            else:
-                output_path = output[0]
-            yield from save_image(url, output_path)
-            if 'usage' in status_result:
-                yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
 class AnyTextWanx(Text2ImageWanx):
     """
@@ -321,20 +298,6 @@ class AnyTextWanx(Text2ImageWanx):
             "parameters": parameters
         }
 
-    def parse_result(self, status_result, output):
-        n = len(output or [])
-        if status_result['output']['task_status'] == 'SUCCEEDED':
-            url = status_result['output']['result_url']
-            yield TextBlock("image_url", url)
-            if not output:
-                parsed_url = urlparse(url)
-                filename = os.path.basename(parsed_url.path)
-                output_path = f"{filename.rsplit('.', 1)[0]}.{filename.rsplit('.', 1)[1]}"
-            else:
-                output_path = output[0]
-            yield from save_image(url, output_path)
-            if 'usage' in status_result:
-                yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
 class SketchWanx(Text2ImageWanx):
     """

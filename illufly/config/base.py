@@ -24,6 +24,7 @@ def get_env(key: str=None):
         # 提示语缓存
         "ILLUFLY_CACHE_EMBEDDINGS": "__CACHE_EMBEDDINGS__",
         "ILLUFLY_EMBEDDINGS_BATCH_SIZE": 10240,
+        "ILLUFLY_UPLOAD_CACHE_DIR": "__UPLOAD_CACHE__",
 
         # 文档切分
         "ILLUFLY_DOC_CHUNK_SIZE": 2000,
