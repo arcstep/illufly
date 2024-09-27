@@ -5,10 +5,11 @@ from .....hub import get_template_variables
 from .message import Messages, Message
 
 class MemoryManager:
-    def __init__(self, memory: List[Union[str, "Template", Dict[str, Any]]]=None, remember_rounds: int=None, **kwargs):
+    def __init__(self, style: str=None, memory: List[Union[str, "Template", Dict[str, Any]]]=None, remember_rounds: int=None, **kwargs):
+        self.style = style or "openai"
         self.memory = []
         self.bound_vars = set() # 被消息列表中的 Template 绑定的变量清单
-        self.init_messages = Messages(memory)
+        self.init_messages = Messages(memory, style=self.style)
         self.locked_items = self.init_messages.length
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
 
@@ -22,9 +23,9 @@ class MemoryManager:
         """
         if prompt:
             if isinstance(prompt, str):
-                new_memory = Messages([("user", prompt)])
+                new_memory = Messages([("user", prompt)], style=self.style)
             else:
-                new_memory = Messages(prompt)
+                new_memory = Messages(prompt, style=self.style)
 
             self.memory.extend(new_memory.to_list())
             return new_memory.to_list()
@@ -37,7 +38,7 @@ class MemoryManager:
         """
         if response:
             if isinstance(response, str):
-                new_memory = Messages([("assistant", response)]).to_list()
+                new_memory = Messages([("assistant", response)], style=self.style).to_list()
             else:
                 new_memory = response
 
@@ -77,7 +78,7 @@ class MemoryManager:
         """
         构造短期记忆时，将知识库中的内容添加到消息列表中。
         """
-        new_memory = Messages(new_messages)
+        new_memory = Messages(new_messages, style=self.style)
         if not knowledge:
             return new_memory
 

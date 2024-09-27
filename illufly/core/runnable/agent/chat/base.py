@@ -71,18 +71,18 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError("prompt 必须是字符串或消息列表")
 
-        # 如果重新构造 system 角色的消息，一般不使用模板构建
-        is_prompt_using_system_role = False
-        if isinstance(prompt, List) and prompt[0].get("role", "") == "system":
-            new_chat = True
-            is_prompt_using_system_role = True
-
         # 确认是否切换新的对话轮次
         # 条件1：new_chat=True
         # 条件2：提供的提示语内容使用 system 角色
         new_chat = kwargs.pop("new_chat", False) or not self.memory
         new_task_flag = False
         self._last_input = Messages(prompt)
+
+        # 如果重新构造 system 角色的消息，一般不使用模板构建
+        is_prompt_using_system_role = False
+        if self._last_input.last_role == "system":
+            new_chat = True
+            is_prompt_using_system_role = True
 
         if new_chat:
             # TODO: 应当在清空前做好历史管理
@@ -131,7 +131,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             for block in self.generate(chat_memory, *args, **kwargs):
                 yield block
                 if block.block_type == "chunk":
-                    output_text += block.content
+                    output_text += block.text
                 elif block.block_type == "text_final":
                     output_text = block.text
                 elif block.block_type == "tools_call_chunk":
