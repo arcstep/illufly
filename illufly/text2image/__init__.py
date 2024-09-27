@@ -1,4 +1,4 @@
-from .dashscope import (
+from ..community.dashscope import (
     Text2ImageWanx,
     CosplayWanx,
     RepaintWanx,
