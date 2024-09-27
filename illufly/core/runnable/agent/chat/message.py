@@ -17,32 +17,49 @@ class Message:
         return f"Message(role={self.role}, content={self.content})"
     
     def to_dict(self, input_vars: Dict[str, Any]=None, style: str=None):
+        def get_url(item, key, alt_key):
+            return item.get(key, {"url": item[alt_key]} if alt_key in item else None)
+
+        def get_content_dict(item, style):
+            content = {}
+            if style == "openai_vl":
+                content["type"] = item.get("type", "image_url" if "image" in item else "text")
+                if item.get("image_url") or "image" in item:
+                    content["image_url"] = get_url(item, "image_url", "image")
+                if item.get("video_url") or "video" in item:
+                    content["video_url"] = get_url(item, "video_url", "video")
+                if item.get("audio_url") or "audio" in item:
+                    content["audio_url"] = get_url(item, "audio_url", "audio")
+                if item.get("text") is not None:
+                    content["text"] = item.get("text")
+            elif style == "qwen_vl":
+                if item.get("audio") or "audio_url" in item:
+                    content["audio"] = item.get("audio", get_url(item, "audio", "audio_url"))
+                if item.get("video") or "video_url" in item:
+                    content["video"] = item.get("video", get_url(item, "video", "video_url"))
+                if item.get("image") or "image_url" in item:
+                    content["image"] = item.get("image", get_url(item, "image", "image_url"))
+                if item.get("text") is not None:
+                    content["text"] = item.get("text")
+            return content
+
+        def format_item(item, style):
+            return {k: v for k, v in get_content_dict(item, style).items() if v is not None}
+
         if isinstance(self.content, list) and self.content:
-            if style == "openai":
-                self.content = [
-                    {
-                        "type": item.get("type", "image_url" if "image" in item else "text"),
-                        **({"image_url": item.get("image_url", {"url": item["image"]} if "image" in item else None)} if item.get("image_url") or "image" in item else {}),
-                        **({"text": item.get("text")} if item.get("text") is not None else {})
-                    }
-                    for item in self.content
-                ]
-            elif style == "qwen":
-                self.content = [
-                    {
-                        **({"image": item.get("image", item["image_url"]["url"] if "image_url" in item else None)} if item.get("image") or "image_url" in item else {}),
-                        **({"text": item.get("text")} if item.get("text") is not None else {})
-                    }
-                    for item in self.content
-                ]
+            self.content = [format_item(item, style) for item in self.content]
+        elif isinstance(self.content, str):
+            if style in ["openai_vl", "qwen_vl"]:
+                self.content = [{"type": "text", "text": self.content}] if style == "openai_vl" else [{"text": self.content}]
         elif self.template:
-            self.content = self.template.format(input_vars)
+            content = self.template.format(input_vars)
+            if style in ["openai_vl", "qwen_vl"]:
+                self.content = [{"type": "text", "text": content}] if style == "openai_vl" else [{"text": content}]
 
         return {
             "role": self.role,
             "content": self.content
         }
-
 
     def to_text(self, input_vars: Dict[str, Any]=None):
         if isinstance(self.content, Template):
@@ -82,7 +99,7 @@ class Messages:
         style: str=None
     ):
         self.raw_messages = messages or []
-        self.style = style or "openai"
+        self.style = style
 
         if not isinstance(self.raw_messages, list):
             self.raw_messages = [self.raw_messages]
