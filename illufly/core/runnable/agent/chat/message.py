@@ -5,9 +5,10 @@ from typing import Union, Dict, Any, List, Tuple
 from ...template import Template
 
 class Message:
-    def __init__(self, role: str, content: Union[str, Template]):
+    def __init__(self, role: str, content: Union[str, Template], **kwargs):
         self.role = role
         self.content = content
+        self.kwargs = kwargs
 
     def __str__(self):
         return f"{self.role}: {self.content.format() if isinstance(self.content, Template) else self.content}"
@@ -59,7 +60,8 @@ class Message:
 
         return {
             "role": self.role,
-            "content": content
+            "content": content,
+            **self.kwargs
         }
 
     def to_text(self, input_vars: Dict[str, Any]=None):
@@ -74,7 +76,8 @@ class Message:
             content = self.content
         return json.dumps({
             "role": self.role,
-            "content": self.content
+            "content": self.content,
+            **self.kwargs
         })
 
 class Messages:
@@ -125,7 +128,7 @@ class Messages:
         elif isinstance(msg, dict):
             if msg.get('role') == 'ai':
                 msg['role'] = 'assistant'
-            message = Message(role=msg.get('role', 'user'), content=msg.get('content', ''))
+            message = Message(**msg) # 支持字典构造中其他键值，如工具回调等
         elif isinstance(msg, tuple) and len(msg) == 2:
             role, content = msg
             if role == 'ai':
@@ -136,6 +139,7 @@ class Messages:
                 raise ValueError("Unsupported role type in tuple", msg)
         else:
             raise ValueError("Unsupported message type", msg)
+        
         return message
 
     def _determine_role(self, index: int) -> str:
