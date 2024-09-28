@@ -46,14 +46,14 @@ class ChatOpenAI(ChatAgent):
     ):
         from openai import OpenAI
 
-        _kwargs = {"stream": True, **self.default_call_args}
+        _kwargs = self.default_call_args
         tools_desc = self.get_tools_desc(kwargs.pop('tools', []))
         _kwargs.update({
             "messages": messages,
             "tools": tools_desc or None,
-            **kwargs
+            **kwargs,
+            **{"stream": True}
         })
-        # print("_kwargs", _kwargs)
 
         completion = self.client.chat.completions.create(**_kwargs)
 
