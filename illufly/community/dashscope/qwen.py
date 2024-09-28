@@ -35,17 +35,19 @@ class ChatQwen(ChatAgent):
         self.dashscope.api_key = self.model_args["api_key"]
 
         _kwargs = {
-            "stream": True,
-            "result_format": 'message',
-            "incremental_output": True,
             **self.model_args,
-            **self.default_call_args,
+            **self.default_call_args
         }
         tools_desc = self.get_tools_desc(kwargs.pop('tools', []))
         _kwargs.update({
             "messages": messages,
             "tools": tools_desc,
-            **kwargs
+            **kwargs,
+            **{
+                "stream": True,
+                "result_format": 'message',
+                "incremental_output": True,
+            }
         })
         return _kwargs
 
@@ -56,8 +58,11 @@ class ChatQwen(ChatAgent):
         responses = self.dashscope.Generation.call(**_kwargs)
 
         # 流输出
+        usage = {}
         for response in responses:
             if response.status_code == HTTPStatus.OK:
+                if 'usage' in response:
+                    usage = response.usage
                 ai_output = response.output.choices[0].message
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
@@ -70,6 +75,8 @@ class ChatQwen(ChatAgent):
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
+        if usage:
+            yield TextBlock("usage", json.dumps(usage, ensure_ascii=False))
 
     async def async_generate(self, messages: List[dict], **kwargs):
         _kwargs = self._prepare_kwargs(messages, **kwargs)
@@ -78,8 +85,11 @@ class ChatQwen(ChatAgent):
         responses = await dashscope.AioGeneration.acall(**_kwargs)
 
         # 流输出
+        usage = {}
         async for response in responses:
             if response.status_code == HTTPStatus.OK:
+                if 'usage' in response:
+                    usage = response.usage
                 ai_output = response.output.choices[0].message
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
@@ -92,6 +102,8 @@ class ChatQwen(ChatAgent):
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
+        if usage:
+            yield TextBlock("usage", json.dumps(usage, ensure_ascii=False))
 
 class ChatQwenVL(ChatQwen):
     def __init__(self, model: str=None, tools=None, **kwargs):
@@ -110,8 +122,11 @@ class ChatQwenVL(ChatQwen):
         responses = self.dashscope.MultiModalConversation.call(**_kwargs)
 
         # 流输出
+        usage = {}
         for response in responses:
             if response.status_code == HTTPStatus.OK:
+                if 'usage' in response:
+                    usage = response.usage
                 ai_output = response.output.choices[0].message
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
@@ -124,6 +139,8 @@ class ChatQwenVL(ChatQwen):
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
+        if usage:
+            yield TextBlock("usage", json.dumps(usage, ensure_ascii=False))
 
     async def async_generate(self, messages: List[dict], **kwargs):
         loop = asyncio.get_running_loop()
