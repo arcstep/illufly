@@ -12,16 +12,9 @@ class KnowledgeManager:
             for text in knowledge:
                 if not isinstance(item, (str, Document, VectorDB)):
                     raise ValueError("Knowledge list items must be str, Document, or VectorDB")
-            self.knowledge: Set[Document] = set(Document(text) for text in knowledge)
-        elif isinstance(knowledge, list):
-            for item in knowledge:
-                if not isinstance(item, (str, Document, VectorDB)):
-                    raise ValueError("Knowledge list items must be str, Document, or VectorDB")
-            self.knowledge: Set[Document] = set(
-                Document(item) if isinstance(item, str) else item for item in knowledge
-            )
+            self.knowledge = knowledge
         else:
-            self.knowledge: Set[Document] = set()
+            self.knowledge = set(knowledge or {})
 
     def add_knowledge(self, text: str):
         if isinstance(text, str):
