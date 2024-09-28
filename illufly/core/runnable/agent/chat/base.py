@@ -285,7 +285,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     yield block
 
     def _execute_tool(self, tool, chat_memory, kwargs):
-        tools_list = kwargs.get("tools", self.tools)
+        tools_list = self.get_tools(kwargs.get("tools", []))
         for struct_tool in tools_list:
             if tool.get('function', {}).get('name') == struct_tool.name:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
@@ -306,7 +306,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 yield TextBlock("tool_resp_final", tool_resp)
 
     async def _async_execute_tool(self, tool, chat_memory, kwargs):
-        tools_list = kwargs.get("tools", self.tools)
+        tools_list = self.get_tools(kwargs.get("tools", []))
         for struct_tool in tools_list:
             if tool.get('function', {}).get('name') == struct_tool.name:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
