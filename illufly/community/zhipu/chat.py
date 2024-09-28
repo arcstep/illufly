@@ -45,7 +45,10 @@ class ChatZhipu(ChatAgent):
 
         completion = self.client.chat.completions.create(**_kwargs)
 
+        usage = {}
         for response in completion:
+            if response.usage:
+                usage = response.usage
             if response.choices:
                 ai_output = response.choices[0].delta
                 if ai_output.tool_calls:
@@ -64,3 +67,10 @@ class ChatZhipu(ChatAgent):
                     content = ai_output.content
                     if content:
                         yield TextBlock("chunk", content)
+        if usage:
+            usage_dict = {
+                "prompt_tokens": usage.prompt_tokens,
+                "completion_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens
+            }
+            yield TextBlock("usage", json.dumps(usage_dict, ensure_ascii=False))

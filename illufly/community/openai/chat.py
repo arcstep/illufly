@@ -52,13 +52,15 @@ class ChatOpenAI(ChatAgent):
             "messages": messages,
             "tools": tools_desc or None,
             **kwargs,
-            **{"stream": True}
+            **{"stream": True, "stream_options": {"include_usage": True}}
         })
 
         completion = self.client.chat.completions.create(**_kwargs)
 
+        usage = {}
         for response in completion:
-            # print("response", response)
+            if response.usage:
+                usage = response.usage
             if response.choices:
                 ai_output = response.choices[0].delta
                 if ai_output.tool_calls:
@@ -77,3 +79,10 @@ class ChatOpenAI(ChatAgent):
                     content = ai_output.content
                     if content:
                         yield TextBlock("chunk", content)
+        if usage:
+            usage_dict = {
+                "prompt_tokens": usage.prompt_tokens,
+                "completion_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens
+            }
+            yield TextBlock("usage", json.dumps(usage_dict, ensure_ascii=False))
