@@ -19,7 +19,7 @@ class Template(Runnable):
         elif template_text:
             self.template_text = template_text
         else:
-            raise ValueError('template is not set')
+            raise ValueError('template_text or template_id cannot be empty')
 
         self.template_vars = get_template_variables(self.template_text)
 
