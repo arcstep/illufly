@@ -21,13 +21,13 @@ class Template(Runnable):
         else:
             raise ValueError('template is not set')
 
-        self.template_variables = get_template_variables(self.template_text)
+        self.template_vars = get_template_variables(self.template_text)
 
     def __str__(self):
         return self.format()
 
     def __repr__(self):
-        return f"<Template input_variables={self.template_variables} template_text='{minify_text(self.template_text)}'>"
+        return f"<Template template_vars={self.template_vars} template_text='{minify_text(self.template_text)}'>"
 
 
     def call(self, *args, **kwargs):

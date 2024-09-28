@@ -7,58 +7,59 @@ from ...template import Template
 class Message:
     def __init__(self, role: str, content: Union[str, Template]):
         self.role = role
-        self.content = content if not isinstance(content, Template) else None
-        self.template = content if isinstance(content, Template) else None
+        self.content = content
 
     def __str__(self):
-        return f"{self.role}: {self.content}"
+        return f"{self.role}: {self.content.format() if isinstance(self.content, Template) else self.content}"
 
     def __repr__(self):
         return f"Message(role={self.role}, content={self.content})"
     
     def to_dict(self, input_vars: Dict[str, Any]=None, style: str=None):
         def get_url(item, key, alt_key):
-            return item.get(key, {"url": item[alt_key]} if alt_key in item else None)
-
-        def get_content_dict(item, style):
-            content = {}
-            if style == "openai_vl":
-                content["type"] = item.get("type", "image_url" if "image" in item else "text")
-                if item.get("image_url") or "image" in item:
-                    content["image_url"] = get_url(item, "image_url", "image")
-                if item.get("video_url") or "video" in item:
-                    content["video_url"] = get_url(item, "video_url", "video")
-                if item.get("audio_url") or "audio" in item:
-                    content["audio_url"] = get_url(item, "audio_url", "audio")
-                if item.get("text") is not None:
-                    content["text"] = item.get("text")
-            elif style == "qwen_vl":
-                if item.get("audio") or "audio_url" in item:
-                    content["audio"] = item.get("audio", get_url(item, "audio", "audio_url"))
-                if item.get("video") or "video_url" in item:
-                    content["video"] = item.get("video", get_url(item, "video", "video_url"))
-                if item.get("image") or "image_url" in item:
-                    content["image"] = item.get("image", get_url(item, "image", "image_url"))
-                if item.get("text") is not None:
-                    content["text"] = item.get("text")
-            return content
-
-        def format_item(item, style):
-            return {k: v for k, v in get_content_dict(item, style).items() if v is not None}
-
-        if isinstance(self.content, list) and self.content:
-            self.content = [format_item(item, style) for item in self.content]
-        elif isinstance(self.content, str):
-            if style in ["openai_vl", "qwen_vl"]:
-                self.content = [{"type": "text", "text": self.content}] if style == "openai_vl" else [{"text": self.content}]
-        elif self.template:
-            content = self.template.format(input_vars)
-            if style in ["openai_vl", "qwen_vl"]:
-                self.content = [{"type": "text", "text": content}] if style == "openai_vl" else [{"text": content}]
+            return item.get(key, item[alt_key]['url'] if alt_key in item and 'url' in item[alt_key] else None)
+        
+        def get_unique_format(style, input_vars):
+            if isinstance(self.content, list):
+                contents = []
+                for item in self.content:
+                    content = {}
+                    if item.get("audio") or "audio_url" in item:
+                        content["audio"] = item.get("audio", get_url(item, "audio", "audio_url"))
+                    if item.get("video") or "video_url" in item:
+                        content["video"] = item.get("video", get_url(item, "video", "video_url"))
+                    if item.get("image") or "image_url" in item:
+                        content["image"] = item.get("image", get_url(item, "image", "image_url"))
+                    if item.get("text") is not None:
+                        content["text"] = item.get("text")
+                    contents.append(content)
+                return contents
+            elif isinstance(self.content, str):
+                return [{"text": self.content}]
+            elif isinstance(self.content, Template):
+                return [{"text": self.content.format(input_vars)}]
+        
+        if style == "openai_vl":
+            content = [
+                {
+                    "type": k if k == "text" else k + "_url",
+                    (k if k == "text" else k + "_url"): v if k == "text" else {"url": v}
+                }
+                for item in get_unique_format(style, input_vars)
+                for k, v in item.items()
+            ]
+        elif style == "qwen_vl":
+            content = get_unique_format(style, input_vars)
+        else:
+            unique_format = get_unique_format(style, input_vars)
+            if unique_format:
+                content = "\n".join([c['text'] for c in unique_format if 'text' in c])
+            else:
+                content = ""
 
         return {
             "role": self.role,
-            "content": self.content
+            "content": content
         }
 
     def to_text(self, input_vars: Dict[str, Any]=None):
@@ -155,11 +156,11 @@ class Messages:
     def __repr__(self):
         return f"<Messages({self.length} items)>"
     
-    def to_list(self, input_vars: Dict[str, Any]=None):
-        return [msg.to_dict(input_vars, self.style) for msg in self.messages]
+    def to_list(self, input_vars: Dict[str, Any]=None, style: str=None):
+        return [msg.to_dict(input_vars, (style or self.style)) for msg in self.messages]
     
-    def to_json(self, input_vars: Dict[str, Any]=None):
-        return [msg.to_json(input_vars) for msg in self.messages]
+    def to_json(self, input_vars: Dict[str, Any]=None, style: str=None):
+        return [msg.to_json(input_vars, (style or self.style)) for msg in self.messages]
     
     @property
     def length(self):
