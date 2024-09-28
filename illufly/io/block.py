@@ -9,11 +9,19 @@ from datetime import datetime
 from ..config import get_env, color_code
 
 class TextBlock():
-    def __init__(self, block_type: str, content: Any, thread_id: str=None):
+    def __init__(
+        self, 
+        block_type: str, 
+        content: Any, 
+        created_at: datetime=None, 
+        call_info: dict=None,
+        runnable_info: dict=None
+    ):
         self.content = content
         self.block_type = block_type
-        self.thread_id = thread_id
-        # self.created_at = datetime.now()
+        self.created_at = created_at or datetime.now()
+        self.call_info = call_info
+        self.runnable_info = runnable_info
 
     def __str__(self):
         return self.text
@@ -25,8 +33,10 @@ class TextBlock():
         return json.dumps({
             "block_type": self.block_type,
             "content": self.text,
-            "thread_id": self.thread_id
-        })
+            "created_at": self.created_at.isoformat(),
+            "call_info": self.call_info,
+            "runnable_info": self.runnable_info,
+        }, ensure_ascii=False)
 
     @property
     def text(self):
@@ -69,6 +79,13 @@ class TextBlock():
         env_var_name = color_mapping.get(self.block_type, "ILLUFLY_COLOR_INFO")
         color = get_env(env_var_name)
         return color_code(color) + self.text + "\033[0m"
+
+class ResponseBlock(TextBlock):
+    """
+    用于在使用生成器的函数之间传递返回值。
+    """
+    def __init__(self, resp: Any, *args, **kwargs):
+        super().__init__("RESPONSE", *args, **kwargs)
 
 class EndBlock(TextBlock):
     def __init__(self, output_text: str):
