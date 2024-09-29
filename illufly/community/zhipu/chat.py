@@ -73,18 +73,17 @@ class ChatZhipu(ChatAgent):
                         output.append({"chunk": content})
                         yield EventBlock("chunk", content)
         yield NewLineBlock()
-        if usage:
-            usage_dict = {
-                "prompt_tokens": usage.prompt_tokens,
-                "completion_tokens": usage.completion_tokens,
-                "total_tokens": usage.total_tokens
+        usage_dict = {
+            "prompt_tokens": usage.prompt_tokens if usage else None,
+            "completion_tokens": usage.completion_tokens if usage else None,
+            "total_tokens": usage.total_tokens if usage else None
+        }
+        yield EventBlock(
+            "usage",
+            json.dumps(usage_dict, ensure_ascii=False),
+            calling_info={
+                "request_id": request_id,
+                "input": _kwargs,
+                "output": output,
             }
-            yield EventBlock(
-                "usage",
-                json.dumps(usage_dict, ensure_ascii=False),
-                calling_info={
-                    "request_id": request_id,
-                    "input": _kwargs,
-                    "output": output,
-                }
-            )
+        )

@@ -81,16 +81,15 @@ class ChatQwen(ChatAgent):
                 )))
 
         yield NewLineBlock()
-        if usage:
-            yield EventBlock(
-                "usage",
-                json.dumps(usage, ensure_ascii=False),
-                calling_info={
-                    "request_id": request_id,
-                    "input": _kwargs,
-                    "output": output,
-                }
-            )
+        yield EventBlock(
+            "usage",
+            json.dumps(usage, ensure_ascii=False),
+            calling_info={
+                "request_id": request_id,
+                "input": _kwargs,
+                "output": output,
+            }
+        )
 
     async def async_generate(self, messages: List[dict], **kwargs):
         _kwargs = self._prepare_kwargs(messages, **kwargs)
@@ -128,16 +127,15 @@ class ChatQwen(ChatAgent):
                 )))
 
         yield NewLineBlock()
-        if usage:
-            yield EventBlock(
-                "usage",
-                json.dumps(usage, ensure_ascii=False),
-                calling_info={
-                    "request_id": request_id,
-                    "input": _kwargs,
-                    "output": output,
-                }
-            )
+        yield EventBlock(
+            "usage",
+            json.dumps(usage, ensure_ascii=False),
+            calling_info={
+                "request_id": request_id,
+                "input": _kwargs,
+                "output": output,
+            }
+        )
 
 class ChatQwenVL(ChatQwen):
     def __init__(self, model: str=None, tools=None, **kwargs):
@@ -180,16 +178,15 @@ class ChatQwenVL(ChatQwen):
                 )))
 
         yield NewLineBlock()
-        if usage:
-            yield EventBlock(
-                "usage",
-                json.dumps(usage, ensure_ascii=False),
-                calling_info={
-                    "request_id": request_id,
-                    "output": output,
-                    "input": _kwargs,
-                }
-            )
+        yield EventBlock(
+            "usage",
+            json.dumps(usage, ensure_ascii=False),
+            calling_info={
+                "request_id": request_id,
+                "output": output,
+                "input": _kwargs,
+            }
+        )
 
     async def async_generate(self, messages: List[dict], **kwargs):
         for block in await self.run_in_executor(self.generate, messages, **kwargs):
