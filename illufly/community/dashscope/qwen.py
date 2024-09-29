@@ -5,10 +5,10 @@ import asyncio
 from typing import Union, List, Optional, Dict, Any
 from http import HTTPStatus
 
-from ...io import EventBlock
+from ...io import EventBlock, NewLineBlock
 from ...types import ChatAgent
 from ..http import confirm_upload_file
-
+from ...io import NewLineBlock
 class ChatQwen(ChatAgent):
     def __init__(self, model: str=None, tools=None, **kwargs):
         try:
@@ -59,24 +59,44 @@ class ChatQwen(ChatAgent):
 
         # 流输出
         usage = {}
+        output = []
         for response in responses:
             if response.status_code == HTTPStatus.OK:
                 if 'usage' in response:
                     usage = response.usage
                 ai_output = response.output.choices[0].message
+                output.append(ai_output)
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
-                        yield EventBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
+                        yield EventBlock(
+                            "tools_call_chunk",
+                            json.dumps(func, ensure_ascii=False),
+                            calling_info={"request_id": response.request_id}
+                        )
                 else:
                     content = ai_output.content
-                    yield EventBlock("chunk", content)
+                    yield EventBlock(
+                        "chunk",
+                        content,
+                        calling_info={"request_id": response.request_id}
+                    )
             else:
-                yield EventBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+                yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
+
+        yield NewLineBlock()
         if usage:
-            yield EventBlock("usage", json.dumps(usage, ensure_ascii=False))
+            yield EventBlock(
+                "usage",
+                json.dumps(usage, ensure_ascii=False),
+                calling_info={
+                    "request_id": response.request_id,
+                    "input": _kwargs,
+                    "output": output,
+                }
+            )
 
     async def async_generate(self, messages: List[dict], **kwargs):
         _kwargs = self._prepare_kwargs(messages, **kwargs)
@@ -86,24 +106,44 @@ class ChatQwen(ChatAgent):
 
         # 流输出
         usage = {}
+        output = []
         async for response in responses:
             if response.status_code == HTTPStatus.OK:
                 if 'usage' in response:
                     usage = response.usage
                 ai_output = response.output.choices[0].message
+                output.append(ai_output)
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
-                        yield EventBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
+                        yield EventBlock(
+                            "tools_call_chunk",
+                            json.dumps(func, ensure_ascii=False),
+                            calling_info={"request_id": response.request_id}
+                        )
                 else:
                     content = ai_output.content
-                    yield EventBlock("chunk", content)
+                    yield EventBlock(
+                        "chunk",
+                        content,
+                        calling_info={"request_id": response.request_id}
+                    )
             else:
-                yield EventBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+                yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
+
+        yield NewLineBlock()
         if usage:
-            yield EventBlock("usage", json.dumps(usage, ensure_ascii=False))
+            yield EventBlock(
+                "usage",
+                json.dumps(usage, ensure_ascii=False),
+                calling_info={
+                    "request_id": response.request_id,
+                    "input": _kwargs,
+                    "output": output,
+                }
+            )
 
 class ChatQwenVL(ChatQwen):
     def __init__(self, model: str=None, tools=None, **kwargs):
@@ -123,24 +163,44 @@ class ChatQwenVL(ChatQwen):
 
         # 流输出
         usage = {}
+        output = []
         for response in responses:
             if response.status_code == HTTPStatus.OK:
                 if 'usage' in response:
                     usage = response.usage
                 ai_output = response.output.choices[0].message
+                output.append(ai_output)
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
-                        yield EventBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
+                        yield EventBlock(
+                            "tools_call_chunk",
+                            json.dumps(func, ensure_ascii=False),
+                            calling_info={"request_id": response.request_id}
+                        )
                 else:
                     content = ai_output.content
-                    yield EventBlock("chunk", content)
+                    yield EventBlock(
+                        "chunk",
+                        content,
+                        calling_info={"request_id": response.request_id}
+                    )
             else:
-                yield EventBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+                yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
+
+        yield NewLineBlock()
         if usage:
-            yield EventBlock("usage", json.dumps(usage, ensure_ascii=False))
+            yield EventBlock(
+                "usage",
+                json.dumps(usage, ensure_ascii=False),
+                calling_info={
+                    "request_id": response.request_id,
+                    "output": output,
+                    "input": _kwargs,
+                }
+            )
 
     async def async_generate(self, messages: List[dict], **kwargs):
         loop = asyncio.get_running_loop()

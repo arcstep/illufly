@@ -76,9 +76,11 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self.verbose = verbose
         handlers = handlers or [log]
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
-            for handler in handlers:
-                if not inspect.iscoroutinefunction(handler):
-                    handler(self, *args, **kwargs)
+            generator = self.call(*args, **kwargs)
+            for block in generator:
+                for handler in handlers:
+                    if not inspect.iscoroutinefunction(handler):
+                        handler(block, verbose=verbose, **kwargs)
             return self.last_output
         else:
             raise ValueError("handlers 必须是可调用的列表")
@@ -93,18 +95,14 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self.verbose = verbose
         handlers = handlers or [log]
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
-            tasks = []
-            for handler in handlers:
-                resp = handler(self, *args, **kwargs)
-                if inspect.isawaitable(resp):
-                    tasks.append(asyncio.create_task(resp))
-                else:
-                    # 直接执行同步处理器
-                    resp
-
-            if tasks:
-                await asyncio.gather(*tasks)
-
+            async for block in self.async_call(*args, **kwargs):
+                tasks = []
+                for handler in handlers:
+                    resp = handler(block, verbose=verbose, **kwargs)
+                    if inspect.isawaitable(resp):
+                        tasks.append(asyncio.create_task(resp))
+                if tasks:
+                    await asyncio.gather(*tasks)
             return self.last_output
         else:
             raise ValueError("handlers 必须是可调用的列表")
