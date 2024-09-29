@@ -14,14 +14,14 @@ class EventBlock():
         block_type: str, 
         content: Any, 
         created_at: datetime=None, 
-        call_info: dict=None,
+        calling_info: dict=None,
         runnable_info: dict=None
     ):
         self.content = content
-        self.block_type = block_type
+        self.block_type = block_type.lower()
         self.created_at = created_at or datetime.now()
-        self.call_info = call_info
-        self.runnable_info = runnable_info
+        self.calling_info = calling_info or {}
+        self.runnable_info = runnable_info or {}
 
     def __str__(self):
         return self.text
@@ -35,7 +35,7 @@ class EventBlock():
             "block_type": self.block_type,
             "content": self.text,
             "created_at": self.created_at.isoformat(),
-            "call_info": self.call_info,
+            "calling_info": self.calling_info,
             "runnable_info": self.runnable_info,
         }, ensure_ascii=False)
 
@@ -108,3 +108,8 @@ class EndBlock(EventBlock):
         tail = f'【{get_env("ILLUFLY_AIGC_INFO_DECLARE")}，{get_env("ILLUFLY_AIGC_INFO_CHK")} {hash_code}】'
 
         return tail
+
+class NewLineBlock(EventBlock):
+    def __init__(self, *args, **kwargs):
+        super().__init__("new_line", "", *args, **kwargs)
+
