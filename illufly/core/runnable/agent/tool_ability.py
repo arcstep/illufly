@@ -6,19 +6,18 @@ from typing import Any, Callable, Dict, List
 
 class ToolAbility:
     def __init__(self, *, func: Callable = None, name: str = None, description: str = None, parameters: Dict[str, Any] = None, **kwargs):
-        self.func = func
-        self.name = name or (func.__name__ if func else self.__class__.__name__)
-        self.arguments = func.__annotations__ if func else {}
-        self.description = description or (func.__doc__ if func and func.__doc__ else "")
+        self.func = func or self.call
+        self.name = name or "我还没有工具名字"
+        self.description = description or "我还没有工具描述"
         self.parameters = self._get_parameters(parameters)
-    
+
     def _get_parameters(self, parameters: Dict[str, Any]=None):
         _parameters = parameters or {
             "type": "object",
             "properties": {},
             "required": []
         }
-        sig = inspect.signature(self.func or self.call)
+        sig = inspect.signature(self.func)
         for name, param in sig.parameters.items():
             param_value = param.default if param.default is not inspect.Parameter.empty else ""
             
@@ -33,7 +32,7 @@ class ToolAbility:
                 _parameters["required"].append(name)
 
         return _parameters
-
+    
     @property
     def tool_desc(self) -> Dict[str, Any]:
         """
