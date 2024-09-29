@@ -1,6 +1,6 @@
 from typing import Union, List, Optional, Dict, Any
 
-from ...io import TextBlock
+from ...io import EventBlock
 from ...types import ChatAgent
 
 import os
@@ -74,15 +74,15 @@ class ChatOpenAI(ChatAgent):
                                 "arguments": func.function.arguments or ""
                             }
                         }
-                        yield TextBlock("tools_call_chunk", json.dumps(func_json, ensure_ascii=False))
+                        yield EventBlock("tools_call_chunk", json.dumps(func_json, ensure_ascii=False))
                 else:
                     content = ai_output.content
                     if content:
-                        yield TextBlock("chunk", content)
+                        yield EventBlock("chunk", content)
         if usage:
             usage_dict = {
                 "prompt_tokens": usage.prompt_tokens,
                 "completion_tokens": usage.completion_tokens,
                 "total_tokens": usage.total_tokens
             }
-            yield TextBlock("usage", json.dumps(usage_dict, ensure_ascii=False))
+            yield EventBlock("usage", json.dumps(usage_dict, ensure_ascii=False))

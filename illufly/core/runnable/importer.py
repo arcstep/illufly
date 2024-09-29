@@ -1,5 +1,5 @@
 from .base import Runnable
-from ...io import TextBlock
+from ...io import EventBlock
 from ...utils import minify_text
 
 class Importer(Runnable):
@@ -11,4 +11,4 @@ class Importer(Runnable):
 
     def call(self, text: str, **kwargs):
         self._last_output = text
-        yield TextBlock("chunk", minify_text(text))
+        yield EventBlock("chunk", minify_text(text))

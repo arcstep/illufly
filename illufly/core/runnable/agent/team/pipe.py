@@ -1,6 +1,6 @@
 from typing import List, Union
 
-from .....io import TextBlock
+from .....io import EventBlock
 from .....utils import minify_text
 from ..base import BaseAgent
 from ..chat import ChatAgent
@@ -37,7 +37,7 @@ class Pipe(BaseAgent):
         prev_runnable = None
         for index, run in enumerate(self.agents):
             info = self._get_node_info(index + 1, run)
-            yield TextBlock("agent", info)
+            yield EventBlock("agent", info)
             if index == 0:
                 current_args = args
                 current_kwargs = kwargs

@@ -1,6 +1,6 @@
 from typing import Dict, Any
 
-from ..io import TextBlock
+from ..io import EventBlock
 from ..core.runnable.agent import BaseAgent
 
 import textwrap
@@ -68,13 +68,13 @@ class PythonCodeTool(BaseAgent):
         for block in self.gen_code_agent.call(question, *args, **kwargs):
             if block.block_type == 'chunk':
                 output_text += block.text
-            yield TextBlock("tool_resp_chunk", block.text)
+            yield EventBlock("tool_resp_chunk", block.text)
 
         code = parse_code(output_text)
         if code:
             exec_result = execute_code(self.data, code)
-            yield TextBlock("tool_resp_final", exec_result)
+            yield EventBlock("tool_resp_final", exec_result)
         else:
-            yield TextBlock("warn", "没有正确生成python代码失败。")
+            yield EventBlock("warn", "没有正确生成python代码失败。")
 
 

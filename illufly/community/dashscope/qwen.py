@@ -5,7 +5,7 @@ import asyncio
 from typing import Union, List, Optional, Dict, Any
 from http import HTTPStatus
 
-from ...io import TextBlock
+from ...io import EventBlock
 from ...types import ChatAgent
 from ..http import confirm_upload_file
 
@@ -66,17 +66,17 @@ class ChatQwen(ChatAgent):
                 ai_output = response.output.choices[0].message
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
-                        yield TextBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
+                        yield EventBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
                 else:
                     content = ai_output.content
-                    yield TextBlock("chunk", content)
+                    yield EventBlock("chunk", content)
             else:
-                yield TextBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+                yield EventBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
         if usage:
-            yield TextBlock("usage", json.dumps(usage, ensure_ascii=False))
+            yield EventBlock("usage", json.dumps(usage, ensure_ascii=False))
 
     async def async_generate(self, messages: List[dict], **kwargs):
         _kwargs = self._prepare_kwargs(messages, **kwargs)
@@ -93,17 +93,17 @@ class ChatQwen(ChatAgent):
                 ai_output = response.output.choices[0].message
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
-                        yield TextBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
+                        yield EventBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
                 else:
                     content = ai_output.content
-                    yield TextBlock("chunk", content)
+                    yield EventBlock("chunk", content)
             else:
-                yield TextBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+                yield EventBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
         if usage:
-            yield TextBlock("usage", json.dumps(usage, ensure_ascii=False))
+            yield EventBlock("usage", json.dumps(usage, ensure_ascii=False))
 
 class ChatQwenVL(ChatQwen):
     def __init__(self, model: str=None, tools=None, **kwargs):
@@ -130,17 +130,17 @@ class ChatQwenVL(ChatQwen):
                 ai_output = response.output.choices[0].message
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
-                        yield TextBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
+                        yield EventBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
                 else:
                     content = ai_output.content
-                    yield TextBlock("chunk", content)
+                    yield EventBlock("chunk", content)
             else:
-                yield TextBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+                yield EventBlock("info", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
         if usage:
-            yield TextBlock("usage", json.dumps(usage, ensure_ascii=False))
+            yield EventBlock("usage", json.dumps(usage, ensure_ascii=False))
 
     async def async_generate(self, messages: List[dict], **kwargs):
         loop = asyncio.get_running_loop()

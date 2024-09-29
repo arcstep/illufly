@@ -8,7 +8,7 @@ from datetime import datetime
 
 from ..config import get_env, color_code
 
-class TextBlock():
+class EventBlock():
     def __init__(
         self, 
         block_type: str, 
@@ -27,8 +27,9 @@ class TextBlock():
         return self.text
     
     def __repr__(self):
-        return f"TextBlock(block_type=<{self.block_type}>, content=<{self.text}>)"
+        return f"EventBlock(block_type=<{self.block_type}>, content=<{self.text}>)"
     
+    @property
     def json(self):
         return json.dumps({
             "block_type": self.block_type,
@@ -80,14 +81,14 @@ class TextBlock():
         color = get_env(env_var_name)
         return color_code(color) + self.text + "\033[0m"
 
-class ResponseBlock(TextBlock):
+class ResponseBlock(EventBlock):
     """
     用于在使用生成器的函数之间传递返回值。
     """
     def __init__(self, resp: Any, *args, **kwargs):
         super().__init__("RESPONSE", *args, **kwargs)
 
-class EndBlock(TextBlock):
+class EndBlock(EventBlock):
     def __init__(self, output_text: str):
         tail_text = self.create_chk_block(output_text)
         super().__init__("END", tail_text)

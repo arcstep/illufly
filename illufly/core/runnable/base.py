@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 
-from typing import Union, List, Dict, Any, Callable
+from typing import Union, List, Dict, Any, Callable, Generator, AsyncGenerator
 from abc import ABC, abstractmethod
 from functools import partial
 
@@ -16,7 +16,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     只要继承该类，就可以作为智能体的工具使用。
 
     实现机制：
-    - 支持 TextBlock 流式输出句法
+    - 支持 EventBlock 流式输出句法
     - 实现 __call__ 方法，来简化流输出调用
     - 通过 _last_input 保存当次调用的输入结果，并使用 last_input 属性方法来获取
     - 通过 _last_output 保存当次调用的输出结果，并使用 last_output 属性方法来获取
@@ -53,14 +53,71 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self.continue_running = continue_running
         self.verbose = False
 
-    def __call__(self, *args, verbose:bool=False, handler:Callable=None, **kwargs):
-        handler = handler or log
+    def __call__(
+        self,
+        *args,
+        verbose: bool = False,
+        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
+        **kwargs
+    ):
+        handlers = handlers or [log]
+        if any(inspect.iscoroutinefunction(handler) for handler in handlers):
+            return self._handle_async_call(*args, verbose=verbose, handlers=handlers, **kwargs)
+        else:
+            return self._handle_sync_call(*args, verbose=verbose, handlers=handlers, **kwargs)
+
+    def _handle_sync_call(
+        self,
+        *args,
+        verbose: bool = False,
+        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
+        **kwargs
+    ):
         self.verbose = verbose
-        return handler(self, *args, verbose=verbose, **kwargs)
+        handlers = handlers or [log]
+        if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
+            for handler in handlers:
+                if not inspect.iscoroutinefunction(handler):
+                    handler(self, *args, **kwargs)
+            return self.last_output
+        else:
+            raise ValueError("handlers 必须是可调用的列表")
+
+    async def _handle_async_call(
+        self,
+        *args,
+        verbose: bool = False,
+        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
+        **kwargs
+    ):
+        self.verbose = verbose
+        handlers = handlers or [log]
+        if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
+            tasks = []
+            for handler in handlers:
+                resp = handler(self, *args, **kwargs)
+                if inspect.isawaitable(resp):
+                    tasks.append(asyncio.create_task(resp))
+                else:
+                    # 直接执行同步处理器
+                    resp
+
+            if tasks:
+                await asyncio.gather(*tasks)
+
+            return self.last_output
+        else:
+            raise ValueError("handlers 必须是可调用的列表")
 
     @property
     def is_running(self):
         return self.continue_running
+    
+    @property
+    def runnable_info(self):
+        return {
+            "class_name": self.__class__.__name__,
+        }
 
     def halt(self):
         self.continue_running = False
@@ -68,7 +125,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     @abstractmethod
     def call(self, *args, **kwargs):
         """
-        这是同步调用的主入口，默认必须实现该方法。
+        这是同步调用的主入口，默认须实现该方法。
         """
         raise NotImplementedError("子类必须实现 call 方法")
 
@@ -86,3 +143,12 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         loop = asyncio.get_running_loop()
         func = partial(sync_function, *args, **kwargs)
         return await loop.run_in_executor(self.executor, func)
+
+    def _is_running_in_jupyter(self):
+        try:
+            from IPython import get_ipython
+            if 'IPKernelApp' not in get_ipython().config:
+                return False
+        except Exception:
+            return False
+        return True

@@ -6,7 +6,7 @@ from abc import abstractmethod
 from typing import Union, List, Dict, Any
 
 from .....utils import merge_tool_calls, extract_text
-from .....io import TextBlock, EndBlock
+from .....io import EventBlock, EndBlock
 
 from ..base import BaseAgent
 from .memory_manager import MemoryManager
@@ -48,6 +48,14 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         # 增加的可绑定变量
         self.task = ""
+
+    @property
+    def runnable_info(self):
+        info = super().runnable_info
+        info.update({
+            "model_name": self.default_call_args.get("model")
+        })
+        return info
 
     @property
     def last_input(self):
@@ -152,7 +160,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             final_tools_call = merge_tool_calls(tools_call)
             if final_tools_call:
                 for block in self._handle_openai_style_tools_call(final_tools_call, chat_memory, kwargs):
-                    if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                    if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         to_continue_call_llm = True
                     yield block
             else:
@@ -162,7 +170,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     "content": final_output_text
                 })
                 self.remember_response(final_output_text)
-                yield TextBlock("text_final", final_output_text)
+                yield EventBlock("text_final", final_output_text)
 
                 tool_calls = self.extract_in_text_tool_calls(final_output_text)
                 if tool_calls:
@@ -175,7 +183,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                             })
                             self.remember_response(new_task)
                         for block in self._handle_in_text_tool_call(tool_call, chat_memory, kwargs):
-                            if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                            if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                                 to_continue_call_llm = True
                             yield block
 
@@ -203,7 +211,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             final_tools_call = merge_tool_calls(tools_call)
             if final_tools_call:
                 async for block in self._async_handle_openai_style_tools_call(final_tools_call, chat_memory, kwargs):
-                    if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                    if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         to_continue_call_llm = True
                     yield block
             else:
@@ -213,7 +221,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     "content": final_output_text
                 })
                 self.remember_response(final_output_text)
-                yield TextBlock("text_final", final_output_text)
+                yield EventBlock("text_final", final_output_text)
 
                 tool_calls = self.extract_in_text_tool_calls(final_output_text)
                 if tool_calls:
@@ -226,13 +234,13 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                             })
                             self.remember_response(new_task)
                         async for block in self._async_handle_in_text_tool_call(tool_call, chat_memory, kwargs):
-                            if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                            if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                                 to_continue_call_llm = True
                             yield block
 
     def _handle_openai_style_tools_call(self, final_tools_call, chat_memory, kwargs):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
-        yield TextBlock("tools_call_final", final_tools_call_text)
+        yield EventBlock("tools_call_final", final_tools_call_text)
 
         for index, tool in enumerate(final_tools_call):
             tools_call_message = [{
@@ -245,7 +253,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             if self.exec_tool:
                 for block in self._execute_tool(tool, chat_memory, kwargs):
-                    if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                    if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         tool_resp = block.text
                         tool_resp_message = [{
                             "tool_call_id": tool['id'],
@@ -259,7 +267,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     async def _async_handle_openai_style_tools_call(self, final_tools_call, chat_memory, kwargs):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
-        yield TextBlock("tools_call_final", final_tools_call_text)
+        yield EventBlock("tools_call_final", final_tools_call_text)
 
         for index, tool in enumerate(final_tools_call):
             tools_call_message = [{
@@ -272,7 +280,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             if self.exec_tool:
                 async for block in self._async_execute_tool(tool, chat_memory, kwargs):
-                    if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                    if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         tool_resp = block.text
                         tool_resp_message = [{
                             "tool_call_id": tool['id'],
@@ -293,7 +301,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
                 tool_func_result = struct_tool.call(**tool_args)
                 for x in tool_func_result:
-                    if isinstance(x, TextBlock):
+                    if isinstance(x, EventBlock):
                         if x.block_type == "tool_resp_final":
                             tool_resp = x.text
                         elif x.block_type == "chunk":
@@ -301,9 +309,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         yield x
                     else:
                         tool_resp += x
-                        yield TextBlock("tool_resp_chunk", x)
+                        yield EventBlock("tool_resp_chunk", x)
 
-                yield TextBlock("tool_resp_final", tool_resp)
+                yield EventBlock("tool_resp_final", tool_resp)
 
     async def _async_execute_tool(self, tool, chat_memory, kwargs):
         tools_list = self.get_tools(kwargs.get("tools", []))
@@ -314,7 +322,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
                 tool_func_result = struct_tool.async_call(**tool_args)
                 async for x in tool_func_result:
-                    if isinstance(x, TextBlock):
+                    if isinstance(x, EventBlock):
                         if x.block_type == "tool_resp_final":
                             tool_resp = x.text
                         elif x.block_type == "chunk":
@@ -322,14 +330,14 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         yield x
                     else:
                         tool_resp += x
-                        yield TextBlock("tool_resp_chunk", x)
+                        yield EventBlock("tool_resp_chunk", x)
 
-                yield TextBlock("tool_resp_final", tool_resp)
+                yield EventBlock("tool_resp_final", tool_resp)
 
     def _handle_in_text_tool_call(self, tool_call, chat_memory, kwargs):
         if self.exec_tool:
             for block in self._execute_tool(tool_call, chat_memory, kwargs):
-                if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                     tool_resp = block.text
                     tool_resp_message = [
                         {
@@ -344,7 +352,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     async def _async_handle_in_text_tool_call(self, tool_call, chat_memory, kwargs):
         if self.exec_tool:
             async for block in self._async_execute_tool(tool_call, chat_memory, kwargs):
-                if isinstance(block, TextBlock) and block.block_type == "tool_resp_final":
+                if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                     tool_resp = block.text
                     tool_resp_message = [
                         {

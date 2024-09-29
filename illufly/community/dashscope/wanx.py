@@ -12,7 +12,7 @@ import requests
 
 from ...types import BaseAgent
 from ..http import (
-    TextBlock,
+    EventBlock,
 
     get_headers,
     validate_output_path,
@@ -102,12 +102,12 @@ class Text2ImageWanx(BaseAgent):
                 else:
                     raise Exception(f"output not be list or str, but got {type(result_url)}: output={result_url}")
             else:
-                yield TextBlock("warn", "生成失败")
+                yield EventBlock("warn", "生成失败")
 
             if results:
                 for result_index, result in enumerate(results):
                     url = result['url']
-                    yield TextBlock("image_url", url)
+                    yield EventBlock("image_url", url)
                     if not output or result_index >= len(output):
                         parsed_url = urlparse(url)
                         filename = os.path.basename(parsed_url.path)
@@ -117,16 +117,16 @@ class Text2ImageWanx(BaseAgent):
                     yield from save_image(url, output_path)
 
                 if 'usage' in status_result:
-                    yield TextBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
+                    yield EventBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
     def parse_resp(self, resp):
-        yield TextBlock("info", f'{json.dumps(resp, ensure_ascii=False)}')
+        yield EventBlock("info", f'{json.dumps(resp, ensure_ascii=False)}')
         # 解析提交结果
         if "output" in resp:
             task_id = resp['output']['task_id']        
-            yield TextBlock("info", f'{task_id}: {resp["output"]["task_status"]}')
+            yield EventBlock("info", f'{task_id}: {resp["output"]["task_status"]}')
             if "usage" in resp:
-                yield TextBlock("usage", json.dumps(resp["usage"]))
+                yield EventBlock("usage", json.dumps(resp["usage"]))
     
     @property
     def aigc_base_url(self):

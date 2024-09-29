@@ -9,8 +9,6 @@ from ..base import Runnable
 
 class BaseAgent(Runnable, ToolAbility):
     """    
-    实现基础的智能体类，支持知识管理、记忆管理和变量的携带传递机制。
-    
     基于 BaseAgent 子类可以实现多智能体协作。
 
     什么时候直接从 BaseAgent 继承？
@@ -29,3 +27,13 @@ class BaseAgent(Runnable, ToolAbility):
     ):
         Runnable.__init__(self, **kwargs)
         ToolAbility.__init__(self, **kwargs)
+
+    @property
+    def runnable_info(self):
+        info = super().runnable_info
+        info.update({
+            "agent_name": self.name,
+            "agent_description": self.description,
+        })
+        return info
+

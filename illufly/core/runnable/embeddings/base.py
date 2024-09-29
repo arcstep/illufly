@@ -3,7 +3,7 @@ from ..base import Runnable
 from ....core.document import Document
 from ....utils import hash_text, clean_filename
 from ....config import get_env
-from ....io import TextBlock
+from ....io import EventBlock
 
 import os
 import pickle
@@ -95,7 +95,7 @@ class BaseEmbeddings(Runnable):
             batch_docs = [doc for doc, exists in zip(batch_docs, existing_files) if not exists]
 
             if batch_texts:
-                yield TextBlock("info", f"文本向量转换 {sum(len(d.text) for d in batch_docs)} 字 / {len(batch_docs)} 个文件")
+                yield EventBlock("info", f"文本向量转换 {sum(len(d.text) for d in batch_docs)} 字 / {len(batch_docs)} 个文件")
                 vectors = self.embed_documents(batch_texts)
                 yield from self._save_vectors_to_cache(batch_docs, batch_texts, vectors, vector_folder)
 
@@ -122,4 +122,4 @@ class BaseEmbeddings(Runnable):
             with open(cache_path, 'wb') as f:
                 pickle.dump(vectors[index], f)
                 docs[index].metadata['embeddings'] = vectors[index]
-                yield TextBlock('info', f'wrote embedding cache {cache_path} {text[0:50]}{"..." if len(text) > 50 else ""}')
+                yield EventBlock('info', f'wrote embedding cache {cache_path} {text[0:50]}{"..." if len(text) > 50 else ""}')

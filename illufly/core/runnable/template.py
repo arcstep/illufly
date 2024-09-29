@@ -2,7 +2,7 @@ from typing import Dict, Any
 
 from ...utils import minify_text
 from ...hub import load_resource_template, load_template, get_template_variables
-from ...io import TextBlock
+from ...io import EventBlock
 from .base import Runnable
 
 from chevron.renderer import render as mustache_render
@@ -32,7 +32,7 @@ class Template(Runnable):
 
     def call(self, *args, **kwargs):
         self._last_output = self.format(*args, **kwargs)
-        yield TextBlock("info", self._last_output)
+        yield EventBlock("info", self._last_output)
 
     def format(self, input_vars: Dict[str, Any]=None):
         _input_vars = {**self.imported_vars, **(input_vars or {})}
