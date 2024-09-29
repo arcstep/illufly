@@ -58,28 +58,22 @@ class ChatQwen(ChatAgent):
         responses = self.dashscope.Generation.call(**_kwargs)
 
         # 流输出
+        request_id = None
         usage = {}
         output = []
         for response in responses:
             if response.status_code == HTTPStatus.OK:
                 if 'usage' in response:
+                    request_id = response.request_id
                     usage = response.usage
                 ai_output = response.output.choices[0].message
                 output.append(ai_output)
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
-                        yield EventBlock(
-                            "tools_call_chunk",
-                            json.dumps(func, ensure_ascii=False),
-                            calling_info={"request_id": response.request_id}
-                        )
+                        yield EventBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
                 else:
                     content = ai_output.content
-                    yield EventBlock(
-                        "chunk",
-                        content,
-                        calling_info={"request_id": response.request_id}
-                    )
+                    yield EventBlock("chunk", content)
             else:
                 yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
@@ -92,7 +86,7 @@ class ChatQwen(ChatAgent):
                 "usage",
                 json.dumps(usage, ensure_ascii=False),
                 calling_info={
-                    "request_id": response.request_id,
+                    "request_id": request_id,
                     "input": _kwargs,
                     "output": output,
                 }
@@ -107,9 +101,11 @@ class ChatQwen(ChatAgent):
         # 流输出
         usage = {}
         output = []
+        request_id = None
         async for response in responses:
             if response.status_code == HTTPStatus.OK:
                 if 'usage' in response:
+                    request_id = response.request_id
                     usage = response.usage
                 ai_output = response.output.choices[0].message
                 output.append(ai_output)
@@ -117,15 +113,13 @@ class ChatQwen(ChatAgent):
                     for func in ai_output.tool_calls:
                         yield EventBlock(
                             "tools_call_chunk",
-                            json.dumps(func, ensure_ascii=False),
-                            calling_info={"request_id": response.request_id}
+                            json.dumps(func, ensure_ascii=False)
                         )
                 else:
                     content = ai_output.content
                     yield EventBlock(
                         "chunk",
-                        content,
-                        calling_info={"request_id": response.request_id}
+                        content
                     )
             else:
                 yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
@@ -139,7 +133,7 @@ class ChatQwen(ChatAgent):
                 "usage",
                 json.dumps(usage, ensure_ascii=False),
                 calling_info={
-                    "request_id": response.request_id,
+                    "request_id": request_id,
                     "input": _kwargs,
                     "output": output,
                 }
@@ -164,26 +158,21 @@ class ChatQwenVL(ChatQwen):
         # 流输出
         usage = {}
         output = []
+        request_id = None
         for response in responses:
             if response.status_code == HTTPStatus.OK:
                 if 'usage' in response:
+                    request_id = response.request_id
                     usage = response.usage
                 ai_output = response.output.choices[0].message
-                output.append(ai_output)
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
-                        yield EventBlock(
-                            "tools_call_chunk",
-                            json.dumps(func, ensure_ascii=False),
-                            calling_info={"request_id": response.request_id}
-                        )
+                        output.append({"tools_call_chunk": func})
+                        yield EventBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
                 else:
                     content = ai_output.content
-                    yield EventBlock(
-                        "chunk",
-                        content,
-                        calling_info={"request_id": response.request_id}
-                    )
+                    output.append({"chunk": content})
+                    yield EventBlock("chunk", content)
             else:
                 yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
@@ -196,13 +185,12 @@ class ChatQwenVL(ChatQwen):
                 "usage",
                 json.dumps(usage, ensure_ascii=False),
                 calling_info={
-                    "request_id": response.request_id,
+                    "request_id": request_id,
                     "output": output,
                     "input": _kwargs,
                 }
             )
 
     async def async_generate(self, messages: List[dict], **kwargs):
-        loop = asyncio.get_running_loop()
         for block in await self.run_in_executor(self.generate, messages, **kwargs):
             yield block

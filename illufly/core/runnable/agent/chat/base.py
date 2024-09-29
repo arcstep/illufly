@@ -6,7 +6,7 @@ from abc import abstractmethod
 from typing import Union, List, Dict, Any
 
 from .....utils import merge_tool_calls, extract_text
-from .....io import EventBlock, EndBlock
+from .....io import EventBlock, EndBlock, NewLineBlock
 
 from ..base import BaseAgent
 from .memory_manager import MemoryManager
@@ -240,6 +240,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     def _handle_openai_style_tools_call(self, final_tools_call, chat_memory, kwargs):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
+        yield NewLineBlock()
         yield EventBlock("tools_call_final", final_tools_call_text)
 
         for index, tool in enumerate(final_tools_call):
@@ -310,7 +311,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     else:
                         tool_resp += x
                         yield EventBlock("tool_resp_chunk", x)
-
+                yield NewLineBlock()
                 yield EventBlock("tool_resp_final", tool_resp)
 
     async def _async_execute_tool(self, tool, chat_memory, kwargs):
@@ -332,6 +333,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         tool_resp += x
                         yield EventBlock("tool_resp_chunk", x)
 
+                yield NewLineBlock()
                 yield EventBlock("tool_resp_final", tool_resp)
 
     def _handle_in_text_tool_call(self, tool_call, chat_memory, kwargs):
