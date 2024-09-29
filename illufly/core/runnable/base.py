@@ -78,6 +78,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
             generator = self.call(*args, **kwargs)
             for block in generator:
+                block.runnable_info = self.runnable_info
                 for handler in handlers:
                     if not inspect.iscoroutinefunction(handler):
                         handler(block, verbose=verbose, **kwargs)
@@ -96,6 +97,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         handlers = handlers or [log]
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
             async for block in self.async_call(*args, **kwargs):
+                block.runnable_info = self.runnable_info
                 tasks = []
                 for handler in handlers:
                     resp = handler(block, verbose=verbose, **kwargs)
