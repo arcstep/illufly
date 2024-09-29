@@ -1,6 +1,6 @@
 from typing import List, Union
 
-from .....io import TextBlock
+from .....io import EventBlock
 from ....markdown import Markdown
 from ..base import BaseAgent
 from ..chat import ChatAgent
@@ -70,10 +70,10 @@ class FromOutline(BaseAgent):
                 segment_writer.set_draft(f'```markdown\n{draft}\n```')
 
                 info = f"执行扩写任务 <{outline_id}>：\n{outline}"
-                yield TextBlock("agent", info)
+                yield EventBlock("agent", info)
                 self.create_new_memory(info)
                 yield from segment_writer.call("请开始扩写")
                 self.remember_response(segment_writer.last_output)
         else:
-            yield TextBlock("info", f"没有提纲可供扩写")
+            yield EventBlock("info", f"没有提纲可供扩写")
 

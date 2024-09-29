@@ -1,8 +1,9 @@
 import json
 import time
+import asyncio
 
 from typing import Callable, Iterable, Union, AsyncIterable
-from .block import TextBlock
+from .block import EventBlock
 
 __CHUNK_BLOCK_TYPES__ = ["chunk", "tool_resp_chunk"]
 __NOT_PRINT_BLOCK_TYPES__ = ["text_final", "response"]
@@ -10,7 +11,7 @@ __ALLWAYS_PRINT_BLOCK_TYPES__ = ["agent", "warn", "error", "image_url"]
 
 def process_block(block, last_block_type, verbose:bool, start_time:float):
     elapsed_time = int(time.time() - start_time)
-    if isinstance(block, TextBlock):        
+    if isinstance(block, EventBlock):        
         if block.block_type in __CHUNK_BLOCK_TYPES__:
             if last_block_type and last_block_type in __CHUNK_BLOCK_TYPES__ and last_block_type != block.block_type:
                 print("\n")
@@ -29,7 +30,7 @@ def process_block(block, last_block_type, verbose:bool, start_time:float):
 
 def log(runnable: "Runnable", *args, verbose: bool=False, **kwargs):
     """
-    针对任何回调函数，只要符合规范的返回TextBlock对象的生成器，就可以使用这个函数来
+    针对任何回调函数，只要符合规范的返回EventBlock对象的生成器，就可以使用这个函数来
     打印流式日志。
 
     返回值中，tools_call可以方便处理智能体的工具回调。
@@ -39,18 +40,16 @@ def log(runnable: "Runnable", *args, verbose: bool=False, **kwargs):
     start_time = time.time()
 
     for block in runnable.call(*args, **kwargs):
-        if isinstance(block, TextBlock) and block.block_type in __NOT_PRINT_BLOCK_TYPES__:
+        if isinstance(block, EventBlock) and block.block_type in __NOT_PRINT_BLOCK_TYPES__:
             continue
         last_block_type = process_block(block, last_block_type, verbose=verbose, start_time=start_time)
         
     if last_block_type in __CHUNK_BLOCK_TYPES__:
         print("\n")
-    
-    return runnable.last_output
 
 async def alog(runnable: "Runnable", *args, verbose: bool=False, **kwargs):
     """
-    针对任何回调函数，只要符合规范的返回TextBlock对象的生成器，就可以使用这个函数来
+    针对任何回调函数，只要符合规范的返回EventBlock对象的生成器，就可以使用这个函数来
     打印流式日志。
 
     返回值中，tools_call可以方便处理智能体的工具回调。
@@ -61,11 +60,11 @@ async def alog(runnable: "Runnable", *args, verbose: bool=False, **kwargs):
 
     resp = runnable.async_call(*args, **kwargs)
     async for block in resp:
-        if isinstance(block, TextBlock) and block.block_type in __NOT_PRINT_BLOCK_TYPES__:
+        if isinstance(block, EventBlock) and block.block_type in __NOT_PRINT_BLOCK_TYPES__:
             continue
         last_block_type = process_block(block, last_block_type, verbose=verbose, start_time=start_time)
+        await asyncio.sleep(0)
         
     if last_block_type in __CHUNK_BLOCK_TYPES__:
         print("\n")
     
-    return runnable.last_output

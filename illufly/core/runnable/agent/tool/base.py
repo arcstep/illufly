@@ -1,7 +1,7 @@
 from typing import Callable, Generator
 
 from .. import BaseAgent
-from .....io import TextBlock
+from .....io import EventBlock
 
 class ToolAgent(BaseAgent):
     def __init__(self, func: Callable, **kwargs):
@@ -18,4 +18,4 @@ class ToolAgent(BaseAgent):
         if isinstance(resp, Generator):
             yield from resp
         else:
-            yield TextBlock("chunk", resp)
+            yield EventBlock("chunk", resp)

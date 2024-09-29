@@ -1,6 +1,6 @@
 from typing import List, Union
 from ...utils import minify_text
-from ...types import VectorDB, TextBlock, Document
+from ...types import VectorDB, EventBlock, Document
 from ...io import log, alog
 from ...importer import MarkdownFileImporter
 
@@ -72,9 +72,9 @@ class FaissDB(VectorDB):
         """
         if len(self.documents) == 0:
             self._last_output = []
-            yield TextBlock("warn", "FaissDB 中没有数据")
+            yield EventBlock("warn", "FaissDB 中没有数据")
         elif not text or len(text.strip()) == 0:
-            yield TextBlock("warn", "输入的查询文本不能为空")
+            yield EventBlock("warn", "输入的查询文本不能为空")
         else:
             # 对输入字符串做向量编码并查询
             vectors = [self.embeddings.query(text)]
@@ -89,4 +89,4 @@ class FaissDB(VectorDB):
             self._last_output.sort(key=lambda x: x[0])
             
             for distance, doc in self._last_output:
-                yield TextBlock("info", f"[{distance:.3f}] {doc.metadata['source']}: {minify_text(doc.text)}")
+                yield EventBlock("info", f"[{distance:.3f}] {doc.metadata['source']}: {minify_text(doc.text)}")

@@ -4,7 +4,7 @@ from .core.runnable.agent.tool_ability import ToolAbility
 from .core.runnable.agent.chat.message import Message, Messages
 from .core.markdown import Markdown
 from .core.document import Document
-from .io import TextBlock, EndBlock
+from .io import EventBlock, EndBlock
 
 __all__ = [
     "Runnable",
@@ -18,6 +18,6 @@ __all__ = [
     "Template",
     "Markdown",
     "Document",
-    "TextBlock",
+    "EventBlock",
     "EndBlock"
 ]

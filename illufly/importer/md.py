@@ -1,7 +1,7 @@
 import os
 import fnmatch
 from typing import Union, List
-from ..types import Markdown, Document, TextBlock
+from ..types import Markdown, Document, EventBlock
 from ..core.runnable import Importer
 from ..config import get_env
 from ..utils import minify_text, count_tokens
@@ -41,18 +41,18 @@ class MarkdownFileImporter(Importer):
             abs_file = os.path.abspath(file)
             try:
                 if not os.path.exists(abs_file):
-                    yield(TextBlock("warn", f"文件不存在 {abs_file}"))
+                    yield(EventBlock("warn", f"文件不存在 {abs_file}"))
                     continue
 
                 with open(abs_file, 'r', encoding='utf-8') as f:
                     txt = f.read()
                     if str(txt).strip() == "":
-                        yield(TextBlock("warn", f"文件内容为空 {file}"))
+                        yield(EventBlock("warn", f"文件内容为空 {file}"))
                         continue
                     docs = self.split_markdown(txt, file)
                     self.documents.extend(docs)
             except Exception as e:
-                yield(TextBlock("warn", f"读取文件失败 {abs_file}: {e}"))
+                yield(EventBlock("warn", f"读取文件失败 {abs_file}: {e}"))
 
     def get_files(self, directory, filename_filter, extensions):
         matches = []

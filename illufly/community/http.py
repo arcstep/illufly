@@ -6,7 +6,7 @@ import aiohttp
 import asyncio
 import hashlib
 
-from ..io import TextBlock
+from ..io import EventBlock
 from ..config import get_env
 
 CHECK_RESULT_SECONDS = get_env("HTTP_CHECK_RESULT_SECONDS")
@@ -92,7 +92,7 @@ def save_image(url: str, path: str):
         os.makedirs(folder)
     with open(path, 'wb+') as f:
         f.write(requests.get(url).content)
-        yield TextBlock("info", f'output image to {path}')
+        yield EventBlock("info", f'output image to {path}')
 
 async def async_save_image(url: str, path: str):
     folder = os.path.dirname(path)
@@ -103,7 +103,7 @@ async def async_save_image(url: str, path: str):
             content = await response.read()
             with open(path, 'wb+') as f:
                 f.write(content)
-                yield TextBlock("info", f'output image to {path}')
+                yield EventBlock("info", f'output image to {path}')
 
 def get_request(url: str, headers: Dict[str, str]) -> Dict[str, Any]:
     response = requests.get(url, headers=headers)
@@ -128,7 +128,7 @@ def check_task_status(status_result: Dict[str, Any], task_id: str, headers: Dict
         time.sleep(CHECK_RESULT_SECONDS)
         status_response = requests.get(f"{DASHSCOPE_BASE_URL}/tasks/{task_id}", headers=headers)
         _status_result = status_response.json()
-        yield TextBlock("info", f'{task_id}: {_status_result["output"]["task_status"]}')
+        yield EventBlock("info", f'{task_id}: {_status_result["output"]["task_status"]}')
 
         if _status_result['output']['task_status'] in ['SUCCEEDED', 'FAILED']:
             status_result.update(_status_result)
@@ -140,7 +140,7 @@ async def async_check_task_status(status_result: Dict[str, Any], task_id: str, h
             await asyncio.sleep(CHECK_RESULT_SECONDS)
             async with session.get(f"{DASHSCOPE_BASE_URL}/tasks/{task_id}", headers=headers) as status_response:
                 _status_result = await status_response.json()
-                yield TextBlock("info", f'{task_id}: {_status_result["output"]["task_status"]}')
+                yield EventBlock("info", f'{task_id}: {_status_result["output"]["task_status"]}')
                 if _status_result['output']['task_status'] in ['SUCCEEDED', 'FAILED']:
                     status_result.update(_status_result)
                     break
