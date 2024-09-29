@@ -40,6 +40,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self,
         *,
         continue_running: bool=True,
+        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         **kwargs
     ):
         """
@@ -51,6 +52,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         BindingManager.__init__(self, **kwargs)
 
         self.continue_running = continue_running
+        self.handlers = handlers
         self.verbose = False
 
     def __call__(
@@ -60,7 +62,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         **kwargs
     ):
-        handlers = handlers or [log]
+        handlers = handlers or self.handlers or [log]
         if any(inspect.iscoroutinefunction(handler) for handler in handlers):
             return self._handle_async_call(*args, verbose=verbose, handlers=handlers, **kwargs)
         else:
@@ -74,7 +76,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         **kwargs
     ):
         self.verbose = verbose
-        handlers = handlers or [log]
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
             generator = self.call(*args, **kwargs)
             for block in generator:
@@ -94,7 +95,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         **kwargs
     ):
         self.verbose = verbose
-        handlers = handlers or [log]
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
             async for block in self.async_call(*args, **kwargs):
                 block.runnable_info = self.runnable_info
