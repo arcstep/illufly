@@ -53,7 +53,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     def runnable_info(self):
         info = super().runnable_info
         info.update({
-            "model_name": self.default_call_args.get("model")
+            "model_name": self.default_call_args.get("model"),
+            **self.model_args
         })
         return info
 

@@ -1,6 +1,6 @@
 from typing import Union, List, Optional, Dict, Any
 
-from ...io import EventBlock
+from ...io import EventBlock, NewLineBlock
 from ...types import ChatAgent
 
 import os
@@ -58,6 +58,8 @@ class ChatOpenAI(ChatAgent):
         completion = self.client.chat.completions.create(**_kwargs)
 
         usage = {}
+        output = []
+        request_id = None
         for response in completion:
             if response.usage:
                 usage = response.usage
@@ -74,15 +76,26 @@ class ChatOpenAI(ChatAgent):
                                 "arguments": func.function.arguments or ""
                             }
                         }
+                        output.append({"tools_call_chunk": func_json})
                         yield EventBlock("tools_call_chunk", json.dumps(func_json, ensure_ascii=False))
                 else:
                     content = ai_output.content
                     if content:
+                        output.append({"chunk": content})
                         yield EventBlock("chunk", content)
+        yield NewLineBlock()
         if usage:
             usage_dict = {
                 "prompt_tokens": usage.prompt_tokens,
                 "completion_tokens": usage.completion_tokens,
                 "total_tokens": usage.total_tokens
             }
-            yield EventBlock("usage", json.dumps(usage_dict, ensure_ascii=False))
+            yield EventBlock(
+                "usage",
+                json.dumps(usage_dict, ensure_ascii=False),
+                calling_info={
+                    "request_id": request_id,
+                    "input": _kwargs,
+                    "output": output,
+                }
+            )
