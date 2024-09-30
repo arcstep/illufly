@@ -2,7 +2,7 @@ import json
 import copy
 from typing import Union, Dict, Any, List, Tuple
 
-from ...template import Template
+from ..template import Template
 
 class Message:
     def __init__(self, role: str, content: Union[str, Template], **kwargs):
@@ -100,11 +100,12 @@ class Messages:
             Tuple[str, Union[str, Template]],
             List[Union[Message, str, Dict[str, Any], Template, Tuple[str, Union[str, Template]]]]
         ]=None,
-        style: str=None
+        style: str=None,
+        input_vars: Dict[str, Any]=None
     ):
         self.raw_messages = messages or []
         self.style = style
-
+        self.input_vars = input_vars or {}
         if not isinstance(self.raw_messages, list):
             self.raw_messages = [self.raw_messages]
 
@@ -161,23 +162,14 @@ class Messages:
         return f"<Messages({self.length} items)>"
     
     def to_list(self, input_vars: Dict[str, Any]=None, style: str=None):
-        return [msg.to_dict(input_vars, (style or self.style)) for msg in self.messages]
+        return [msg.to_dict({**self.input_vars, **(input_vars or {})}, (style or self.style)) for msg in self.messages]
     
     def to_json(self, input_vars: Dict[str, Any]=None, style: str=None):
-        return [msg.to_json(input_vars, (style or self.style)) for msg in self.messages]
+        return [msg.to_json({**self.input_vars, **(input_vars or {})}, (style or self.style)) for msg in self.messages]
     
     @property
     def length(self):
         return len(self.messages)
-
-    @property
-    def input_vars(self):
-        all_vars = set()
-        for msg in self.messages:
-            if isinstance(msg.content, Template):
-                for v in msg.content.using_vars_list:
-                    all_vars.add(v)
-        return list(all_vars)
 
     def append(self, message: Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]):
         self.messages.append(self._convert_to_message(message, len(self.messages)))

@@ -9,6 +9,8 @@ def get_env(key: str=None):
     """
     default_values = {
         # 文件夹配置
+        "ILLUFLY_ROOT": "./",
+        "ILLUFLY_PROMPTS": "__PROMPTS__",
         "ILLUFLY_DOCS": "__DOCS__",
         "ILLUFLY_CACHE_EMBEDDINGS": "__CACHE_EMBEDDINGS__",
         "ILLUFLY_UPLOAD_CACHE_DIR": "__UPLOAD_CACHE__",
