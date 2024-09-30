@@ -1,15 +1,15 @@
 from typing import Union, List, Dict, Any
 import copy
-from ...template import Template
-from .....hub import get_template_variables
+from ..template import Template
+from ....hub import get_template_variables
 from .message import Messages, Message
 
 class MemoryManager:
-    def __init__(self, style: str=None, memory: List[Union[str, "Template", Dict[str, Any]]]=None, remember_rounds: int=None, **kwargs):
+    def __init__(self, style: str=None, memory: Union[List[Union[str, "Template", Dict[str, Any]]], Messages]=None, input_vars: List[str]=None, remember_rounds: int=None, **kwargs):
         self.style = style
         self.memory = []
         self.bound_vars = set() # 被消息列表中的 Template 绑定的变量清单
-        self.init_messages = Messages(memory, style=self.style)
+        self.init_messages = Messages(memory, style=self.style, input_vars=input_vars)
         self.locked_items = self.init_messages.length
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
 

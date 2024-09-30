@@ -9,8 +9,8 @@ from .....utils import merge_tool_calls, extract_text
 from .....io import EventBlock, EndBlock, NewLineBlock
 
 from ..base import BaseAgent
-from .memory_manager import MemoryManager
-from .message import Messages, Message
+from ..memory_manager import MemoryManager
+from ..message import Messages, Message
 from .knowledge_manager import KnowledgeManager
 from .tools_manager import ToolsManager
 
