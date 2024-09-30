@@ -19,19 +19,21 @@ import json
 
 PROMPT_WRITING_BASE = 'illufly.__PROMPT_TEMPLATES__'
 
-def find_resource_template():
+def find_resource_template(*seg_path):
     """
     过滤出提示语模板所在的目录清单。
     """
 
-    all_resources = contents(f'{PROMPT_WRITING_BASE}')
+    all_resources = contents(".".join([PROMPT_WRITING_BASE, *seg_path]))
     return [r for r in all_resources if not is_resource(f'{PROMPT_WRITING_BASE}', r)]
 
 def load_resource_template(template_id: str):
     """
     从python包资源文件夹加载提示语模板。
     """
-    if template_id not in find_resource_template():
+    template_id = template_id.replace(os.sep, '.')
+    parts = template_id.split('.')
+    if parts[-1] not in find_resource_template(*parts[:-1]):
         raise ValueError(f"<{template_id}> template_id not exist !")
 
     def _get_template_str(res_file: str):
