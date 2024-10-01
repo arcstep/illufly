@@ -49,6 +49,17 @@ class Runnable(ABC, ExecutorManager):
         self.handlers = handlers
         self.verbose = False
 
+        self._last_input = None
+        self._last_output = None
+
+    @property
+    def last_input(self):
+        return self._last_input
+
+    @property
+    def last_output(self):
+        return self._last_output
+
     def __call__(
         self,
         *args,
