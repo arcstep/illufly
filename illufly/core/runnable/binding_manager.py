@@ -10,8 +10,6 @@ class BindingManager:
         :param binding: 绑定的 (runnable, binding_map)，字典结构，或 Runnable 实例的列表
         """
         self.runnables = self._convert_runnables(binding)
-        self._last_input = None
-        self._last_output = None
         self._exported_vars = {}
 
     def _convert_runnables(self, bindings: Any=None, raise_message: str=None):
@@ -20,6 +18,7 @@ class BindingManager:
         """
         if bindings is None:
             return []
+
         if isinstance(bindings, list):
             items = bindings
         else:
@@ -45,13 +44,14 @@ class BindingManager:
                     raise ValueError(raise_message, bindings)
         return runnables
 
-    @property
-    def last_input(self):
-        return self._last_input
-
-    @property
-    def last_output(self):
-        return self._last_output
+    def bind(self, bindings: Any):
+        """
+        手工绑定其他 runnables
+        """
+        message = "binding description must be one of dict, tuple or Runnable instance"
+        new_runnables = self._convert_runnables(bindings, raise_message=message)
+        self.runnables.extend(new_runnables)
+        return self.runnables
 
     @property
     def exported_vars(self):
@@ -80,7 +80,9 @@ class BindingManager:
 
         使用函数扩展时，不会覆盖函数中包含的键值，这实际上提供了 **1:N** 映射的可能性。
         """
+
         imported_vars = {}
+
         for runnable, binding_map in self.runnables:
             exported_vars = runnable.exported_vars
             for k, v in exported_vars.items():
@@ -97,14 +99,6 @@ class BindingManager:
                     imported_vars[k] = v(exported_vars)
 
         return imported_vars
-
-    def bind(self, bindings: Any):
-        """
-        手工绑定其他 runnables
-        """
-        message = "binding description must be one of dict, tuple or Runnable instance"
-        self.runnables.extend(self._convert_runnables(bindings, raise_message=message))
-        return self.runnables
 
 class PassthroughBinding(BindingManager):
     """

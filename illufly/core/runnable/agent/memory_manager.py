@@ -13,7 +13,10 @@ class MemoryManager(BindingManager):
         template_binding: Dict[str, Any]=None,
         **kwargs
     ):
-        if template_binding and not isinstance(template_binding, Dict):
+        if template_binding is None:
+            template_binding = {}
+
+        if not isinstance(template_binding, Dict):
             raise ValueError("template_binding must be a dictionary")
 
         super().__init__(**kwargs)
