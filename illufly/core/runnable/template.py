@@ -4,16 +4,18 @@ from ...utils import minify_text
 from ...hub import load_resource_template, load_template, get_template_variables
 from ...io import EventBlock
 from .base import Runnable
-
+from .binding_manager import BindingManager
 from chevron.renderer import render as mustache_render
 
-class Template(Runnable):
+class Template(Runnable, BindingManager):
     """
     提示语模板可以作为消息生成消息列表。
     结合工作台映射，可以动态填充提示语模板。
     """
     def __init__(self, template_id: str=None, template_text: str=None, **kwargs):
         super().__init__(**kwargs)
+        BindingManager.__init__(self, **kwargs)
+
         if template_id:
             self.template_text = load_template(template_id)
         elif template_text:
@@ -22,12 +24,12 @@ class Template(Runnable):
             raise ValueError('template_text or template_id cannot be empty')
 
         self.template_vars = get_template_variables(self.template_text)
-
+    
     def __str__(self):
         return self.format()
 
     def __repr__(self):
-        return f"<Template template_vars={self.template_vars} template_text='{minify_text(self.template_text)}'>"
+        return f"<Template imported_vars={self.template_vars} template_text='{minify_text(self.template_text)}'>"
 
 
     def call(self, *args, **kwargs):
