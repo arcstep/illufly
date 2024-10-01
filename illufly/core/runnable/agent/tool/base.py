@@ -20,6 +20,10 @@ class ToolAgent(BaseAgent):
         return f"<Tool {self.name}: {self.description}>"
 
     def call(self, *args, **kwargs):
+        """
+        由于这里将使用 self.func 调用工具函数，所以在 __init__ 中必须提供 func 参数。 
+        此处实现了定义工具函数时的兼容：如果返回值不是生成器，就直接转换为 EventBlock 对象。
+        """
         resp = self.func(*args, **kwargs)
         if isinstance(resp, Generator):
             yield from resp

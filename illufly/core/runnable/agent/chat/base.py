@@ -3,7 +3,7 @@ import copy
 import asyncio
 
 from abc import abstractmethod
-from typing import Union, List, Dict, Any
+from typing import Union, List, Dict, Any, Set, Callable
 
 from .....utils import merge_tool_calls, extract_text
 from .....io import EventBlock, EndBlock, NewLineBlock
@@ -33,7 +33,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         - knowledge：知识管理
         """
         BaseAgent.__init__(self, **kwargs)
-        MemoryManager.__init__(self, **kwargs)
         KnowledgeManager.__init__(self, **kwargs)
         ToolsManager.__init__(self, **kwargs)
 
@@ -47,8 +46,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         self.default_call_args = {"model": None}
 
         # 增加的可绑定变量
-        self.task = ""
-
+        self._task = ""
+        MemoryManager.__init__(self, **kwargs)
+    
     @property
     def runnable_info(self):
         info = super().runnable_info
@@ -65,6 +65,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     @property
     def last_output(self):
         return self.memory[-1]['content'] if self.memory else ""
+
+    @property
+    def task(self):
+        return self._task
 
     @property
     def exported_vars(self):
@@ -86,7 +90,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError("prompt 必须是字符串或消息列表")
 
-        new_chat, is_prompt_using_system_role = self._prepare_for_call(prompt, kwargs)
+        new_chat, is_prompt_using_system_role, prompt = self._prepare_for_call(prompt, kwargs)
 
         yield from self._chat_with_tools_calling(prompt, *args, **kwargs)
 
@@ -100,7 +104,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError("prompt 必须是字符串或消息列表")
 
-        new_chat, is_prompt_using_system_role = self._prepare_for_call(prompt, kwargs)
+        new_chat, is_prompt_using_system_role, prompt = self._prepare_for_call(prompt, kwargs)
 
         async for block in self._async_chat_with_tools_calling(prompt, *args, **kwargs):
             yield block
@@ -125,17 +129,13 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             if not is_prompt_using_system_role and self.init_messages.length > 0:
                 if "task" in self.bound_vars:
-                    if isinstance(prompt, str):
-                        self.task = prompt
-                    else:
-                        messages = Messages(prompt)
-                        self.task = messages.last_content()
+                    self._task = Messages(prompt).last_content()
                     prompt = []
 
                 is_prompt_using_system_role = True
                 self.memory = self.init_messages.to_list()
 
-        return new_chat, is_prompt_using_system_role
+        return new_chat, is_prompt_using_system_role, prompt
 
     def _chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
         chat_memory = self.get_chat_memory(

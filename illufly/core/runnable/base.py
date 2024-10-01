@@ -5,12 +5,11 @@ from typing import Union, List, Dict, Any, Callable, Generator, AsyncGenerator
 from abc import ABC, abstractmethod
 from functools import partial
 
-from .binding_manager import BindingManager
 from .executor_manager import ExecutorManager
 from ...io import log
 
 
-class Runnable(ABC, ExecutorManager, BindingManager):
+class Runnable(ABC, ExecutorManager):
     """
     实现基本可运行类，定义了可运行的基本接口。
     只要继承该类，就可以作为智能体的工具使用。
@@ -49,7 +48,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         - 工具：作为工具的Runnable列表，在发现工具后是否执行工具的标记等
         """
         ExecutorManager.__init__(self, **kwargs)
-        BindingManager.__init__(self, **kwargs)
 
         self.continue_running = continue_running
         self.handlers = handlers
