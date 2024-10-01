@@ -128,7 +128,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             self.memory.clear()
 
             if not is_prompt_using_system_role and self.init_messages.length > 0:
-                if "task" in self.bound_vars:
+                if "task" in self.init_messages_bound_vars:
                     self._task = Messages(prompt).last_content()
                     prompt = []
 
