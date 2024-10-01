@@ -1,21 +1,35 @@
-from typing import Union, List, Dict, Any
-import copy
-from ..template import Template
+from typing import Union, List, Dict, Any, Callable
 from ....hub import get_template_variables
+from ..template import Template
+from ..binding_manager import BindingManager
 from .message import Messages, Message
 
-class MemoryManager:
-    def __init__(self, style: str=None, memory: Union[List[Union[str, "Template", Dict[str, Any]]], Messages]=None, input_vars: List[str]=None, remember_rounds: int=None, **kwargs):
+class MemoryManager(BindingManager):
+    def __init__(
+        self,
+        style: str=None,
+        memory: Union[List[Union[str, "Template", Dict[str, Any]]], Messages]=None,
+        remember_rounds: int=None,
+        template_binding: Dict[str, Any]=None,
+        **kwargs
+    ):
+        if template_binding and not isinstance(template_binding, Dict):
+            raise ValueError("template_binding must be a dictionary")
+
+        super().__init__(**kwargs)
+
         self.style = style
         self.memory = []
-        self.bound_vars = set() # 被消息列表中的 Template 绑定的变量清单
-        self.init_messages = Messages(memory, style=self.style, input_vars=input_vars)
-        self.locked_items = self.init_messages.length
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
 
+        self.bound_vars = set() # 被消息列表中的 Template 绑定的变量清单
+        self.init_messages = Messages(memory, style=self.style)
+        self.locked_items = self.init_messages.length
         for template in self.init_messages.all_templates:
-            template.bind_runnables(self)
-            self.bound_vars.update(get_template_variables(template.template_text))
+            template.bind((self, template_binding))
+            self.bound_vars.update(template.imported_vars)
+            mapping_index = [v for k, v in template_binding.items() if not isinstance(v, Callable)]
+            self.bound_vars.update(set(mapping_index))
 
     def create_new_memory(self, prompt: Union[str, List[dict]]):
         """
