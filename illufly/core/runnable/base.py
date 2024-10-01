@@ -17,10 +17,6 @@ class Runnable(ABC, ExecutorManager):
     实现机制：
     - 支持 EventBlock 流式输出句法
     - 实现 __call__ 方法，来简化流输出调用
-    - 通过 _last_input 保存当次调用的输入结果，并使用 last_input 属性方法来获取
-    - 通过 _last_output 保存当次调用的输出结果，并使用 last_output 属性方法来获取
-    - 支持 bind 方法，来动态发布变量
-    - 支持 bound_vars 方法，来动态绑定变量
     - 支持 call 同步方法调用
     - 支持 async_call 方法调用，并在 Runnable 中已实现默认版本
     - 支持 stop 方法来停止仍在进行的异步调用

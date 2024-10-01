@@ -22,14 +22,14 @@ class MemoryManager(BindingManager):
         self.memory = []
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
 
-        self.bound_vars = set() # 被消息列表中的 Template 绑定的变量清单
+        self.init_messages_bound_vars = set() # 被消息列表中的 Template 绑定的变量清单
         self.init_messages = Messages(memory, style=self.style)
         self.locked_items = self.init_messages.length
         for template in self.init_messages.all_templates:
             template.bind((self, template_binding))
-            self.bound_vars.update(template.imported_vars)
+            self.init_messages_bound_vars.update(template.imported_vars)
             mapping_index = [v for k, v in template_binding.items() if not isinstance(v, Callable)]
-            self.bound_vars.update(set(mapping_index))
+            self.init_messages_bound_vars.update(set(mapping_index))
 
     def create_new_memory(self, prompt: Union[str, List[dict]]):
         """
