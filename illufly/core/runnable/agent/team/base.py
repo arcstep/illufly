@@ -22,7 +22,7 @@ class Team(BaseAgent, BindingManager):
 
         self.leader = leader
         self.members = list(members)
-        self.completed_teamwork = []
+        self._completed_teamwork = []
 
         if not isinstance(leader, BaseAgent):
             raise ValueError("leader must be a BaseAgent instance")
@@ -33,15 +33,24 @@ class Team(BaseAgent, BindingManager):
         if not all(isinstance(m, BaseAgent) for m in members):
             raise ValueError("members must be a list of BaseAgent instances")
 
-        members_desc = [{m.name: m.description} for m in self.members]
-
-        self._exported_vars = {
-            "members": json.dumps(members_desc, ensure_ascii=False),
-            "completed_teamwork": self.completed_teamwork
-        }
+        # 从领导角色和成员角色绑定到 Team
         self.leader.bind((self, {}))
         for m in self.members:
             m.bind((self, {}))
+    
+    @property
+    def completed_teamwork(self):
+        return self._completed_teamwork
+    
+    @property
+    def exported_vars(self):
+        members_desc = [{m.name: m.description} for m in self.members]
+
+        return {
+            **super().exported_vars,
+            "members": json.dumps(members_desc, ensure_ascii=False),
+            "completed_teamwork": self.completed_teamwork
+        }
 
     def call(self, prompt: Union[str, List[dict]], **kwargs):
         """
@@ -51,18 +60,18 @@ class Team(BaseAgent, BindingManager):
         max_rounds = 3
         for round in range(max_rounds):
             to_continue = False
+            yield EventBlock("info", f"ROUND {round + 1}")
             yield from self.leader.call(prompt, new_chat=True, **kwargs)
             tasks = self.extract_task_dispatch(self.leader.last_output)
-            if tasks:
-                for task in tasks:
-                    member = self.find_member(task["member_name"])
-                    if member:
-                        self.completed_teamwork.append(f'交办：一个任务交办给 {task["member_name"]}, 任务描述: {task["description"]}')
-                        yield from member.call(task["description"], **kwargs)
-                        self.completed_teamwork.append(f'观察：由 {task["member_name"]} 回复， {member.last_output}')
-                        to_continue = True
-                    else:
-                        raise ValueError(f"member {task} not found")
+            for task in tasks:
+                member = self.find_member(task["member_name"])
+                if member:
+                    self._completed_teamwork.append(f'交办：一个任务交办给 {task["member_name"]}, 任务描述: {task["description"]}')
+                    yield from member.call(task["description"], **kwargs)
+                    self._completed_teamwork.append(f'观察：由 {task["member_name"]} 回复， {member.last_output}')
+                    to_continue = True
+                else:
+                    raise ValueError(f"member {task} not found")
             final_answer = self.extract_final_answer(self.leader.last_output)
             if final_answer:
                 yield EventBlock("final_answer", final_answer)
