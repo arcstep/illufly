@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List
 class ToolAbility:
     def __init__(self, *, func: Callable = None, name: str = None, description: str = None, parameters: Dict[str, Any] = None, **kwargs):
         self.func = func or self.call
-        self.name = name or "我还没有工具名字"
+        self.name = name or self.__class__.__name__
         self.description = description or "我还没有工具描述"
         self.parameters = self._get_parameters(parameters)
 
