@@ -1,4 +1,4 @@
 from .base import Runnable, BaseAgent
 from .tool import ToolAgent
 from .chat import ChatAgent
-from .team import Team, Pipe, FromOutline, Discuss
+from .team import BaseTeam, StepByStep, Pipe, FromOutline, Discuss
