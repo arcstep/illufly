@@ -16,7 +16,7 @@ class BaseTeam(BaseAgent, BindingManager):
 
         if not isinstance(leader, BaseAgent):
             raise ValueError("leader must be a BaseAgent instance")
-        
+
         if len(members) == 0:
             raise ValueError("at least one member must be provided")
 
@@ -34,7 +34,16 @@ class BaseTeam(BaseAgent, BindingManager):
     
     @property
     def exported_vars(self):
-        members_desc = [{m.name: m.description} for m in self.members]
+        members_desc = []
+        names = set([self.leader.name])
+        for index, m in enumerate(self.members):
+            if m.name not in names:
+                _name = m.name
+                names.add(_name)
+            else:
+                _name = f"{m.name}_{index}"
+                m.name = _name
+            members_desc.append({"member_name": m.name, "description": m.description})
 
         return {
             **super().exported_vars,
