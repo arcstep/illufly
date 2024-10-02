@@ -43,12 +43,12 @@ class BaseTeam(BaseAgent, BindingManager):
             else:
                 _name = f"{m.name}_{index}"
                 m.name = _name
-            members_desc.append({"member_name": m.name, "description": m.description})
+            members_desc.append({"成员名字": m.name, "擅长能力": m.description})
 
         return {
             **super().exported_vars,
             "members": json.dumps(members_desc, ensure_ascii=False),
-            "completed_teamwork": self.completed_teamwork
+            "completed_teamwork": "\n".join(self.completed_teamwork)
         }
 
     def find_member(self, name: str) -> BaseAgent:
@@ -57,9 +57,9 @@ class BaseTeam(BaseAgent, BindingManager):
                 return m
         return None
 
-    def extract_final_answer(self, text: str) -> str:
-        start_marker = "<final_answer>"
-        end_marker = "</final_answer>"
+    def extract_answer(self, text: str, marker: str="final_answer") -> str:
+        start_marker = f"<{marker}>"
+        end_marker = f"</{marker}>"
         start = text.find(start_marker)
         while start != -1:
             end = text.find(end_marker, start)
@@ -72,8 +72,8 @@ class BaseTeam(BaseAgent, BindingManager):
 
     def extract_task_dispatch(self, text: str) -> str:
         tasks = []
-        start_marker = "<task_dispatch>"
-        end_marker = "</task_dispatch>"
+        start_marker = "<sub_task>"
+        end_marker = "</sub_task>"
         start = text.find(start_marker)
         while start != -1:
             end = text.find(end_marker, start)
