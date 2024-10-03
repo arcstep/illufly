@@ -24,7 +24,7 @@ class SegmentsRenderer(MarkdownRenderer):
             tok.update({"id": doc_id, "source": self.source})
             if tok['type'] == 'blank_line':
                 md = '\n'
-            documents.append(Document(text=md, metadata=tok))
+            documents.append(Document(text=md, meta=tok))
         return documents
 
 def create_front_matter(dict_data: Dict[str, Any]):
@@ -32,15 +32,15 @@ def create_front_matter(dict_data: Dict[str, Any]):
     构造 YAML Front Matter
     """
     if isinstance(dict_data, dict):
-        metadata = copy.deepcopy(dict_data)
+        meta = copy.deepcopy(dict_data)
         for e_tag in ['id', 'type']:
-            if e_tag in metadata:
-                metadata.pop(e_tag, None)
+            if e_tag in meta:
+                meta.pop(e_tag, None)
         for e_tag in ['verbose', 'is_fake']:
-            tags = metadata.get('args', {})
+            tags = meta.get('args', {})
             if e_tag in tags:
                 tags.pop(e_tag, None)
-        yaml_str = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False)
+        yaml_str = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False)
         return "---\n" + yaml_str.replace("\n\n", "\n") + "---\n\n"
     else:
         return ''
@@ -53,8 +53,8 @@ def fetch_front_matter(text: str):
     yaml_match = yaml_pattern.match(text)
     if yaml_match:
         yaml_front_matter = yaml_match.group(1)
-        metadata = yaml.safe_load(yaml_front_matter)
-        return metadata, text[yaml_match.end():]
+        meta = yaml.safe_load(yaml_front_matter)
+        return meta, text[yaml_match.end():]
     else:
         return {}, text
 
@@ -70,11 +70,11 @@ def parse_markdown(text: str, start_tag: str=None, end_tag: str=None, source: st
     documents = []
 
     # 提取 YAML Front Matter
-    metadata, text = fetch_front_matter(text)
-    if metadata:
+    meta, text = fetch_front_matter(text)
+    if meta:
         doc_id = next(doc_id_generator)
-        metadata.update({"id": doc_id, "type": "front_matter", "source": source})
-        doc = Document(text='', metadata=metadata)
+        meta.update({"id": doc_id, "type": "front_matter", "source": source})
+        doc = Document(text='', meta=meta)
         documents.append(doc)
 
     # 从文本中提取标记内的内容
@@ -85,7 +85,7 @@ def parse_markdown(text: str, start_tag: str=None, end_tag: str=None, source: st
             if before:
                 documents.extend(markdown(before, renderer=SegmentsRenderer(doc_id_generator, source)))
             doc_id = next(doc_id_generator)
-            doc = Document(text=outline_content+"\n\n", metadata={"id": doc_id, "type": 'OUTLINE', "source": source})
+            doc = Document(text=outline_content+"\n\n", meta={"id": doc_id, "type": 'OUTLINE', "source": source})
             documents.append(doc)
             text = after
     if text:
@@ -109,4 +109,4 @@ def list_markdown(documents: Union[List[Document], List[Tuple[Document, int]]]):
             docs = [d for d, index in documents]
         else:
             docs = []
-    return [(d.metadata['type'][:2] + "-" + d.metadata['id'][-7:], d.text) for d in docs if d]
+    return [(d.meta['type'][:2] + "-" + d.meta['id'][-7:], d.text) for d in docs if d]

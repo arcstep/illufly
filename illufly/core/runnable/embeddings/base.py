@@ -13,7 +13,7 @@ class BaseEmbeddings(Runnable):
     句子嵌入模型。
 
     使用向量模型，将文本转换为向量，以便入库或查询。
-    Document(text, metadata={'source': str}) -> Document(text, metadata={'embeddings': Vectors})
+    Document(text, meta={'source': str}) -> Document(text, meta={'embeddings': Vectors})
 
     例如：
     ```
@@ -23,7 +23,7 @@ class BaseEmbeddings(Runnable):
     embeddings = BaseEmbeddings(model="text-embedding-3-large")
     doc = Document("这是一个测试文本")
     embeddings(doc)
-    print(embeddings.last_output[0].metadata['embeddings'])
+    print(embeddings.last_output[0].meta['embeddings'])
     ```
     """
 
@@ -60,9 +60,9 @@ class BaseEmbeddings(Runnable):
         (这可能在使用某些模型时有必要，例如通义千问的 embedding-v2 以下版本)
         """
         if isinstance(docs, str):
-            docs = [Document(docs, metadata={'source': '__query__'})]
+            docs = [Document(docs, meta={'source': '__query__'})]
         elif isinstance(docs, Document):
-            docs.metadata['source'] = '__query__'
+            docs.meta['source'] = '__query__'
 
         if not isinstance(docs, list):
             raise ValueError("docs 必须是字符串或 Document 类型列表，但实际为: {type(docs)}")
@@ -103,11 +103,11 @@ class BaseEmbeddings(Runnable):
         existing_files = []
         for index, text in enumerate(batch_texts):
             vector_path = hash_text(text) + ".emb"
-            source = clean_filename(docs[index].metadata['source'])
+            source = clean_filename(docs[index].meta['source'])
             cache_path = os.path.join(vector_folder, source or "no_source", vector_path)
             if os.path.exists(cache_path):
                 with open(cache_path, 'rb') as f:
-                    docs[index].metadata['embeddings'] = pickle.load(f)
+                    docs[index].meta['embeddings'] = pickle.load(f)
                 existing_files.append(True)
             else:
                 existing_files.append(False)
@@ -116,10 +116,10 @@ class BaseEmbeddings(Runnable):
     def _save_vectors_to_cache(self, docs, batch_texts, vectors, vector_folder):
         for index, text in enumerate(batch_texts):
             vector_path = hash_text(text) + ".emb"
-            source = clean_filename(docs[index].metadata['source'])
+            source = clean_filename(docs[index].meta['source'])
             cache_path = os.path.join(vector_folder, source or "no_source", vector_path)
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
             with open(cache_path, 'wb') as f:
                 pickle.dump(vectors[index], f)
-                docs[index].metadata['embeddings'] = vectors[index]
+                docs[index].meta['embeddings'] = vectors[index]
                 yield EventBlock('info', f'wrote embedding cache {cache_path} {text[0:50]}{"..." if len(text) > 50 else ""}')
