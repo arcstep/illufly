@@ -36,7 +36,7 @@ class Markdown():
         if not documents:
             return ''
 
-        meta0 = documents[0].metadata
+        meta0 = documents[0].meta
         front_matter = ''
         if with_front_matter and 'type' in meta0 and meta0['type'] == 'front_matter':
             front_matter = create_front_matter(meta0)
@@ -58,7 +58,7 @@ class Markdown():
         return [
             d
             for d in self.documents
-            if d.metadata['type'] == "OUTLINE"
+            if d.meta['type'] == "OUTLINE"
             and re.search(pattern or '.*', d.text)
         ]
     
@@ -70,7 +70,7 @@ class Markdown():
         - draft 为结合了前后文和扩写位置说明的草稿
         - task 为具体的要求
         """
-        if outline_doc.metadata['type'] != 'OUTLINE':
+        if outline_doc.meta['type'] != 'OUTLINE':
             raise  ValueError(f"Document's type Must be OUTLINE!")
 
         # 提取草稿
@@ -78,7 +78,7 @@ class Markdown():
 
         docs.extend(self.get_prev_documents(outline_doc, k=prev_k))
 
-        outline = Document(text="<<<YOUR_TEXT>>>\n\n", metadata={"type": "paragraph"})
+        outline = Document(text="<<<YOUR_TEXT>>>\n\n", meta={"type": "paragraph"})
         docs.append(outline)
 
         docs.extend(self.get_next_documents(outline_doc, k=next_k))
@@ -97,14 +97,14 @@ class Markdown():
         """
         获得任务索引。
         """
-        index_from = index_from.metadata['id'] if isinstance(index_from, Document) else index_from
-        index_to = index_to.metadata['id'] if isinstance(index_to, Document) else index_to
+        index_from = index_from.meta['id'] if isinstance(index_from, Document) else index_from
+        index_to = index_to.meta['id'] if isinstance(index_to, Document) else index_to
         _from = None
         _to = None
         for i, doc in enumerate(self.documents):
-            if doc.metadata['id'] == index_from:
+            if doc.meta['id'] == index_from:
                 _from = i
-            if doc.metadata['id'] == index_to:
+            if doc.meta['id'] == index_to:
                 _to = i
             if _from != None and _to != None:
                 return (_from, _to)
@@ -127,8 +127,8 @@ class Markdown():
         prev_docs = self.documents[:_from]
         next_docs = self.documents[_to + 1:]
         
-        prev_heading = next((doc for doc in reversed(prev_docs) if doc.metadata['type'] == 'heading'), None)
-        next_heading = next((doc for doc in next_docs if doc.metadata['type'] == 'heading'), None)
+        prev_heading = next((doc for doc in reversed(prev_docs) if doc.meta['type'] == 'heading'), None)
+        next_heading = next((doc for doc in next_docs if doc.meta['type'] == 'heading'), None)
 
         from_index = None
         if prev_heading:
@@ -156,7 +156,7 @@ class Markdown():
         if index_doc is None:
             return []
 
-        task_id = index_doc.metadata['id'] if isinstance(index_doc, Document) else index_doc
+        task_id = index_doc.meta['id'] if isinstance(index_doc, Document) else index_doc
 
         md = ""
         found_task = False
@@ -166,13 +166,13 @@ class Markdown():
         for _doc in self.documents[::-1]:
             new_doc = copy.deepcopy(_doc)
             if not found_task:
-                if new_doc.metadata['id'] == task_id:
+                if new_doc.meta['id'] == task_id:
                     found_task = True
                 continue
 
             # 在token数量可承受范围内优先前文
             # 并且，在获得上下文内容时，下文内容中不出现<OUTLINE>
-            if new_doc.metadata['type'] == 'OUTLINE':
+            if new_doc.meta['type'] == 'OUTLINE':
                 new_doc.text = '...\n'
             md = new_doc.text + md
             if len(md) <= k:
@@ -180,9 +180,9 @@ class Markdown():
                 continue
 
             # 补充所有祖先标题
-            doc_is_header = new_doc.metadata['type'] == "heading"
+            doc_is_header = new_doc.meta['type'] == "heading"
             if doc_is_header:
-                doc_level = new_doc.metadata['attrs']['level']
+                doc_level = new_doc.meta['attrs']['level']
                 if last_header_level == None or doc_level <= last_header_level:
                     docs.append(new_doc)
                     last_header_level = doc_level
@@ -199,7 +199,7 @@ class Markdown():
         if index_doc is None:
             return []
 
-        task_id = index_doc.metadata['id'] if isinstance(index_doc, Document) else index_doc
+        task_id = index_doc.meta['id'] if isinstance(index_doc, Document) else index_doc
 
         md = ""
         found_task = False
@@ -208,12 +208,12 @@ class Markdown():
         for _doc in self.documents:
             new_doc = copy.deepcopy(_doc)
             if not found_task:
-                if new_doc.metadata['id'] == task_id:
+                if new_doc.meta['id'] == task_id:
                     found_task = True
                 continue
 
             # 获得上下文内容时，下文内容中不出现<OUTLINE>
-            if new_doc.metadata['type'] == 'OUTLINE':
+            if new_doc.meta['type'] == 'OUTLINE':
                 new_doc.text = '...\n'
             md = new_doc.text + md
             if len(md) <= k:

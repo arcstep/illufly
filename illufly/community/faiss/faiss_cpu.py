@@ -2,7 +2,7 @@ from typing import List, Union
 from ...utils import minify_text
 from ...types import VectorDB, EventBlock, Document
 from ...io import log, alog
-from ...importer import MarkdownFileImporter
+from ...core.runnable import MarkMeta
 
 import time
 import numpy as np
@@ -46,23 +46,23 @@ class FaissDB(VectorDB):
             self.documents.extend(docs)
     
     def add_files(self, dir: str, filter: str=None, exts: list = None, chunk_size: int=None, chunk_overlap: int=None, **kwargs):
-        md_importer = MarkdownFileImporter(dir, filter, exts, chunk_size, chunk_overlap, **kwargs)
-        md_importer()
+        md_importer = MarkMeta(dir, filter, exts, chunk_size, chunk_overlap, **kwargs)
+        md_importer.load()
         return self.add(md_importer.last_output)
 
     def _process_embeddings(self, docs: List[Document]):
         """
         处理 embeddings.last_output 并返回 NumPy 数组。
         """
-        embedded_docs = [d for d in docs if 'embeddings' in d.metadata]
-        not_embedded_docs = [d for d in docs if 'embeddings' not in d.metadata]
+        embedded_docs = [d for d in docs if 'embeddings' in d.meta]
+        not_embedded_docs = [d for d in docs if 'embeddings' not in d.meta]
 
         if not_embedded_docs:
             new_embeddings = self.embeddings(not_embedded_docs, verbose=self.verbose)
             embedded_docs.extend(new_embeddings)
 
         if embedded_docs:
-            vectors = [d.metadata['embeddings'] for d in embedded_docs]
+            vectors = [d.meta['embeddings'] for d in embedded_docs]
             return np.array(vectors, dtype='float32')  # 将列表转换为NumPy数组
         return None
 
@@ -89,4 +89,4 @@ class FaissDB(VectorDB):
             self._last_output.sort(key=lambda x: x[0])
             
             for distance, doc in self._last_output:
-                yield EventBlock("info", f"[{distance:.3f}] {doc.metadata['source']}: {minify_text(doc.text)}")
+                yield EventBlock("info", f"[{distance:.3f}] {doc.meta['source']}: {minify_text(doc.text)}")

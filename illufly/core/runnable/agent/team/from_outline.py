@@ -38,8 +38,8 @@ class FromOutline(BaseAgent):
         if self.outline:
             md = copy.deepcopy(self.markdown)
             for doc in self.outline:
-                if doc.metadata['id'] in self.agents:
-                    from_outline_text = self.agents[doc.metadata['id']].memory[-1]['content']
+                if doc.meta['id'] in self.agents:
+                    from_outline_text = self.agents[doc.meta['id']].memory[-1]['content']
                     md.replace_documents(doc, doc, from_outline_text)
             return md.text
         else:
@@ -60,10 +60,10 @@ class FromOutline(BaseAgent):
 
         if self.outline:
             for doc in self.outline:
-                outline_id = doc.metadata['id']
+                outline_id = doc.meta['id']
 
                 segment_writer = self.writer.clone()
-                self.agents[doc.metadata['id']] = segment_writer
+                self.agents[doc.meta['id']] = segment_writer
 
                 (draft, outline) = self.markdown.fetch_outline_task(doc, prev_k=self.prev_k, next_k=self.next_k)
                 segment_writer.set_outline(f'```markdown\n{outline}\n```')
