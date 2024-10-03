@@ -5,3 +5,4 @@ from .importer import Importer
 from .embeddings import BaseEmbeddings
 from .vectordb import VectorDB
 from .retriever import Retriever
+from .markmeta import MarkMeta
