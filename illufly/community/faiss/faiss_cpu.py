@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Union, Callable, Generator, AsyncGenerator
 from ...utils import minify_text
 from ...types import VectorDB, EventBlock, Document
 from ...io import log, alog
@@ -24,19 +24,9 @@ class FaissDB(VectorDB):
         self.documents = self.embeddings.last_output[:]
         self.add(self.documents)
     
-    def add(self, docs: Union[List[Document], List[str], str]):
-        if isinstance(docs, str):
-            docs = [Document(docs)]
-        elif isinstance(docs, list):
-            _docs = []
-            for doc in docs:
-                if isinstance(doc, str):
-                    _docs.append(Document(doc))
-                else:
-                    _docs.append(doc)
-            docs = _docs
-        else:
-            raise ValueError(f"docs 必须是字符串或 Document 类型列表，但实际为: {type(docs)}")
+    def load_text(self, text: str, source: str=None, **kwargs):
+        mm = MarkMeta(**kwargs)
+        docs = mm.load_text(text, source)
 
         vectors = self._process_embeddings(docs)
         if vectors is not None and len(vectors) > 0:
@@ -45,10 +35,23 @@ class FaissDB(VectorDB):
             self.index.add(vectors)
             self.documents.extend(docs)
     
-    def add_files(self, dir: str, filter: str=None, exts: list = None, chunk_size: int=None, chunk_overlap: int=None, **kwargs):
-        md_importer = MarkMeta(dir, filter, exts, chunk_size, chunk_overlap, **kwargs)
-        md_importer.load()
-        return self.add(md_importer.last_output)
+    def load(
+        self,
+        directory: str=None,
+        verbose: bool = False,
+        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
+        call_func: Callable = None,
+        **kwargs
+    ):
+        mm = MarkMeta(directory=directory, **kwargs)
+        mm(verbose=verbose, handlers=handlers, action=mm.load, **kwargs)
+
+        vectors = self._process_embeddings(mm.last_output)
+        if vectors is not None and len(vectors) > 0:
+            if self.train:
+                self.index.train(vectors)
+            self.index.add(vectors)
+            self.documents.extend(mm.last_output)
 
     def _process_embeddings(self, docs: List[Document]):
         """
@@ -84,9 +87,9 @@ class FaissDB(VectorDB):
             # 筛选出文档
             valid_indices = indices[0][indices[0] >= 0]
             self._last_output = [(distances[0][i], self.documents[valid_indices[i]]) for i in range(len(valid_indices))]
-            
+
             # 按距离排序
             self._last_output.sort(key=lambda x: x[0])
-            
+
             for distance, doc in self._last_output:
                 yield EventBlock("info", f"[{distance:.3f}] {doc.meta['source']}: {minify_text(doc.text)}")

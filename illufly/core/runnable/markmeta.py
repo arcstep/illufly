@@ -27,7 +27,7 @@ class MarkMeta(Runnable):
         - 如果单个文档内容超过 chunk_size 限制，则滚动切分，并增补 ID 作为新的 Document 元素
         - 优先使用 @meta 所在行的键值描述来初始化 Document 的 meta 数据
         - 片段单元的内容都作为 Document 的 text 属性
-    - 处理 @index 标签
+    - @TODO: 处理 @index 标签
         - Document 的 index 属性是一个列表，额外存储了专门指定的文本嵌入内容，建立索引时应当替代 text 内容
         - 可以在文档中使用 @index 指定开始位置，遇到@end结束
         - @index 支持多段落
