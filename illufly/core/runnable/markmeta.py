@@ -8,6 +8,7 @@ from ..document import Document
 from ...io import EventBlock
 from ...config import get_env
 from ...utils import minify_text, count_tokens
+import numpy as np
 
 class MarkMeta(Runnable):
     """
@@ -81,6 +82,8 @@ class MarkMeta(Runnable):
             with open(path, 'w', encoding='utf-8') as f:
                 for doc in docs:
                     # 将 meta 字典转换为 JSON 字符串
+                    # 删除 embeddings 键值对，以避免保存向量数据
+                    doc.meta.pop('embeddings', None)
                     meta_line = f"@meta {json.dumps(doc.meta, ensure_ascii=False)}"
                     f.write("\n<!-- " + meta_line + " -->\n")
                     f.write(doc.text + "\n")

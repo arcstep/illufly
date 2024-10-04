@@ -17,12 +17,12 @@ class BaseEmbeddings(Runnable):
 
     例如：
     ```
-    from illufly import Document
-    from illufly.types import BaseEmbeddings
+    from illufly.types import Document
+    from illufly.embeddings import TextEmbeddings # 通义千问文本向量模型
 
-    embeddings = BaseEmbeddings(model="text-embedding-3-large")
-    doc = Document("这是一个测试文本")
-    embeddings(doc)
+    embeddings = TextEmbeddings()
+    docs = [Document("这是一个测试文本", meta={"source": "test"})]
+    embeddings(docs)
     print(embeddings.last_output[0].meta['embeddings'])
     ```
     """

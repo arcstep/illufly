@@ -69,15 +69,17 @@ class FaissDB(VectorDB):
             return np.array(vectors, dtype='float32')  # 将列表转换为NumPy数组
         return None
 
-    def query(self, text: str, top_k: int=None, **kwargs):
+    def query(self, text: str, top_k: int=None, **kwargs) -> List[Document]:
         """
         查询向量。
+
+        由于查询过程需要快速返回，因此不按迭代器返回。
         """
         if len(self.documents) == 0:
             self._last_output = []
-            yield EventBlock("warn", "FaissDB 中没有数据")
+            return []
         elif not text or len(text.strip()) == 0:
-            yield EventBlock("warn", "输入的查询文本不能为空")
+            return []
         else:
             # 对输入字符串做向量编码并查询
             vectors = [self.embeddings.query(text)]
@@ -86,10 +88,12 @@ class FaissDB(VectorDB):
 
             # 筛选出文档
             valid_indices = indices[0][indices[0] >= 0]
-            self._last_output = [(distances[0][i], self.documents[valid_indices[i]]) for i in range(len(valid_indices))]
+            results = [(distances[0][i], self.documents[valid_indices[i]]) for i in range(len(valid_indices))]
 
             # 按距离排序
-            self._last_output.sort(key=lambda x: x[0])
+            results.sort(key=lambda x: x[0])
+            for distance, doc in results:
+                doc.meta["distance"] = distance
 
-            for distance, doc in self._last_output:
-                yield EventBlock("info", f"[{distance:.3f}] {doc.meta['source']}: {minify_text(doc.text)}")
+            # 返回的结果是 Document 列表
+            return [doc for _, doc in results]

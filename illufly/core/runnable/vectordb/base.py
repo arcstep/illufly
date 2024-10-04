@@ -1,4 +1,5 @@
 from typing import List
+from ....io import EventBlock
 from ..base import Runnable
 from ..embeddings import BaseEmbeddings
 
@@ -30,4 +31,5 @@ class VectorDB(Runnable):
         pass
 
     def call(self, text: str, top_k: int=None, **kwargs):
-        yield from self.query(text, top_k or self.top_k)
+        self._last_output = self.query(text, top_k or self.top_k)
+        yield EventBlock("info", f"查询到{len(self._last_output)}条结果")
