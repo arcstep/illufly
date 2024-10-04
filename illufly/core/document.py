@@ -29,7 +29,8 @@ class Document():
             self.meta['id'] = next(id_gen)
 
     def __repr__(self):
-        return f"Document(text=\"{minify_text(self.text)}\", meta={minify_text(json.dumps(self.meta, ensure_ascii=False))})"
+        meta_converted = [k for k, _v in self.meta.items()]
+        return f"Document(text=\"{minify_text(self.text)}\", meta={meta_converted})"
 
     def __str__(self):
         return self.text
