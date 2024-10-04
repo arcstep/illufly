@@ -1,15 +1,15 @@
 from typing import Union, List, Dict, Any
 from ...binding_manager import BindingManager
 from ..base import BaseAgent
+from .....utils import extract_segments
 import json
 
-class BaseTeam(BaseAgent, BindingManager):
+class BaseTeam(BaseAgent):
     """
     智能体团队通过协作完成任务。
     """
     def __init__(self, leader: BaseAgent, members: List[BaseAgent]=None, **kwargs):
         super().__init__(**kwargs)
-        BindingManager.__init__(self, **kwargs)
 
         self.members = members or []
         self._completed_teamwork = []
@@ -57,34 +57,18 @@ class BaseTeam(BaseAgent, BindingManager):
                 return m
         return None
 
-    def extract_answer(self, text: str, marker: str="final_answer") -> str:
-        start_marker = f"<{marker}>"
-        end_marker = f"</{marker}>"
-        start = text.find(start_marker)
-        while start != -1:
-            end = text.find(end_marker, start)
-            if end != -1:
-                final_answer = text[start + len(start_marker):end]
-                return final_answer
-            else:
-                break
-        return None
+    def extract_answer(self, text: str) -> str:
+        return extract_segments(text, "<final_answer>", "</final_answer>")
+
+    def extract_self_solve(self, text: str) -> str:
+        return extract_segments(text, "<self_solve>", "</self_solve>")
 
     def extract_task_dispatch(self, text: str) -> str:
-        tasks = []
-        start_marker = "<sub_task>"
-        end_marker = "</sub_task>"
-        start = text.find(start_marker)
-        while start != -1:
-            end = text.find(end_marker, start)
-            if end != -1:
-                task_dispatch = text[start + len(start_marker):end]
-                try:
-                    task = json.loads(task_dispatch)
-                    tasks.append(task)
-                except json.JSONDecodeError:
-                    pass
-                start = text.find(start_marker, end)
-            else:
-                break
+        tasks = extract_segments(text, "<sub_task>", "</sub_task>")
+        for task in tasks:
+            try:
+                task = json.loads(task)
+                tasks.append(task)
+            except json.JSONDecodeError:
+                pass
         return tasks

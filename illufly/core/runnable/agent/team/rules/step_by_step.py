@@ -39,7 +39,7 @@ class StepByStep(BaseTeam):
             if not self._completed_teamwork:
                 self._completed_teamwork.append(f'[总任务目标] {self.leader.task}')
 
-            self_solve = self.extract_answer(self.leader.last_output, marker="self_solve")
+            self_solve = self.extract_self_solve(self.leader.last_output)
             if self_solve:
                 self._completed_teamwork.append(f'[行动] 该子任务自己解决，结果为 {self_solve}')
 
@@ -58,10 +58,10 @@ class StepByStep(BaseTeam):
             if not to_continue:
                 break
 
-        final_answer = self.extract_answer(self.leader.last_output)
-        if final_answer:
-            self._completed_teamwork.append(f'[最终答案] \n{final_answer}')
-            self._last_output = final_answer
-            yield EventBlock("final_answer", final_answer)
+        final_answers = self.extract_answers(self.leader.last_output)
+        if final_answers:
+            self._completed_teamwork.append(f'[最终答案] \n{final_answers[-1]}')
+            self._last_output = final_answers[-1]
+            yield EventBlock("final_answer", self._last_output)
         else:
             yield EventBlock("final_answer", "经过多次尝试，没有找到最终答案")
