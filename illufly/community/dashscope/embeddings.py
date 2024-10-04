@@ -11,6 +11,7 @@ class TextEmbeddings(BaseEmbeddings):
         super().__init__(
             model=model or "text-embedding-v3",
             api_key=api_key or os.getenv("DASHSCOPE_API_KEY"),
+            dim=kwargs.pop("dim", 1024),
             **kwargs
         )
         self.output_type = output_type

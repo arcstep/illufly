@@ -5,7 +5,7 @@ import os
 from ...types import BaseEmbeddings
 
 class OpenAIEmbeddings(BaseEmbeddings):
-    """支持最新的阿里云模型服务灵积API的文本向量模型"""
+    """支持最新的OpenAI文本向量模型"""
 
     def __init__(
         self,
@@ -13,6 +13,7 @@ class OpenAIEmbeddings(BaseEmbeddings):
         base_url: str=None,
         api_key: str=None,
         imitator: str=None,
+        dim: int=None,
         **kwargs
     ):
         imitator = (imitator or "").upper() or "OPENAI"
@@ -20,6 +21,7 @@ class OpenAIEmbeddings(BaseEmbeddings):
             model=model or "text-embedding-ada-002",
             base_url=base_url or os.getenv(f"{imitator}_BASE_URL"),
             api_key=api_key or os.getenv(f"{imitator}_API_KEY"),
+            dim=kwargs.pop("dim", 1536),
             **kwargs
         )
         try:
