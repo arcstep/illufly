@@ -25,7 +25,9 @@ class BaseReranker(Runnable):
         self._last_output = []
 
     def rerank(self, query: str, docs: Union[str, List[str], List[Document]]):
-        """重排序器"""
+        """
+        重排序器。
+        """
         return docs
 
     def call(

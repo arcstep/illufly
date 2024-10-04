@@ -27,6 +27,11 @@ class DashScopeReranker(BaseReranker):
         )
 
     def rerank(self, query: str, docs: Union[str, List[str], List[Document]]):
+        """
+        重排序器。
+
+        rerank 返回的文档长度应当与 docs 一致，因此 top_n 应当取值为 docs 的长度。
+        """
         self._last_output = []
         docs = convert_to_documents_list(docs)
         top_n = len(docs)

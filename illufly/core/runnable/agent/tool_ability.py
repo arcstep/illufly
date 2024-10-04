@@ -30,9 +30,8 @@ class ToolAbility:
             }
             if param.default is inspect.Parameter.empty:
                 _parameters["required"].append(name)
-
         return _parameters
-    
+
     @property
     def tool_desc(self) -> Dict[str, Any]:
         """
@@ -68,5 +67,4 @@ class ToolAbility:
                         parsed_arguments[key] = False
         return parsed_arguments
 
-# ... existing code ...
 
