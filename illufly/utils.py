@@ -7,13 +7,34 @@ from typing import List, Union, Dict, Any
 from .config import get_env
 
 def raise_not_install(packages):
+    """
+    如果指定的包未安装，则抛出错误。
+    """
     print(f"please install package: '{packages}' with pip or poetry")
     # auto install package
     # subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
 
 def raise_not_supply_all(info: str, *args):
+    """
+    如果所有参数都为None，则抛出错误。
+    """
     if all(arg is None for arg in args):
         raise ValueError(info)
+
+def extract_segments(text: str, start_marker: str, end_marker: str) -> List[Dict[str, Any]]:
+    """
+    提取文本中所有符合条件的片段，并返回一个文本列表。
+    """
+    segments = []
+    start = text.find(start_marker)
+    while start != -1:
+        end = text.find(end_marker, start)
+        if end != -1:
+            segments.append(text[start + len(start_marker):end])
+            start = text.find(start_marker, end)
+        else:
+            break
+    return segments
 
 def extract_text(resp_md: str, start_marker: str=None, end_marker: str=None):
     """
@@ -35,6 +56,9 @@ def extract_text(resp_md: str, start_marker: str=None, end_marker: str=None):
     return resp_md
 
 def hash_text(text):
+    """
+    计算文本的MD5哈希值。主要用于生成反向索引，便于缓存命中等。
+    """
     text_bytes = text.encode('utf-8')
     hash_object = hashlib.md5(text_bytes)
     return hash_object.hexdigest()
@@ -49,10 +73,15 @@ def clean_filename(filename: str):
     return cleaned_filename
 
 def safety_path(path: str):
+    """
+    确保路径中不包含 .. ，防止通过路径注入获得系统中其他资源的路径。
+    替换路径中的 .. 为 .，并返回安全过滤后的路径。
+    """
     return os.path.normpath(re.sub(r"\.\.+", ".", path)) if path else ''
 
 def minify_text(text: str, limit: int=100) -> str:
     """
+    在长度限制下，仅保留文本的开头部份即可，一般用于调试信息。
     压缩文本，剔除左右两侧的空格和换行，仅保留第一个换行之前的文字，超出后limit后用省略号代替。
     """
     raw_len = len(text)
@@ -72,6 +101,7 @@ def minify_text(text: str, limit: int=100) -> str:
 
 def compress_text(text: str, start_limit: int=100, end_limit: int=100, delta: int=50) -> str:
     """
+    在长度限制下，保留尽量多的文本，一般用于提示语参考。
     压缩文本，如果文本长度超过指定限制，则只保留前后部分，并用省略号连接。
     """
     if not text:
@@ -85,6 +115,9 @@ def compress_text(text: str, start_limit: int=100, end_limit: int=100, delta: in
         return text[:start_limit] + f"\n...(省略{len(text)-start_limit-end_limit}字)\n" + text[-end_limit:]
 
 def merge_tool_calls(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    合并流式输出的JSON表示。
+    """
     merged_results = []
     current_result = None
 
@@ -154,13 +187,13 @@ def merge_blocks_by_index(blocks: List[Dict[str, Any]]) -> Dict[int, List[Dict[s
 
 def count_tokens(text: str):
     """
-    计算文本的 token 数量
+    计算文本的 token 数量。
     """
     return len(get_token_ids(text))
 
 def get_token_ids(text: str, token_encoding: str=None, allowed_special: str=None, disallowed_special: str=None) -> List[int]:
     """
-    获取文本的 token ID 列表
+    获取文本的 token ID 列表。
     """
     encoding_model = tiktoken.get_encoding(token_encoding or 'cl100k_base')
     return encoding_model.encode(
