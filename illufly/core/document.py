@@ -24,12 +24,12 @@ class Document():
     def __init__(self, text: str=None, index: str=None, meta: Dict[str, Any] = None):
         self.text = text or ""
         self.index = index or ""
-        self.meta = {'source': 'unknown', **(meta or {})}
+        self.meta = {**(meta or {})}
         if 'id' not in self.meta:
             self.meta['id'] = next(id_gen)
 
     def __repr__(self):
-        return f"Document(text='{minify_text(self.text)}', meta='{minify_text(json.dumps(self.meta, ensure_ascii=False))}')"
+        return f"Document(text=\"{minify_text(self.text)}\", meta={minify_text(json.dumps(self.meta, ensure_ascii=False))})"
 
     def __str__(self):
         return self.text
