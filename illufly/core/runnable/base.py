@@ -6,10 +6,11 @@ from abc import ABC, abstractmethod
 from functools import partial
 
 from .executor_manager import ExecutorManager
+from .binding_manager import BindingManager
 from ...io import log
 
 
-class Runnable(ABC, ExecutorManager):
+class Runnable(ABC, ExecutorManager, BindingManager):
     """
     实现基本可运行类，定义了可运行的基本接口。
     只要继承该类，就可以作为智能体的工具使用。
@@ -19,7 +20,7 @@ class Runnable(ABC, ExecutorManager):
     - 实现 __call__ 方法，来简化流输出调用
     - 支持 call 同步方法调用
     - 支持 async_call 方法调用，并在 Runnable 中已实现默认版本
-    - 支持 stop 方法来停止仍在进行的异步调用
+    - 支持 绑定机制
 
     什么时候直接从 Runnable 继承？
     - 如果需要支持流式输出
@@ -52,6 +53,8 @@ class Runnable(ABC, ExecutorManager):
         self._last_input = None
         self._last_output = None
 
+        BindingManager.__init__(self, **kwargs)
+
     @property
     def last_input(self):
         return self._last_input
@@ -65,27 +68,38 @@ class Runnable(ABC, ExecutorManager):
         *args,
         verbose: bool = False,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
-        action: Callable = None,
+        action: str = None,
         **kwargs
     ):
+        self.continue_running = True
         handlers = handlers or self.handlers or [log]
-        if any(inspect.iscoroutinefunction(handler) for handler in handlers):
-            return self.handle_async_call(*args, verbose=verbose, handlers=handlers, action=action, **kwargs)
+        
+        if action:
+            if not hasattr(self, action):
+                raise AttributeError(f"方法 '{action}' 不存在于实例中")
+            method = getattr(self, action)
         else:
-            return self.handle_sync_call(*args, verbose=verbose, handlers=handlers, action=action, **kwargs)
+            method = self.call
+
+        try:
+            if any(inspect.iscoroutinefunction(handler) for handler in handlers):
+                return self.handle_async_call(*args, verbose=verbose, handlers=handlers, action_method=method, **kwargs)
+            else:
+                return self.handle_sync_call(*args, verbose=verbose, handlers=handlers, action_method=method, **kwargs)
+        finally:
+            self.continue_running = False
 
     def handle_sync_call(
         self,
         *args,
         verbose: bool = False,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
-        action: Callable = None,
+        action_method: Callable = None,
         **kwargs
     ):
-        call_func = action or self.call
         self.verbose = verbose
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
-            generator = call_func(*args, **kwargs)
+            generator = action_method(*args, **kwargs)
             for block in generator:
                 block.runnable_info = self.runnable_info
                 for handler in handlers:
@@ -100,13 +114,12 @@ class Runnable(ABC, ExecutorManager):
         *args,
         verbose: bool = False,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
-        action: Callable = None,
+        action_method: Callable = None,
         **kwargs
     ):
-        call_func = action or self.async_call
         self.verbose = verbose
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
-            async for block in call_func(*args, **kwargs):
+            async for block in action_method(*args, **kwargs):
                 block.runnable_info = self.runnable_info
                 tasks = []
                 for handler in handlers:

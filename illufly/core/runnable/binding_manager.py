@@ -44,12 +44,12 @@ class BindingManager:
                     raise ValueError(raise_message, bindings)
         return runnables
 
-    def bind(self, bindings: Any):
+    def bind(self, *bindings: Any):
         """
         手工绑定其他 runnables
         """
         message = "binding description must be one of dict, tuple or Runnable instance"
-        new_runnables = self._convert_runnables(bindings, raise_message=message)
+        new_runnables = self._convert_runnables(list(bindings), raise_message=message)
         self.runnables.extend(new_runnables)
         return self.runnables
 

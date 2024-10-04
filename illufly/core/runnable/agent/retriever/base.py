@@ -1,6 +1,7 @@
 from typing import List, Union, Optional
 from ..base import BaseAgent
 from ...vectordb import VectorDB
+from ...base import Runnable
 
 class Retriever(BaseAgent):
     """
