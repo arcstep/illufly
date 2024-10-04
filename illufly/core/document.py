@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List, Union
 from ..utils import minify_text
 import json
 import uuid
@@ -37,3 +37,21 @@ class Document():
     
     def __len__(self):
         return len(self.text)
+
+def convert_to_documents_list(docs: Union[str, List[str], List[Document]]):
+    if isinstance(docs, str):
+        docs = [docs]
+
+    if not isinstance(docs, list):
+        raise ValueError("docs 必须是字符串或 Document 类型列表，但实际为: {type(docs)}")
+    
+    docs_list = []
+    for doc in docs:
+        if isinstance(doc, str):
+            doc = Document(doc, meta={'source': '__rerank__'})
+        if not isinstance(doc, Document):
+            raise ValueError("docs 必须是字符串或 Document 类型列表，但实际为: {type(docs)}")
+
+        docs_list.append(doc)
+
+    return docs_list

@@ -59,6 +59,7 @@ class BaseEmbeddings(Runnable):
         如果提供参数是字符串，则表示查询模式，自动填写 source 为 '__query__'。
         (这可能在使用某些模型时有必要，例如通义千问的 embedding-v2 以下版本)
         """
+        self._last_output = []
         if isinstance(docs, str):
             docs = [Document(docs, meta={'source': '__query__'})]
         elif isinstance(docs, Document):
