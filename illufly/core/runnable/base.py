@@ -65,24 +65,27 @@ class Runnable(ABC, ExecutorManager):
         *args,
         verbose: bool = False,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
+        action: Callable = None,
         **kwargs
     ):
         handlers = handlers or self.handlers or [log]
         if any(inspect.iscoroutinefunction(handler) for handler in handlers):
-            return self._handle_async_call(*args, verbose=verbose, handlers=handlers, **kwargs)
+            return self.handle_async_call(*args, verbose=verbose, handlers=handlers, action=action, **kwargs)
         else:
-            return self._handle_sync_call(*args, verbose=verbose, handlers=handlers, **kwargs)
+            return self.handle_sync_call(*args, verbose=verbose, handlers=handlers, action=action, **kwargs)
 
-    def _handle_sync_call(
+    def handle_sync_call(
         self,
         *args,
         verbose: bool = False,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
+        action: Callable = None,
         **kwargs
     ):
+        call_func = action or self.call
         self.verbose = verbose
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
-            generator = self.call(*args, **kwargs)
+            generator = call_func(*args, **kwargs)
             for block in generator:
                 block.runnable_info = self.runnable_info
                 for handler in handlers:
@@ -92,16 +95,18 @@ class Runnable(ABC, ExecutorManager):
         else:
             raise ValueError("handlers 必须是可调用的列表")
 
-    async def _handle_async_call(
+    async def handle_async_call(
         self,
         *args,
         verbose: bool = False,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
+        action: Callable = None,
         **kwargs
     ):
+        call_func = action or self.async_call
         self.verbose = verbose
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
-            async for block in self.async_call(*args, **kwargs):
+            async for block in call_func(*args, **kwargs):
                 block.runnable_info = self.runnable_info
                 tasks = []
                 for handler in handlers:
