@@ -26,8 +26,9 @@ class StepByStep(BaseTeam):
     def call(self, prompt: Union[str, List[dict]], **kwargs):
         """
         调用团队协作完成任务。
-        """
+        """ 
         self._completed_teamwork = []
+        self._last_output = None
         max_rounds = 10
         task_index = 0
         for round in range(max_rounds):

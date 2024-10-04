@@ -76,7 +76,6 @@ class FaissDB(VectorDB):
         由于查询过程需要快速返回，因此不按迭代器返回。
         """
         if len(self.documents) == 0:
-            self._last_output = []
             return []
         elif not text or len(text.strip()) == 0:
             return []
