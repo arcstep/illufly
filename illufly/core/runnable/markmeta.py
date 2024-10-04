@@ -1,14 +1,13 @@
 import os
 import fnmatch
-import time
-import random
+import json
+import re
 from typing import Union, List
 from ..runnable import Runnable
 from ..document import Document
 from ...io import EventBlock
 from ...config import get_env
 from ...utils import minify_text, count_tokens
-
 
 class MarkMeta(Runnable):
     """
@@ -46,15 +45,15 @@ class MarkMeta(Runnable):
         :param dir: 从这个目录路径导入文件
         :param filter: 文件名过滤器，可以直接写文件名，或者使用 * 号等通配符
         :param exts: 文件扩展名列表，默认支持 md, Md, MD, markdown, MARKDOWN 等
-        :param chunk_size: 每个块的大小，这可能是各个模型处理中对 token 限制要求的，默认 2048
+        :param chunk_size: 每个块的大小，这可能是各个模型处理中对 token 限制要求的，默认 1024
         :param chunk_overlap: 每个块的覆盖大小，默认 100
         """
 
         super().__init__(**kwargs)
-        self.directory = dir or get_env("ILLUFLY_DOCS")
+        self.directory = dir or ""
         self.filename_filter = filter or '*'
         self.extensions = exts or ['*.md', '*.Md', '*.MD', '*.markdown', '*.MARKDOWN']
-        self.chunk_size = chunk_size or 2048
+        self.chunk_size = chunk_size or 1024
         self.chunk_overlap = chunk_overlap or 100
         self.documents = []
 
@@ -62,8 +61,8 @@ class MarkMeta(Runnable):
     def last_output(self):
         return self.documents
     
-    def call(self, *args, **kwargs):
-        pass
+    def call(self, *files, **kwargs):
+        yield from self.load(*files, **kwargs)
 
     def save(self) -> List[Document]:
         """
@@ -72,20 +71,20 @@ class MarkMeta(Runnable):
         source_files = {}
         for doc in self.documents:
             k = doc.meta['source']
-            if source_files[k] is None:
+            if source_files.get(k) is None:
                 source_files[k] = []
             source_files[k].append(doc)
         for source, docs in source_files.items():
             path = os.path.join(get_env("ILLUFLY_DOCS"), source)
+            if not os.path.exists(path):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w', encoding='utf-8') as f:
                 for doc in docs:
-                    meta_line = "@meta"
-                    for k, v in doc.meta.items():
-                        meta_line += f" {k}={json.dumps(v, ensure_ascii=False)}"
-                    f.write(meta_line)
-                    f.write(doc.text)
-                    f.write("\n")
-                yield(EventBlock("info", f"已成功保存文件 {source} ，其中包含 {len(docs)} 个片段。"))
+                    # 将 meta 字典转换为 JSON 字符串
+                    meta_line = f"@meta {json.dumps(doc.meta, ensure_ascii=False)}"
+                    f.write("\n<!-- " + meta_line + " -->\n")
+                    f.write(doc.text + "\n")
+        return source_files
 
     def load_text(self, text: str, source: str=None) -> List[Document]:
         """
@@ -93,11 +92,10 @@ class MarkMeta(Runnable):
         """
         docs = self.split_with_meta(text)
         for doc in docs:
-            if source:
-                doc.meta['source'] = source
-            else:
-                if 'id' in docs[0].meta:
-                    doc.meta['source'] = f"{docs[0].meta['id']}.md"
+            if doc.meta.get('source') is None:
+                new_source = source or f"{docs[0].meta.get('id', 'unknown')}.md"
+                doc.meta["source"] = new_source
+
             if count_tokens(doc.text) > self.chunk_size:
                 chunks = self.split_text_recursive(doc.text, doc.meta['source'])
                 self.documents.extend(chunks)
@@ -105,18 +103,19 @@ class MarkMeta(Runnable):
                 self.documents.append(doc)
         return self.documents
 
-    def _load_file(self, file_path: str) -> List[Document]:
+    def load_file(self, file_path: str) -> List[Document]:
         """
         加载单个文件。
         """
         if not file_path or not os.path.exists(file_path):
             yield(EventBlock("warn", f"文件不存在 {file_path}"))
+
         with open(file_path, 'r', encoding='utf-8') as f:
             txt = f.read()
             if str(txt).strip() == "":
                 yield(EventBlock("warn", f"文件内容为空 {file_path}"))
                 return
-            self.load_text(txt)
+            self.load_text(txt, file_path)
             yield(EventBlock("info", f"已成功加载文件 {file_path} ，其中包含 {len(self.documents)} 个片段。"))
 
     def split_with_meta(self, text: str) -> List[Document]:
@@ -124,18 +123,19 @@ class MarkMeta(Runnable):
         按照 @meta 标签切分文档，每个片段单元作为独立的 Document 元素，并提取元数据。
         """
         documents = []
-        split_text = text.split("\n@meta")
+        split_text = ("\n" + text).split("\n<!-- @meta")
         for segment in split_text:
+            if segment.strip() == "":
+                continue
             lines = segment.split("\n")
-            meta_line = lines[0].strip()
+            meta_line = lines[0].strip().replace("<!--", "").replace("-->", "").strip()
             content = "\n".join(lines[1:]).strip()
 
-            meta = {}
-            meta_items = meta_line.split(",")
-            for item in meta_items:
-                if "=" in item:
-                    k, v = item.split("=", 1)
-                    meta[k.strip()] = v.strip()
+            try:
+                # 直接将 meta_line 作为 JSON 解析
+                meta = json.loads(meta_line)
+            except json.JSONDecodeError as e:
+                meta = {"raw_meta": meta_line}
 
             doc = Document(text=content, meta=meta)
             documents.append(doc)
@@ -150,7 +150,7 @@ class MarkMeta(Runnable):
         files = list(files) or self.get_files(self.directory, self.filename_filter, self.extensions)
         for file_path in files:
             try:
-                self._load_file(file_path)
+                yield from self.load_file(file_path)
             except Exception as e:
                 yield(EventBlock("warn", f"读取文件失败 {file_path}: {e}"))
 
@@ -177,8 +177,8 @@ class MarkMeta(Runnable):
         def split_text(text: str) -> List[str]:
             return text.split('\n')
 
-        def create_chunk(lines: List[str]) -> Document:
-            return Document(text='\n'.join(lines), meta={"source": source})
+        def create_chunk(lines: List[str], chunk_index: int) -> Document:
+            return Document(text='\n'.join(lines), meta={"source": f"{source}#{chunk_index}"})
 
         chunks = []
 
@@ -192,6 +192,7 @@ class MarkMeta(Runnable):
         current_chunk = []
         current_length = 0
 
+        chunk_index = 0
         for line in lines:
             line_length = count_tokens(line)
             if line_length > self.chunk_size:
@@ -199,7 +200,7 @@ class MarkMeta(Runnable):
 
             if current_length + line_length > self.chunk_size:
                 docs = [d for (l, d) in current_chunk]
-                chunks.append(create_chunk(docs))
+                chunks.append(create_chunk(docs, chunk_index))
                 
                 # 计算重叠部分
                 overlap_length = 0
@@ -218,6 +219,6 @@ class MarkMeta(Runnable):
             current_length += line_length
         if current_chunk:
             docs = [d for l, d in current_chunk]
-            chunks.append(create_chunk(docs))
+            chunks.append(create_chunk(docs, chunk_index))
 
         return chunks
