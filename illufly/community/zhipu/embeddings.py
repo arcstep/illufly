@@ -11,7 +11,7 @@ class ZhipuEmbeddings(BaseEmbeddings):
         super().__init__(
             model=model or "embedding-3",
             api_key=api_key or os.getenv("ZHIPUAI_API_KEY"),
-            dim=dim,
+            dim=kwargs.pop("dim", 2048),
             **kwargs
         )
 
