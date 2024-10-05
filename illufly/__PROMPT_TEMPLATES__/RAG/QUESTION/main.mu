@@ -9,14 +9,14 @@
 7、直接使用下面的格式输出，并注意不要修改 @xxx 标签位置和名称：
 
 ```markdown
-@meta tag='related'
+<!-- @meta {"tag": "related"} -->
 **Question:**
  (强相关的问法1)
 
 **Answer:**
 (针对问法1的回答)
 
-@meta tag='related'
+<!-- @meta {"tag": "related"} -->
 **Question:**
  (强相关的问法2)
 
@@ -25,14 +25,14 @@
 
 ...(一共包括{{count}}个抢相关问答对)
 
-@meta tag='unrelated'
+<!-- @meta {"tag": "unrelated"} -->
 **Question:**
  (无关的问法3)
 
 **Answer:**
 (针对问法3的回答)
 
-@meta tag='unrelated'
+<!-- @meta {"tag": "unrelated"} -->
 **Question:**
  (无关的问法4)
 

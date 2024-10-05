@@ -116,15 +116,54 @@ def load_template(template_id: str, template_folder: str=None,):
 def get_template_variables(template_text: str):
     vars: Set[str] = set()
     section_depth = 0
-    for type, key in mustache_tokenize(template_text):
-        if type == "end":
+    for token_type, key in mustache_tokenize(template_text):
+        if token_type == "end":
             section_depth -= 1
         elif (
-            type in ("variable", "section", "inverted section", "no escape")
+            token_type in ("variable", "section", "inverted section", "no escape")
             and key != "."
             and section_depth == 0
         ):
             vars.add(key.split(".")[0])
-        if type in ("section", "inverted section"):
+        if token_type in ("section", "inverted section"):
             section_depth += 1
     return vars
+
+def clone_prompt(template_id: str, template_folder: str=None, tag: str="writing"):
+    """
+    克隆提示语模板。
+    根据指定的template_id，将文件夹和文件拷贝到template_folder位置。
+    
+    如果已经存在，就不再覆盖已修改的模板成果。
+    """
+    if template_id not in find_resource_prompt(tag):
+        raise ValueError(f"<{template_id}> template_id not exist !")
+
+    template_folder = template_folder or get_env("TEXTLONG_PROMPTS")
+    prompt_folder = os.path.join(get_folder_root(), template_folder, tag, template_id)
+    if os.path.exists(prompt_folder):
+        return False
+    
+    else:
+        os.makedirs(prompt_folder, exist_ok=True)
+
+        def _copy_prompt_file(res_file: str):
+            target_path = os.path.join(prompt_folder, res_file)
+            txt = ''
+            if (res_folder := f'{PROMPT_WRITING_BASE}.{tag}.{template_id}') and is_resource(res_folder, res_file):
+                txt = read_text(res_folder, res_file)
+            elif (res_folder := f'{PROMPT_WRITING_BASE}.{tag}') and is_resource(res_folder, res_file):
+                txt = read_text(res_folder, res_file)
+            with open(target_path, 'w', encoding='utf-8') as f:
+                f.write(txt)
+            return txt
+
+        prompt_str = _copy_prompt_file('main.mu')
+
+        # 保存 {{>include_name}} 变量
+        include_dict = {}
+        matches = re.findall(r'{{>(.*?)}}', prompt_str)
+        for part_name in matches:
+            _copy_prompt_file(f'{part_name.strip()}.mu')
+
+        return True
