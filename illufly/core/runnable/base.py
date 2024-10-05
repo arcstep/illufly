@@ -7,7 +7,7 @@ from functools import partial
 
 from .executor_manager import ExecutorManager
 from .binding_manager import BindingManager
-from ...io import log
+from ...io import log, EventBlock
 
 
 class Runnable(ABC, ExecutorManager, BindingManager):
@@ -99,13 +99,21 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     ):
         self.verbose = verbose
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
-            generator = action_method(*args, **kwargs)
-            for block in generator:
-                block.runnable_info = self.runnable_info
-                for handler in handlers:
-                    if not inspect.iscoroutinefunction(handler):
-                        handler(block, verbose=verbose, **kwargs)
-            return self.last_output
+            resp = action_method(*args, **kwargs)
+            if isinstance(resp, Generator):
+                for block in resp:
+                    if isinstance(block, str):
+                        block = EventBlock("text", block)
+                    elif not isinstance(block, EventBlock):
+                        block = EventBlock("text", str(block))
+                    block.runnable_info = self.runnable_info
+                    for handler in handlers:
+                        if not inspect.iscoroutinefunction(handler):
+                            handler(block, verbose=verbose, **kwargs)
+                return self.last_output
+            else:
+                self._last_output = resp
+                return resp
         else:
             raise ValueError("handlers 必须是可调用的列表")
 
@@ -119,18 +127,36 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     ):
         self.verbose = verbose
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
-            async for block in action_method(*args, **kwargs):
+            resp = action_method(*args, **kwargs)
+            tasks = []
+            async def handle_block(block):
+                if isinstance(block, str):
+                    block = EventBlock("text", block)
+                elif not isinstance(block, EventBlock):
+                    block = EventBlock("text", str(block))
                 block.runnable_info = self.runnable_info
-                tasks = []
                 for handler in handlers:
                     resp = handler(block, verbose=verbose, **kwargs)
                     if inspect.isawaitable(resp):
                         tasks.append(asyncio.create_task(resp))
                 if tasks:
                     await asyncio.gather(*tasks)
+
+            if isinstance(resp, AsyncGenerator):
+                async for block in resp:
+                    await handle_block(block)
+            elif isinstance(resp, Generator):
+                for block in resp:
+                    await handle_block(block)
+            else:
+                self._last_output = resp
+
             return self.last_output
         else:
             raise ValueError("handlers 必须是可调用的列表")
+
+        return self.last_output
+
 
     @property
     def is_running(self):

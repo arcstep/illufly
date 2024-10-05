@@ -5,7 +5,7 @@ import asyncio
 from typing import Callable, Iterable, Union, AsyncIterable
 from .block import EventBlock, NewLineBlock
 
-__CHUNK_BLOCK_TYPES__ = ["chunk", "tool_resp_chunk"]
+__CHUNK_BLOCK_TYPES__ = ["text", "chunk", "tool_resp_chunk"]
 __NOT_PRINT_BLOCK_TYPES__ = ["text_final", "response"]
 __ALLWAYS_PRINT_BLOCK_TYPES__ = ["agent", "warn", "error", "image_url"]
 
