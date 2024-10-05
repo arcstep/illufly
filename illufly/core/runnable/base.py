@@ -74,17 +74,23 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self.continue_running = True
         handlers = handlers or self.handlers or [log]
         
-        if action:
-            if not hasattr(self, action):
-                raise AttributeError(f"方法 '{action}' 不存在于实例中")
-            method = getattr(self, action)
-        else:
-            method = self.call
-
         try:
             if any(inspect.iscoroutinefunction(handler) for handler in handlers):
+                if action:
+                    if not hasattr(self, action):
+                        raise AttributeError(f"方法 '{action}' 不存在于实例中")
+                    method = getattr(self, action)
+                else:
+                    method = self.async_call
+
                 return self.handle_async_call(*args, verbose=verbose, handlers=handlers, action_method=method, **kwargs)
             else:
+                if action:
+                    if not hasattr(self, action):
+                        raise AttributeError(f"方法 '{action}' 不存在于实例中")
+                    method = getattr(self, action)
+                else:
+                    method = self.call
                 return self.handle_sync_call(*args, verbose=verbose, handlers=handlers, action_method=method, **kwargs)
         finally:
             self.continue_running = False
