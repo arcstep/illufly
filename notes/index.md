@@ -7,9 +7,9 @@ graph TD
     Config[[Config<br>环境变量/默认配置]]
     Runnable[Runnable<br>绑定机制/流输出/handler]
 
-    Application[应用集成<br>API/JS实现/跨域Agent]
+    Application[应用集成<br>API/DSL/跨域/跨语言]
     Optimization[Optimization<br>语料提取/打标/评估/微调]
-    Simulate[SimulateAgent<br>模拟/复盘/仿真]
+    Living[LivingAgent<br>群聊/模拟/复盘/仿真]
     Flow[FlowAgent<br>顺序/分支/循环/并行]
 
     Team[TeamAgent<br>意图/思考/规划/行动]
@@ -23,13 +23,17 @@ graph TD
     Emb(Embeddings<br>模型/缓存)
     Retriever[Retriever<br>理解/查询/整理]
 
-    Optimization --> Agent
+    Application --> Agent
+    Application --> Team
     Application --> Flow --> Team --> Agent
-    Application --> Simulate --> Team
+    Flow --> Agent
+    Application --> Living --> Team
+    Living --> Agent
+    Optimization --> Agent
+    Agent --> Runnable --> Config
     Agent --> ToolAgent --> Runnable
     Agent --> Messages -->  Template --> Runnable
     Agent --> Retriever --> VectorDB --> Emb --> MarkMeta --> Runnable
-    Runnable --> Config
 
     style Agent stroke-width:2px,stroke-dasharray:5 5
     style ToolAgent stroke-width:2px,stroke-dasharray:5 5
