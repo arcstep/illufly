@@ -9,25 +9,25 @@ from chevron.renderer import render as mustache_render
 class Template(Runnable):
     """
     提示语模板可以作为消息生成消息列表。
-    结合工作台映射，可以动态填充提示语模板。
+    结合绑定映射，可以动态填充提示语模板。
     """
-    def __init__(self, template_id: str=None, template_text: str=None, **kwargs):
+    def __init__(self, template_id: str=None, text: str=None, **kwargs):
         super().__init__(**kwargs)
 
         if template_id:
-            self.template_text = load_template(template_id)
-        elif template_text:
-            self.template_text = template_text
+            self.text = load_template(template_id)
+        elif text:
+            self.text = text
         else:
-            raise ValueError('template_text or template_id cannot be empty')
+            raise ValueError('text or template_id cannot be empty')
 
-        self.template_vars = get_template_variables(self.template_text)
+        self.template_vars = get_template_variables(self.text)
     
     def __str__(self):
         return self.format()
 
     def __repr__(self):
-        return f"<Template imported_vars={self.template_vars} template_text='{minify_text(self.template_text)}'>"
+        return f"<Template imported_vars={self.template_vars} text='{minify_text(self.text)}'>"
 
 
     def call(self, *args, **kwargs):
@@ -36,5 +36,5 @@ class Template(Runnable):
 
     def format(self, input_vars: Dict[str, Any]=None):
         _input_vars = {**self.imported_vars, **(input_vars or {})}
-        return mustache_render(template=self.template_text, data=_input_vars)
+        return mustache_render(template=self.text, data=_input_vars)
 

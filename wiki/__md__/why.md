@@ -165,7 +165,7 @@ Messages([
 from illufly.types import Template
 
 Messages([
-    Template(template_text="你是强有力的AI助手，特别擅长{{skill}}"),
+    Template(text="你是强有力的AI助手，特别擅长{{skill}}"),
     '帮我创作一首儿歌'
 ]).to_list(input_vars={"skill": "儿童文学创作"})
 
