@@ -4,7 +4,7 @@
 filter_name="$1"
 
 # 创建目标目录
-mkdir -p ./wiki/__md__
+mkdir -p "./notes/99 wiki/__md__"
 
 # 函数处理 Markdown 文件内容
 process_markdown_file() {
