@@ -159,14 +159,7 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-notes/images/*
-notes/images/*/*
-notes/*.yml
-notes/*.md
 notes/__*
 notes/*/__*
-notes/*/*.yml
-notes/*/*.md
-notes/*/*/
 demo*
 .vscode/settings.json
