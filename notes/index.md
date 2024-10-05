@@ -8,7 +8,7 @@ graph TD
     Runnable[Runnable<br>绑定机制/流输出/handler]
 
     Application[应用集成<br>API/DSL/跨域/跨语言]
-    Optimization[Optimization<br>语料提取/打标/评估/微调]
+    Optimization[Optimization<br>评估/打分/纠正/测评/提取]
     Living[LivingAgent<br>群聊/模拟/复盘/仿真]
     Flow[FlowAgent<br>顺序/分支/循环/并行]
 
