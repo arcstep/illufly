@@ -7,7 +7,8 @@ graph TD
     Config[[Config<br>环境变量/默认配置]]
     Runnable[Runnable<br>绑定机制/流输出/handler]
 
-    Application[应用集成<br>API/DSL/跨域/跨语言]
+    Application[应用集成<br>API/跨域/跨语言]
+    ADL[ADL<br>Agent Design Language]
     Optimization[Optimization<br>评估/打分/纠正/测评/提取]
     Living[LivingAgent<br>群聊/模拟/复盘/仿真]
     Flow[FlowAgent<br>顺序/分支/循环/并行]
@@ -23,11 +24,13 @@ graph TD
     Emb(Embeddings<br>模型/缓存)
     Retriever[Retriever<br>理解/查询/整理]
 
-    Application --> Agent
-    Application --> Team
-    Application --> Flow --> Team --> Agent
+    Application --> ADL
+    ADL --> Agent
+    ADL --> Team
+    ADL --> Flow
+    Flow --> Team --> Agent
     Flow --> Agent
-    Application --> Living --> Team
+    ADL --> Living --> Team
     Living --> Agent
     Optimization --> Agent
     Agent --> Runnable --> Config

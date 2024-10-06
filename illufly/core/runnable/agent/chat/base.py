@@ -71,9 +71,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         return self._task
 
     @property
-    def exported_vars(self):
+    def provider_dict(self):
         return {
-            **super().exported_vars,
+            **super().provider_dict,
             "task": self.task
         }
 
