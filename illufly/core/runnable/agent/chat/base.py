@@ -10,7 +10,7 @@ from .....io import EventBlock, EndBlock, NewLineBlock
 
 from ..base import BaseAgent
 from ..memory_manager import MemoryManager
-from ..message import Messages, Message
+from ..message import Messages
 from .knowledge_manager import KnowledgeManager
 from .tools_manager import ToolsManager
 
@@ -89,7 +89,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_chat = kwargs.pop("new_chat", False)
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
-        knowledge = kwargs.pop("knowledge", self.get_knowledge(prompt if isinstance(prompt, str) else prompt[-1].get("content")))
+
+        messages_std = Messages(prompt, style="text")
+        knowledge = kwargs.pop("knowledge", self.get_knowledge(messages_std[-1].content))
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
 
         chat_memory = self.get_chat_memory(
