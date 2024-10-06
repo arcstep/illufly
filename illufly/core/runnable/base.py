@@ -35,6 +35,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     def __init__(
         self,
         *,
+        name: str = None,
         continue_running: bool=True,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         **kwargs
@@ -46,6 +47,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         """
         ExecutorManager.__init__(self, **kwargs)
 
+        self.name = name or f'{self.__class__.__name__}.{id(self)}'
         self.continue_running = continue_running
         self.handlers = handlers
         self.verbose = False
@@ -54,6 +56,9 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self._last_output = None
 
         BindingManager.__init__(self, **kwargs)
+
+    def __repr__(self):
+        return f"<Runnable {self.name}>"
 
     @property
     def last_input(self):

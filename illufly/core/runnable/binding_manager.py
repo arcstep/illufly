@@ -10,6 +10,7 @@ class BindingManager:
         :param binding: 绑定的 (runnable, binding_map)，字典结构，或 Runnable 实例的列表
         """
         self.providers = []
+        self.consumers = []
         self.bind_providers(bindings)
         self._provider_dict = {}
 
@@ -25,43 +26,61 @@ class BindingManager:
         else:
             items = [bindings]
 
-        bindings = []
+        provider_bindings = []
         for item in items:
             if not item:
                 continue
             if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], BindingManager):
                 if not item[1]:
-                    bindings.append((item[0], {}))
+                    provider_bindings.append((item[0], {}))
                 else:
                     if not isinstance(item[1], dict):
                         raise ValueError("binding_map must be a dictionary", item)
-                    bindings.append(item)
+                    provider_bindings.append(item)
             elif isinstance(item, BindingManager):
-                bindings.append((item, {}))
+                provider_bindings.append((item, {}))
             elif isinstance(item, dict):
                 kk = {k: k if not isinstance(v, Callable) else v for k, v in item.items()}
-                bindings.append((PassthroughBinding(**item), kk))
+                provider_bindings.append((PassthroughBinding(**item), kk))
             else:
                 if raise_message is None:
-                    raise ValueError("bindings must be a list of (runnable, binding_map) tuples or Runnable instances or dict", bindings)
+                    raise ValueError("provider binding must be one of dict, tuple or Runnable instance", item)
                 else:
                     raise ValueError(raise_message, bindings)
-        return bindings
+        return provider_bindings
 
     def bind_providers(self, *bindings: Any):
         """
-        手工绑定其他 bindings
+        绑定其他 providers 以便使用其输出字典。
+
+        可以按 bindings 中的映射规则绑定到 Runnable 实例，然后动态获取值；也可以直接从指定 dict 结构中获取值。
         """
-        message = "binding description must be one of dict, tuple or Runnable instance"
+        message = "provider binding must be one of dict, tuple or Runnable instance"
         new_bindings = self._convert_bindings(list(bindings), raise_message=message)
         self.providers.extend(new_bindings)
+        for (provider, binding_map) in new_bindings:
+            provider.consumers.append((self, binding_map))
         return self.providers
+
+    def bind_consumers(self, *runnables, binding_map: Dict=None):
+        """
+        将自身绑定给 consumers 以便将输出字典提供其使用。
+
+        与 bind_providers 不同，不存在将自己的输出字典传递给一个字典的情况，因此被绑定的消费者 runnable 不能为空。
+        """
+        for runnable in runnables:
+            if not isinstance(runnable, BindingManager):
+                raise ValueError("consumer runnable must be a Runnable instance", runnable)
+            runnable.bind_providers(self, binding_map)
 
     @property
     def provider_dict(self):
         """
         用于被其他 runnable 对象绑定的变量。
         实现绑定变量的传递：将导入的变量合并后作为导出的变量。
+
+        需要注意的是，值为 None 的绑定变量不会被传递；
+        但仅针对明确的 None 值，真是因为真的希望传递空值，所以 ""、[] 等非 None 空值仍然会被传递。
         """
         vars = {}
         if self.last_input is not None:
@@ -103,6 +122,26 @@ class BindingManager:
                     consumer_dict[k] = v(provider_dict)
 
         return consumer_dict
+
+    @property
+    def provider_tree(self):
+        """
+        从当前 runnable 开始，获取所有上游绑定的 provider 及其祖先。
+        """
+        tree = {"consumer": self, "provider_tree": []}
+        for provider, binding_map in self.providers:
+            tree["provider_tree"].append((provider, binding_map, provider.provider_tree))
+        return tree
+    
+    @property
+    def consumer_tree(self):
+        """
+        从当前 runnable 开始，获取所有下游绑定的 consumer 及其子孙。
+        """
+        tree = {"provider": self, "consumer_tree": []}
+        for consumer, binding_map in self.consumers:
+            tree["consumer_tree"].append((consumer, binding_map, consumer.consumer_tree))
+        return tree
 
 class PassthroughBinding(BindingManager):
     """
