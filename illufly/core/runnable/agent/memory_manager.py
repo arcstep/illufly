@@ -29,8 +29,8 @@ class MemoryManager(BindingManager):
         self.init_messages = Messages(memory, style=self.style)
         self.locked_items = self.init_messages.length
         for template in self.init_messages.all_templates:
-            template.bind((self, template_binding))
-            self.init_messages_bound_vars.update(template.imported_vars)
+            template.bind_providers((self, template_binding))
+            self.init_messages_bound_vars.update(template.consumer_dict)
             mapping_index = [v for k, v in template_binding.items() if not isinstance(v, Callable)]
             self.init_messages_bound_vars.update(set(mapping_index))
 

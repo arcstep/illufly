@@ -27,7 +27,7 @@ class Template(Runnable):
         return self.format()
 
     def __repr__(self):
-        return f"<Template imported_vars={self.template_vars} text='{minify_text(self.text)}'>"
+        return f"<Template consumer_dict={self.template_vars} text='{minify_text(self.text)}'>"
 
 
     def call(self, *args, **kwargs):
@@ -35,6 +35,6 @@ class Template(Runnable):
         yield EventBlock("info", self._last_output)
 
     def format(self, input_vars: Dict[str, Any]=None):
-        _input_vars = {**self.imported_vars, **(input_vars or {})}
+        _input_vars = {**self.consumer_dict, **(input_vars or {})}
         return mustache_render(template=self.text, data=_input_vars)
 

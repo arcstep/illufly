@@ -24,16 +24,16 @@ class BaseTeam(BaseAgent):
             raise ValueError("members must be a list of BaseAgent instances")
 
         # 从领导角色和成员角色绑定到 Team
-        self.leader.bind((self, {}))
+        self.leader.bind_providers((self, {}))
         for m in self.members:
-            m.bind((self, {}))
+            m.bind_providers((self, {}))
 
     @property
     def completed_teamwork(self):
         return self._completed_teamwork
     
     @property
-    def exported_vars(self):
+    def provider_dict(self):
         members_desc = []
         names = set([self.leader.name])
         for index, m in enumerate(self.members):
@@ -46,7 +46,7 @@ class BaseTeam(BaseAgent):
             members_desc.append({"成员名字": m.name, "擅长能力": m.description})
 
         return {
-            **super().exported_vars,
+            **super().provider_dict,
             "members": json.dumps(members_desc, ensure_ascii=False),
             "completed_teamwork": "\n".join(self.completed_teamwork)
         }
