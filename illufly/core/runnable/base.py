@@ -49,7 +49,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
         self.name = name or f'{self.__class__.__name__}.{id(self)}'
         self.continue_running = continue_running
-        self.handlers = handlers
+        self.handlers = handlers or []
         self.verbose = False
 
         self._last_input = None
@@ -212,3 +212,13 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         except Exception:
             return False
         return True
+
+    def bind_consumers(self, *runnables, binding_map: Dict=None):
+        """
+        传递自身的 handlers 给下游 runnable。
+        """
+        super().bind_consumers(*runnables, binding_map=binding_map)
+        for runnable in runnables:
+            for handler in self.handlers:
+                if handler not in runnable.handlers:
+                    runnable.handlers.append(handler)
