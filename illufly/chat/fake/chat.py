@@ -2,12 +2,12 @@ from typing import Union, List, Optional, Dict, Any
 
 from ...io import EventBlock
 from ...core.runnable.agent import ChatAgent
-
 import time
 
 class FakeLLM(ChatAgent):
     def __init__(self, sleep: float=0, **kwargs):
         super().__init__(threads_group="FAKE_LLM", **kwargs)
+
         self.threads_group = "fake_llm"
         self.sleep = sleep if sleep > 0 else 0
 

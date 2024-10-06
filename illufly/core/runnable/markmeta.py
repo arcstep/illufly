@@ -146,7 +146,7 @@ class MarkMeta(Runnable):
 
     def load(self, *files, **kwargs):
         """
-        将文件作为 markdown 文本导入。
+        将文件作为 markmeta 文本导入。
         """
         self.documents.clear()
 

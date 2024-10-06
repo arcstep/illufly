@@ -44,7 +44,7 @@ class FaissDB(VectorDB):
         **kwargs
     ):
         mm = MarkMeta(directory=directory, **kwargs)
-        mm(verbose=verbose, handlers=handlers, action=mm.load, **kwargs)
+        mm(verbose=verbose, handlers=handlers, action="load", **kwargs)
 
         vectors = self._process_embeddings(mm.last_output)
         if vectors is not None and len(vectors) > 0:
