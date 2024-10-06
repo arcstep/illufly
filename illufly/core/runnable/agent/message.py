@@ -161,6 +161,21 @@ class Messages:
     def __repr__(self):
         return f"<Messages({self.length} items)>"
     
+    def __getitem__(self, index: int):
+        return self.messages[index]
+    
+    def __iter__(self):
+        return iter(self.messages)
+    
+    def __len__(self):
+        return self.length
+
+    def __add__(self, other):
+        if not isinstance(other, Messages):
+            raise TypeError("Operands must be of type Messages")
+        combined_messages = self.messages + other.messages
+        return Messages(combined_messages, style=self.style, input_vars=self.input_vars)
+    
     def to_list(self, input_vars: Dict[str, Any]=None, style: str=None):
         return [msg.to_dict({**self.input_vars, **(input_vars or {})}, (style or self.style)) for msg in self.messages]
     
@@ -204,4 +219,3 @@ class Messages:
 
     def has_role(self, role: str):
         return any(msg.role == role for msg in self.messages)
-

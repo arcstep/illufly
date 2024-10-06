@@ -87,68 +87,17 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             yield block
 
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        if not isinstance(prompt, str) and not isinstance(prompt, list):
-            raise ValueError("prompt 必须是字符串或消息列表")
-
-        new_chat, is_prompt_using_system_role, prompt = self._prepare_for_call(prompt, kwargs)
-
-        yield from self._chat_with_tools_calling(prompt, *args, **kwargs)
-
-        if self.end_chk:
-            yield EndBlock(self.last_output)
-
-        if is_prompt_using_system_role:
-            self.locked_items = len(self.memory)
-
-    async def async_call(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        if not isinstance(prompt, str) and not isinstance(prompt, list):
-            raise ValueError("prompt 必须是字符串或消息列表")
-
-        new_chat, is_prompt_using_system_role, prompt = self._prepare_for_call(prompt, kwargs)
-
-        async for block in self._async_chat_with_tools_calling(prompt, *args, **kwargs):
-            yield block
-
-        if self.end_chk:
-            yield EndBlock(self.last_output)
-
-        if is_prompt_using_system_role:
-            self.locked_items = len(self.memory)
-
-    def _prepare_for_call(self, prompt, kwargs):
-        new_chat = kwargs.pop("new_chat", False) or not self.memory
-
-        if isinstance(prompt, str):
-            prompt = [{"role": "user", "content": prompt}]
-        self._last_input = Messages(prompt)
-
-        is_prompt_using_system_role = False
-        if self._last_input.has_role("system"):
-            new_chat = True
-            is_prompt_using_system_role = True
-
-        if new_chat:
-            self.memory.clear()
-
-            if not is_prompt_using_system_role and self.init_messages.length > 0:
-                if "task" in self.init_messages_bound_vars:
-                    self._task = Messages(prompt).last_content
-                    prompt = []
-
-                is_prompt_using_system_role = True
-                self.memory = self.init_messages.to_list()
-
-        return new_chat, is_prompt_using_system_role, prompt
-
-    def _chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
+        new_chat = kwargs.pop("new_chat", False)
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
+        knowledge = kwargs.pop("knowledge", self.get_knowledge(prompt if isinstance(prompt, str) else prompt[-1].get("content")))
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
 
         chat_memory = self.get_chat_memory(
+            prompt=prompt,
+            new_chat=new_chat,
             remember_rounds=remember_rounds,
-            knowledge=self.get_knowledge(self.last_input)
+            knowledge=knowledge
         )
-        chat_memory.extend(self.create_new_memory(prompt))
 
         to_continue_call_llm = True
         while to_continue_call_llm:
@@ -194,12 +143,21 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                                 to_continue_call_llm = True
                             yield block
 
-    async def _async_chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
+        if self.end_chk:
+            yield EndBlock(self.last_output)
+
+    async def async_call(self, prompt: Union[str, List[dict]], *args, **kwargs):
+        new_chat = kwargs.pop("new_chat", False)
+        remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
+        knowledge = kwargs.pop("knowledge", self.get_knowledge(prompt if isinstance(prompt, str) else prompt[-1].get("content")))
+        yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
+
         chat_memory = self.get_chat_memory(
-            remember_rounds=self.remember_rounds,
-            knowledge=self.get_knowledge(self.last_input)
+            prompt=prompt,
+            new_chat=new_chat,
+            remember_rounds=remember_rounds,
+            knowledge=knowledge
         )
-        chat_memory.extend(self.create_new_memory(prompt))
 
         to_continue_call_llm = True
         while to_continue_call_llm:
@@ -244,6 +202,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                             if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                                 to_continue_call_llm = True
                             yield block
+
+        if self.end_chk:
+            yield EndBlock(self.last_output)
 
     def _handle_openai_style_tools_call(self, final_tools_call, chat_memory, kwargs):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
