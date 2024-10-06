@@ -95,7 +95,7 @@ class ChatQwen(ChatAgent):
         _kwargs = self._prepare_kwargs(messages, **kwargs)
 
         # 调用生成接口
-        responses = await dashscope.AioGeneration.acall(**_kwargs)
+        responses = await self.dashscope.AioGeneration.call(**_kwargs)
 
         # 流输出
         usage = {}
