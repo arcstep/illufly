@@ -60,7 +60,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     @property
     def last_input(self):
-        return self._last_input.last_content() if self._last_input else None
+        return self._last_input.last_content if self._last_input else None
 
     @property
     def last_output(self):
@@ -117,10 +117,13 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     def _prepare_for_call(self, prompt, kwargs):
         new_chat = kwargs.pop("new_chat", False) or not self.memory
+
+        if isinstance(prompt, str):
+            prompt = [{"role": "user", "content": prompt}]
         self._last_input = Messages(prompt)
 
         is_prompt_using_system_role = False
-        if self._last_input.last_role == "system":
+        if self._last_input.has_role("system"):
             new_chat = True
             is_prompt_using_system_role = True
 
@@ -129,7 +132,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             if not is_prompt_using_system_role and self.init_messages.length > 0:
                 if "task" in self.init_messages_bound_vars:
-                    self._task = Messages(prompt).last_content()
+                    self._task = Messages(prompt).last_content
                     prompt = []
 
                 is_prompt_using_system_role = True

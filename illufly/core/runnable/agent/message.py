@@ -178,12 +178,14 @@ class Messages:
         for msg in messages:
             self.append(msg)
 
+    @property
     def last_role(self):
         if self.messages:
             return self.messages[-1].role
         else:
             return None
-
+    
+    @property
     def last_content(self):
         if self.messages:
             return self.messages[-1].content
@@ -199,3 +201,7 @@ class Messages:
             return [msg.content for msg in self.messages if isinstance(msg.content, Template)]
         else:
             return []
+
+    def has_role(self, role: str):
+        return any(msg.role == role for msg in self.messages)
+
