@@ -58,8 +58,9 @@ class BindingManager:
         message = "provider binding must be one of dict, tuple or Runnable instance"
         new_bindings = self._convert_bindings(list(bindings), raise_message=message)
         self.providers.extend(new_bindings)
-        for (provider, binding_map) in new_bindings:
-            provider.consumers.append((self, binding_map))
+        for (provider_runnable, binding_map) in new_bindings:
+            if isinstance(provider_runnable, BindingManager):
+                provider_runnable.consumers.append((self, binding_map))
         return self.providers
 
     def bind_consumers(self, *runnables, binding_map: Dict=None):

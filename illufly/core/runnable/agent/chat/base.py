@@ -138,8 +138,11 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         return new_chat, is_prompt_using_system_role, prompt
 
     def _chat_with_tools_calling(self, prompt: Union[str, List[dict]], *args, **kwargs):
+        remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
+        yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
+
         chat_memory = self.get_chat_memory(
-            remember_rounds=self.remember_rounds,
+            remember_rounds=remember_rounds,
             knowledge=self.get_knowledge(self.last_input)
         )
         chat_memory.extend(self.create_new_memory(prompt))
