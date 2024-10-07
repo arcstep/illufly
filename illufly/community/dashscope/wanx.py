@@ -57,6 +57,13 @@ class Text2ImageWanx(BaseAgent):
     """
     def __init__(self, model: str=None, api_key: str=None, **kwargs):
         super().__init__(threads_group="WANX", **kwargs)
+        self.description = "我擅长根据你的文字提示描述生成图片"
+        self.tool_params = {
+            "prompt": "图片要求的详细文字描述",
+            "n": "生成图片的数量",
+            "style": "生成图片的风格，取值是`<`和`>`包裹的字符串，不要包含其他说明文字：<photography> 摄影, <portrait> 人像写真, <3d cartoon> 3D卡通, <anime> 动画, <oil painting> 油画, <watercolor> 水彩, <sketch> 素描, <chinese painting> 中国画, <flat illustration> 扁平插画, <auto> 默认"
+        }
+
         self.model = model or "wanx-v1"
         self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
 
@@ -134,11 +141,21 @@ class Text2ImageWanx(BaseAgent):
     
     def call(
         self, 
-        input: Dict[str, Any],
-        parameters: Optional[Dict[str, Any]]=None,
+        input: Dict[str, Any]={},
+        parameters: Optional[Dict[str, Any]]={},
         output: Optional[Union[str, List[str]]] = None,
+        prompt: str=None,
+        n: int=1,
+        style: str="auto",
         **kwargs
     ):
+        if prompt:
+            input.update({"prompt": prompt})
+        if n:
+            parameters.update({"n": n})
+        if style:
+            parameters.update({"style": style})
+
         parameters = parameters or {}
         if isinstance(output, str):
             output = [output]

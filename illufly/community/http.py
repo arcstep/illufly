@@ -87,23 +87,23 @@ def validate_output_path(output_path: Union[str, List[str]], n: int) -> List[str
     return output_path
 
 def save_image(url: str, path: str):
-    folder = os.path.dirname(path)
-    if folder and not os.path.exists(folder):
-        os.makedirs(folder)
-    with open(path, 'wb+') as f:
+    image_to_save = os.path.join(get_env("ILLUFLY_IMAGES"), path)
+    if image_to_save and not os.path.exists(image_to_save):
+        os.makedirs(os.path.dirname(image_to_save), exist_ok=True)
+    with open(image_to_save, 'wb+') as f:
         f.write(requests.get(url).content)
-        yield EventBlock("info", f'output image to {path}')
+        yield EventBlock("chunk", f'an image was generated and saved to {path}')
 
 async def async_save_image(url: str, path: str):
-    folder = os.path.dirname(path)
-    if folder and not os.path.exists(folder):
-        os.makedirs(folder)
+    image_to_save = os.path.join(get_env("ILLUFLY_IMAGES"), path)
+    if image_to_save and not os.path.exists(image_to_save):
+        os.makedirs(os.path.dirname(image_to_save), exist_ok=True)
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             content = await response.read()
-            with open(path, 'wb+') as f:
+            with open(image_to_save, 'wb+') as f:
                 f.write(content)
-                yield EventBlock("info", f'output image to {path}')
+                yield EventBlock("chunk", f'an image was generated and saved to {path}')
 
 def get_request(url: str, headers: Dict[str, str]) -> Dict[str, Any]:
     response = requests.get(url, headers=headers)
