@@ -7,7 +7,7 @@ import os
 import json
 
 class ChatZhipu(ChatAgent):
-    def __init__(self, model: str=None, tools=None, **kwargs):
+    def __init__(self, model: str=None, **kwargs):
         try:
             from zhipuai import ZhipuAI
         except ImportError:
@@ -16,7 +16,7 @@ class ChatZhipu(ChatAgent):
                 "Please install it via 'pip install -U zhipuai'"
             )
 
-        super().__init__(threads_group="CHAT_ZHIPU", tools=tools, **kwargs)
+        super().__init__(threads_group="CHAT_ZHIPU", **kwargs)
         self.threads_group = "CHAT_ZHIPU"
         self.default_call_args = {
             "model": model or "glm-4-flash"
@@ -35,10 +35,8 @@ class ChatZhipu(ChatAgent):
         from zhipuai import ZhipuAI
 
         _kwargs = self.default_call_args
-        tools_desc = self.get_tools_desc(kwargs.pop('tools', []))
         _kwargs.update({
             "messages": messages,
-            "tools": tools_desc,
             **kwargs,
             **{"stream": True}
         })

@@ -30,16 +30,28 @@ class MemoryManager(BindingManager):
         for template in self.init_messages.all_templates:
             self.bind_consumers(template, binding_map=template_binding)
 
-    def get_bound_vars(self, messages: Messages):
+    def get_bound_vars(self, new_messages: Messages, new_chat: bool=False):
         """
-        获取消息列表中所有 Template 的绑定变量。
+        获取所有被 Templates 绑定的变量。
+
+        这主要用于判断 provider_dict 中的键值是否被消息列表中的模板绑定使用。
+        典型的场景包括：判断 input 和 tools_desc 是否被使用，这将会影响对话过程中组织对话或提供 tools 参数给大模型。
         """
+        _new_messages = self.init_messages
+        if new_chat and new_messages.has_role("system"):
+            _new_messages = new_messages
+        else:
+            _new_messages += new_messages
+
         bound_vars = set()
-        for template in messages.all_templates:
-            template.bind_providers((self, self.template_binding))
-            bound_vars.update(template.consumer_dict)
-            mapping_index = [v for k, v in self.template_binding.items() if k and not isinstance(v, Callable)]
-            bound_vars.update(set(mapping_index))
+        for template in _new_messages.all_templates:
+            _template_vars = template.template_vars
+            bound_vars.update(_template_vars)
+            for provider_key, consumer_key in self.template_binding.items():
+                if provider_key in _template_vars:
+                    bound_vars.remove(provider_key)
+                    if consumer_key in self.provider_dict:
+                        bound_vars.add(consumer_key)
         return bound_vars
 
     def get_chat_memory(self, prompt: Union[str, List[dict]], new_chat: bool=False, remember_rounds: int = None, knowledge: List[str] = None):
@@ -113,7 +125,7 @@ class MemoryManager(BindingManager):
 
         # 如果在合并后的 new_messages 中，task 变量被模板使用
         #   则将尾部消息列表中的 user 角色消息取出，并赋值给 task 变量用于绑定映射
-        if 'task' in self.get_bound_vars(new_messages) and new_messages[-1].role == 'user':
+        if 'task' in self.get_bound_vars(new_messages, new_chat=new_chat) and new_messages[-1].role == 'user':
             self._task = new_messages.messages.pop(-1).content
 
         if new_messages[-1].role == 'system':

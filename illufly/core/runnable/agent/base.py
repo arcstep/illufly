@@ -32,9 +32,11 @@ class BaseAgent(Runnable, ToolAbility):
         Runnable.__init__(self, **kwargs)
         ToolAbility.__init__(self, func=func, async_func=async_func, **kwargs)
 
-        desc = kwargs.get("description", func.__doc__ if func and func.__doc__ else "")
-        if desc:
-            self.description = desc
+        _func = func or async_func
+        if _func:
+            self.name = kwargs.get("name", _func.__name__)
+            if _func.__doc__:
+                self.description = kwargs.get("description", _func.__doc__)
 
     @property
     def runnable_info(self):

@@ -32,6 +32,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         - memory：记忆管理
         - knowledge：知识管理
         """
+        kwargs["tool_params"] = kwargs.get("tool_params", {"prompt": "详细描述用户问题"})
         BaseAgent.__init__(self, **kwargs)
         KnowledgeManager.__init__(self, **kwargs)
         ToolsManager.__init__(self, **kwargs)
@@ -47,6 +48,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         # 增加的可绑定变量
         self._task = ""
+        self._tools_to_exec = self.get_tools()
         MemoryManager.__init__(self, **kwargs)
     
     @property
@@ -74,9 +76,11 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     def provider_dict(self):
         return {
             **super().provider_dict,
-            "task": self.task
+            "task": self.task,
+            "tools_name": self.get_tools_name(),
+            "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
         }
-
+    
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
         raise NotImplementedError("子类必须实现 generate 方法")
@@ -88,8 +92,15 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_chat = kwargs.pop("new_chat", False)
-        remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
+        self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
 
+        # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
+        if "tools_desc" in self.get_bound_vars(Messages(prompt), new_chat=new_chat):
+            kwargs["tools"] = None
+        else:
+            kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", []))
+
+        remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
         messages_std = Messages(prompt, style="text")
         knowledge = kwargs.pop("knowledge", self.get_knowledge(messages_std[-1].content))
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
@@ -150,6 +161,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     async def async_call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_chat = kwargs.pop("new_chat", False)
+        if "tools_desc" in self.get_bound_vars(Messages(prompt), new_chat=new_chat):
+            kwargs["tools"] = None
+        else:
+            self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
+            kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", []))
+
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
         knowledge = kwargs.pop("knowledge", self.get_knowledge(prompt if isinstance(prompt, str) else prompt[-1].get("content")))
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
@@ -223,7 +240,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             self.remember_response(tools_call_message)
 
             if self.exec_tool:
-                for block in self._execute_tool(tool, chat_memory, kwargs):
+                for block in self._execute_tool(tool, kwargs):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         tool_resp = block.text
                         tool_resp_message = [{
@@ -250,7 +267,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             self.remember_response(tools_call_message)
 
             if self.exec_tool:
-                async for block in self._async_execute_tool(tool, chat_memory, kwargs):
+                async for block in self._async_execute_tool(tool, kwargs):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         tool_resp = block.text
                         tool_resp_message = [{
@@ -263,9 +280,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         self.remember_response(tool_resp_message)
                     yield block
 
-    def _execute_tool(self, tool, chat_memory, kwargs):
-        tools_list = self.get_tools(kwargs.get("tools", []))
-        for struct_tool in tools_list:
+    def _execute_tool(self, tool, kwargs):
+        for struct_tool in self._tools_to_exec:
             if tool.get('function', {}).get('name') == struct_tool.name:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
@@ -284,9 +300,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 yield NewLineBlock()
                 yield EventBlock("tool_resp_final", tool_resp)
 
-    async def _async_execute_tool(self, tool, chat_memory, kwargs):
-        tools_list = self.get_tools(kwargs.get("tools", []))
-        for struct_tool in tools_list:
+    async def _async_execute_tool(self, tool, kwargs):
+        for struct_tool in self._tools_to_exec:
             if tool.get('function', {}).get('name') == struct_tool.name:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
@@ -308,7 +323,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     def _handle_in_text_tool_call(self, tool_call, chat_memory, kwargs):
         if self.exec_tool:
-            for block in self._execute_tool(tool_call, chat_memory, kwargs):
+            for block in self._execute_tool(tool_call, kwargs):
                 if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                     tool_resp = block.text
                     tool_resp_message = [
@@ -323,7 +338,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     async def _async_handle_in_text_tool_call(self, tool_call, chat_memory, kwargs):
         if self.exec_tool:
-            async for block in self._async_execute_tool(tool_call, chat_memory, kwargs):
+            async for block in self._async_execute_tool(tool_call, kwargs):
                 if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                     tool_resp = block.text
                     tool_resp_message = [
