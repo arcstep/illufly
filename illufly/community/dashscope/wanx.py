@@ -60,8 +60,8 @@ class Text2ImageWanx(BaseAgent):
         self.description = "我擅长根据你的文字提示描述生成图片"
         self.tool_params = {
             "prompt": "图片要求的详细文字描述",
-            "n": "生成图片的数量",
-            "style": "生成图片的风格，取值是`<`和`>`包裹的字符串，不要包含其他说明文字：<photography> 摄影, <portrait> 人像写真, <3d cartoon> 3D卡通, <anime> 动画, <oil painting> 油画, <watercolor> 水彩, <sketch> 素描, <chinese painting> 中国画, <flat illustration> 扁平插画, <auto> 默认"
+            "image_count": "生成图片的数量",
+            "image_style": "生成图片的风格，取值是`<`和`>`包裹的字符串，不要包含其他说明文字：<photography> 摄影, <portrait> 人像写真, <3d cartoon> 3D卡通, <anime> 动画, <oil painting> 油画, <watercolor> 水彩, <sketch> 素描, <chinese painting> 中国画, <flat illustration> 扁平插画, <auto> 默认"
         }
 
         self.model = model or "wanx-v1"
@@ -145,16 +145,16 @@ class Text2ImageWanx(BaseAgent):
         parameters: Optional[Dict[str, Any]]={},
         output: Optional[Union[str, List[str]]] = None,
         prompt: str=None,
-        n: int=1,
-        style: str="auto",
+        image_count: int=1,
+        image_style: str="auto",
         **kwargs
     ):
         if prompt:
             input.update({"prompt": prompt})
-        if n:
-            parameters.update({"n": n})
-        if style:
-            parameters.update({"style": style})
+        if image_count:
+            parameters.update({"image_count": image_count})
+        if image_style:
+            parameters.update({"image_style": image_style})
 
         parameters = parameters or {}
         if isinstance(output, str):

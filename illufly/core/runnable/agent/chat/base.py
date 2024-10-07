@@ -11,7 +11,7 @@ from .....io import EventBlock, EndBlock, NewLineBlock
 from ..base import BaseAgent
 from ..memory_manager import MemoryManager
 from ..message import Messages
-from .knowledge_manager import KnowledgeManager
+from ..knowledge_manager import KnowledgeManager
 from .tools_manager import ToolsManager
 
 class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
