@@ -15,7 +15,7 @@ graph TD
 
     Team[TeamAgent<br>意图/思考/规划/行动]
     Agent(ChatAgent<br>记忆/工具/知识/多模态)
-    ToolAgent(ToolAgent<br>工具集/自定义工具)
+    BaseAgent(BaseAgent<br>工具能力/多模态生成)
     Messages[Messages<br>文本/多模态/模板]
     Template[[Template<br>模板语法/hub]]
 
@@ -34,12 +34,12 @@ graph TD
     Living --> Agent
     Optimization --> Agent
     Agent --> Runnable --> Config
-    Agent --> ToolAgent --> Runnable
+    Agent --> BaseAgent --> Runnable
     Agent --> Messages -->  Template --> Runnable
     Agent --> Retriever --> VectorDB --> Emb --> MarkMeta --> Runnable
 
     style Agent stroke-width:2px,stroke-dasharray:5 5
-    style ToolAgent stroke-width:2px,stroke-dasharray:5 5
+    style BaseAgent stroke-width:2px,stroke-dasharray:5 5
     style VectorDB stroke-width:2px,stroke-dasharray:5 5
     style Emb stroke-width:2px,stroke-dasharray:5 5
 

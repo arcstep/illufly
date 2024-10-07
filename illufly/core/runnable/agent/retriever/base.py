@@ -10,7 +10,7 @@ class Retriever(BaseAgent):
     实现流程包括：意图理解 -> 初步查询 -> 整理结果
 
 
-    初步查询主要通过 ToolAgent 或 VectorDB 实现，通常包括：
+    初步查询主要通过 工具或 VectorDB 实现，通常包括：
     - 关系型数据库查询
     - 图数据库查询
     - 向量数据库查询
@@ -53,7 +53,7 @@ class Retriever(BaseAgent):
         """
         意图理解，将问题翻译为进一步检索的问题列表。
         这个过程可以是：拆解问题、发散问题、回溯问题、模拟回答等，具体取决于 translator 的类型和执行情况。
-        translator 可以是 ChatAgent, VectorDB 或 ToolAgent,
+        translator 可以是 ChatAgent, VectorDB 或 BaseAgent,
         而返回结果可以是 字符串列表、JSON 文本、MarkMeta 文本或 Document 列表等几种格式。
         """
         results = []
