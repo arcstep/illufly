@@ -17,7 +17,7 @@ class ChatZhipu(ChatAgent):
             )
 
         super().__init__(threads_group="CHAT_ZHIPU", **kwargs)
-        self.threads_group = "CHAT_ZHIPU"
+
         self.default_call_args = {
             "model": model or "glm-4-flash"
         }
