@@ -25,14 +25,19 @@ class Message:
                 contents = []
                 for item in self.content:
                     content = {}
-                    if item.get("audio") or "audio_url" in item:
-                        content["audio"] = item.get("audio", get_url(item, "audio", "audio_url"))
-                    if item.get("video") or "video_url" in item:
-                        content["video"] = item.get("video", get_url(item, "video", "video_url"))
-                    if item.get("image") or "image_url" in item:
-                        content["image"] = item.get("image", get_url(item, "image", "image_url"))
-                    if item.get("text") is not None:
-                        content["text"] = item.get("text")
+                    if isinstance(item, str):
+                        content["text"] = item
+                    elif isinstance(item, dict):
+                        if item.get("audio") or "audio_url" in item:
+                            content["audio"] = item.get("audio", get_url(item, "audio", "audio_url"))
+                        if item.get("video") or "video_url" in item:
+                            content["video"] = item.get("video", get_url(item, "video", "video_url"))
+                        if item.get("image") or "image_url" in item:
+                            content["image"] = item.get("image", get_url(item, "image", "image_url"))
+                        if item.get("text") is not None:
+                            content["text"] = item.get("text")
+                    else:
+                        raise ValueError("Resource must be a string or a dict")
                     contents.append(content)
                 return contents
             elif isinstance(self.content, str):

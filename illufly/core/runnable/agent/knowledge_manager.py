@@ -1,7 +1,7 @@
 import re
 from typing import Any, Set, Union, List
-from ....document import Document
-from ...vectordb import VectorDB
+from ...document import Document
+from ..vectordb import VectorDB
 
 class KnowledgeManager:
     def __init__(self, knowledge: Union[Set[Any], List[Any]] = None, **kwargs):
