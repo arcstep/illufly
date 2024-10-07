@@ -10,7 +10,7 @@ from ...types import ChatAgent
 from ..http import confirm_upload_file
 from ...io import NewLineBlock
 class ChatQwen(ChatAgent):
-    def __init__(self, model: str=None, tools=None, **kwargs):
+    def __init__(self, model: str=None, **kwargs):
         try:
             import dashscope
             self.dashscope = dashscope
@@ -21,7 +21,7 @@ class ChatQwen(ChatAgent):
             )
 
         enable_search = kwargs.pop("enable_search", False)
-        super().__init__(threads_group="CHAT_QWEN", tools=tools, **kwargs)
+        super().__init__(threads_group="CHAT_QWEN", **kwargs)
         self.default_call_args = {
             "model": model or "qwen-plus",
             "enable_search": enable_search
@@ -38,10 +38,8 @@ class ChatQwen(ChatAgent):
             **self.model_args,
             **self.default_call_args
         }
-        tools_desc = self.get_tools_desc(kwargs.pop('tools', []))
         _kwargs.update({
             "messages": messages,
-            "tools": tools_desc,
             **kwargs,
             **{
                 "stream": True,
@@ -138,8 +136,8 @@ class ChatQwen(ChatAgent):
         )
 
 class ChatQwenVL(ChatQwen):
-    def __init__(self, model: str=None, tools=None, **kwargs):
-        super().__init__(model=(model or "qwen-vl-plus"), style="qwen_vl", tools=tools, **kwargs)
+    def __init__(self, model: str=None, **kwargs):
+        super().__init__(model=(model or "qwen-vl-plus"), style="qwen_vl", **kwargs)
 
     def generate(self, messages: List[dict], **kwargs):
         for m in messages:

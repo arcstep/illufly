@@ -8,7 +8,7 @@ import json
 
 
 class ChatOpenAI(ChatAgent):
-    def __init__(self, model: str=None, tools=None, imitator: str=None, **kwargs):
+    def __init__(self, model: str=None, imitator: str=None, **kwargs):
         """
         使用 imitator 参数指定兼容 OpenAI 接口协议的模型来源，默认 imitator="OPENAI"。
         只需要在环境变量中配置 imitator 对应的 API_KEY 和 BASE_URL 即可。
@@ -28,7 +28,7 @@ class ChatOpenAI(ChatAgent):
             )
 
         imitator = (imitator or "").upper() or "OPENAI"
-        super().__init__(threads_group=f"CHAT_{imitator}", tools=tools, **kwargs)
+        super().__init__(threads_group=f"CHAT_{imitator}", **kwargs)
 
         self.default_call_args = {
             "model": model or os.getenv(f"{imitator}_MODEL_ID") or "gpt-3.5-turbo"
@@ -47,10 +47,8 @@ class ChatOpenAI(ChatAgent):
         from openai import OpenAI
 
         _kwargs = self.default_call_args
-        tools_desc = self.get_tools_desc(kwargs.pop('tools', []))
         _kwargs.update({
             "messages": messages,
-            "tools": tools_desc or None,
             **kwargs,
             **{"stream": True, "stream_options": {"include_usage": True}}
         })

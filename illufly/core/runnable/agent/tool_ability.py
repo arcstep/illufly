@@ -20,16 +20,28 @@ class ToolAbility:
             "properties": {},
             "required": []
         }
-        sig = inspect.signature(self.func or self.async_func)
+        sig = inspect.signature(self.func or self.async_func or self.call)
         for name, param in sig.parameters.items():
             param_value = param.default if param.default is not inspect.Parameter.empty else ""
             
-            # 将所有参数值转换为字符串
-            param_value = str(param_value)
-
+            # 根据参数的注解类型设置 JSON 兼容类型
+            param_type = "string"  # 默认类型
+            if param.annotation is int:
+                param_type = "integer"
+            elif param.annotation is float:
+                param_type = "number"
+            elif param.annotation is bool:
+                param_type = "boolean"
+            elif param.annotation is str:
+                param_type = "string"
+            elif param.annotation is list:
+                param_type = "array"
+            elif param.annotation is dict:
+                param_type = "object"
+            
             _parameters["properties"][name] = {
-                "type": "string",  # 统一为 string 类型
-                "description": param_value
+                "type": param_type,
+                "description": str(param_value)
             }
             if param.default is inspect.Parameter.empty:
                 _parameters["required"].append(name)
@@ -65,23 +77,29 @@ class ToolAbility:
             }
         }
 
-    @staticmethod
-    def parse_arguments(arguments: str) -> Dict[str, Any]:
+    def parse_arguments(self, arguments: str) -> Dict[str, Any]:
         """
-        解析 arguments 字符串并转换为相应的 Python 类型。
+        解析 arguments 字符串并根据 self.parameters 中的类型信息转换为相应的 Python 类型。
         """
         parsed_arguments = json.loads(arguments)
+        parameter_types = self.parameters.get("properties", {})
+
         for key, value in parsed_arguments.items():
-            if value.isdigit():
+            expected_type = parameter_types.get(key, {}).get("type", "string")
+            
+            if expected_type == "integer":
                 parsed_arguments[key] = int(value)
+            elif expected_type == "number":
+                parsed_arguments[key] = float(value)
+            elif expected_type == "boolean":
+                if isinstance(value, str):
+                    parsed_arguments[key] = value.lower() == "true"
+                else:
+                    parsed_arguments[key] = bool(value)
             else:
-                try:
-                    parsed_arguments[key] = float(value)
-                except ValueError:
-                    if value.lower() == "true":
-                        parsed_arguments[key] = True
-                    elif value.lower() == "false":
-                        parsed_arguments[key] = False
+                # 默认转换为字符串
+                parsed_arguments[key] = str(value)
+
         return parsed_arguments
 
 
