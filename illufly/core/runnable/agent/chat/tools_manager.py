@@ -1,7 +1,7 @@
 import json
 
 from typing import Union, List, Dict, Any
-from ..tool import ToolAgent
+from ..base import BaseAgent
 from ..tool_ability import ToolAbility
 
 class ToolsManager:
@@ -11,14 +11,14 @@ class ToolsManager:
 
     def __init__(self, tools=None, exec_tool=None, **kwargs):
         self.tools = [
-            t if isinstance(t, ToolAbility) else ToolAgent(t)
+            t if isinstance(t, ToolAbility) else BaseAgent(t)
             for t in (tools or [])
         ]
         self.exec_tool = True if exec_tool is None else exec_tool
 
     def get_tools(self, tools: List["ToolAbility"]=None):
         _tools = [
-            t if isinstance(t, ToolAbility) else ToolAgent(t)
+            t if isinstance(t, ToolAbility) else BaseAgent(t)
             for t in (tools or [])
         ]
         if _tools and (

@@ -142,13 +142,13 @@ qwen("换成两条小鱼")
 以下示例是定义工具和使用工具的过程：
 ```python
 from illufly.chat import ChatQwen
-from types import ToolAgent
+from types import BaseAgent
 
 def get_current_weather(location: str=None):
     """获取城市的天气情况"""
     return f"{location}今天是晴天。"
 
-q = ChatQwen(tools=[ToolAgent(get_current_weather)])
+q = ChatQwen(tools=[BaseAgent(get_current_weather)])
 q("今天广州可以晒被子吗？")
 ```
 
