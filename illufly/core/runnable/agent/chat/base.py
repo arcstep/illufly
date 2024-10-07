@@ -80,7 +80,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "tools_name": self.get_tools_name(),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
         }
-    
+
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
         raise NotImplementedError("子类必须实现 generate 方法")

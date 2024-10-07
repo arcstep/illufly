@@ -1,4 +1,4 @@
-from ..core.runnable.agent import StepByStep
+from ..core.runnable.agent import ChatPool, StepByStep
 from ..community.openai import ChatOpenAI
 from ..community.zhipu import ChatZhipu
 from ..community.dashscope import ChatQwen, ChatQwenVL
@@ -10,4 +10,5 @@ __all__ = [
     "ChatZhipu",
     "ChatQwen",
     "FakeLLM",
+    "ChatPool",
 ]
