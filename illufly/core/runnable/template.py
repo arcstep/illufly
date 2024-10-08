@@ -34,7 +34,9 @@ class Template(Runnable):
         self._last_output = self.format(*args, **kwargs)
         yield EventBlock("info", self._last_output)
 
-    def format(self, input_vars: Dict[str, Any]=None):
-        _input_vars = {**self.consumer_dict, **(input_vars or {})}
-        return mustache_render(template=self.text, data=_input_vars)
+    def format(self, binding: Dict[str, Any]=None):
+        if binding:
+            self.bind_providers(binding)
+        _binding = self.consumer_dict
+        return mustache_render(template=self.text, data=_binding)
 

@@ -58,7 +58,10 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         BindingManager.__init__(self, **kwargs)
 
     def __repr__(self):
-        return f"<Runnable {self.name}>"
+        if self.__class__.__name__ in self.name:
+            return f"<{self.name}>"
+        else:
+            return f"<{self.__class__.__name__} {self.name}>"
 
     @property
     def last_input(self):
