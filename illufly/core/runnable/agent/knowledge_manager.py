@@ -24,7 +24,7 @@ class KnowledgeManager:
         else:
             raise ValueError("Knowledge must be a string or a Document")
 
-    def get_knowledge(self, query: str=None):
+    def get_knowledge(self, query: str=None, verbose: bool=False):
         knowledge = []
         for kg in self.knowledge:
             if isinstance(kg, Document):
@@ -32,7 +32,7 @@ class KnowledgeManager:
             elif isinstance(kg, str):
                 knowledge.append(kg)
             elif isinstance(kg, VectorDB):
-                query_results = [doc.text for (score, doc) in kg(query, verbose=self.verbose)]
+                query_results = [doc.text for doc in kg(query, verbose=verbose)]
                 knowledge.append("\n\n".join(query_results))
             else:
                 raise ValueError("Knowledge must be a string, Document or VectorDB")

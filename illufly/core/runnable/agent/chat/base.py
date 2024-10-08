@@ -104,7 +104,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
 
         messages_std = Messages(prompt, style="text")
-        knowledge = kwargs.pop("knowledge", self.get_knowledge(messages_std[-1].content))
+        knowledge = kwargs.pop("knowledge", self.get_knowledge(messages_std.messages[-1].content))
         knowledge += self.get_resources()
 
         chat_memory = self.get_chat_memory(
