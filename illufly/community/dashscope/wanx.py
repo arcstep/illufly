@@ -44,9 +44,10 @@ class Text2ImageWanx(BaseAgent):
     """
     def __init__(self, model: str=None, api_key: str=None, **kwargs):
         super().__init__(threads_group="WANX", **kwargs)
-        self.description = "我擅长根据你的文字提示描述生成图片，然后我会告诉你保存在本地的资源文件名称"
+        self.description = "我擅长根据你的文字提示描述生成图片，你必须在 prompt 中详细描述生成要求，你必须展开描述，比如镜头、光线、细部等。"
         self.tool_params = {
-            "prompt": "图片要求的详细文字描述",
+            "prompt": "请尽量详细描述生成要求的细节",
+            "ref_img": "生成图片时所使用的参考图，可使用资源中提供的图片文件名称",
             "image_count": "生成图片的数量",
             "image_style": "生成图片的风格可以是: 摄影, 人像写真, 3D卡通, 动画, 油画, 水彩, 素描, 中国画, 扁平插画, 默认",
             "output": "指定生成图片的名称，默认按.png为扩展名"
@@ -151,10 +152,13 @@ class Text2ImageWanx(BaseAgent):
     
     def call(
         self, 
+        # input 和 parameters 为官方API所需要的详细惨受
         input: Dict[str, Any]={},
         parameters: Optional[Dict[str, Any]]={},
+        # 以下为方便工具使用的简易参数
         output: Optional[Union[str, List[str]]] = None,
         prompt: str=None,
+        ref_img: str=None,
         image_count: int=1,
         image_style: str="auto",
         **kwargs
@@ -162,6 +166,8 @@ class Text2ImageWanx(BaseAgent):
         self._last_output = []
         if prompt:
             input.update({"prompt": prompt})
+        if ref_img:
+            input.update({"ref_img": ref_img})
         if image_count:
             parameters.update({"n": image_count})
         if image_style:

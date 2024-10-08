@@ -10,7 +10,7 @@ class ResourceManager:
         管理智能体使用到的图片、视频、音频、数据、文档等资源。
         """
         self.resources = []
-        for r in resources:
+        for r in (resources or []):
             self.add_resource(r)
 
     def add_resource(self, *content: Union[str, List[Any], Dict[str, str]]):
@@ -27,7 +27,20 @@ class ResourceManager:
     def add_images(self, description: str, images: List[str]):
         if not isinstance(images, list):
             images = [images]
-        self.resources.append(Message(role="resource", content=[{"image": image} for image in images] + [{"text": description}]))
+        new_rc = Message(role="resource", content=[{"image": image} for image in images] + [{"text": description}])
+        print("new_rc", new_rc)
+        if self.get_signature(new_rc) in [self.get_signature(r) for r in self.resources]:
+            return None
+        else:
+            self.resources.append(new_rc)
+            return new_rc
+
+    def get_signature(self, message: Message):
+        texts = []
+        for x in message.content:
+            for v in x.values():
+                texts.append(v)
+        return "__".join(texts)
 
     def to_messages(self, style: str="qwen_vl"):
         return [r.to_dict(style=style) for r in self.resources]
@@ -38,8 +51,11 @@ class ResourceManager:
     def get_text(self):
         return [r.to_dict(style="text")['content'] for r in self.resources]
     
-    def get_knowledge(self):
-        knowledge = []
+    def get_resources(self):
+        """
+        获取资源描述。
+        """
+        resources = []
         for r in self.to_messages():
             if r['role'] == "resource":
                 text_descriptions = []
@@ -58,12 +74,12 @@ class ResourceManager:
                             videos.append(v)
                 desc = "resource: "
                 if len(images) > 0:
-                    desc += "图片 " + " ".join(images) + ", "
+                    desc += "[图片] " + " ".join(images) + ", "
                 if len(audios) > 0:
-                    desc += "音频 " + " ".join(audios) + ", "
+                    desc += "[音频] " + " ".join(audios) + ", "
                 if len(videos) > 0:
-                    desc += "视频 " + " ".join(videos) + ", "
+                    desc += "[视频] " + " ".join(videos) + ", "
                 if len(text_descriptions) > 0:
                     desc += ", ".join(text_descriptions)
-                knowledge.append(desc)
-        return knowledge
+                resources.append(desc)
+        return resources

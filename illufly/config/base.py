@@ -12,7 +12,7 @@ def get_env(key: str=None):
         "ILLUFLY_ROOT": "./",
         "ILLUFLY_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
         "ILLUFLY_DOCS": "__DOCS__",
-        "ILLUFLY_IMAGES": "__IMAGES__",
+        "ILLUFLY_MEDIA": "__MEDIA__",
         "ILLUFLY_CACHE_EMBEDDINGS": "__CACHE_EMBEDDINGS__",
         "ILLUFLY_UPLOAD_CACHE_DIR": "__UPLOAD_CACHE__",
 
