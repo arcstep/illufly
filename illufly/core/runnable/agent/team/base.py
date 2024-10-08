@@ -45,10 +45,13 @@ class BaseTeam(BaseAgent):
                 m.name = _name
             members_desc.append({"成员名字": m.name, "擅长能力": m.description})
 
+        local_dict = {
+            "members": json.dumps(members_desc, ensure_ascii=False),
+            "completed_teamwork": "\n".join(self.completed_teamwork),
+        }
         return {
             **super().provider_dict,
-            "members": json.dumps(members_desc, ensure_ascii=False),
-            "completed_teamwork": "\n".join(self.completed_teamwork)
+            **{k:v for k,v in local_dict.items() if v is not None},
         }
 
     def find_member(self, name: str) -> BaseAgent:

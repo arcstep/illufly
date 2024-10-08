@@ -16,10 +16,20 @@ class BindingManager:
         self.providers = bindings or []
         self.consumers = bindings or []
         self.bind_providers(bindings)
-        self._provider_dict = {}
 
         # 临时消费的 providers 列表
         self.dynamic_providers = []
+
+    @property
+    def provider_dict(self):
+        """
+        用于被其他 runnable 对象绑定的变量。
+        实现绑定变量的传递：将导入的变量合并后作为导出的变量。
+
+        需要注意的是，值为 None 的绑定变量不会被传递；
+        但仅针对明确的 None 值，真是因为真的希望传递空值，所以 ""、[] 等非 None 空值仍然会被传递。
+        """
+        return {k: v for k, v in self.consumer_dict.items() if v is not None}
 
     def clear_dynamic_providers(self):
         """
@@ -98,23 +108,6 @@ class BindingManager:
             runnable.bind_providers(self, binding_map, dynamic=dynamic)
 
     @property
-    def provider_dict(self):
-        """
-        用于被其他 runnable 对象绑定的变量。
-        实现绑定变量的传递：将导入的变量合并后作为导出的变量。
-
-        需要注意的是，值为 None 的绑定变量不会被传递；
-        但仅针对明确的 None 值，真是因为真的希望传递空值，所以 ""、[] 等非 None 空值仍然会被传递。
-        """
-        vars = {}
-        if self.last_input is not None:
-            vars["last_input"] = self.last_input
-        if self.last_output is not None:
-            vars["last_output"] = self.last_output
-
-        return {**self.consumer_dict, **vars, **self._provider_dict}
-
-    @property
     def consumer_dict(self):
         """
         获取所有绑定的 runnable 的 provider_dict 变量。
@@ -131,8 +124,8 @@ class BindingManager:
         consumer_dict = {}
 
         for runnable, binding_map in self.providers + self.dynamic_providers:
-            provider_dict = runnable.provider_dict
-            for k, v in provider_dict.items():
+            vars = runnable.provider_dict
+            for k, v in vars.items():
                 mapping_index = {iv: ik for ik, iv in binding_map.items() if not isinstance(iv, Callable)}
                 if k in mapping_index:
                     # 实现规则 2
@@ -143,7 +136,7 @@ class BindingManager:
             for k, v in binding_map.items():
                 if isinstance(v, Callable):
                     # 实现规则 3
-                    consumer_dict[k] = v(provider_dict)
+                    consumer_dict[k] = v(vars)
 
         return consumer_dict
 
@@ -182,8 +175,8 @@ class PassthroughBinding(BindingManager):
     def __init__(self, **kwargs):
         super().__init__(bindings=None)
         self.name = f"PassthroughBinding-{id(self)}"
-        self._provider_dict = kwargs
+        self.kwargs = kwargs
 
     @property
     def provider_dict(self):
-        return self._provider_dict
+        return {k:v for k,v in self.kwargs.items() if v is not None}
