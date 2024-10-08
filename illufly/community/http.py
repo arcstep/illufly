@@ -55,15 +55,15 @@ def confirm_upload_file(model: str=None, uri: str=None, api_key: str=None):
     if uri and (uri.startswith('http://') or uri.startswith('https://') or uri.startswith('oss://')):
         return uri
     
-    if os.path.exists(uri):
-        abs_path = os.path.abspath(uri)
-        cache = get_upload_cache(abs_path, "aliyun_oss")
+    media_file_path = os.path.join(get_env("ILLUFLY_MEDIA"), uri)
+    if os.path.exists(media_file_path):
+        cache = get_upload_cache(media_file_path, "aliyun_oss")
         if cache['cache_path'] and cache['upload_url']:
             return cache['upload_url']
         else:
-            oss_file = f"file://{abs_path}"
+            oss_file = f"file://{media_file_path}"
             upload_url = upload_file(model, oss_file, api_key)
-            update_upload_cache(abs_path, upload_url, "aliyun_oss")
+            update_upload_cache(media_file_path, upload_url, "aliyun_oss")
             return upload_url
     else:
         raise ValueError(f"Invalid URI path: {uri}")
@@ -87,7 +87,7 @@ def validate_output_path(output_path: Union[str, List[str]], n: int) -> List[str
     return output_path
 
 def save_image(url: str, path: str):
-    image_to_save = os.path.join(get_env("ILLUFLY_IMAGES"), path)
+    image_to_save = os.path.join(get_env("ILLUFLY_MEDIA"), path)
     if image_to_save and not os.path.exists(image_to_save):
         os.makedirs(os.path.dirname(image_to_save), exist_ok=True)
     with open(image_to_save, 'wb+') as f:
@@ -95,7 +95,7 @@ def save_image(url: str, path: str):
         yield EventBlock("chunk", f'image was generated and saved to {path}; ')
 
 async def async_save_image(url: str, path: str):
-    image_to_save = os.path.join(get_env("ILLUFLY_IMAGES"), path)
+    image_to_save = os.path.join(get_env("ILLUFLY_MEDIA"), path)
     if image_to_save and not os.path.exists(image_to_save):
         os.makedirs(os.path.dirname(image_to_save), exist_ok=True)
     async with aiohttp.ClientSession() as session:

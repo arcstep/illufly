@@ -101,9 +101,11 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", []))
 
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
+        yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
+
         messages_std = Messages(prompt, style="text")
         knowledge = kwargs.pop("knowledge", self.get_knowledge(messages_std[-1].content))
-        yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
+        knowledge += self.get_resources()
 
         chat_memory = self.get_chat_memory(
             prompt=prompt,
@@ -171,8 +173,11 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", []))
 
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
-        knowledge = kwargs.pop("knowledge", self.get_knowledge(prompt if isinstance(prompt, str) else prompt[-1].get("content")))
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
+
+        messages_std = Messages(prompt, style="text")
+        knowledge = kwargs.pop("knowledge", self.get_knowledge(messages_std[-1].content))
+        knowledge += self.get_resources()
 
         chat_memory = self.get_chat_memory(
             prompt=prompt,
@@ -239,12 +244,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 "content": "",
                 "tool_calls": [tool]
             }]
-            # 短期记忆追加
-            chat_memory.extend(tools_call_message)
-            # 长期记忆追加
-            self.remember_response(tools_call_message)
 
             if self.exec_tool:
+                # 记忆追加
+                chat_memory.extend(tools_call_message)
+                self.remember_response(tools_call_message)
+
                 for block in self._execute_tool(tool, kwargs):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         tool_resp = block.text
@@ -270,12 +275,11 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 "content": "",
                 "tool_calls": [tool]
             }]
-            # 短期记忆追加
-            chat_memory.extend(tools_call_message)
-            # 长期记忆追加
-            self.remember_response(tools_call_message)
-
             if self.exec_tool:
+                # 记忆追加
+                chat_memory.extend(tools_call_message)
+                self.remember_response(tools_call_message)
+
                 async for block in self._async_execute_tool(tool, kwargs):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         tool_resp = block.text

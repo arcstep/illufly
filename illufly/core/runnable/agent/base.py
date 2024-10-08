@@ -5,11 +5,12 @@ import asyncio
 from typing import Union, List, Dict, Any, Callable, Generator, AsyncGenerator
 
 from .tool_ability import ToolAbility
+from .resource_manager import ResourceManager
 from ...dataset import Dataset
 from ..base import Runnable
 from ....io import EventBlock
 
-class BaseAgent(Runnable, ToolAbility):
+class BaseAgent(Runnable, ToolAbility, ResourceManager):
     """    
     基于 BaseAgent 子类可以实现多智能体协作。
 
@@ -31,6 +32,7 @@ class BaseAgent(Runnable, ToolAbility):
     ):
         Runnable.__init__(self, **kwargs)
         ToolAbility.__init__(self, func=func, async_func=async_func, **kwargs)
+        ResourceManager.__init__(self, **kwargs)
 
         _func = func or async_func
         if _func:
@@ -46,6 +48,13 @@ class BaseAgent(Runnable, ToolAbility):
             "agent_description": self.description,
         })
         return info
+
+    @property
+    def provider_dict(self):
+        return {
+            **super().provider_dict,
+            "resources": "\n".join(self.get_resources()),
+        }
 
     def call(self, *args, **kwargs):
         if not isinstance(self.func, Callable):
