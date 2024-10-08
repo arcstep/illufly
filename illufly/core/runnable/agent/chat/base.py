@@ -117,6 +117,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             to_continue_call_llm = False
             output_text, tools_call = "", []
 
+            # 执行模型生成任务
             for block in self.generate(chat_memory, *args, **kwargs):
                 yield block
                 if block.block_type == "chunk":
@@ -128,6 +129,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             final_tools_call = merge_tool_calls(tools_call)
             if final_tools_call:
+                # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
                 for block in self._handle_openai_style_tools_call(final_tools_call, chat_memory, kwargs):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         to_continue_call_llm = True
@@ -141,6 +143,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 self.remember_response(final_output_text)
                 yield EventBlock("text_final", final_output_text)
 
+                # 处理直接在文本中包含的 <tool_call> 风格的工具调用，包括将结果追加到记忆中
                 tool_calls = self.extract_in_text_tool_calls(final_output_text)
                 if tool_calls:
                     for index, tool_call in enumerate(tool_calls):
@@ -236,7 +239,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 "content": "",
                 "tool_calls": [tool]
             }]
+            # 短期记忆追加
             chat_memory.extend(tools_call_message)
+            # 长期记忆追加
             self.remember_response(tools_call_message)
 
             if self.exec_tool:
@@ -249,7 +254,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                             "name": tool['function']['name'],
                             "content": tool_resp
                         }]
+                        # 短期记忆追加
                         chat_memory.extend(tool_resp_message)
+                        # 长期记忆追加
                         self.remember_response(tool_resp_message)
                     yield block
 
@@ -263,7 +270,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 "content": "",
                 "tool_calls": [tool]
             }]
+            # 短期记忆追加
             chat_memory.extend(tools_call_message)
+            # 长期记忆追加
             self.remember_response(tools_call_message)
 
             if self.exec_tool:
@@ -276,7 +285,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                             "name": tool['function']['name'],
                             "content": tool_resp
                         }]
+                        # 短期记忆追加
                         chat_memory.extend(tool_resp_message)
+                        # 长期记忆追加
                         self.remember_response(tool_resp_message)
                     yield block
 
@@ -285,7 +296,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             if tool.get('function', {}).get('name') == struct_tool.name:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
+                print("tool_args", tool_args)
 
+                self.bind_consumers(struct_tool)
                 tool_func_result = struct_tool.call(**tool_args)
                 for x in tool_func_result:
                     if isinstance(x, EventBlock):

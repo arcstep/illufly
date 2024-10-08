@@ -30,20 +30,7 @@ from ..http import (
 )
 
 class Text2ImageWanx(BaseAgent):
-    """
-    支持风格包括：水彩、油画、中国画、素描、扁平插画、二次元、3D卡通。
-    :parameters.style: 输出图像的风格，目前支持以下风格取值：
-        - <photography> 摄影,
-        - <portrait> 人像写真,
-        - <3d cartoon> 3D卡通,
-        - <anime> 动画,
-        - <oil painting> 油画,
-        - <watercolor> 水彩,
-        - <sketch> 素描,
-        - <chinese painting> 中国画,
-        - <flat illustration> 扁平插画,
-        - <auto> 默认
-    
+    """    
     :parameters.size: 生成图像的分辨率，目前仅支持：
         - 1024*1024 默认
         - 720*1280
@@ -57,15 +44,38 @@ class Text2ImageWanx(BaseAgent):
     """
     def __init__(self, model: str=None, api_key: str=None, **kwargs):
         super().__init__(threads_group="WANX", **kwargs)
-        self.description = "我擅长根据你的文字提示描述生成图片"
+        self.description = "我擅长根据你的文字提示描述生成图片，然后我会告诉你保存在本地的资源文件名称"
         self.tool_params = {
             "prompt": "图片要求的详细文字描述",
             "image_count": "生成图片的数量",
-            "image_style": "生成图片的风格，取值是`<`和`>`包裹的字符串，不要包含其他说明文字：<photography> 摄影, <portrait> 人像写真, <3d cartoon> 3D卡通, <anime> 动画, <oil painting> 油画, <watercolor> 水彩, <sketch> 素描, <chinese painting> 中国画, <flat illustration> 扁平插画, <auto> 默认"
+            "image_style": "生成图片的风格可以是: 摄影, 人像写真, 3D卡通, 动画, 油画, 水彩, 素描, 中国画, 扁平插画, 默认",
+            "output": "指定生成图片的名称，默认按.png为扩展名"
         }
 
         self.model = model or "wanx-v1"
         self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
+    
+    def get_style(self, style: str):
+        if style == "摄影":
+            return "<photography>"
+        elif style == "人像写真":
+            return "<portrait>"
+        elif style == "3D卡通":
+            return "<3d cartoon>"
+        elif style == "动画":
+            return "<anime>"
+        elif style == "油画":
+            return "<oil painting>"
+        elif style == "水彩":
+            return "<watercolor>"
+        elif style == "素描":
+            return "<sketch>"
+        elif style == "中国画":
+            return "<chinese painting>"
+        elif style == "扁平插画":
+            return "<flat illustration>"
+        else:
+            return "<auto>"
 
     def confirm_content_url(self, input: Dict[str, Any], key: str, tail: str="_url") -> str:
         url = input.get(f"{key}{tail}", None)
@@ -149,12 +159,13 @@ class Text2ImageWanx(BaseAgent):
         image_style: str="auto",
         **kwargs
     ):
+        self._last_output = []
         if prompt:
             input.update({"prompt": prompt})
         if image_count:
-            parameters.update({"image_count": image_count})
+            parameters.update({"n": image_count})
         if image_style:
-            parameters.update({"image_style": image_style})
+            parameters.update({"style": self.get_style(image_style)})
 
         parameters = parameters or {}
         if isinstance(output, str):
@@ -183,6 +194,7 @@ class Text2ImageWanx(BaseAgent):
         output: Optional[Union[str, List[str]]] = None,
         **kwargs
     ):
+        self._last_output = []
         if isinstance(output, str):
             output = [output]
 
