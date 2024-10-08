@@ -113,10 +113,14 @@ class MemoryManager(BindingManager):
         """
         构建提问消息列表。
         """
-        # 无论新消息列表中是否包含 system 角色，都需要绑定模板变量
+        # 无论新消息列表中是否包含 system 角色，都需要绑定模板变量，但应当是动态绑定
         templates = new_messages.all_templates
         for template in templates:
-            self.bind_consumers(template, binding_map={**kwargs.get("template_binding", {}), **self.template_binding})
+            self.bind_consumers(
+                template,
+                binding_map={**kwargs.get("template_binding", {}), **self.template_binding},
+                dynamic=True
+            )
 
         # 如果是新对话，只要没有提供 system 角色，就启用 init_messages 模板
         # 合并 new_messages 和 init_messages

@@ -3,16 +3,29 @@ from typing import Union, List, Dict, Any, Callable, Tuple
 class BindingManager:
     """
     BindingManager 基类，用于管理绑定相关的功能。
+
+    关于动态绑定：有时仅希望短暂维持绑定关系，例如在调用函数中临时建立的绑定关系，希望每次重置。
+    这与实例声明时希望长期建立的绑定关系不同，称为动态绑定。
+
     """
 
     def __init__(self, bindings: Any=None, **kwargs):
         """
         :param binding: 绑定的 (runnable, binding_map)，字典结构，或 Runnable 实例的列表
         """
-        self.providers = []
-        self.consumers = []
+        self.providers = bindings or []
+        self.consumers = bindings or []
         self.bind_providers(bindings)
         self._provider_dict = {}
+
+        # 临时消费的 providers 列表
+        self.dynamic_providers = []
+
+    def clear_dynamic_providers(self):
+        """
+        清除所有动态绑定的 providers
+        """
+        self.dynamic_providers = []
 
     def _convert_bindings(self, bindings: Any=None, raise_message: str=None):
         """
@@ -49,22 +62,29 @@ class BindingManager:
                     raise ValueError(raise_message, bindings)
         return provider_bindings
 
-    def bind_providers(self, *bindings: Any):
+    def bind_providers(self, *bindings: Any, dynamic: bool=False):
         """
         绑定其他 providers 以便使用其输出字典。
 
         可以按 bindings 中的映射规则绑定到 Runnable 实例，然后动态获取值；也可以直接从指定 dict 结构中获取值。
+
+        动态绑定：
+        如果 dynamic 为 True，则清除所有动态绑定的 providers，并添加新的动态绑定。
         """
         message = "provider binding must be one of dict, tuple or Runnable instance"
         new_bindings = self._convert_bindings(list(bindings), raise_message=message)
         for (provider_runnable, binding_map) in new_bindings:
             if provider_runnable.name in [r[0].name for r in self.providers]:
                 continue
-            self.providers.append((provider_runnable, binding_map))
-            if isinstance(provider_runnable, BindingManager):
-                provider_runnable.consumers.append((self, binding_map))
+            if dynamic:
+                self.clear_dynamic_providers()
+                self.dynamic_providers.append((provider_runnable, binding_map))
+            else:
+                self.providers.append((provider_runnable, binding_map))
+                if isinstance(provider_runnable, BindingManager):
+                    provider_runnable.consumers.append((self, binding_map))
 
-    def bind_consumers(self, *runnables, binding_map: Dict=None):
+    def bind_consumers(self, *runnables, binding_map: Dict=None, dynamic: bool=False):
         """
         将自身绑定给 consumers 以便将输出字典提供其使用。
 
@@ -75,7 +95,7 @@ class BindingManager:
                 continue
             if not isinstance(runnable, BindingManager):
                 raise ValueError("consumer runnable must be a Runnable instance", runnable)
-            runnable.bind_providers(self, binding_map)
+            runnable.bind_providers(self, binding_map, dynamic=dynamic)
 
     @property
     def provider_dict(self):
@@ -110,7 +130,7 @@ class BindingManager:
 
         consumer_dict = {}
 
-        for runnable, binding_map in self.providers:
+        for runnable, binding_map in self.providers + self.dynamic_providers:
             provider_dict = runnable.provider_dict
             for k, v in provider_dict.items():
                 mapping_index = {iv: ik for ik, iv in binding_map.items() if not isinstance(iv, Callable)}

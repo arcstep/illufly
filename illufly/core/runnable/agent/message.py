@@ -16,11 +16,11 @@ class Message:
     def __repr__(self):
         return f"Message(role={self.role}, content={self.content})"
     
-    def to_dict(self, input_vars: Dict[str, Any]=None, style: str=None):
+    def to_dict(self, binding: Dict[str, Any]=None, style: str=None):
         def get_url(item, key, alt_key):
             return item.get(key, item[alt_key]['url'] if alt_key in item and 'url' in item[alt_key] else None)
         
-        def get_unique_format(style, input_vars):
+        def get_unique_format(style, binding):
             if isinstance(self.content, list):
                 contents = []
                 for item in self.content:
@@ -43,7 +43,7 @@ class Message:
             elif isinstance(self.content, str):
                 return [{"text": self.content}]
             elif isinstance(self.content, Template):
-                return [{"text": self.content.format(input_vars)}]
+                return [{"text": self.content.format(binding)}]
         
         if style == "openai_vl":
             content = [
@@ -51,13 +51,13 @@ class Message:
                     "type": k if k == "text" else k + "_url",
                     (k if k == "text" else k + "_url"): v if k == "text" else {"url": v}
                 }
-                for item in get_unique_format(style, input_vars)
+                for item in get_unique_format(style, binding)
                 for k, v in item.items()
             ]
         elif style == "qwen_vl":
-            content = get_unique_format(style, input_vars)
+            content = get_unique_format(style, binding)
         else:
-            unique_format = get_unique_format(style, input_vars)
+            unique_format = get_unique_format(style, binding)
             if unique_format:
                 content = "\n".join([c['text'] for c in unique_format if 'text' in c])
             else:
@@ -69,14 +69,14 @@ class Message:
             **self.kwargs
         }
 
-    def to_text(self, input_vars: Dict[str, Any]=None):
+    def to_text(self, binding: Dict[str, Any]=None):
         if isinstance(self.content, Template):
-            return self.content.format(input_vars)
+            return self.content.format(binding)
         return self.content
 
-    def to_json(self, input_vars: Dict[str, Any]=None):
+    def to_json(self, binding: Dict[str, Any]=None):
         if isinstance(self.content, Template):
-            content = self.content.format(input_vars)
+            content = self.content.format(binding)
         else:
             content = self.content
         return json.dumps({
@@ -106,11 +106,11 @@ class Messages:
             List[Union[Message, str, Dict[str, Any], Template, Tuple[str, Union[str, Template]]]]
         ]=None,
         style: str=None,
-        input_vars: Dict[str, Any]=None
+        binding: Dict[str, Any]=None
     ):
         self.raw_messages = messages or []
         self.style = style
-        self.input_vars = input_vars or {}
+        self.binding = binding or {}
         if not isinstance(self.raw_messages, list):
             self.raw_messages = [self.raw_messages]
 
@@ -179,13 +179,13 @@ class Messages:
         if not isinstance(other, Messages):
             raise TypeError("Operands must be of type Messages")
         combined_messages = self.messages + other.messages
-        return Messages(combined_messages, style=self.style, input_vars=self.input_vars)
+        return Messages(combined_messages, style=self.style, binding=self.binding)
     
-    def to_list(self, input_vars: Dict[str, Any]=None, style: str=None):
-        return [msg.to_dict({**self.input_vars, **(input_vars or {})}, (style or self.style)) for msg in self.messages]
+    def to_list(self, binding: Dict[str, Any]=None, style: str=None):
+        return [msg.to_dict({**self.binding, **(binding or {})}, (style or self.style)) for msg in self.messages]
     
-    def to_json(self, input_vars: Dict[str, Any]=None, style: str=None):
-        return [msg.to_json({**self.input_vars, **(input_vars or {})}, (style or self.style)) for msg in self.messages]
+    def to_json(self, binding: Dict[str, Any]=None, style: str=None):
+        return [msg.to_json({**self.binding, **(binding or {})}, (style or self.style)) for msg in self.messages]
     
     @property
     def length(self):
