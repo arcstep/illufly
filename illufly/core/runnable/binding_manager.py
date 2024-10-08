@@ -57,11 +57,12 @@ class BindingManager:
         """
         message = "provider binding must be one of dict, tuple or Runnable instance"
         new_bindings = self._convert_bindings(list(bindings), raise_message=message)
-        self.providers.extend(new_bindings)
         for (provider_runnable, binding_map) in new_bindings:
+            if provider_runnable.name in [r[0].name for r in self.providers]:
+                continue
+            self.providers.append((provider_runnable, binding_map))
             if isinstance(provider_runnable, BindingManager):
                 provider_runnable.consumers.append((self, binding_map))
-        return self.providers
 
     def bind_consumers(self, *runnables, binding_map: Dict=None):
         """
@@ -70,6 +71,8 @@ class BindingManager:
         与 bind_providers 不同，不存在将自己的输出字典传递给一个字典的情况，因此被绑定的消费者 runnable 不能为空。
         """
         for runnable in runnables:
+            if runnable.name in [r[0].name for r in self.consumers]:
+                continue
             if not isinstance(runnable, BindingManager):
                 raise ValueError("consumer runnable must be a Runnable instance", runnable)
             runnable.bind_providers(self, binding_map)
@@ -131,7 +134,11 @@ class BindingManager:
         """
         tree = {"consumer": self, "provider_tree": []}
         for provider, binding_map in self.providers:
-            tree["provider_tree"].append((provider, binding_map, provider.provider_tree))
+            tree["provider_tree"].append({
+                "provider": provider,
+                "binding_map": binding_map,
+                "provider_tree": provider.provider_tree
+            })
         return tree
     
     @property
@@ -141,7 +148,11 @@ class BindingManager:
         """
         tree = {"provider": self, "consumer_tree": []}
         for consumer, binding_map in self.consumers:
-            tree["consumer_tree"].append((consumer, binding_map, consumer.consumer_tree))
+            tree["consumer_tree"].append({
+                "consumer": consumer,
+                "binding_map": binding_map,
+                "consumer_tree": consumer.consumer_tree
+            })
         return tree
 
 class PassthroughBinding(BindingManager):
@@ -150,6 +161,7 @@ class PassthroughBinding(BindingManager):
     """
     def __init__(self, **kwargs):
         super().__init__(bindings=None)
+        self.name = f"PassthroughBinding-{id(self)}"
         self._provider_dict = kwargs
 
     @property
