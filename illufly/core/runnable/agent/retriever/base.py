@@ -56,7 +56,6 @@ class Retriever(BaseAgent):
         translator 可以是 ChatAgent, VectorDB 或 BaseAgent,
         而返回结果可以是 字符串列表、JSON 文本、MarkMeta 文本或 Document 列表等几种格式。
         """
-        results = []
         translated_queries = []
         for translator in self.translators:
             results = translator(query, **kwargs)
@@ -80,19 +79,8 @@ class Retriever(BaseAgent):
                         raise ValueError("Unknown translation result type")
             else:
                 raise ValueError("Unknown translation result type")
-            if isinstance(translator, VectorDB):
-                translated_query = translator.run(query)
-            elif isinstance(translator, Callable):
-                translated_query = translator(query)
-            else:
-                raise ValueError("Unknown translator type")
-            if isinstance(translated_query, str):
-                results.append(translated_query)
-            elif isinstance(translated_query, list):
-                results.extend(translated_query)
-            else:
-                raise ValueError("Unknown translation result type")
-        return results
+
+        return translated_queries
 
     def search(self, queries: List[str]) -> List[dict]:
         """
