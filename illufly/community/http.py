@@ -92,7 +92,7 @@ def save_image(url: str, path: str):
         os.makedirs(os.path.dirname(image_to_save), exist_ok=True)
     with open(image_to_save, 'wb+') as f:
         f.write(requests.get(url).content)
-        yield EventBlock("chunk", f'an image was generated and saved to {path}')
+        yield EventBlock("chunk", f'image was generated and saved to {path}; ')
 
 async def async_save_image(url: str, path: str):
     image_to_save = os.path.join(get_env("ILLUFLY_IMAGES"), path)
