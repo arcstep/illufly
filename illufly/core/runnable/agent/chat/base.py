@@ -61,10 +61,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         return info
 
     @property
-    def last_input(self):
-        return self._last_input.last_content if self._last_input else None
-
-    @property
     def last_output(self):
         return self.memory[-1]['content'] if self.memory else ""
 
@@ -74,11 +70,14 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     @property
     def provider_dict(self):
-        return {
-            **super().provider_dict,
+        local_dict = {
             "task": self.task,
             "tools_name": self.get_tools_name(),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
+        }
+        return {
+            **super().provider_dict,
+            **{k:v for k,v in local_dict.items() if v is not None},
         }
 
     @abstractmethod

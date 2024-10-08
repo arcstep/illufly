@@ -51,9 +51,12 @@ class BaseAgent(Runnable, ToolAbility, ResourceManager):
 
     @property
     def provider_dict(self):
+        local_dict = {
+            "resources": "\n".join(self.get_resources()),
+        }
         return {
             **super().provider_dict,
-            "resources": "\n".join(self.get_resources()),
+            **{k:v for k,v in local_dict.items() if v is not None},
         }
 
     def call(self, *args, **kwargs):

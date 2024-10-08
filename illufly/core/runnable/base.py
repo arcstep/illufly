@@ -52,7 +52,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self.handlers = handlers or []
         self.verbose = False
 
-        self._last_input = None
         self._last_output = None
 
         BindingManager.__init__(self, **kwargs)
@@ -64,12 +63,18 @@ class Runnable(ABC, ExecutorManager, BindingManager):
             return f"<{self.__class__.__name__} {self.name}>"
 
     @property
-    def last_input(self):
-        return self._last_input
-
-    @property
     def last_output(self):
         return self._last_output
+
+    @property
+    def provider_dict(self):
+        local_dict = {
+            "last_output": self.last_output,
+        }
+        return {
+            **super().provider_dict,
+            **{k:v for k,v in local_dict.items() if v is not None},
+        }
 
     def __call__(
         self,
