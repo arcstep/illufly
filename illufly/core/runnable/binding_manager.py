@@ -18,6 +18,7 @@ class BindingManager:
         providers: List[Tuple[Any, Dict]]=None,
         consumers: List[Tuple[Any, Dict]]=None,
         dynamic_providers: List[Tuple[Any, Dict]]=None,
+        lazy_binding_map: Dict=None,
         **kwargs
     ):
         """
@@ -26,6 +27,9 @@ class BindingManager:
         self.providers = providers or []
         self.consumers = consumers or []
         self.dynamic_providers = dynamic_providers or []
+
+        # lazy_binding_map 可用于被绑定时默认采纳的 binding_map
+        self.lazy_binding_map = lazy_binding_map or {}
 
     @property
     def provider_dict(self):
@@ -55,14 +59,15 @@ class BindingManager:
         if isinstance(runnable, dict) and binding_map is None:
             binding_map = copy.deepcopy(runnable)
             runnable = None
-        binding_map = binding_map or {}
+
+        binding_map = binding_map or self.lazy_binding_map
         runnable = runnable or PassthroughBinding(binding_map=binding_map)
 
         if not isinstance(runnable, BindingManager):
             raise ValueError("runnable must be a Runnable instance", runnable)
         if not isinstance(binding_map, dict):
             raise ValueError("binding_map must be a dictionary", binding_map)
-        
+
         return (runnable, binding_map)
 
     def bind_provider(self, runnable: "Runnable"=None, binding_map: Dict=None, dynamic: bool=False):
@@ -171,7 +176,7 @@ class PassthroughBinding(BindingManager):
     透传字典结构到 provider_dict
     """
     def __init__(self, binding_map: Dict=None):
-        super().__init__(bindings=None)
+        super().__init__()
         self.name = f"PassthroughBinding-{id(self)}"
         self.binding_map = binding_map or {}
 
