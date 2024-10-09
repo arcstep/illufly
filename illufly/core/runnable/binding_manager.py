@@ -96,7 +96,7 @@ class BindingManager:
             self.providers.append((provider_runnable, binding_map))
             provider_runnable.consumers.append((self, binding_map))
 
-    def bind_consumer(self, runnable, binding_map: Dict=None, dynamic: bool=False):
+    def bind_consumer(self, runnable: "Runnable", binding_map: Dict=None, dynamic: bool=False):
         """
         将自身绑定给 consumers 以便将输出字典提供其使用。
 

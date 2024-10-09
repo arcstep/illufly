@@ -28,7 +28,6 @@ class ResourceManager:
         if not isinstance(images, list):
             images = [images]
         new_rc = Message(role="resource", content=[{"image": image} for image in images] + [{"text": description}])
-        print("new_rc", new_rc)
         if self.get_signature(new_rc) in [self.get_signature(r) for r in self.resources]:
             return None
         else:
