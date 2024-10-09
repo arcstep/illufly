@@ -22,19 +22,22 @@ class FaissDB(VectorDB):
         self.index = faiss.IndexFlatL2(self.dim) 
 
         self.documents = self.embeddings.last_output[:]
-        self.add(self.documents)
+        self.load_documents(self.documents)
     
     def load_text(self, text: str, source: str=None, **kwargs):
         mm = MarkMeta(**kwargs)
         docs = mm.load_text(text, source)
 
+        self.load_documents(docs)
+
+    def load_documents(self, docs: List[Document], **kwargs):
         vectors = self._process_embeddings(docs)
         if vectors is not None and len(vectors) > 0:
             if self.train:
                 self.index.train(vectors)
             self.index.add(vectors)
             self.documents.extend(docs)
-    
+
     def load(
         self,
         directory: str=None,
