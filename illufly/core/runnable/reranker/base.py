@@ -14,17 +14,18 @@ class BaseReranker(Runnable):
     ```
     """
 
-    def __init__(self, model: str=None, base_url: str=None, api_key: str=None, dim: int=None, max_lines: int=None, **kwargs):
+    def __init__(self, model: str=None, base_url: str=None, api_key: str=None, top_k: int=None, **kwargs):
         super().__init__(**kwargs)
         self.model = model
         self.base_url = base_url
         self.api_key = api_key
+        self.top_k = top_k
         self.clear_output()
 
     def clear_output(self):
         self._last_output = []
 
-    def rerank(self, query: str, docs: Union[str, List[str], List[Document]]):
+    def rerank(self, query: str, docs: Union[str, List[str], List[Document]], **kwargs):
         """
         重排序器。
         """

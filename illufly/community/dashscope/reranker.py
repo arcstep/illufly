@@ -10,7 +10,7 @@ from http import HTTPStatus
 
 
 class DashScopeReranker(BaseReranker):
-    def __init__(self, model: str=None, api_key: str=None, **kwargs):
+    def __init__(self, model: str=None, api_key: str=None, top_k: int=None, **kwargs):
         try:
             import dashscope
             self.dashscope = dashscope
@@ -23,18 +23,18 @@ class DashScopeReranker(BaseReranker):
         super().__init__(
             model=model or "gte-rerank",
             api_key=api_key or os.getenv("DASHSCOPE_API_KEY"),
+            top_k=top_k if top_k is not None else 5,
             **kwargs
         )
 
-    def rerank(self, query: str, docs: Union[str, List[str], List[Document]]):
+    def rerank(self, query: str, docs: Union[str, List[str], List[Document]], top_k: int=None, **kwargs):
         """
         重排序器。
 
-        rerank 返回的文档长度应当与 docs 一致，因此 top_n 应当取值为 docs 的长度。
+        rerank 返回的文档长度应当与 docs 一致，因此 top_k 应当取值为 docs 的长度。
         """
         self._last_output = []
         docs = convert_to_documents_list(docs)
-        top_n = len(docs)
 
         self.dashscope.api_key = self.api_key
 
@@ -42,7 +42,7 @@ class DashScopeReranker(BaseReranker):
             model=self.model,
             query=query,
             documents=[doc.text for doc in docs],
-            top_n=top_n,
+            top_n=len(docs),
             return_documents=False
         )
 
@@ -63,7 +63,7 @@ class DashScopeReranker(BaseReranker):
                         doc.meta["rerank_score"] = result["relevance_score"]
                         final_docs.append(doc)
                     final_docs.sort(key=lambda x: x.meta["rerank_score"], reverse=True)
-                    self._last_output = final_docs
+                    self._last_output = final_docs[:(top_k or self.top_k)]
 
         else:
             yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
