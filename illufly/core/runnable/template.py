@@ -11,7 +11,7 @@ class Template(Runnable):
     提示语模板可以作为消息生成消息列表。
     结合绑定映射，可以动态填充提示语模板。
     """
-    def __init__(self, template_id: str=None, text: str=None, bindings: Any=None, **kwargs):
+    def __init__(self, template_id: str=None, text: str=None, binding_map: Dict=None, **kwargs):
         super().__init__(**kwargs)
 
         if template_id:
@@ -21,7 +21,7 @@ class Template(Runnable):
         else:
             raise ValueError('text or template_id cannot be empty')
 
-        self.bind_providers(bindings)
+        self.bind_provider(binding_map=binding_map)
         self.template_vars = get_template_variables(self.text)
 
     def __str__(self):
@@ -34,9 +34,9 @@ class Template(Runnable):
         self._last_output = self.format(*args, **kwargs)
         yield EventBlock("info", self._last_output)
 
-    def format(self, binding: Dict[str, Any]=None):
-        if binding:
-            self.bind_providers(binding)
+    def format(self, binding_map: Dict[str, Any]=None):
+        if binding_map:
+            self.bind_provider(binding_map=binding_map)
         _binding = self.consumer_dict
         return mustache_render(template=self.text, data=_binding)
 

@@ -28,7 +28,7 @@ class MemoryManager(BindingManager):
 
         self.init_messages = Messages(memory, style=self.style)
         for template in self.init_messages.all_templates:
-            self.bind_consumers(template, binding_map=template_binding)
+            self.bind_consumer(template, binding_map=template_binding)
 
     def get_bound_vars(self, new_messages: Messages, new_chat: bool=False):
         """
@@ -116,7 +116,7 @@ class MemoryManager(BindingManager):
         # 无论新消息列表中是否包含 system 角色，都需要绑定模板变量，但应当是动态绑定
         templates = new_messages.all_templates
         for template in templates:
-            self.bind_consumers(
+            self.bind_consumer(
                 template,
                 binding_map={**kwargs.get("template_binding", {}), **self.template_binding},
                 dynamic=True

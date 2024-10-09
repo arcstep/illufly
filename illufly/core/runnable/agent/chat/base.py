@@ -301,7 +301,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 tool_resp = ""
                 print("tool_args", tool_args)
 
-                self.bind_consumers(struct_tool, dynamic=True)
+                self.bind_consumer(struct_tool, dynamic=True)
                 tool_func_result = struct_tool.call(**tool_args)
                 for x in tool_func_result:
                     if isinstance(x, EventBlock):
