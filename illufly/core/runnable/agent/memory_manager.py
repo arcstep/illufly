@@ -10,16 +10,8 @@ class MemoryManager(BindingManager):
         style: str=None,
         memory: Union[List[Union[str, "Template", Dict[str, Any]]], Messages]=None,
         remember_rounds: int=None,
-        template_binding: Dict[str, Any]=None,
         **kwargs
     ):
-        if template_binding is None:
-            template_binding = {}
-        self.template_binding = template_binding
-
-        if not isinstance(template_binding, Dict):
-            raise ValueError("template_binding must be a dictionary")
-
         super().__init__(**kwargs)
 
         self.style = style
@@ -28,7 +20,7 @@ class MemoryManager(BindingManager):
 
         self.init_messages = Messages(memory, style=self.style)
         for template in self.init_messages.all_templates:
-            self.bind_consumer(template, binding_map=template_binding)
+            self.bind_consumer(template)
 
     def get_bound_vars(self, new_messages: Messages, new_chat: bool=False):
         """
@@ -47,7 +39,7 @@ class MemoryManager(BindingManager):
         for template in _new_messages.all_templates:
             _template_vars = template.template_vars
             bound_vars.update(_template_vars)
-            for provider_key, consumer_key in self.template_binding.items():
+            for provider_key, consumer_key in template.lazy_binding_map.items():
                 if provider_key in _template_vars:
                     bound_vars.remove(provider_key)
                     if consumer_key in self.provider_dict:
@@ -109,18 +101,19 @@ class MemoryManager(BindingManager):
             new_messages = self.memory[-final_k:]
         return Messages(new_messages, style=self.style)
 
-    def build_new_messages(self, new_messages: Messages, new_chat: bool=False, **kwargs):
+    def build_new_messages(self, prompt: Union[str, List[dict]], new_chat: bool=False, **kwargs):
         """
         构建提问消息列表。
         """
+        # 构建 prompt 标准形式
+        if isinstance(prompt, str):
+            prompt = [{"role": "user", "content": prompt}]
+        new_messages = prompt if isinstance(prompt, Messages) else Messages(prompt, style=self.style)
+
         # 无论新消息列表中是否包含 system 角色，都需要绑定模板变量，但应当是动态绑定
         templates = new_messages.all_templates
         for template in templates:
-            self.bind_consumer(
-                template,
-                binding_map={**kwargs.get("template_binding", {}), **self.template_binding},
-                dynamic=True
-            )
+            self.bind_consumer(template, dynamic=True)
 
         # 如果是新对话，只要没有提供 system 角色，就启用 init_messages 模板
         # 合并 new_messages 和 init_messages
@@ -132,7 +125,7 @@ class MemoryManager(BindingManager):
         if 'task' in self.get_bound_vars(new_messages, new_chat=new_chat) and new_messages[-1].role == 'user':
             self._task = new_messages.messages.pop(-1).content
 
-        if new_messages[-1].role == 'system':
+        if new_messages and new_messages[-1].role == 'system':
             # 如果新消息列表的尾部是 system 消息，则需要补充一个 user 角色消息
             # 否则，缺少用户消息会让大模型拒绝回答任何问题
             new_messages.append({"role": "user", "content": "请开始"})
