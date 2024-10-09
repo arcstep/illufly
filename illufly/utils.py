@@ -21,19 +21,42 @@ def raise_not_supply_all(info: str, *args):
     if all(arg is None for arg in args):
         raise ValueError(info)
 
-def extract_segments(text: str, start_marker: str, end_marker: str) -> List[Dict[str, Any]]:
+def extract_segments(text: str, start_marker: str, end_marker: str, mode: str = 'all', include_markers: bool = False) -> List[str]:
     """
-    提取文本中所有符合条件的片段，并返回一个文本列表。
+    根据模式提取文本中符合条件的片段。
+    mode='all'：提取每一对start_marker和end_marker之间的内容。
+    mode='first_last'：提取第一个start_marker和最后一个end_marker之间的内容。
     """
+    lines = text.split('\n')
     segments = []
-    start = text.find(start_marker)
-    while start != -1:
-        end = text.find(end_marker, start)
-        if end != -1:
-            segments.append(text[start + len(start_marker):end])
-            start = text.find(start_marker, end)
-        else:
-            break
+    capture = False
+    current_segment = []
+
+    if mode == 'all':
+        for line in lines:
+            if not capture and line.startswith(start_marker):
+                capture = True
+                current_segment = [] if not include_markers else [line]
+            elif capture and line.startswith(end_marker):
+                if include_markers:
+                    current_segment.append(line)
+                segments.append('\n'.join(current_segment))
+                capture = False
+            elif capture:
+                current_segment.append(line)
+
+    else:
+        start_index = None
+        end_index = None
+
+        for i, line in enumerate(lines):
+            if not capture and line.startswith(start_marker) and start_index is None:
+                start_index = i if include_markers else i + 1
+            if capture and line.startswith(end_marker):
+                end_index = i if include_markers else i + 1
+
+        segments.append('\n'.join(lines[start_index:end_index]))
+
     return segments
 
 def extract_text(resp_md: str, start_marker: str=None, end_marker: str=None):
@@ -89,11 +112,7 @@ def minify_text(text: str, limit: int=100) -> str:
         return ''
     
     text = text.strip()
-    first_newline_index = text.find('\n')
-    if first_newline_index != -1:
-        text = text[:first_newline_index]
-    
-    minified_text = text[:limit]
+    minified_text = text[:limit].replace("\n", "<br>")
     if len(minified_text) < raw_len:
         minified_text += f'...'
     
