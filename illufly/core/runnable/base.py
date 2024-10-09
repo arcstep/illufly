@@ -221,12 +221,12 @@ class Runnable(ABC, ExecutorManager, BindingManager):
             return False
         return True
 
-    def bind_consumers(self, *runnables, binding_map: Dict=None):
+    def bind_consumer(self, runnable, binding_map: Dict=None):
         """
         传递自身的 handlers 给下游 runnable。
         """
-        super().bind_consumers(*runnables, binding_map=binding_map)
-        for runnable in runnables:
+        super().bind_consumer(runnable, binding_map=binding_map)
+        for handler in self.handlers:
             for handler in self.handlers:
                 if handler not in runnable.handlers:
                     runnable.handlers.append(handler)

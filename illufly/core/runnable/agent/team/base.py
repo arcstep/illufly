@@ -24,9 +24,9 @@ class BaseTeam(BaseAgent):
             raise ValueError("members must be a list of BaseAgent instances")
 
         # 从领导角色和成员角色绑定到 Team
-        self.leader.bind_providers((self, {}))
+        self.leader.bind_provider(self, {})
         for m in self.members:
-            m.bind_providers((self, {}))
+            m.bind_provider(self, {})
 
     @property
     def completed_teamwork(self):

@@ -1,4 +1,5 @@
 from typing import Union, List, Dict, Any, Callable, Tuple
+import copy
 
 class BindingManager:
     """
@@ -7,18 +8,24 @@ class BindingManager:
     关于动态绑定：有时仅希望短暂维持绑定关系，例如在调用函数中临时建立的绑定关系，希望每次重置。
     这与实例声明时希望长期建立的绑定关系不同，称为动态绑定。
 
+    绑定机制的限制：
+    1. 不能重复绑定，重复绑定将被忽略。
+    2. 不能扩散传播 None 的 provider 键值。
     """
 
-    def __init__(self, bindings: Any=None, **kwargs):
+    def __init__(
+        self,
+        providers: List[Tuple[Any, Dict]]=None,
+        consumers: List[Tuple[Any, Dict]]=None,
+        dynamic_providers: List[Tuple[Any, Dict]]=None,
+        **kwargs
+    ):
         """
         :param binding: 绑定的 (runnable, binding_map)，字典结构，或 Runnable 实例的列表
         """
-        self.providers = bindings or []
-        self.consumers = bindings or []
-        self.bind_providers(bindings)
-
-        # 临时消费的 providers 列表
-        self.dynamic_providers = []
+        self.providers = providers or []
+        self.consumers = consumers or []
+        self.dynamic_providers = dynamic_providers or []
 
     @property
     def provider_dict(self):
@@ -37,75 +44,62 @@ class BindingManager:
         """
         self.dynamic_providers = []
 
-    def _convert_bindings(self, bindings: Any=None, raise_message: str=None):
+    def _convert_binding(self, runnable: "Runnable"=None, binding_map: Dict=None):
         """
-        将 bindings 转换为 (runnable, binding_map) 列表。
+        将 binding 转换为 (runnable, binding_map) 标准形式。
         """
-        if bindings is None:
-            return []
+        if not runnable and not binding_map:
+            raise ValueError("runnable and binding_map cannot be both empty")
 
-        if isinstance(bindings, list):
-            items = bindings
-        else:
-            items = [bindings]
+        # 这里做一个语法糖转换，如果传入的是一个字典，则表示 binding_map，runnable 为 None        
+        if isinstance(runnable, dict) and binding_map is None:
+            binding_map = copy.deepcopy(runnable)
+            runnable = None
+        binding_map = binding_map or {}
+        runnable = runnable or PassthroughBinding(binding_map=binding_map)
 
-        provider_bindings = []
-        for item in items:
-            if not item:
-                continue
-            if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], BindingManager):
-                if not item[1]:
-                    provider_bindings.append((item[0], {}))
-                else:
-                    if not isinstance(item[1], dict):
-                        raise ValueError("binding_map must be a dictionary", item)
-                    provider_bindings.append(item)
-            elif isinstance(item, BindingManager):
-                provider_bindings.append((item, {}))
-            elif isinstance(item, dict):
-                kk = {k: k if not isinstance(v, Callable) else v for k, v in item.items()}
-                provider_bindings.append((PassthroughBinding(**item), kk))
-            else:
-                if raise_message is None:
-                    raise ValueError("provider binding must be one of dict, tuple or Runnable instance", item)
-                else:
-                    raise ValueError(raise_message, bindings)
-        return provider_bindings
+        if not isinstance(runnable, BindingManager):
+            raise ValueError("runnable must be a Runnable instance", runnable)
+        if not isinstance(binding_map, dict):
+            raise ValueError("binding_map must be a dictionary", binding_map)
+        
+        return (runnable, binding_map)
 
-    def bind_providers(self, *bindings: Any, dynamic: bool=False):
+    def bind_provider(self, runnable: "Runnable"=None, binding_map: Dict=None, dynamic: bool=False):
         """
         绑定其他 providers 以便使用其输出字典。
 
-        可以按 bindings 中的映射规则绑定到 Runnable 实例，然后动态获取值；也可以直接从指定 dict 结构中获取值。
+        可以按 binding 中的映射规则绑定到 Runnable 实例，然后动态获取值；
+        也可以直接从指定 dict 结构中获取值。
 
         动态绑定：
         如果 dynamic 为 True，则清除所有动态绑定的 providers，并添加新的动态绑定。
         """
-        message = "provider binding must be one of dict, tuple or Runnable instance"
-        new_bindings = self._convert_bindings(list(bindings), raise_message=message)
-        for (provider_runnable, binding_map) in new_bindings:
-            if provider_runnable.name in [r[0].name for r in self.providers]:
-                continue
-            if dynamic:
-                self.clear_dynamic_providers()
-                self.dynamic_providers.append((provider_runnable, binding_map))
-            else:
-                self.providers.append((provider_runnable, binding_map))
-                if isinstance(provider_runnable, BindingManager):
-                    provider_runnable.consumers.append((self, binding_map))
+        (provider_runnable, binding_map) = self._convert_binding(runnable, binding_map)
 
-    def bind_consumers(self, *runnables, binding_map: Dict=None, dynamic: bool=False):
+        if not isinstance(provider_runnable, BindingManager):
+            raise ValueError("provider runnable must be a Runnable instance", provider_runnable)
+
+        if provider_runnable.name in [r[0].name for r in self.providers]:
+            # 如果已经绑定则忽略，不重复绑定
+            return
+
+        if dynamic:
+            self.clear_dynamic_providers()
+            self.dynamic_providers.append((provider_runnable, binding_map))
+        else:
+            self.providers.append((provider_runnable, binding_map))
+            provider_runnable.consumers.append((self, binding_map))
+
+    def bind_consumer(self, runnable, binding_map: Dict=None, dynamic: bool=False):
         """
         将自身绑定给 consumers 以便将输出字典提供其使用。
 
-        与 bind_providers 不同，不存在将自己的输出字典传递给一个字典的情况，因此被绑定的消费者 runnable 不能为空。
+        与 bind_provider 不同，不存在将自己的输出字典传递给一个字典的情况，因此被绑定的消费者 runnable 不能为空。
         """
-        for runnable in runnables:
-            if runnable.name in [r[0].name for r in self.consumers]:
-                continue
-            if not isinstance(runnable, BindingManager):
-                raise ValueError("consumer runnable must be a Runnable instance", runnable)
-            runnable.bind_providers(self, binding_map, dynamic=dynamic)
+        if not isinstance(runnable, BindingManager):
+            raise ValueError("consumer runnable must be a Runnable instance", runnable)
+        runnable.bind_provider(self, binding_map, dynamic=dynamic)
 
     @property
     def consumer_dict(self):
@@ -117,6 +111,7 @@ class BindingManager:
         规则1 如果被绑定 Runnable 的导出变量没有被使用，则按同名导入。
         规则2 如果 binding_map 中映射的值是 str，则使用 provider_dict 中的变量进行映射。
         规则3 如果 binding_map 中映射的值是 Callable，则执行映射函数。
+        规则4 如果 binding_map 中映射的值是 None 则放弃映射。
 
         使用函数扩展时，不会覆盖函数中包含的键值，这实际上提供了 **1:N** 映射的可能性。
         """
@@ -137,8 +132,11 @@ class BindingManager:
                 if isinstance(v, Callable):
                     # 实现规则 3
                     consumer_dict[k] = v(vars)
+                elif v is None:
+                    # 实现规则 4
+                    consumer_dict[k] = None
 
-        return consumer_dict
+        return {k:v for k,v in consumer_dict.items() if v is not None}
 
     @property
     def provider_tree(self):
@@ -172,11 +170,11 @@ class PassthroughBinding(BindingManager):
     """
     透传字典结构到 provider_dict
     """
-    def __init__(self, **kwargs):
+    def __init__(self, binding_map: Dict=None):
         super().__init__(bindings=None)
         self.name = f"PassthroughBinding-{id(self)}"
-        self.kwargs = kwargs
+        self.binding_map = binding_map or {}
 
     @property
     def provider_dict(self):
-        return {k:v for k,v in self.kwargs.items() if v is not None}
+        return {k: v for k, v in self.binding_map.items() if v is not None}
