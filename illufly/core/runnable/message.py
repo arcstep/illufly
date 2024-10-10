@@ -2,16 +2,16 @@ import json
 import copy
 from typing import Union, Dict, Any, List, Tuple
 
-from .template import Template
+from ..runnable import Runnable
 
 class Message:
-    def __init__(self, role: str, content: Union[str, Template], **kwargs):
+    def __init__(self, role: str, content: Union[str, Runnable], **kwargs):
         self.role = role
         self.content = content
         self.kwargs = kwargs
 
     def __str__(self):
-        return f"{self.role}: {self.content.format() if isinstance(self.content, Template) else self.content}"
+        return f"{self.role}: {self.content.selected.format() if isinstance(self.content, Runnable) else self.content}"
 
     def __repr__(self):
         return f"Message(role={self.role}, content={self.content})"
@@ -42,8 +42,8 @@ class Message:
                 return contents
             elif isinstance(self.content, str):
                 return [{"text": self.content}]
-            elif isinstance(self.content, Template):
-                return [{"text": self.content.format(binding)}]
+            elif isinstance(self.content, Runnable):
+                return [{"text": self.content.selected.format(binding)}]
         
         if style == "openai_vl":
             content = [
@@ -70,13 +70,13 @@ class Message:
         }
 
     def to_text(self, binding: Dict[str, Any]=None):
-        if isinstance(self.content, Template):
-            return self.content.format(binding)
+        if isinstance(self.content, Runnable):
+            return self.content.selected.format(binding)
         return self.content
 
     def to_json(self, binding: Dict[str, Any]=None):
-        if isinstance(self.content, Template):
-            content = self.content.format(binding)
+        if isinstance(self.content, Runnable):
+            content = self.content.selected.format(binding)
         else:
             content = self.content
         return json.dumps({
@@ -101,9 +101,9 @@ class Messages:
             Message,
             str,
             Dict[str, Any],
-            Template,
-            Tuple[str, Union[str, Template]],
-            List[Union[Message, str, Dict[str, Any], Template, Tuple[str, Union[str, Template]]]]
+            Runnable,
+            Tuple[str, Union[str, Runnable]],
+            List[Union[Message, str, Dict[str, Any], Runnable, Tuple[str, Union[str, Runnable]]]]
         ]=None,
         style: str=None,
         binding: Dict[str, Any]=None
@@ -118,7 +118,7 @@ class Messages:
         for i, msg in enumerate(self.raw_messages):
             self.messages.append(self._convert_to_message(msg, i))
 
-    def _convert_to_message(self, msg: Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]], index: int) -> Message:
+    def _convert_to_message(self, msg: Union[Message, str, Runnable, dict, Tuple[str, Union[str, Runnable]]], index: int) -> Message:
         message = None
         if isinstance(msg, Message):
             message = msg
@@ -128,7 +128,7 @@ class Messages:
         elif isinstance(msg, list):
             role = self._determine_role(index)
             message = Message(role=role, content=msg)
-        elif isinstance(msg, Template):
+        elif isinstance(msg, Runnable):
             role = self._determine_role(index)
             message = Message(role=role, content=msg)
         elif isinstance(msg, dict):
@@ -191,10 +191,10 @@ class Messages:
     def length(self):
         return len(self.messages)
 
-    def append(self, message: Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]):
+    def append(self, message: Union[Message, str, Runnable, dict, Tuple[str, Union[str, Runnable]]]):
         self.messages.append(self._convert_to_message(message, len(self.messages)))
 
-    def extend(self, messages: Union[Message, str, Template, Tuple[str, Union[str, Template]], List[Union[Message, str, Template, dict, Tuple[str, Union[str, Template]]]]]):
+    def extend(self, messages: Union[Message, str, Runnable, Tuple[str, Union[str, Runnable]], List[Union[Message, str, Runnable, dict, Tuple[str, Union[str, Runnable]]]]]):
         for msg in messages:
             self.append(msg)
 
@@ -218,7 +218,7 @@ class Messages:
         从消息列表中提取所有模板对象
         """
         if self.messages:
-            return [msg.content for msg in self.messages if isinstance(msg.content, Template)]
+            return [msg.content for msg in self.messages if isinstance(msg.content, Runnable)]
         else:
             return []
 

@@ -37,9 +37,10 @@ class MemoryManager(BindingManager):
 
         bound_vars = set()
         for template in _new_messages.all_templates:
-            _template_vars = template.template_vars
+            _template = template.selected
+            _template_vars = _template.template_vars
             bound_vars.update(_template_vars)
-            for provider_key, consumer_key in template.lazy_binding_map.items():
+            for provider_key, consumer_key in _template.lazy_binding_map.items():
                 if provider_key in _template_vars:
                     bound_vars.remove(provider_key)
                     if consumer_key in self.provider_dict:
