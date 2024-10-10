@@ -1,5 +1,5 @@
 from .base import Runnable
-from .agent import BaseAgent, ChatAgent, ChatPool, Retriever
+from .agent import BaseAgent, ChatAgent, ChatPool, Retriever, RouterAgent
 from .template import Template
 from .importer import Importer
 from .embeddings import BaseEmbeddings
