@@ -37,7 +37,7 @@ class StepByStep(BaseTeam):
             yield from self.leader.call(prompt, new_chat=True, **kwargs)
             self._last_output = self.leader.last_output
             if not self._completed_teamwork:
-                self._completed_teamwork.append(f'[总任务目标] {self.leader.task}')
+                self._completed_teamwork.append(f'[总任务目标] {self.leader.provider_dict.get("task")}')
 
             self_solve = self.extract_self_solve(self.leader.last_output)
             if self_solve:

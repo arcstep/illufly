@@ -1,8 +1,8 @@
 from typing import Union, List, Dict, Any, Callable
-from ....hub import get_template_variables
-from ..template import Template
-from ..binding_manager import BindingManager
-from .message import Messages, Message
+from .....hub import get_template_variables
+from ...message import Messages, Message
+from ...template import Template
+from ...binding_manager import BindingManager
 
 class MemoryManager(BindingManager):
     def __init__(
@@ -46,7 +46,7 @@ class MemoryManager(BindingManager):
                         bound_vars.add(consumer_key)
         return bound_vars
 
-    def get_chat_memory(self, prompt: Union[str, List[dict]], new_chat: bool=False, remember_rounds: int = None, knowledge: List[str] = None):
+    def build_chat_memory(self, prompt: Union[str, List[dict]], new_chat: bool=False, remember_rounds: int = None):
         """
         获取对话所需的短时记忆。
 
@@ -57,10 +57,6 @@ class MemoryManager(BindingManager):
         - 根据记忆，捕捉已有对话记录
         - 根据所提供的知识背景，构造知识背景对话
         - 将以上对话合并，构造完整的对话场景短时记忆
-
-        优化策略：
-        - 根据 rember_rounds 可以指定记忆的轮数，以避免对话历史过长
-        - 根据 knowledge 可以补充遗漏的背景知识，并避免重复添加
         """
 
         # 构建 prompt 标准形式
@@ -73,20 +69,16 @@ class MemoryManager(BindingManager):
             self.memory.clear()
             new_chat = True
 
-        # 整理出友好的提示语消息列表
         new_messages = self.build_new_messages(new_prompt, new_chat)
-
-        # 调用 BaseAgent 类中的 append_knowledge_to_messages 方法
-        kg_memory = self.get_knowledge_memory(new_messages, knowledge)
         history_memory = self.get_history_memory(new_chat, remember_rounds)
 
         if new_messages.has_role("system"):
-            new_messages_list = Messages((new_messages[:1] + kg_memory.messages + history_memory.messages + new_messages[1:]), style=self.style).to_list()
+            new_messages_list = Messages((new_messages[:1] + history_memory.messages + new_messages[1:]), style=self.style).to_list()
             self.memory.extend(new_messages_list)
             return new_messages_list
         else:
-            self.memory.extend((kg_memory + new_messages).to_list())
-            return (kg_memory + history_memory + new_messages).to_list()
+            self.memory.extend(new_messages.to_list())
+            return (history_memory + new_messages).to_list()
 
     def get_history_memory(self, new_chat: bool=False, remember_rounds: int = None):
         """
@@ -123,7 +115,7 @@ class MemoryManager(BindingManager):
         # 如果在合并后的 new_messages 中，task 变量被模板使用
         #   则将尾部消息列表中的 user 角色消息取出，并赋值给 task 变量用于绑定映射
         if 'task' in self.get_bound_vars(new_messages, new_chat=new_chat) and new_messages[-1].role == 'user':
-            self._task = new_messages.messages.pop(-1).content
+            new_messages.messages.pop(-1)
 
         if new_messages and new_messages[-1].role == 'system':
             # 如果新消息列表的尾部是 system 消息，则需要补充一个 user 角色消息
@@ -147,23 +139,3 @@ class MemoryManager(BindingManager):
         else:
             return []
 
-    def get_knowledge_memory(self, chat_messages: Messages, knowledge: List[str]):
-        """
-        构造短期记忆时，将知识库中的内容添加到消息列表中。
-        """
-        if not knowledge:
-            return Messages([], style=self.style)
-
-        existing_contents = {msg.content for msg in chat_messages if msg.role == 'user'}
-        kg_content = ''
-        for kg in knowledge:
-            content = f'已知知识：\n{kg}'
-            if content not in existing_contents:
-                kg_content += content
-
-        kg_memory = Messages(
-            [("user", kg_content), ("assistant", "OK")],
-            style=self.style
-        )
-
-        return kg_memory
