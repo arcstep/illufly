@@ -1,8 +1,41 @@
-from typing import List, Union, Optional, Callable
+from typing import List, Union, Optional, Callable, Dict
 from .....io import EventBlock
 from ...base import Runnable
 from ..base import BaseAgent
 import inspect
+
+
+def select_first(runnables: List[Runnable], consumer_dict: Dict):
+    return runnables[0]
+
+def select_random(runnables: List[Runnable], consumer_dict: Dict):
+    return random.choice(runnables)
+
+def select_with_description(runnables: List[Runnable], consumer_dict: Dict):
+    from .....community.faiss import FaissDB
+    from .....community.dashscope import TextEmbeddings
+
+    db = FaissDB(embeddings=TextEmbeddings())
+    for run in runnables:
+        if run.description:
+            db.load_text(run.description)
+
+    query = consumer_dict.get("task")
+    if query:
+        results = db(query)
+        desc = results[0]
+        for run in runnables:
+            if run.description == desc.text:
+                return run
+        raise ValueError(f"router {desc.text} not found in {runnables}")
+    else:
+        return runnables[0]
+
+default_selected = {
+    "first": select_first,
+    "random": select_random,
+    "desc": select_with_description
+}
 
 class RouterAgent(BaseAgent):
     """
@@ -12,25 +45,37 @@ class RouterAgent(BaseAgent):
     """
     def __init__(
         self,
-        condition: Callable,
+        condition: Union[Callable, str] = None,
         runnables: List[Runnable] = None,
         **kwargs
     ):
         super().__init__(**kwargs)
-        self.condition = condition
-        self.runnables = runnables if isinstance(runnables, list) else [runnables]
+
+        if (isinstance(condition, List) or isinstance(condition, Runnable)) and runnables is None:
+            self.runnables = condition[:] if isinstance(condition, list) else [condition]
+            condition = None
+        else:
+            self.runnables = runnables if isinstance(runnables, list) else [runnables]
+
+        if condition is None:
+            self.condition = default_selected['first']
+        elif isinstance(condition, str):
+            self.condition = default_selected.get(condition, default_selected['first'])
+        elif isinstance(condition, Callable):
+            # 使用 inspect 模块获取函数签名
+            signature = inspect.signature(self.condition)
+            if len(signature.parameters) == 0:
+                raise ValueError("condition must have at least one parameter")
+            self.condition = condition
+        else:
+            raise ValueError("condition must be a Callable")
 
         if runnables and not all(isinstance(router, Runnable) for router in self.runnables):
-            raise ValueError("runnables must be a list of BaseAgent")
+            raise ValueError("runnables must be a list of Runnables")
         
-        if not isinstance(condition, Callable):
+        if not isinstance(self.condition, Callable):
             raise ValueError("condition must be a Callable")
         
-        # 使用 inspect 模块获取函数签名
-        signature = inspect.signature(self.condition)
-        if len(signature.parameters) == 0:
-            raise ValueError("condition must have at least one parameter")
-
         self.bind_runnables()
 
     def bind_runnables(self):
