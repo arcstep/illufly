@@ -6,24 +6,22 @@ import inspect
 
 class RouterAgent(BaseAgent):
     """
-    智能体路由器。
-    智能体可以根据模型，以及配置模型所需的工具集、资源、数据、handlers等不同参数，构建为不同的智能体对象。
+    路由选择 Runnable 对象的智能体，并将任务分发给被选择对象执行。
 
-    根据条件选择一个智能体执行任务。
-    condition 必须是 Callable 类型，即函数或者具有 __call__ 方法的对象。
+    可以根据模型，以及配置模型所需的工具集、资源、数据、handlers等不同参数，构建为不同的智能体对象。
     """
     def __init__(
         self,
-        condition: callable,
-        agents: List[BaseAgent] = None,
+        condition: Callable,
+        runnables: List[Runnable] = None,
         **kwargs
     ):
         super().__init__(**kwargs)
         self.condition = condition
-        self.agents = agents if isinstance(agents, list) else [agents]
+        self.runnables = runnables if isinstance(runnables, list) else [runnables]
 
-        if agents and not all(isinstance(router, BaseAgent) for router in self.agents):
-            raise ValueError("agents must be a list of BaseAgent")
+        if runnables and not all(isinstance(router, Runnable) for router in self.runnables):
+            raise ValueError("runnables must be a list of BaseAgent")
         
         if not isinstance(condition, Callable):
             raise ValueError("condition must be a Callable")
@@ -33,11 +31,26 @@ class RouterAgent(BaseAgent):
         if len(signature.parameters) == 0:
             raise ValueError("condition must have at least one parameter")
 
-    def call(self, prompt: Union[str, List[dict]], **kwargs) -> List[dict]:
-        agent_names = [a.name for a in self.agents]
-        selected_agent_name = self.condition(prompt, agent_names, **kwargs)
-        for router in self.agents:
-            if selected_agent_name.lower() in router.name.lower():
-                return router(prompt, **kwargs)
-        raise ValueError(f"router {selected_agent_name} not found in {agent_names}")
+        self.bind_runnables()
 
+    def bind_runnables(self):
+        for a in self.runnables:
+            self.bind_consumer(a)
+
+    @property
+    def selected(self):
+        return self.call(only_select=True)
+
+    def call(self, *args, only_select=False, **kwargs) -> List[dict]:
+        selected = self.condition(self.runnables, self.consumer_dict)
+        if isinstance(selected, Runnable):
+            return selected if only_select else selected(*args, **kwargs)
+        elif isinstance(selected, str):
+            for run in self.runnables:
+                if selected.lower() in run.name.lower():
+                    return run if only_select else run(*args, **kwargs)
+
+            runnable_names = [r.name for r in self.runnables]
+            raise ValueError(f"router {selected} not found in {runnable_names}")
+
+        raise ValueError("selected runnable must be a str(runnable's name) or Runnable object", selected)
