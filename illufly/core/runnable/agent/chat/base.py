@@ -7,12 +7,11 @@ from typing import Union, List, Dict, Any, Set, Callable
 
 from .....utils import merge_tool_calls, extract_text
 from .....io import EventBlock, EndBlock, NewLineBlock
-
+from ...message import Messages
 from ..base import BaseAgent
-from ..memory_manager import MemoryManager
-from ..message import Messages
 from ..knowledge_manager import KnowledgeManager
 from .tools_manager import ToolsManager
+from .memory_manager import MemoryManager
 
 class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     """
@@ -49,6 +48,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         # 增加的可绑定变量
         self._task = ""
         self._tools_to_exec = self.get_tools()
+        self._resources = ""
+
         MemoryManager.__init__(self, **kwargs)
     
     @property
@@ -65,15 +66,13 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         return self.memory[-1]['content'] if self.memory else ""
 
     @property
-    def task(self):
-        return self._task
-
-    @property
     def provider_dict(self):
         local_dict = {
-            "task": self.task,
-            "tools_name": self.get_tools_name(),
+            "task": self._task,
+            "tools_name": ",".join([a.name for a in self._tools_to_exec]),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
+            "knowledge": self.get_knowledge(self._task),
+            "resources": self.get_resources(self._task),
         }
         return {
             **super().provider_dict,
@@ -91,9 +90,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_chat = kwargs.pop("new_chat", False)
-        self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
+
+        messages_std = Messages(prompt, style="text")
+        self._task = messages_std.messages[-1].content
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
+        self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
         if "tools_desc" in self.get_bound_vars(Messages(prompt), new_chat=new_chat):
             kwargs["tools"] = None
         else:
@@ -102,15 +104,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
 
-        messages_std = Messages(prompt, style="text")
-        knowledge = kwargs.pop("knowledge", self.get_knowledge(messages_std.messages[-1].content))
-        knowledge += self.get_resources()
-
-        chat_memory = self.get_chat_memory(
-            prompt=prompt,
+        chat_memory = self.build_chat_memory(
+            prompt=prompt, # 这里依然使用 prompt，而不是 messages_std，因为需要判断到底角色是 system 还是 user
             new_chat=new_chat,
-            remember_rounds=remember_rounds,
-            knowledge=knowledge
+            remember_rounds=remember_rounds
         )
 
         to_continue_call_llm = True
@@ -165,24 +162,24 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     async def async_call(self, prompt: Union[str, List[dict]], *args, **kwargs):
         new_chat = kwargs.pop("new_chat", False)
+
+        messages_std = Messages(prompt, style="text")
+        self._task = messages_std.messages[-1].content
+
+        # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
+        self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
         if "tools_desc" in self.get_bound_vars(Messages(prompt), new_chat=new_chat):
             kwargs["tools"] = None
         else:
-            self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
             kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", []))
 
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
 
-        messages_std = Messages(prompt, style="text")
-        knowledge = kwargs.pop("knowledge", self.get_knowledge(messages_std[-1].content))
-        knowledge += self.get_resources()
-
-        chat_memory = self.get_chat_memory(
+        chat_memory = self.build_chat_memory(
             prompt=prompt,
             new_chat=new_chat,
-            remember_rounds=remember_rounds,
-            knowledge=knowledge
+            remember_rounds=remember_rounds
         )
 
         to_continue_call_llm = True

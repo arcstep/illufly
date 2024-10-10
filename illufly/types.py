@@ -1,7 +1,7 @@
 from .core.runnable import Runnable, BaseEmbeddings, VectorDB, Template, BaseReranker
+from .core.runnable.message import Message, Messages
 from .core.runnable.agent import BaseAgent, ChatAgent, BaseTeam, RouterAgent
 from .core.runnable.agent.tool_ability import ToolAbility
-from .core.runnable.agent.message import Message, Messages
 from .core.markdown import Markdown
 from .core.document import Document
 from .io import EventBlock, EndBlock

@@ -7,8 +7,9 @@ import inspect
 class RouterAgent(BaseAgent):
     """
     智能体路由器。
+    智能体可以根据模型，以及配置模型所需的工具集、资源、数据、handlers等不同参数，构建为不同的智能体对象。
 
-    根据条件选择一个智能体执行。
+    根据条件选择一个智能体执行任务。
     condition 必须是 Callable 类型，即函数或者具有 __call__ 方法的对象。
     """
     def __init__(

@@ -2,7 +2,7 @@ import re
 from typing import Any, Set, Union, List, Dict
 from ...document import Document
 from ..vectordb import VectorDB
-from .message import Message
+from ..message import Message
 
 class ResourceManager:
     def __init__(self, resources: List[Any] = None, **kwargs):
@@ -50,7 +50,7 @@ class ResourceManager:
     def get_text(self):
         return [r.to_dict(style="text")['content'] for r in self.resources]
     
-    def get_resources(self):
+    def get_resources(self, query: str=None):
         """
         获取资源描述。
         """
