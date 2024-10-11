@@ -15,7 +15,7 @@ class ChatQwen(ChatAgent):
             import dashscope
             self.dashscope = dashscope
         except ImportError:
-            raise RuntimeError(
+            raise ImportError(
                 "Could not import dashscope package. "
                 "Please install it via 'pip install -U dashscope'"
             )

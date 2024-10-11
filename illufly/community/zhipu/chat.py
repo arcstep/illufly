@@ -11,7 +11,7 @@ class ChatZhipu(ChatAgent):
         try:
             from zhipuai import ZhipuAI
         except ImportError:
-            raise RuntimeError(
+            raise ImportError(
                 "Could not import zhipuai package. "
                 "Please install it via 'pip install -U zhipuai'"
             )

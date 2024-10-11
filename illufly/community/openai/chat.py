@@ -22,7 +22,7 @@ class ChatOpenAI(ChatAgent):
         try:
             from openai import OpenAI
         except ImportError:
-            raise RuntimeError(
+            raise ImportError(
                 "Could not import openai package. "
                 "Please install it via 'pip install -U openai'"
             )
