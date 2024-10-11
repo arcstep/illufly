@@ -19,7 +19,7 @@ class ZhipuEmbeddings(BaseEmbeddings):
             from zhipuai import ZhipuAI
             self.client = ZhipuAI(api_key=api_key)
         except ImportError:
-            raise RuntimeError(
+            raise ImportError(
                 "Could not import zhipuai package. "
                 "Please install it via 'pip install -U zhipuai'"
             )

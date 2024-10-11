@@ -17,24 +17,20 @@ fastapi = "^0.111.0"
 chevron = "^0.14.0"
 faiss-cpu = "^1.8.0.post1"
 tiktoken = "^0.7.0"
+asyncio = "^3.4.3"
 
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "^1.0.1"
-dashscope = "^1.20.6"
 pydot = "^2.0.0"
 fastapi = "^0.111.0"
-asyncio = "^3.4.3"
 setuptools = "^69.1.0"
 poetry2setup = "^1.1.0"
 ipykernel = "^6.29.2"
 pytest = "^8.0.1"
-pydantic = "1.10.13"
-docx2txt = "^0.8"
-pypdf = "^4.1.0"
 markdown = "^3.6"
-langserve = "^0.2.2"
 sse-starlette = "^2.1.2"
-faiss-cpu = "^1.8.0.post1"
+torch = "2.0.1"
+sentence-transformers = "^3.1.1"
 
 [build-system]
 requires = ["poetry-core"]

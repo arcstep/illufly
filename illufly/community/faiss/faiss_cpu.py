@@ -13,7 +13,7 @@ class FaissDB(VectorDB):
         try:
             import faiss
         except ImportError:
-            raise RuntimeError(
+            raise ImportError(
                 "Could not import faiss package. "
                 "Please install it via 'pip install -U faiss-cpu faiss-gpu'"
             )
