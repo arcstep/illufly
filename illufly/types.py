@@ -1,6 +1,6 @@
 from .core.runnable import Runnable, Selector, BaseEmbeddings, VectorDB, Template, BaseReranker
 from .core.runnable.message import Message, Messages
-from .core.runnable.agent import BaseAgent, ChatAgent, BaseTeam, RouterAgent
+from .core.runnable.agent import BaseAgent, ChatAgent, BaseTeam
 from .core.runnable.agent.tool_ability import ToolAbility
 from .core.markdown import Markdown
 from .core.document import Document

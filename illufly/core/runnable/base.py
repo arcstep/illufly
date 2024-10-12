@@ -65,9 +65,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     @property
     def selected(self):
         """
-        为了让 Runnable 对象兼容 RouterAgent，提供一个 selected 属性。
-
-        这有机会让 RouterAgent 选择后直接可以被当作 Runnable 对象使用，只要使用 selected 属性即可。
+        让 Runnable 对象与 Selector 的访问方式兼容。
         """
         return self
 

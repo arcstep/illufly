@@ -1,6 +1,6 @@
 from .base import Runnable
 from .selector import Selector
-from .agent import BaseAgent, ChatAgent, ChatPool, Retriever, RouterAgent
+from .agent import BaseAgent, ChatAgent, ChatPool, Retriever
 from .template import Template
 from .importer import Importer
 from .embeddings import BaseEmbeddings
