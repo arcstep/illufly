@@ -1,23 +1,31 @@
-from typing import Union, List, Optional, Dict, Any
+from typing import Union, List
 
 from ...io import EventBlock
 from ...core.runnable.agent import ChatAgent
+from ...core.runnable.message import Messages
 import time
 
 class FakeLLM(ChatAgent):
-    def __init__(self, sleep: float=0, **kwargs):
+    def __init__(self, response: Union[str, List[str]]=None, sleep: float=None, **kwargs):
         super().__init__(threads_group="FAKE_LLM", **kwargs)
 
         self.threads_group = "fake_llm"
-        self.sleep = sleep if sleep > 0 else 0
+        self.sleep = sleep if (sleep is not None and sleep > 0) else 0.1
+        self.response = response if isinstance(response, list) else ([response] if response else None)
+        self.current_response_index = 0
 
-    def generate(self, messages: List[dict]=None, sleep: float=0, *args, **kwargs):
-        # 生成info块
-        yield EventBlock("info", f'FakeLLM: {messages}')
+    def generate(self, prompt: Union[str, List[str]], sleep: float=0, **kwargs):
+        yield EventBlock("info", f'I am FakeLLM')
 
-        # 调用生成接口
-        responses = ["这", "是", "一个", "模拟", "调用", "!"]
         _sleep = self.sleep if sleep <= 0 else sleep
-        for content in responses:
+
+        if self.response:
+            resp = self.response[self.current_response_index]
+            self.current_response_index = (self.current_response_index + 1) % len(self.response)
+        else:
+            std_msg = Messages(prompt, style="text")
+            resp = std_msg.last_content
+
+        for content in resp:
             time.sleep(_sleep)
             yield EventBlock("chunk", content)
