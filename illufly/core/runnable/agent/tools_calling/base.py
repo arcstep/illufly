@@ -52,7 +52,12 @@ class BaseToolCalling:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
-                tool_func_result = struct_tool.call(**tool_args)
+                if isinstance(tool_args, dict):
+                    tool_func_result = struct_tool.call(**tool_args)
+                elif isinstance(tool_args, list):
+                    tool_func_result = struct_tool.call(*tool_args)
+                else:
+                    yield EventBlock("action_parse_failed", tool_args)
                 for x in tool_func_result:
                     if isinstance(x, EventBlock):
                         if x.block_type == "tool_resp_final":
@@ -72,7 +77,12 @@ class BaseToolCalling:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
-                tool_func_result = struct_tool.async_call(**tool_args)
+                if isinstance(tool_args, dict):
+                    tool_func_result = struct_tool.async_call(**tool_args)
+                elif isinstance(tool_args, list):
+                    tool_func_result = struct_tool.async_call(*tool_args)
+                else:
+                    yield EventBlock("action_parse_failed", tool_args)
                 async for x in tool_func_result:
                     if isinstance(x, EventBlock):
                         if x.block_type == "tool_resp_final":

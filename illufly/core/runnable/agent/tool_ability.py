@@ -84,22 +84,28 @@ class ToolAbility:
         parsed_arguments = json.loads(arguments)
         parameter_types = self.parameters.get("properties", {})
 
-        for key, value in parsed_arguments.items():
-            expected_type = parameter_types.get(key, {}).get("type", "string")
-            
-            if expected_type == "integer":
-                parsed_arguments[key] = int(value)
-            elif expected_type == "number":
-                parsed_arguments[key] = float(value)
-            elif expected_type == "boolean":
-                if isinstance(value, str):
-                    parsed_arguments[key] = value.lower() == "true"
+        if isinstance(parsed_arguments, list):
+            return parsed_arguments
+        elif isinstance(parsed_arguments, dict):
+            for key, value in parsed_arguments.items():
+                expected_type = parameter_types.get(key, {}).get("type", "string")
+                
+                if expected_type == "integer":
+                    parsed_arguments[key] = int(value)
+                elif expected_type == "number":
+                    parsed_arguments[key] = float(value)
+                elif expected_type == "boolean":
+                    if isinstance(value, str):
+                        parsed_arguments[key] = value.lower() == "true"
+                    else:
+                        parsed_arguments[key] = bool(value)
                 else:
-                    parsed_arguments[key] = bool(value)
-            else:
-                # 默认转换为字符串
-                parsed_arguments[key] = str(value)
+                    # 默认转换为字符串
+                    parsed_arguments[key] = str(value)
+            return parsed_arguments
+        else:
+            return None
 
-        return parsed_arguments
+
 
 
