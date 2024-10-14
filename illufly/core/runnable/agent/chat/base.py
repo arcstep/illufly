@@ -157,20 +157,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     tools_to_exec=self._tools_to_exec,
                     exec_tool=self.exec_tool
                 )
-                tool_calls = handler_tool_call.extract_tools_call(final_output_text)
-                if tool_calls:
-                    for index, tool_call in enumerate(tool_calls):
-                        if index > 0:
-                            new_task = f'请继续: {json.dumps(tool_call, ensure_ascii=False)}'
-                            chat_memory.append({
-                                "role": "assistant",
-                                "content": new_task
-                            })
-                            self.remember_response(new_task)
-                        for block in handler_tool_call.handle_tools_call(tool_call):
-                            if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
-                                to_continue_call_llm = True
-                            yield block
+                for block in handler_tool_call.handle_tools_call(final_output_text):
+                    if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
+                        to_continue_call_llm = True
+                    yield block
 
         if self.end_chk:
             yield EndBlock(self.last_output)
@@ -240,20 +230,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     tools_to_exec=self._tools_to_exec,
                     exec_tool=self.exec_tool
                 )
-                tool_calls = handler_tool_call.extract_tools_call(final_output_text)
-                if tool_calls:
-                    for index, tool_call in enumerate(tool_calls):
-                        if index > 0:
-                            new_task = f'请继续: {json.dumps(tool_call, ensure_ascii=False)}'
-                            chat_memory.append({
-                                "role": "assistant",
-                                "content": new_task
-                            })
-                            self.remember_response(new_task)
-                        async for block in handler_tool_call.async_handle_tools_call(tool_call):
-                            if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
-                                to_continue_call_llm = True
-                            yield block
+                async for block in handler_tool_call.async_handle_tools_call(final_output_text):
+                    if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
+                        to_continue_call_llm = True
+                    yield block
 
         if self.end_chk:
             yield EndBlock(self.last_output)
