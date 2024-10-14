@@ -92,7 +92,7 @@ class Messages:
 
     构造函数中的 messages 参数将作为原始的「只读对象」，被保存到 self.raw_messages 中。
     无论你提供的列表元素是字符串、模板、元组还是字典，都会在实例化完成后，生成 Message 对象列表，并被写入到 self.messages 中。
-    但类似 {"role": xx, "content": yy} 这种消息列表，是通过 self.to_list 方法「动态提取」的，这主要是为了兼容 Template 对象的模板变量。
+    但类似 {"role": xx, "content": yy} 这种消息列表，是通过 self.to_list 方法「动态提取」的，这主要是为了兼容 PromptTemplate 对象的模板变量。
     """
 
     def __init__(

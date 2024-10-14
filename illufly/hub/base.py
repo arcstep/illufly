@@ -78,7 +78,7 @@ def _find_prompt_file(template_id: str, file_name, template_folder: str=None, se
             return None
     return _find_prompt_file(template_id.rpartition(sep)[0], file_name, template_folder, sep, all_path)
 
-def load_template(template_id: str, template_folder: str=None,):
+def load_prompt_template(template_id: str, template_folder: str=None,):
     """
     从模板文件夹加载提示语模板。
 
@@ -88,7 +88,7 @@ def load_template(template_id: str, template_folder: str=None,):
     3. 预处理 main.mu 中的 {{>include_name}} 语法
     4. 如果找不到 main.mu 文件，则从资源文件夹中加载
     """
-    template_folder = template_folder or get_env("ILLUFLY_TEMPLATE_LOCAL_FOLDER")
+    template_folder = template_folder or get_env("ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER")
     main_prompt = _find_prompt_file(template_id, 'main', template_folder)
 
     if main_prompt:
@@ -129,7 +129,7 @@ def get_template_variables(template_text: str):
             section_depth += 1
     return vars
 
-def clone_prompt(template_id: str, template_folder: str=None):
+def clone_prompt_template(template_id: str, template_folder: str=None):
     """
     克隆提示语模板。
     根据指定 template_id 将文件夹和文件拷贝到本地 template_folder 位置。
@@ -137,7 +137,7 @@ def clone_prompt(template_id: str, template_folder: str=None):
     如果已经存在，就不再覆盖已修改的模板成果。
     """
     template_path = os.path.join(
-        template_folder or get_env("ILLUFLY_TEMPLATE_LOCAL_FOLDER"),
+        template_folder or get_env("ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER"),
         template_id.replace('.', os.sep)
     )
 

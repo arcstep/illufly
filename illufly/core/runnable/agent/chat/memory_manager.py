@@ -1,14 +1,14 @@
 from typing import Union, List, Dict, Any, Callable
 from .....hub import get_template_variables
 from ...message import Messages, Message
-from ...template import Template
+from ...prompt_template import PromptTemplate
 from ...binding_manager import BindingManager
 
 class MemoryManager(BindingManager):
     def __init__(
         self,
         style: str=None,
-        memory: Union[List[Union[str, "Template", Dict[str, Any]]], Messages]=None,
+        memory: Union[List[Union[str, "PromptTemplate", Dict[str, Any]]], Messages]=None,
         remember_rounds: int=None,
         **kwargs
     ):
@@ -24,7 +24,7 @@ class MemoryManager(BindingManager):
 
     def get_bound_vars(self, new_messages: Messages, new_chat: bool=False):
         """
-        获取所有被 Templates 绑定的变量。
+        获取所有被 PromptTemplates 绑定的变量。
 
         这主要用于判断 provider_dict 中的键值是否被消息列表中的模板绑定使用。
         典型的场景包括：判断 input 和 tools_desc 是否被使用，这将会影响对话过程中组织对话或提供 tools 参数给大模型。

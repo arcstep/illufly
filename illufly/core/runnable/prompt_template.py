@@ -1,12 +1,12 @@
 from typing import Dict, Any
 
 from ...utils import minify_text
-from ...hub import load_resource_template, load_template, get_template_variables
+from ...hub import load_resource_template, load_prompt_template, get_template_variables
 from ...io import EventBlock
 from .base import Runnable
 from chevron.renderer import render as mustache_render
 
-class Template(Runnable):
+class PromptTemplate(Runnable):
     """
     提示语模板可以作为消息生成消息列表。
     结合绑定映射，可以动态填充提示语模板。
@@ -23,7 +23,7 @@ class Template(Runnable):
         super().__init__(**kwargs)
 
         if template_id:
-            self.text = load_template(template_id)
+            self.text = load_prompt_template(template_id)
         elif text:
             self.text = text
         else:
@@ -37,7 +37,7 @@ class Template(Runnable):
         return self.format()
 
     def __repr__(self):
-        return f"<Template consumer_dict={self.template_vars} text='{minify_text(self.text)}'>"
+        return f"<PromptTemplate consumer_dict={self.template_vars} text='{minify_text(self.text)}'>"
 
     def call(self, *args, **kwargs):
         self._last_output = self.format(*args, **kwargs)

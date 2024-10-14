@@ -4,7 +4,7 @@ from .....io import EventBlock
 from ....document import Document
 from ...base import Runnable
 from ...vectordb import VectorDB
-from ...template import Template
+from ...prompt_template import PromptTemplate
 from ...markmeta import MarkMeta
 from ..base import BaseAgent
 
@@ -72,7 +72,7 @@ class Retriever(BaseAgent):
             if isinstance(translator, ChatAgent):
                 if not translator.init_messages:
                     new_messages = [
-                        ('system', Template("RAG/Q_GEN", binding_map={"count": self.question_count})),
+                        ('system', PromptTemplate("RAG/Q_GEN", binding_map={"count": self.question_count})),
                         ('user', query),
                     ]
                 else:
