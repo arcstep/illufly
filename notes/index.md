@@ -17,7 +17,7 @@ graph TD
     Agent(ChatAgent<br>记忆/工具/知识/多模态)
     BaseAgent(BaseAgent<br>工具能力/多模态生成)
     Messages[Messages<br>文本/多模态/模板]
-    Template[[Template<br>模板语法/hub]]
+    PromptTemplate[[PromptTemplate<br>模板语法/hub]]
 
     MarkMeta[[MarkMeta<br>加载/保存/切分]]
     VectorDB(VectorDB<br>索引/查询)
@@ -35,7 +35,7 @@ graph TD
     Optimization --> Agent
     Agent --> Runnable --> Config
     Agent --> BaseAgent --> Runnable
-    Agent --> Messages -->  Template --> Runnable
+    Agent --> Messages -->  PromptTemplate --> Runnable
     Agent --> Retriever --> VectorDB --> Emb --> MarkMeta --> Runnable
 
     style Agent stroke-width:2px,stroke-dasharray:5 5

@@ -1,7 +1,7 @@
 from typing import Union, List
 
 from ......io import EventBlock
-from ....template import Template
+from ....prompt_template import PromptTemplate
 from ...base import BaseAgent
 from ..base import BaseTeam
 
@@ -18,7 +18,7 @@ class StepByStep(BaseTeam):
         self.leader = leader.__class__(
             name=leader.name,
             description=leader.description,
-            memory=[Template(kwargs.get("leader_prompt_template", "TEAM/STEP_BY_STEP")), "请开始任务"]
+            memory=[PromptTemplate(kwargs.get("leader_prompt_template", "TEAM/STEP_BY_STEP")), "请开始任务"]
         )
 
         super().__init__(leader=leader, **kwargs)

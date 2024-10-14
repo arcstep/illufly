@@ -1,7 +1,7 @@
 from typing import Union, List, Callable
 
 from ......io import EventBlock
-from ....template import Template
+from ....prompt_template import PromptTemplate
 from ...base import BaseAgent
 from ..base import BaseTeam
 
@@ -11,7 +11,7 @@ class ReAct(BaseTeam):
     """
     def __init__(self, leader: BaseAgent, leader_prompt_template: str="", condition: Callable=None, **kwargs):
         self.leader = leader()
-        self.prompt_template = Template(leader_prompt_template or "TEAM/ReAct")
+        self.prompt_template = PromptTemplate(leader_prompt_template or "TEAM/ReAct")
         self.condition = condition or (lambda x: True)
 
         super().__init__(leader=leader, **kwargs)

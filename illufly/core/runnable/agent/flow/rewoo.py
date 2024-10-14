@@ -1,7 +1,7 @@
 from typing import Union, List, Callable
 
 from .....io import EventBlock
-from ...template import Template
+from ...prompt_template import PromptTemplate
 from ..tools_calling import BaseToolCalling, Plans
 from .base import FlowAgent
 
@@ -14,9 +14,9 @@ class ReWOO(FlowAgent):
     同时，ReWOO 可以通过指令微调和模型专化，将 LLM 的通用推理能力迁移到更小的语言模型中，实现更轻量级的 ALM 系统。
     ReWOO 在多个 NLP 基准数据集上取得了与 ReAct 相当或更好的性能，同时减少了 token 消耗，为构建更高效、可扩展的 ALM 提供了一种新的思路。
     """
-    def __init__(self, planner: Callable=None, template: Template=None, solver: Callable=None, handler_tool_call: BaseToolCalling=None, **kwargs):
+    def __init__(self, planner: Callable=None, template: PromptTemplate=None, solver: Callable=None, handler_tool_call: BaseToolCalling=None, **kwargs):
         self.planner = planner
-        self.template = template or Template("FLOW/ReWOO")
+        self.template = template or PromptTemplate("FLOW/ReWOO")
         self.solver = solver or self.default_solver
         self.handler_tool_call = handler_tool_call or Plans()
         super().__init__(
