@@ -29,7 +29,7 @@ class Plans(BaseToolCalling):
 
         return self.steps
 
-    def handle_tools_call(self, final_tool_call, kwargs):
+    def handle_tools_call(self, final_tool_call):
         """
         处理单个计划的调用。
         """
@@ -52,11 +52,11 @@ class Plans(BaseToolCalling):
                 "arguments": arguments
             }
         }
-        for block in self.execute_tool(tool_call, kwargs):
+        for block in self.execute_tool(tool_call):
             yield block
 
-    async def async_handle_tools_call(self, final_tool_call, kwargs):
-        async for block in self.async_execute_tool(final_tool_call, kwargs):
+    async def async_handle_tools_call(self, final_tool_call):
+        async for block in self.async_execute_tool(final_tool_call):
             yield block
 
     @property

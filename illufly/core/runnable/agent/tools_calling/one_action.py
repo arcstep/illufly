@@ -28,7 +28,7 @@ class OneAction(BaseToolCalling):
 
         return self.steps
 
-    def handle_tools_call(self, final_tool_call, kwargs):
+    def handle_tools_call(self, final_tool_call):
         arguments = final_tool_call.get("arguments")
 
         # 查找并替换占位符
@@ -48,9 +48,9 @@ class OneAction(BaseToolCalling):
                 "arguments": arguments
             }
         }
-        for block in self.execute_tool(tool_call, kwargs):
+        for block in self.execute_tool(tool_call):
             yield block
 
-    async def async_handle_tools_call(self, final_tool_call, kwargs):
-        async for block in self.async_execute_tool(final_tool_call, kwargs):
+    async def async_handle_tools_call(self, final_tool_call):
+        async for block in self.async_execute_tool(final_tool_call):
             yield block
