@@ -137,7 +137,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     exec_tool=self.exec_tool
                 )
                 # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
-                for block in handler_openai.handle_tools_call(final_tools_call, kwargs):
+                for block in handler_openai.handle_tools_call(final_tools_call):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         to_continue_call_llm = True
                     yield block
@@ -167,7 +167,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                                 "content": new_task
                             })
                             self.remember_response(new_task)
-                        for block in handler_tool_call.handle_tools_call(tool_call, kwargs):
+                        for block in handler_tool_call.handle_tools_call(tool_call):
                             if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                                 to_continue_call_llm = True
                             yield block
@@ -221,7 +221,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     tools_to_exec=self._tools_to_exec,
                     exec_tool=self.exec_tool
                 )
-                async for block in handler_openai.async_handle_tools_call(final_tools_call, kwargs):
+                async for block in handler_openai.async_handle_tools_call(final_tools_call):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         to_continue_call_llm = True
                     yield block
@@ -250,7 +250,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                                 "content": new_task
                             })
                             self.remember_response(new_task)
-                        async for block in handler_tool_call.async_handle_tools_call(tool_call, kwargs):
+                        async for block in handler_tool_call.async_handle_tools_call(tool_call):
                             if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                                 to_continue_call_llm = True
                             yield block

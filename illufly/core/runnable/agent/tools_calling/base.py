@@ -23,7 +23,7 @@ class BaseToolCalling:
         text 必须为包含工具回调描述的字符串。
         """
 
-    def handle_tools_call(self, final_tools_call, kwargs):
+    def handle_tools_call(self, final_tools_call):
         """
         处理工具回调。
 
@@ -31,10 +31,10 @@ class BaseToolCalling:
         """
         pass
 
-    async def async_handle_tools_call(self, final_tools_call, kwargs):
+    async def async_handle_tools_call(self, final_tools_call):
         pass
 
-    def execute_tool(self, tool, kwargs):
+    def execute_tool(self, tool):
         """
         执行工具回调。
 
@@ -52,7 +52,7 @@ class BaseToolCalling:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
-                tool_func_result = struct_tool.call(**tool_args, **kwargs)
+                tool_func_result = struct_tool.call(**tool_args)
                 for x in tool_func_result:
                     if isinstance(x, EventBlock):
                         if x.block_type == "tool_resp_final":
@@ -66,13 +66,13 @@ class BaseToolCalling:
                 yield NewLineBlock()
                 yield EventBlock("tool_resp_final", tool_resp)
 
-    async def async_execute_tool(self, tool, kwargs):
+    async def async_execute_tool(self, tool):
         for struct_tool in self.tools_to_exec:
             if tool.get('function', {}).get('name') == struct_tool.name:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
-                tool_func_result = struct_tool.async_call(**tool_args, **kwargs)
+                tool_func_result = struct_tool.async_call(**tool_args)
                 async for x in tool_func_result:
                     if isinstance(x, EventBlock):
                         if x.block_type == "tool_resp_final":
