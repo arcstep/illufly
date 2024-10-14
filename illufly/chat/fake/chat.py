@@ -1,6 +1,6 @@
 from typing import Union, List
 
-from ...io import EventBlock
+from ...io import EventBlock, NewLineBlock
 from ...core.runnable.agent import ChatAgent
 from ...core.runnable.message import Messages
 import time
@@ -10,7 +10,7 @@ class FakeLLM(ChatAgent):
         super().__init__(threads_group="FAKE_LLM", **kwargs)
 
         self.threads_group = "fake_llm"
-        self.sleep = sleep if (sleep is not None and sleep > 0) else 0.1
+        self.sleep = sleep if sleep is not None else 0.1
         self.response = response if isinstance(response, list) else ([response] if response else None)
         self.current_response_index = 0
 
@@ -29,3 +29,4 @@ class FakeLLM(ChatAgent):
         for content in resp:
             time.sleep(_sleep)
             yield EventBlock("chunk", content)
+        yield NewLineBlock()

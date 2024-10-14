@@ -29,7 +29,7 @@ class ToolCall(BaseToolCalling):
                 break
         return tools_call
 
-    def handle_tools_call(self, text: str):
+    def handle(self, text: str):
         tools_call = self.extract_tools_call(text)
 
         for index, tool_call in enumerate(tools_call):
@@ -60,7 +60,7 @@ class ToolCall(BaseToolCalling):
                         self.long_term_memory.extend(tool_resp_message)
                     yield block
 
-    async def async_handle_tools_call(self, text: str):
+    async def async_handle(self, text: str):
         tools_call = self.extract_tools_call(text)
 
         for index, tool_call in enumerate(tools_call):

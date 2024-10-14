@@ -2,13 +2,29 @@ from typing import List, Union, Optional, Callable, Dict, Generator, AsyncGenera
 from ...io import EventBlock
 from .base import Runnable
 import inspect
+import random
 
 
-def select_first(runnables: List[Runnable], consumer_dict: Dict):
+def select_first(consumer_dict: Dict, runnables: List[Runnable]):
     return runnables[0]
 
-def select_random(runnables: List[Runnable], consumer_dict: Dict):
+def select_random(consumer_dict: Dict, runnables: List[Runnable]):
+    """
+    从runnables列表中随机选择一个Runnable对象
+    """
+    if not runnables:
+        raise ValueError("runnables列表不能为空")
     return random.choice(runnables)
+
+class End(Runnable):
+    def __init__(self, *args, **kwargs):
+        kwargs.update({"name": "__End__"})
+        super().__init__(*args, **kwargs)
+
+        self.description = "我是一个结束标志"
+
+    def call(*args, **kwargs):
+        pass
 
 class Selector(Runnable):
     """
@@ -25,7 +41,11 @@ class Selector(Runnable):
     ):
         super().__init__(**kwargs)
 
-        self.runnables = runnables if isinstance(runnables, list) else [runnables]
+        if runnables:
+            self.runnables = runnables if isinstance(runnables, list) else [runnables]
+        else:
+            self.runnables = []
+
         if runnables and not all(isinstance(router, Runnable) for router in self.runnables):
             raise ValueError("param runnables must be a list of Runnables")
 
@@ -39,35 +59,34 @@ class Selector(Runnable):
         default_selected = {
             "first": select_first,
             "random": select_random,
-            "desc": self.select_with_description
+            "similar": self.select_with_description
         }
         if condition is None:
             return default_selected['first']
         elif isinstance(condition, str):
-            return default_selected.get(condition, default_selected['first'])
+            return default_selected.get(condition.lower(), default_selected['first'])
         elif isinstance(condition, Callable):
-            # 使用 inspect 模块获取函数签名
-            signature = inspect.signature(condition)
-            if len(signature.parameters) == 0:
-                raise ValueError("param condition must have at least one parameter")
             return condition
         else:
             raise ValueError("param condition must be a Callable")
 
     @property
     def selected(self):
-        selected = self.condition(self.runnables, self.consumer_dict)
-        if isinstance(selected, Runnable):
-            return selected
-        elif isinstance(selected, str):
-            for run in self.runnables:
-                if selected.lower() in run.name.lower():
-                    return run
+        """
+        selected 可以是一个 Runnable 对象，也可以是一个字符串（表示备选 Runnable 的名称）
+        """
+        signature = inspect.signature(self.condition)
+        if len(signature.parameters) == 0:
+            resp = self.condition()
+        elif len(signature.parameters) == 1:
+            resp = self.condition(self.consumer_dict)
+        else:
+            resp = self.condition(self.consumer_dict, self.runnables)
 
-            runnable_names = [r.name for r in self.runnables]
-            raise ValueError(f"router {selected} not found in {runnable_names}")
-
-        raise ValueError("selected runnable must be a str(runnable's name) or Runnable object", selected)
+        if isinstance(resp, str):
+            if resp.lower() == "end":
+                return End()
+        return resp
 
     def call(self, *args, **kwargs) -> List[dict]:
         yield from self.selected.call(*args, **kwargs)

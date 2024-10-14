@@ -4,7 +4,7 @@ from .base import BaseToolCalling
 import json
 
 class OpenAIToolsCalling(BaseToolCalling):
-    def handle_tools_call(self, final_tools_call):
+    def handle(self, final_tools_call):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
         yield NewLineBlock()
         yield EventBlock("tools_call_final", final_tools_call_text)
@@ -36,7 +36,7 @@ class OpenAIToolsCalling(BaseToolCalling):
                         self.long_term_memory.extend(tool_resp_message)
                     yield block
 
-    async def async_handle_tools_call(self, final_tools_call):
+    async def async_handle(self, final_tools_call):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
         yield EventBlock("tools_call_final", final_tools_call_text)
 

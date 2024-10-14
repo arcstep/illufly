@@ -23,7 +23,7 @@ class BaseToolCalling:
         text 必须为包含工具回调描述的字符串。
         """
 
-    def handle_tools_call(self, final_tools_call):
+    def handle(self, final_tools_call):
         """
         处理工具回调。
 
@@ -31,7 +31,7 @@ class BaseToolCalling:
         """
         pass
 
-    async def async_handle_tools_call(self, final_tools_call):
+    async def async_handle(self, final_tools_call):
         pass
 
     def execute_tool(self, tool):
