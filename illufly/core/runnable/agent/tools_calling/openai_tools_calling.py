@@ -1,6 +1,6 @@
 from typing import List
+from .....io import EventBlock, NewLineBlock
 from .base import BaseToolCalling
-from ......io import EventBlock, NewLineBlock
 import json
 
 class OpenAIToolsCalling(BaseToolCalling):

@@ -12,7 +12,7 @@ from ..base import BaseAgent
 from ..knowledge_manager import KnowledgeManager
 from .tools_manager import ToolsManager
 from .memory_manager import MemoryManager
-from .tools_calling import OpenAIToolsCalling, ToolCall
+from ..tools_calling import OpenAIToolsCalling, ToolCall
 
 class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     """

@@ -1,52 +1,58 @@
 from typing import List, Union, Dict, Any
-from ......io import EventBlock, NewLineBlock
-from ....message import Messages
+from .....io import EventBlock, NewLineBlock
+from ...message import Messages
 from ..base import BaseAgent
 
 class BaseToolCalling:
     def __init__(
         self,
-        short_term_memory: Messages,
-        long_term_memory: Messages,
         tools_to_exec: List[BaseAgent],
+        short_term_memory: Messages=None,
+        long_term_memory: Messages=None,
         exec_tool: bool=True
     ):
-        self.short_term_memory = short_term_memory
-        self.long_term_memory = long_term_memory
+        self.short_term_memory = short_term_memory or Messages()
+        self.long_term_memory = long_term_memory or Messages()
         self.tools_to_exec = tools_to_exec
         self.exec_tool = exec_tool
 
-    def remember_response(self, response: Union[str, List[dict]]):
-        """
-        将回答添加到记忆中。
-        """
-        if response:
-            if isinstance(response, str):
-                new_memory = Messages([("assistant", response)]).to_list()
-            else:
-                new_memory = response
-
-            self.long_term_memory.extend(new_memory)
-            return new_memory
-        else:
-            return []
-
     def extract_tools_call(self, text: str) -> List[Dict[str, Any]]:
-        pass
+        """
+        解析工具回调。
+
+        text 必须为包含工具回调描述的字符串。
+        """
 
     def handle_tools_call(self, final_tools_call, kwargs):
+        """
+        处理工具回调。
+
+        final_tools_call 是一组自定义的工具解析结果，这可能是工具回调描述、计划描述的列表，也可以是DAG描述等形式。
+        """
         pass
 
     async def async_handle_tools_call(self, final_tools_call, kwargs):
         pass
 
     def execute_tool(self, tool, kwargs):
+        """
+        执行工具回调。
+
+        tool 必须具有如下 Python 字典格式：
+        {
+            "function":
+                "name": function_name
+                "arguments": arguments_json
+        }
+        其中 function_name 必须为 self.tools_to_exec 中的某个 name 属性，
+        arguments 则必须为一个可转换为 Python 字典的 JSON 字符串。
+        """
         for struct_tool in self.tools_to_exec:
             if tool.get('function', {}).get('name') == struct_tool.name:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
-                tool_func_result = struct_tool.call(**tool_args)
+                tool_func_result = struct_tool.call(**tool_args, **kwargs)
                 for x in tool_func_result:
                     if isinstance(x, EventBlock):
                         if x.block_type == "tool_resp_final":
@@ -66,7 +72,7 @@ class BaseToolCalling:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
-                tool_func_result = struct_tool.async_call(**tool_args)
+                tool_func_result = struct_tool.async_call(**tool_args, **kwargs)
                 async for x in tool_func_result:
                     if isinstance(x, EventBlock):
                         if x.block_type == "tool_resp_final":
