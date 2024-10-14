@@ -4,20 +4,21 @@ from typing import List, Union
 from .....io import EventBlock
 from .....utils import minify_text
 from ..base import BaseAgent
-from ...template import Template
 from ..tools_calling import BaseToolCalling
 
 def default_solver(steps):
     return "\n".join([step.get('result') for step in steps if step.get('result')])
 
 class FlowAgent(BaseAgent):
-    def __init__(self, *runnables, handler_tool_call: BaseToolCalling=None, solver: BaseAgent=None, **kwargs):
+    def __init__(self, *agents, handler_tool_call: BaseToolCalling=None, solver: BaseAgent=None, **kwargs):
         super().__init__(**kwargs)
 
         self.handler_tool_call = handler_tool_call
 
-        self.runnables = runnables
-        for r in self.runnables:
+        self.agents = agents
+        for r in self.agents:
+            if not isinstance(r, BaseAgent):
+                raise ValueError("only accept BaseAgent join to Flow")
             self.bind_consumer(r)
 
         _solver = solver or default_solver
@@ -39,16 +40,15 @@ class FlowAgent(BaseAgent):
         """
         kwargs.update({"new_chat": True})
         self.steps = []
-        prev_runnable = None
-        for index, run in enumerate(self.runnables):
-            info = self._get_node_info(index + 1, run.selected)
+        prev_agent = None
+        for index, agent in enumerate(self.agents):
+            info = self._get_node_info(index + 1, agent.selected)
             yield EventBlock("agent", info)
             if index == 0:
                 current_args = args
                 current_kwargs = kwargs
             else:
-                self._last_output = prev_runnable.last_output
-                if self.handler_tool_call and isinstance(prev_runnable, BaseAgent) and isinstance(self._last_output, str):
+                if self.handler_tool_call and isinstance(prev_agent, BaseAgent) and isinstance(self._last_output, str):
                     # 仅根据 ChatAgent 的结果进行工具回调
                     tool_calls = self.handler_tool_call.extract_tools_call(self._last_output)
                     if tool_calls:
@@ -58,21 +58,11 @@ class FlowAgent(BaseAgent):
                         self._last_output = self.solver.call(self.steps)
                 current_args = [self._last_output]
 
-            yield from run.selected.call(*current_args, **kwargs)
-            prev_runnable = run.selected
+            prev_agent = agent.selected
 
-            if isinstance(run, Template):
-                self._last_output = run
-            else:
-                self._last_output = run.last_output
+            yield from agent.selected.call(*current_args, **kwargs)
+            self._last_output = agent.last_output
 
-    def _get_node_info(self, index, run):
-        if isinstance(run, BaseAgent):
-            if run.memory:
-                info = f">>> Node {index}: {minify_text(run.memory[0].get('content'), 30, 30, 10)}"
-            else:
-                info = f">>> Node {index}: {run.__class__.__name__}"
-        else:
-            info = f">>> Node {index}: {run.__class__.__name__}"
-        return info
+    def _get_node_info(self, index, agent):
+        return f">>> Node {index}: {agent.__class__.__name__}"
 
