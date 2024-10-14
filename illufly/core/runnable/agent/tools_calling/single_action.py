@@ -27,13 +27,13 @@ class SingleAction(BaseToolCalling):
         else:
             return None
 
-    def handle_tools_call(self, text: str):
+    def handle(self, text: str):
         action = self.extract_tools_call(text)
         if action:
             for block in self.execute_tool(action):
                 yield block
 
-    async def async_handle_tools_call(self, tool_call):
+    async def async_handle(self, tool_call):
         action = self.extract_tools_call(text)
         if action:
             async for block in self.async_execute_tool(action):
