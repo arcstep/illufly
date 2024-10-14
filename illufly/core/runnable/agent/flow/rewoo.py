@@ -3,9 +3,9 @@ from typing import Union, List, Callable
 from .....io import EventBlock
 from ...template import Template
 from ..tools_calling import BaseToolCalling, Plans
-from .base import BaseFlowAgent
+from .base import FlowAgent
 
-class ReWOO(BaseFlowAgent):
+class ReWOO(FlowAgent):
     """
     ReWOO 是一种高效的增强语言模型框架，它通过分离 LLM 的推理过程和外部工具调用，并利用可预测推理能力和参数效率，
     实现了更轻量级和可扩展的 ALM 系统。ReWOO 将 ALM 的核心组件分为 Planner、Worker 和 Solver 三个模块，
