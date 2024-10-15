@@ -76,17 +76,17 @@ class ToolCall(BaseToolCalling):
                 self.short_term_memory.extend(tool_call_message)
                 self.long_term_memory.extend(tool_call_message)
 
-        # 执行工具
-        if self.exec_tool:
-            async for block in self.async_execute_tool(final_tool_call):
-                if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
-                    tool_resp = block.text
-                    tool_resp_message = [
-                        {
-                            "role": "user",
-                            "content": f'<tool_resp>{tool_resp}</tool_resp>'
-                        }
-                    ]
-                    self.short_term_memory.extend(tool_resp_message)
-                    self.long_term_memory.extend(tool_resp_message)
-                yield block
+            # 执行工具
+            if self.exec_tool:
+                async for block in self.async_execute_tool(tool_call):
+                    if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
+                        tool_resp = block.text
+                        tool_resp_message = [
+                            {
+                                "role": "user",
+                                "content": f'<tool_resp>{tool_resp}</tool_resp>'
+                            }
+                        ]
+                        self.short_term_memory.extend(tool_resp_message)
+                        self.long_term_memory.extend(tool_resp_message)
+                    yield block
