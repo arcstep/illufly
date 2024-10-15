@@ -33,7 +33,7 @@ class FlowAgent(BaseAgent):
         all = {a.name: (i, a) for i, a in enumerate(self.agents)}
         return all.get(name, None)
 
-    def after_call(self, provider_dict: dict):
+    def after_agent_call(self, provider_dict: dict):
         self._last_output = provider_dict["last_output"]
 
     def after_tool_call(self, tool_resp: str):
@@ -60,6 +60,7 @@ class FlowAgent(BaseAgent):
 
             # 如果已经到了 __End__  节点，就退出            
             if selected_agent.name.lower() == "__end__":
+                print("selected_agent", selected_agent)
                 break
 
             # 广播节点信息
@@ -69,7 +70,7 @@ class FlowAgent(BaseAgent):
             # 绑定并调用 Agent
             self.bind_consumer(selected_agent, dynamic=True)
             yield from selected_agent.call(*current_args, **kwargs)
-            yield from self.after_call(selected_agent.provider_dict)
+            yield from self.after_agent_call(selected_agent.provider_dict)
 
             # 调用工具
             if self.handler_tool_call and isinstance(selected_agent, BaseAgent) and isinstance(selected_agent.last_output, str):
