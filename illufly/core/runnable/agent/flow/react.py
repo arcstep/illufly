@@ -9,10 +9,10 @@ from ..tools_calling import BaseToolCalling, SubTask
 from .base import FlowAgent
 
 def should_continue(vars, runs):
-    if "<final_answer>" in runs[0].last_output:
+    if runs[0].provider_dict.get("final_answer", None):
         return "END"
     else:
-        return runs[0]
+        return "planner"
 
 class ReAct(FlowAgent):
     """
@@ -22,6 +22,7 @@ class ReAct(FlowAgent):
     def __init__(self, planner: Callable=None, tools: List[BaseAgent]=None, handler_tool_call: BaseToolCalling=None, **kwargs):
         merged_tools = planner.tools + (tools or [])
         planner = planner.__class__(
+            name="planner",
             memory=PromptTemplate("FLOW/ReAct"),
             tools=merged_tools,
             new_chat=True
@@ -35,20 +36,23 @@ class ReAct(FlowAgent):
         )
 
         self.completed_work = ""
+        self.final_answer = None
 
     @property
     def provider_dict(self):
         return {
             **super().provider_dict,
-            "completed_work": self.completed_work
+            "completed_work": self.completed_work,
+            "final_answer": self.final_answer
         }
 
-    def after_call(self, provider_dict: dict):
+    def after_agent_call(self, provider_dict: dict):
         output = provider_dict["last_output"]
         self._last_output = provider_dict["task"]
 
         final_answer = extract_segments(output, "<final_answer>", "</final_answer>")
         if final_answer:
+            self.final_answer = final_answer
             yield EventBlock("text", f"最终答案为: {final_answer}")
 
         self.completed_work += f"\n{output}"
