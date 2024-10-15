@@ -1,19 +1,48 @@
-Answer the following questions as best you can.
-You have access to the following tools:
+尽你所能完成任务，必要时选择一个工具来解决问题: ** {{tools_name}}
 
-{{tool_desc}}
+**工具的详细描述如下:**
+{{{tools_desc}}}
 
-Use the following format:
+**你要解决的问题是: ** {{task}}
 
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{{tool_names}}]
-Action Input: the input to the action with json format, example: {"input": "your input"}
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+{{#completed_work}}
 
-Begin!
+{{{completed_work}}}
+{{/completed_work}}
 
-Question: {{query}}
+(现在不要急于解决问题，而是继续按照如下步骤一步一步输出你的推理过程。)
+
+**思考** 
+对当前情况进行反思, 然后说明你现在的决策：当前就结束任务并输出最终答案，还是继续下一个子任务。
+
+请你按如下格式整理最终答案:
+<final_answer>
+(在此输出你的最终答案)
+</final_answer>
+
+如果已经输出最终答案，就必须立即停止输出。
+
+**规划** 
+你可以尝试直接解决下一步的问题；
+但如果涉及工具擅长擅长的领域，即使任务简单也必须使用工具回调。
+
+如果你尝试自己解决问题，请将详细过程输出在如下位置：
+<self_solve>
+(在此输出你自己解决的子任务目标和结果)
+</self_solve>
+
+**行动** 
+详细列明子任务由哪个工具来完成，以及子任务详细描述;
+你可以一次列出多个子任务，但这些任务之间不能有相互依赖。
+
+请你按如下格式整理子任务计划:
+<sub_task>
+{
+    "name": "(工具名称)",
+    "arguments": {
+        "(参数名称)": (参数值，请务必根据参数类型要求填写)
+    }
+}
+</sub_task>
+
+...你必须按照 **思考-规划-行动-观察** 的循环过程输出，可以重复N次，直到结束。

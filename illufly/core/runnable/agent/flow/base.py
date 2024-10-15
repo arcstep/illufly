@@ -7,11 +7,8 @@ from ...selector import Selector
 from ..base import BaseAgent
 from ..tools_calling import BaseToolCalling
 
-def default_solver(steps):
-    return "\n".join([step.get('result') for step in steps if step.get('result')])
-
 class FlowAgent(BaseAgent):
-    def __init__(self, *agents, handler_tool_call: BaseToolCalling=None, solver: BaseAgent=None, max_steps: int=None, **kwargs):
+    def __init__(self, *agents, handler_tool_call: BaseToolCalling=None, max_steps: int=None, **kwargs):
         super().__init__(**kwargs)
 
         self.max_steps = max_steps or 20
@@ -22,10 +19,6 @@ class FlowAgent(BaseAgent):
             if not isinstance(r, (BaseAgent, Selector)):
                 raise ValueError("only accept BaseAgent or Selector join to Flow")
             self.bind_consumer(r)
-
-        _solver = solver or default_solver
-        self.solver = _solver if isinstance(_solver, BaseAgent) else BaseAgent(_solver)
-        self.bind_consumer(self.solver)
 
     @property
     def provider_dict(self):
@@ -40,6 +33,12 @@ class FlowAgent(BaseAgent):
         all = {a.name: (i, a) for i, a in enumerate(self.agents)}
         return all.get(name, None)
 
+    def after_call(self, provider_dict: dict):
+        self._last_output = provider_dict["last_output"]
+
+    def after_tool_call(self, tool_resp: str):
+        self._last_output = tool_resp
+
     def call(self, *args, **kwargs):
         """
         执行智能体管道。
@@ -51,6 +50,7 @@ class FlowAgent(BaseAgent):
         current_args = args
         current_kwargs = kwargs
         steps_count = 0
+        self._last_output = None
 
         while(steps_count < self.max_steps):
             # 如果 current_agent 是一个选择器
@@ -63,23 +63,23 @@ class FlowAgent(BaseAgent):
                 break
 
             # 广播节点信息
-            info = self._get_node_info(current_index + 1, selected_agent, steps_count)
+            info = self._get_node_info(current_index + 1, selected_agent, steps_count + 1)
             yield EventBlock("agent", info)
 
-            # 调用 Agent
+            # 绑定并调用 Agent
             self.bind_consumer(selected_agent, dynamic=True)
             yield from selected_agent.call(*current_args, **kwargs)
-            self._last_output = selected_agent.provider_dict["last_output"]
-            steps_count += 1
+            yield from self.after_call(selected_agent.provider_dict)
+
             # 调用工具
-            if self.handler_tool_call and isinstance(selected_agent, BaseAgent) and isinstance(selected_agent._last_output, str):
+            if self.handler_tool_call and isinstance(selected_agent, BaseAgent) and isinstance(selected_agent.last_output, str):
                 # 仅根据 ChatAgent 的结果进行工具回调
                 tools_resp = []
-                for block in self.handler_tool_call.handle(selected_agent._last_output):
+                for block in self.handler_tool_call.handle(selected_agent.last_output):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
-                        tool_resp.append(block.text)
+                        tools_resp.append(block.text)
                     yield block
-                self._last_output = self.solver(tools_resp)
+                yield from self.after_tool_call("\n".join(tools_resp))
 
             if (current_index + 1) == len(self.agents):
                 # 如果已经超出最后一个节点，就结束
@@ -91,6 +91,7 @@ class FlowAgent(BaseAgent):
 
             # 构造下一次调用的参数
             current_args = [self._last_output]
+            steps_count += 1
 
     def _get_node_info(self, index, agent, steps_count):
         return f"STEP {steps_count} >>> Node {index}: {agent.name}"

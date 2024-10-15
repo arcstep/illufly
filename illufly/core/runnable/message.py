@@ -122,13 +122,11 @@ class Messages:
         message = None
         if isinstance(msg, Message):
             message = msg
-        elif isinstance(msg, str):
-            role = self._determine_role(index)
-            message = Message(role=role, content=msg)
-        elif isinstance(msg, list):
-            role = self._determine_role(index)
-            message = Message(role=role, content=msg)
         elif isinstance(msg, Runnable):
+            message = Message(role='system' if index == 0 else self._determine_role(index), content=msg)
+        elif isinstance(msg, str):
+            message = Message(role='user' if index == 0 else self._determine_role(index), content=msg)
+        elif isinstance(msg, list):
             role = self._determine_role(index)
             message = Message(role=role, content=msg)
         elif isinstance(msg, dict):
