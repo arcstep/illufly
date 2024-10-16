@@ -88,6 +88,10 @@ class Selector(Runnable):
                 return End()
         return resp
 
+    def reset(self):
+        for runnable in self.runnables:
+            runnable.reset()
+
     def call(self, *args, **kwargs) -> List[dict]:
         yield from self.selected.call(*args, **kwargs)
 

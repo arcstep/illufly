@@ -24,7 +24,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         end_chk: bool = False,
         start_marker: str=None,
         end_marker: str=None,
-        new_chat: bool=False,
         **kwargs
     ):
         """
@@ -42,9 +41,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         self.start_marker = start_marker or "```"
         self.end_marker = end_marker or "```"
-
-        # 默认保持的对话方式
-        self.new_chat = new_chat
 
         # 在子类中应当将模型参数保存到这个属性中，以便持久化管理
         self.model_args = {"base_url": None, "api_key": None}
@@ -84,6 +80,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             **{k:v for k,v in local_dict.items() if v is not None},
         }
 
+    def reset(self):
+        self.memory = []
+        super().reset()
+
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
         raise NotImplementedError("子类必须实现 generate 方法")
@@ -94,7 +94,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             yield block
 
     def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        new_chat = kwargs.pop("new_chat", self.new_chat)
+        new_chat = kwargs.pop("new_chat", False)
 
         messages_std = Messages(prompt, style="text")
         self._task = messages_std.messages[-1].content
@@ -171,7 +171,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             yield EndBlock(self.last_output)
 
     async def async_call(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        new_chat = kwargs.pop("new_chat", self.new_chat)
+        new_chat = kwargs.pop("new_chat", False)
 
         messages_std = Messages(prompt, style="text")
         self._task = messages_std.messages[-1].content
