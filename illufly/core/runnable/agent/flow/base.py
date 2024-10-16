@@ -5,14 +5,13 @@ from .....io import EventBlock, NewLineBlock
 from .....utils import minify_text
 from ...selector import Selector
 from ..base import BaseAgent
-from ..tools_calling import BaseToolCalling
+from ..tools_calling import BaseToolCalling, SubTask
 
 class FlowAgent(BaseAgent):
-    def __init__(self, *agents, handler_tool_call: BaseToolCalling=None, max_steps: int=None, **kwargs):
+    def __init__(self, *agents, max_steps: int=None, **kwargs):
         super().__init__(**kwargs)
 
         self.max_steps = max_steps or 20
-        self.handler_tool_call = handler_tool_call
 
         self.agents = agents
         for r in self.agents:
@@ -36,14 +35,10 @@ class FlowAgent(BaseAgent):
     def after_agent_call(self, provider_dict: dict):
         self._last_output = provider_dict["last_output"]
 
-    def after_tool_call(self, tool_resp: str):
-        self._last_output = tool_resp
-
     def call(self, *args, **kwargs):
         """
         执行智能体管道。
         """
-        # kwargs.update({"new_chat": True})
 
         current_agent = self.agents[0]
         current_index = 0
@@ -70,17 +65,7 @@ class FlowAgent(BaseAgent):
             # 绑定并调用 Agent
             self.bind_consumer(selected_agent, dynamic=True)
             yield from selected_agent.call(*current_args, **kwargs)
-            yield from self.after_agent_call(selected_agent.provider_dict)
-
-            # 调用工具
-            if self.handler_tool_call and isinstance(selected_agent, BaseAgent) and isinstance(selected_agent.last_output, str):
-                # 仅根据 ChatAgent 的结果进行工具回调
-                tools_resp = []
-                for block in self.handler_tool_call.handle(selected_agent.last_output):
-                    if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
-                        tools_resp.append(block.text)
-                    yield block
-                yield from self.after_tool_call("\n".join(tools_resp))
+            yield from self.after_agent_call(selected_agent)
 
             if (current_index + 1) == len(self.agents):
                 # 如果已经超出最后一个节点，就结束
