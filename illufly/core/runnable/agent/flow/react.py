@@ -24,8 +24,7 @@ class ReAct(FlowAgent):
         planner = planner.__class__(
             name=planner.name,
             memory=PromptTemplate("FLOW/ReAct"),
-            tools=merged_tools,
-            new_chat=True
+            tools=merged_tools
         )
         self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=planner.get_tools())
 
@@ -49,6 +48,9 @@ class ReAct(FlowAgent):
             "final_answer": self.final_answer
         }
 
+    def before_agent_call(self, agent: BaseAgent):
+        agent.reset()
+
     def after_agent_call(self, agent: BaseAgent):
         output = agent.last_output
         self.completed_work += f"\n{output}"
@@ -70,5 +72,3 @@ class ReAct(FlowAgent):
         if "**最终答案**" in output:
             final_answer_index = output.index("**最终答案**")
             self.final_answer = output[final_answer_index:].split("**最终答案**")[-1].strip()
-
-        yield EventBlock("info", f"执行完毕。")
