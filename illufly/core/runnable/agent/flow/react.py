@@ -5,7 +5,7 @@ from .....io import EventBlock
 from ...selector import Selector
 from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
-from ..tools_calling import BaseToolCalling, SubTask
+from ..tools_calling import BaseToolCalling, Plans, SubTask
 from .base import FlowAgent
 
 class ReAct(FlowAgent):
@@ -27,7 +27,7 @@ class ReAct(FlowAgent):
             tools=merged_tools,
             new_chat=True
         )
-        self.handler_tool_call = handler_tool_call or SubTask(tools_to_exec=planner.get_tools())
+        self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=planner.get_tools())
 
         def should_continue(vars, runs):
             return "END" if runs[0].provider_dict.get("final_answer", None) else planner.name
@@ -67,12 +67,8 @@ class ReAct(FlowAgent):
                 yield block
 
         # 提取最终答案
-        final_answer = extract_segments(output, "<final_answer>", "</final_answer>")
-        if final_answer:
-            self.final_answer = final_answer
-
-            final_answer_text = f"最终答案为: {final_answer}"
-            self.completed_work += final_answer_text
-            yield EventBlock("text", final_answer_text)
+        if "**最终答案**" in output:
+            final_answer_index = output.index("**最终答案**")
+            self.final_answer = output[final_answer_index:].split("**最终答案**")[-1].strip()
 
         yield EventBlock("info", f"执行完毕。")
