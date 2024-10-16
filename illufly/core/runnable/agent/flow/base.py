@@ -1,6 +1,6 @@
 import re
 
-from typing import List, Union
+from typing import List, Union, Generator, AsyncGenerator
 from .....io import EventBlock, NewLineBlock
 from .....utils import minify_text
 from ...selector import Selector
@@ -19,11 +19,21 @@ class FlowAgent(BaseAgent):
                 raise ValueError("only accept BaseAgent or Selector join to Flow")
             self.bind_consumer(r)
 
+        self.completed_work = []
+
     @property
     def provider_dict(self):
         return {
-            **super().provider_dict
+            **super().provider_dict,
+            "completed_work": "\n".join(self.completed_work)
         }
+
+    def reset(self):
+        super().reset()
+
+        self.completed_work.clear()
+        for agent in self.agents:
+            agent.reset()
 
     def get_agent_by_name(self, name: str):
         """
@@ -32,8 +42,22 @@ class FlowAgent(BaseAgent):
         all = {a.name: (i, a) for i, a in enumerate(self.agents)}
         return all.get(name, None)
 
-    def after_agent_call(self, provider_dict: dict):
-        self._last_output = provider_dict["last_output"]
+    def begin_call(self):
+        pass
+
+    def end_call(self):
+        pass
+
+    def before_agent_call(self, agent: BaseAgent):
+        pass
+
+    def after_agent_call(self, agent: BaseAgent):
+        self._last_output = agent.provider_dict["last_output"]
+
+        if not self.completed_work:
+            if agent.provider_dict.get("task", None):
+                self.completed_work.append("**任务**\n" + agent.provider_dict["task"])
+        self.completed_work.append(f'@{agent.name} :\n{self._last_output}')
 
     def call(self, *args, **kwargs):
         """
@@ -45,17 +69,19 @@ class FlowAgent(BaseAgent):
         current_args = args
         current_kwargs = kwargs
         steps_count = 0
-        self._last_output = None
+        self.reset()
 
+        self.begin_call()
         while(steps_count < self.max_steps):
             # 如果 current_agent 是一个选择器
             selected_agent = current_agent.selected
             if isinstance(selected_agent, str):
                 (current_index, selected_agent) = self.get_agent_by_name(selected_agent)
 
+            self.before_agent_call(selected_agent)
+
             # 如果已经到了 __End__  节点，就退出            
             if selected_agent.name.lower() == "__end__":
-                print("selected_agent", selected_agent)
                 break
 
             # 广播节点信息
@@ -64,8 +90,14 @@ class FlowAgent(BaseAgent):
 
             # 绑定并调用 Agent
             self.bind_consumer(selected_agent, dynamic=True)
-            yield from selected_agent.call(*current_args, **kwargs)
-            yield from self.after_agent_call(selected_agent)
+
+            call_resp = selected_agent.call(*current_args, **current_kwargs)
+            if isinstance(call_resp, Generator):
+                yield from call_resp
+
+            after_call_resp = self.after_agent_call(selected_agent)
+            if isinstance(after_call_resp, Generator):
+                yield from after_call_resp
 
             if (current_index + 1) == len(self.agents):
                 # 如果已经超出最后一个节点，就结束
@@ -78,6 +110,8 @@ class FlowAgent(BaseAgent):
             # 构造下一次调用的参数
             current_args = [self._last_output]
             steps_count += 1
+
+        self.end_call()
 
     def _get_node_info(self, index, agent, steps_count):
         return f"STEP {steps_count} >>> Node {index}: {agent.name}"

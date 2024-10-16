@@ -18,6 +18,7 @@ class ReAct(FlowAgent):
         planner: Callable,
         tools: List[BaseAgent]=None,
         handler_tool_call: BaseToolCalling=None,
+        final_answer_prompt: str=None,
         **kwargs
     ):
         merged_tools = planner.tools + (tools or [])
@@ -27,6 +28,7 @@ class ReAct(FlowAgent):
             tools=merged_tools
         )
         self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=planner.get_tools())
+        self.final_answer_prompt = final_answer_prompt or "**最终答案**"
 
         def should_continue(vars, runs):
             return "END" if runs[0].provider_dict.get("final_answer", None) else planner.name
@@ -37,14 +39,12 @@ class ReAct(FlowAgent):
             **kwargs
         )
 
-        self.completed_work = ""
         self.final_answer = None
 
     @property
     def provider_dict(self):
         return {
             **super().provider_dict,
-            "completed_work": self.completed_work,
             "final_answer": self.final_answer
         }
 
@@ -53,22 +53,26 @@ class ReAct(FlowAgent):
 
     def after_agent_call(self, agent: BaseAgent):
         output = agent.last_output
-        self.completed_work += f"\n{output}"
+        self.completed_work.append(output)
         self._last_output = agent.provider_dict["task"]
 
+        # 提取最终答案
+        if self.final_answer_prompt in output:
+            final_answer_index = output.index(self.final_answer_prompt)
+            self.final_answer = output[final_answer_index:].split(self.final_answer_prompt)[-1].strip()
+
         # 调用工具，并观察工具执行结果
-        if self.handler_tool_call:
+        if self.handler_tool_call and not self.final_answer:
             tools_resp = []
             for block in self.handler_tool_call.handle(agent.last_output):
                 if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                     action_result = block.text
-                    observation = f"\n\n**观察** 上面的行动结果为:\n{action_result}\n" if action_result else "\n"
-                    self.completed_work += observation
-                    yield EventBlock("text", observation)
                     tools_resp.append(action_result)
                 yield block
 
-        # 提取最终答案
-        if "**最终答案**" in output:
-            final_answer_index = output.index("**最终答案**")
-            self.final_answer = output[final_answer_index:].split("**最终答案**")[-1].strip()
+            if tools_resp:
+                action_result = '\n'.join(tools_resp)
+                observation = f"\n**观察** 上面的行动结果为:\n{action_result}\n"
+                self.completed_work.append(observation)
+                yield EventBlock("text", observation)
+
