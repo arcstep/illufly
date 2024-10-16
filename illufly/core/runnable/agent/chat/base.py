@@ -155,6 +155,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 yield EventBlock("text_final", final_output_text)
 
                 # 处理直接在文本中包含的 <tool_call> 风格的工具调用，包括将结果追加到记忆中
+                # 即使没有指明工具，只要在文本中包含 <tool_call> 就会被视为需要处理的工具回调
                 handler_tool_call = ToolCall(
                     short_term_memory=chat_memory,
                     long_term_memory=self.memory,
