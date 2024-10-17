@@ -24,8 +24,8 @@ class Plans(BaseToolCalling):
             e = f'{step.get("id", "#E0")} = {step.get("name", "")}[{step.get("arguments", "")}]'
             result = step.get("result", None)
             if result:
-                result = f'result: {result}'
-            completed_work.append(f'{desc} \n{e}\n{result or ""}')
+                result = f'{step.get("name", "")} Value = {result}'
+            completed_work.append(f'{desc} \n{e} \n{result or ""}')
         return "\n".join(completed_work)
 
     def extract_tools_call(self, text: str) -> Dict[str, Dict[str, Any]]:
@@ -64,11 +64,15 @@ class Plans(BaseToolCalling):
                     # 假设每个步骤的结果是一个字符串
                     result = pre_build_vars[placeholder]
                     if result:
-                        # 如果 placeholder 自身没有被双引号包裹，就先在其两侧增加双引号
-                        if f'"{placeholder}"' not in arguments:
-                            arguments = arguments.replace(placeholder, f'"{placeholder}"')
-                        # 使用转义的双引号包围替换的结果
-                        arguments = arguments.replace(f'"{placeholder}"', json.dumps(result, ensure_ascii=False))
+                        # 情况2: "#E{n}" 的结构，有双引号包围
+                        if re.fullmatch(rf'"{placeholder}"', arguments):
+                            arguments = arguments.replace(f'"{placeholder}"', f'"{result}"')
+                        # 情况3: "otherword#E{n}otherword" 的字结构，有双引号包围
+                        elif re.search(rf'"[^"]*{placeholder}[^"]*"', arguments):
+                            arguments = arguments.replace(placeholder, result)
+                        # 情况4: #E{n}，但没有双引号包围
+                        elif re.fullmatch(rf'{placeholder}', arguments):
+                            arguments = arguments.replace(placeholder, json.dumps(result, ensure_ascii=False))
 
             # 确保 arguments 是有效的 JSON
             try:
@@ -89,7 +93,7 @@ class Plans(BaseToolCalling):
                     yield block
 
             except json.JSONDecodeError as e:
-                print(f"JSONDecodeError: {e}")
+                print(f"JSONDecodeError: {e} in arguments: {arguments}")
 
     async def async_handle(self, final_tool_call):
         async for block in self.async_execute_tool(final_tool_call):

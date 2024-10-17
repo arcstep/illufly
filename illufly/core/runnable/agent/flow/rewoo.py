@@ -67,5 +67,6 @@ class ReWOO(FlowAgent):
         yield from self.solver.call(self.agents[0].provider_dict["task"])
 
         self.final_answer = self.solver.last_output
-        final_answer = f"\n**最终答案**\n{self.final_answer}\n"
-        yield EventBlock("text", final_answer)
+        self._last_output = self.final_answer
+
+        yield EventBlock("text", f"\n**最终答案**\n{self.final_answer}")
