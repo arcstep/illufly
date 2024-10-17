@@ -24,7 +24,7 @@ class ReAct(FlowAgent):
         merged_tools = planner.tools + (tools or [])
         planner = planner.__class__(
             name=planner.name,
-            memory=PromptTemplate("FLOW/ReAct"),
+            memory=PromptTemplate("FLOW/ReAct-Planner"),
             tools=merged_tools
         )
         self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=planner.get_tools())
@@ -38,6 +38,11 @@ class ReAct(FlowAgent):
             Selector([planner], condition=should_continue),
             **kwargs
         )
+
+    def begin_call(self):
+        super().begin_call()
+        if isinstance(self.handler_tool_call, Plans):
+            self.handler_tool_call.reset()
 
     def before_agent_call(self, agent: BaseAgent):
         agent.reset()
