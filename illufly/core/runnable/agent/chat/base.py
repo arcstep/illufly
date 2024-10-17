@@ -80,9 +80,23 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             **{k:v for k,v in local_dict.items() if v is not None},
         }
 
-    def reset(self):
-        self.memory.clear()
+    def reset(self, reinit=False, **kwargs):
+        """
+        reinit 参数用于在对话过程中重新初始化 ToolsManager 和 MemoryManager.
+        否则仅执行父类的 reset 方法，重置运行时的变量值。
+        """
+        if reinit:
+            kwargs["tool_params"] = kwargs.get("tool_params", {"prompt": "详细描述用户问题"})
+            ToolsManager.__init__(self, **kwargs)
+            self._tools_to_exec = self.get_tools()
+            self._resources = ""
+            MemoryManager.__init__(self, **kwargs)
+        
         super().reset()
+        self._task = ""
+        self.memory.clear()
+
+        return self
 
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):

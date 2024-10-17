@@ -26,21 +26,27 @@ class ReWOO(FlowAgent):
         **kwargs
     ):
         merged_tools = planner.tools + (tools or [])
-        self.planner = planner.__class__(
-            name="planner",
+
+        self.planner = planner.reset(
+            reinit=True,
             memory=PromptTemplate("FLOW/ReWOO-Planner"),
             tools=merged_tools
         )
-        self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=self.planner.get_tools())
-        self.solver = solver.__class__(
-            name="solver",
+
+        self.solver = solver.reset(
+            reinit=True,
             memory=PromptTemplate("FLOW/ReWOO-Solver")
         )
+
+        self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=self.planner.get_tools())
 
         super().__init__(
             self.planner,
             **kwargs
         )
+
+        if not self.planner.get_tools():
+            raise ValueError("planner 必须提供 tools")
 
     def begin_call(self):
         super().begin_call()
