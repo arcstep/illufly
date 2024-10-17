@@ -85,6 +85,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
     def reset(self):
         self._last_output = None
+        return self
 
     def __call__(
         self,

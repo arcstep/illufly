@@ -15,29 +15,32 @@ class ReAct(FlowAgent):
     """
     def __init__(
         self,
-        planner: Callable,
+        planner: BaseAgent,
         tools: List[BaseAgent]=None,
         handler_tool_call: BaseToolCalling=None,
         final_answer_prompt: str=None,
         **kwargs
     ):
         merged_tools = planner.tools + (tools or [])
-        planner = planner.__class__(
-            name=planner.name,
+        self.planner = planner.reset(
+            reinit=True,
             memory=PromptTemplate("FLOW/ReAct-Planner"),
             tools=merged_tools
         )
-        self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=planner.get_tools())
+        self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=self.planner.get_tools())
         self.final_answer_prompt = final_answer_prompt or "**最终答案**"
 
         def should_continue(vars, runs):
-            return "END" if runs[0].provider_dict.get("final_answer", None) else planner.name
+            return "END" if runs[0].provider_dict.get("final_answer", None) else runs[0].name
 
         super().__init__(
-            planner,
-            Selector([planner], condition=should_continue),
+            self.planner,
+            Selector([self.planner], condition=should_continue),
             **kwargs
         )
+
+        if not self.planner.get_tools():
+            raise ValueError("planner 必须提供 tools")
 
     def begin_call(self):
         super().begin_call()
