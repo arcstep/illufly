@@ -45,7 +45,7 @@ class FlowAgent(BaseAgent):
         return all.get(name, None)
 
     def begin_call(self):
-        pass
+        self.reset()
 
     def end_call(self):
         pass
@@ -71,9 +71,8 @@ class FlowAgent(BaseAgent):
         current_args = args
         current_kwargs = kwargs
         steps_count = 0
-        self.reset()
-
         self.begin_call()
+
         while(steps_count < self.max_steps):
             # 如果 current_agent 是一个选择器
             selected_agent = current_agent.selected

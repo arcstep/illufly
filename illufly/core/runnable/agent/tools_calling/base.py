@@ -57,6 +57,10 @@ class BaseToolCalling:
         其中 function_name 必须为 self.tools_to_exec 中的某个 name 属性，
         arguments 则必须为一个可转换为 Python 字典的 JSON 字符串。
         """
+        if not self.tools_to_exec:
+            yield EventBlock("warn", f"tools_to_exec is empty")
+            return
+
         for struct_tool in self.tools_to_exec:
             if tool.get('function', {}).get('name') == struct_tool.name:
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
@@ -80,6 +84,10 @@ class BaseToolCalling:
                         yield EventBlock("tool_resp_chunk", x)
                 yield NewLineBlock()
                 yield EventBlock("tool_resp_final", tool_resp)
+                return
+
+        yield EventBlock("warn", f"tool {tool} not found")
+            
 
     async def async_execute_tool(self, tool):
         for struct_tool in self.tools_to_exec:

@@ -9,16 +9,23 @@ class Plans(BaseToolCalling):
     def __init__(self, steps: Dict[str, Dict[str, Any]] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.steps = steps or []
-    
+
     def reset(self):
         self.steps.clear()
-    
+
     @property
     def completed_work(self):
         """
         返回所有步骤的完成情况。
         """
-        completed_work = [f'Plan: {step["description"]} {step["id"]} = {step["result"]}' for step in self.steps]
+        completed_work = []
+        for step in self.steps:
+            desc = f'Plan: {step.get("description", "No description")}'
+            e = f'{step.get("id", "#E0")} = {step.get("name", "")}[{step.get("arguments", "")}]'
+            result = step.get("result", None)
+            if result:
+                result = f'result: {result}'
+            completed_work.append(f'{desc} \n{e}\n{result or ""}')
         return "\n".join(completed_work)
 
     def extract_tools_call(self, text: str) -> Dict[str, Dict[str, Any]]:
@@ -35,7 +42,8 @@ class Plans(BaseToolCalling):
                 "id": f"#{match.group(2)}",
                 "description": plan_description,
                 "name": function_name,
-                "arguments": arguments  # 直接存储原始参数字符串
+                "arguments": arguments,  # 直接存储原始参数字符串
+                "result": None
             }
             self.steps.append(plan)
 
@@ -47,9 +55,8 @@ class Plans(BaseToolCalling):
         """
         pre_build_vars = {}
 
-        for plan in self.extract_tools_call(text):
-            arguments = plan.get("arguments", "{}")
-
+        for step in self.extract_tools_call(text):
+            arguments = step.get("arguments", "")
             # 查找并替换占位符
             placeholders = re.findall(r"#E\d+", arguments)
             for placeholder in placeholders:
@@ -67,22 +74,22 @@ class Plans(BaseToolCalling):
             try:
                 parsed_arguments = json.loads(arguments)
                 arguments = json.dumps(parsed_arguments, ensure_ascii=False)
+
+                tool_to_exec = {
+                    "function": {
+                        "name": step.get("name"),
+                        "arguments": arguments
+                    }
+                }
+                for block in self.execute_tool(tool_to_exec):
+                    if block.block_type == "tool_resp_final":
+                        # 将结果存储到 pre_build_vars 中
+                        pre_build_vars[step["id"]] = block.text
+                        step["result"] = block.text
+                    yield block
+
             except json.JSONDecodeError as e:
                 print(f"JSONDecodeError: {e}")
-                continue
-
-            tool_to_exec = {
-                "function": {
-                    "name": plan.get("name"),
-                    "arguments": arguments
-                }
-            }
-            for block in self.execute_tool(tool_to_exec):
-                if block.block_type == "tool_resp_final":
-                    # 将结果存储到 pre_build_vars 中
-                    pre_build_vars[plan["id"]] = block.text
-                    plan["result"] = block.text
-                yield block
 
     async def async_handle(self, final_tool_call):
         async for block in self.async_execute_tool(final_tool_call):
