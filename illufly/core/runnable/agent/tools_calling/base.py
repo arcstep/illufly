@@ -16,6 +16,16 @@ class BaseToolCalling:
         self.tools_to_exec = tools_to_exec
         self.exec_tool = exec_tool
 
+    def reset(self):
+        pass
+
+    @property
+    def completed_work(self):
+        """
+        返回所有步骤的完成情况。
+        """
+        return ""
+
     def extract_tools_call(self, text: str) -> List[Dict[str, Any]]:
         """
         解析工具回调。

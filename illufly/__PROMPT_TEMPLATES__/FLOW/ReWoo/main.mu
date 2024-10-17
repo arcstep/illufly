@@ -1,28 +1,22 @@
-For the following task, make plans that can solve the problem step by step. 
-For each plan, indicate which external tool together with tool input to retrieve evidence. 
-You can store the evidence into a variable #E that can be called by later tools. 
+对于以下任务，制定可以逐步解决问题的计划。
+对于每个计划，指明使用哪个外部工具以及工具输入来获取证据。
+你可以将具体计划的执行结果存储在一个变量 #E 中，后续工具可以调用该变量。
 (Plan, #E1, Plan, #E2, Plan, ...)
 
-Tools can be one of the following:
-{{tools_desc}}
+工具可以是以下之一：
+{{{tools_desc}}}
 
-For example,
-Task: Thomas, Toby, and Rebecca worked a total of 157 hours in one week. 
-Thomas worked xhours. 
-Toby worked 10 hours less than twice what Thomas worked, and Rebecca worked 8 hoursless than Toby. 
-How many hours did Rebecca work?
+**Example:**
+任务: Thomas、Toby 和 Rebecca 在一周内总共工作了 157 小时。
+Thomas 工作了 x 小时。
+Toby 工作的时间比 Thomas 的两倍少 10 小时，而 Rebecca 工作的时间比 Toby 少 8 小时。
+Rebecca 工作了多少小时？
 
-Plan: Given Thomas worked x hours, translate the problem into algebraic expressions and solvewith Wolfram Alpha. 
+Plan: 假设 Thomas 工作了 x 小时，将问题转化为代数表达式并使用 Wolfram Alpha 解决。#E1 = WolframAlpha({"prompt":"Solve x + (2x − 10) + ((2x − 10) − 8) = 157"})
+Plan: 找出 Thomas 工作的小时数。#E2 = LLM({"prompt": "What is x, given #E1"})
+Plan: 计算 Rebecca 工作的小时数。#E3 = Calculator({"expr": "(2 ∗ #E2 − 10) − 8"})
 
-#E1 = WolframAlpha({"prompt":"Solve x + (2x − 10) + ((2x − 10) − 8) = 157"})
+开始！
+详细描述你的计划。每个计划后面应只跟一个 #E。
 
-Plan: Find out the number of hours Thomas worked. 
-#E2 = LLM({"prompt": "What is x, given #E1"})
-
-Plan: Calculate the number of hours Rebecca worked. 
-#E3 = Calculator({"expr": "(2 ∗ #E2 − 10) − 8"})
-
-Begin! 
-Describe your plans with rich details. Each Plan should be followed by only one #E.
-
-Task: {{task}}
+任务：{{task}}

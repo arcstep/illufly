@@ -39,15 +39,6 @@ class ReAct(FlowAgent):
             **kwargs
         )
 
-        self.final_answer = None
-
-    @property
-    def provider_dict(self):
-        return {
-            **super().provider_dict,
-            "final_answer": self.final_answer
-        }
-
     def before_agent_call(self, agent: BaseAgent):
         agent.reset()
 

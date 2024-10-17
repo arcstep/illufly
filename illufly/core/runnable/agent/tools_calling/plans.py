@@ -9,6 +9,17 @@ class Plans(BaseToolCalling):
     def __init__(self, steps: Dict[str, Dict[str, Any]] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.steps = steps or []
+    
+    def reset(self):
+        self.steps.clear()
+    
+    @property
+    def completed_work(self):
+        """
+        返回所有步骤的完成情况。
+        """
+        completed_work = [f'Plan: {step["description"]} {step["id"]} = {step["result"]}' for step in self.steps]
+        return "\n".join(completed_work)
 
     def extract_tools_call(self, text: str) -> Dict[str, Dict[str, Any]]:
         # 正则表达式解析文本
