@@ -5,7 +5,6 @@ from .....io import EventBlock, NewLineBlock
 from .....utils import minify_text
 from ...selector import Selector
 from ..base import BaseAgent
-from ..tools_calling import BaseToolCalling, SubTask
 
 class FlowAgent(BaseAgent):
     def __init__(self, *agents, max_steps: int=None, **kwargs):
@@ -20,18 +19,21 @@ class FlowAgent(BaseAgent):
             self.bind_consumer(r)
 
         self.completed_work = []
+        self.final_answer = None
 
     @property
     def provider_dict(self):
         return {
             **super().provider_dict,
-            "completed_work": "\n".join(self.completed_work)
+            "completed_work": "\n".join(self.completed_work),
+            "final_answer": self.final_answer
         }
 
     def reset(self):
         super().reset()
 
         self.completed_work.clear()
+        self.final_answer = None
         for agent in self.agents:
             agent.reset()
 

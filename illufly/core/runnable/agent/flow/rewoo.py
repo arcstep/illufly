@@ -1,7 +1,10 @@
 from typing import Union, List, Callable
 
+from .....utils import extract_segments
 from .....io import EventBlock
+from ...selector import Selector
 from ...prompt_template import PromptTemplate
+from ..base import BaseAgent
 from ..tools_calling import BaseToolCalling, Plans
 from .base import FlowAgent
 
@@ -14,16 +17,55 @@ class ReWOO(FlowAgent):
     同时，ReWOO 可以通过指令微调和模型专化，将 LLM 的通用推理能力迁移到更小的语言模型中，实现更轻量级的 ALM 系统。
     ReWOO 在多个 NLP 基准数据集上取得了与 ReAct 相当或更好的性能，同时减少了 token 消耗，为构建更高效、可扩展的 ALM 提供了一种新的思路。
     """
-    def __init__(self, planner: Callable=None, template: PromptTemplate=None, solver: Callable=None, handler_tool_call: BaseToolCalling=None, **kwargs):
-        self.planner = planner
-        self.template = template or PromptTemplate("FLOW/ReWOO")
-        self.solver = solver or self.default_solver
-        self.handler_tool_call = handler_tool_call or Plans()
+    def __init__(
+        self,
+        planner: BaseAgent=None,
+        solver: BaseAgent=None,
+        tools: List[BaseAgent]=None,
+        handler_tool_call: BaseToolCalling=None,
+        **kwargs
+    ):
+        merged_tools = planner.tools + (tools or [])
+        self.planner = planner.__class__(
+            name="planner",
+            memory=PromptTemplate("FLOW/ReWOO"),
+            tools=merged_tools
+        )
+        self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=planner.get_tools())
+        self.solver = solver.__class__(
+            name="solver",
+            memory=PromptTemplate("FLOW/ReWOO-SOLVER")
+        )
+
         super().__init__(
-            self.template,
             self.planner,
-            self.solver,
-            handler_tool_call=self.handler_tool_call,
             **kwargs
         )
 
+    def begin_call(self):
+        super().begin_call()
+        if isinstance(self.handler_tool_call, Plans):
+            self.handler_tool_call.reset()
+
+    def after_agent_call(self, agent: BaseAgent):
+        output = agent.last_output
+        self._last_output = agent.provider_dict["task"]
+
+        # 调用工具，并观察工具执行结果
+        if self.handler_tool_call:
+            for block in self.handler_tool_call.handle(agent.last_output):
+                yield block
+
+        # 提取最终答案
+        self.solver.reset()
+        self.solver.bind_provider(
+            binding_map={
+                "completed_work": self.handler_tool_call.completed_work
+            },
+            dynamic=True
+        )
+        yield from self.solver.call(self.agents[0].provider_dict["task"])
+
+        self.final_answer = self.solver.last_output
+        final_answer = f"\n**最终答案**\n{self.final_answer}\n"
+        yield EventBlock("text", final_answer)

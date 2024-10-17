@@ -81,7 +81,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         }
 
     def reset(self):
-        self.memory = []
+        self.memory.clear()
         super().reset()
 
     @abstractmethod
