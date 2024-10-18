@@ -15,7 +15,7 @@ class ExecutorManager:
         返回当前可用的参数列表。
         """
         return {
-            "threads_group": "线程组名称，默认为 DEFAULT",
+            "threads_group": "如果由 illufly 管理线程池实现并发或异步，则可以指定线程组名称，默认为 DEFAULT",
         }
 
     def __init__(self, threads_group: str = None, **kwargs):
