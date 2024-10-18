@@ -1,6 +1,6 @@
 from typing import Dict, Any
 
-from ...utils import minify_text
+from ...utils import minify_text, raise_invalid_params, filter_kwargs
 from ...hub import load_resource_template, load_prompt_template, get_template_variables
 from ...io import EventBlock
 from .base import Runnable
@@ -13,6 +13,15 @@ class PromptTemplate(Runnable):
 
     dynamic_binding_map 可用于在构造消息时实现动态绑定。
     """
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "template_id": "模板 id",
+            "text": "模板文本",
+            "binding_map": "绑定映射",
+            **Runnable.available_init_params()
+        }
+        
     def __init__(
         self,
         template_id: str=None,
@@ -20,6 +29,8 @@ class PromptTemplate(Runnable):
         binding_map: Dict=None,
         **kwargs
     ):
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+
         super().__init__(**kwargs)
 
         if template_id:

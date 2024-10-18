@@ -5,12 +5,26 @@ import asyncio
 from typing import Union, List, Optional, Dict, Any
 from http import HTTPStatus
 
+from ...utils import raise_invalid_params
 from ...io import EventBlock, NewLineBlock
 from ...types import ChatAgent
 from ..http import confirm_upload_file
 from ...io import NewLineBlock
+
 class ChatQwen(ChatAgent):
-    def __init__(self, model: str=None, **kwargs):
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "model": "模型名称",
+            "enable_search": "是否启用搜索",
+            "api_key": "API_KEY",
+            "base_url": "BASE_URL",
+            **ChatAgent.available_init_params()
+        }
+
+    def __init__(self, model: str=None, enable_search: bool=False, api_key: str=None, base_url: str=None, extra_args: dict={}, **kwargs):
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+
         try:
             import dashscope
             self.dashscope = dashscope
@@ -24,11 +38,12 @@ class ChatQwen(ChatAgent):
 
         self.default_call_args = {
             "model": model or "qwen-plus",
-            "enable_search": kwargs.pop("enable_search", False)
+            "enable_search": enable_search
         }
         self.model_args = {
-            "api_key": kwargs.get("api_key", os.getenv("DASHSCOPE_API_KEY")),
-            "base_url": kwargs.get("base_url", os.getenv("DASHSCOPE_BASE_URL"))
+            "api_key": api_key or os.getenv("DASHSCOPE_API_KEY"),
+            "base_url": base_url or os.getenv("DASHSCOPE_BASE_URL"),
+            **extra_args
         }
 
     def _prepare_kwargs(self, messages: List[dict], **kwargs) -> dict:

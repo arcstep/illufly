@@ -3,6 +3,7 @@ from ...core.runnable.reranker.base import BaseReranker
 from ...core.document import Document, convert_to_documents_list
 from ...config import get_env
 from ...io import EventBlock, NewLineBlock
+from ...utils import raise_invalid_params
 
 import os
 import json
@@ -10,7 +11,18 @@ from http import HTTPStatus
 
 
 class DashScopeReranker(BaseReranker):
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "model": "模型名称",
+            "api_key": "API_KEY",
+            "top_k": "返回结果的条数，默认 5",
+            **BaseReranker.available_init_params()
+        }
+
     def __init__(self, model: str=None, api_key: str=None, top_k: int=None, **kwargs):
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+
         try:
             import dashscope
             self.dashscope = dashscope

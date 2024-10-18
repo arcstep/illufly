@@ -1,7 +1,7 @@
 from typing import List, Union
 from ..base import Runnable
 from ....core.document import Document
-from ....utils import hash_text, clean_filename
+from ....utils import hash_text, clean_filename, raise_invalid_params
 from ....config import get_env
 from ....io import EventBlock
 
@@ -26,8 +26,20 @@ class BaseEmbeddings(Runnable):
     print(embeddings.last_output[0].meta['embeddings'])
     ```
     """
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "model": "文本嵌入模型的名称",
+            "base_url": "BASE_URL",
+            "api_key": "API_KEY",
+            "dim": "编码时使用的向量维度",
+            "max_lines": "每次编码时处理的最大行数",
+            **Runnable.available_init_params()
+        }
 
     def __init__(self, model: str=None, base_url: str=None, api_key: str=None, dim: int=None, max_lines: int=None, **kwargs):
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+
         super().__init__(**kwargs)
         self.dim = dim
         self.model = model

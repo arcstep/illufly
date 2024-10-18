@@ -11,7 +11,7 @@ class ToolsManager:
     如果 tools_desc 被提示语模板绑定，则 tools 就从传递给大模型的参数中剔除。
     """
     @classmethod
-    def available_params(cls):
+    def available_init_params(cls):
         """
         返回当前可用的参数列表。
         """

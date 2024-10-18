@@ -5,7 +5,7 @@ from ..vectordb import VectorDB
 
 class KnowledgeManager:
     @classmethod
-    def available_params(cls):
+    def available_init_params(cls):
         """
         返回当前可用的参数列表。
         """

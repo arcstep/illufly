@@ -3,13 +3,23 @@ from ...utils import minify_text
 from ...types import VectorDB, EventBlock, Document
 from ...io import log, alog
 from ...core.runnable import MarkMeta
+from ...utils import raise_invalid_params
 
 import time
 import numpy as np
 
 class FaissDB(VectorDB):
-    def __init__(self, *args, train: bool=None, **kwargs):
-        super().__init__(*args, **kwargs)
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "train": "是否在加载数据时训练模型",
+            **VectorDB.available_init_params()
+        }
+
+    def __init__(self, train: bool=None, **kwargs):
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+
+        super().__init__(**kwargs)
         try:
             import faiss
         except ImportError:

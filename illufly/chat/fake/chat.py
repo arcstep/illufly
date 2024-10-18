@@ -8,16 +8,16 @@ import time
 
 class FakeLLM(ChatAgent):
     @classmethod
-    def available_params(cls):
+    def available_init_params(cls):
         return {
             "response": "响应内容",
             "sleep": "睡眠时间",
-            **ChatAgent.available_params(),
+            **ChatAgent.available_init_params(),
         }
 
     def __init__(self, response: Union[str, List[str]]=None, sleep: float=None, **kwargs):
-        raise_invalid_params(kwargs, self.available_params())
-        super().__init__(threads_group="FAKE_LLM", **filter_kwargs(kwargs, self.available_params()))
+        raise_invalid_params(kwargs, self.available_init_params())
+        super().__init__(threads_group="FAKE_LLM", **filter_kwargs(kwargs, self.available_init_params()))
 
         self.sleep = sleep if sleep is not None else 0.1
         self.response = response if isinstance(response, list) else ([response] if response else None)

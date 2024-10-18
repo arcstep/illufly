@@ -32,16 +32,23 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
     """
     @classmethod
-    def available_params(cls):
+    def available_init_params(cls):
         """
         返回当前可用的参数列表。
         """
         return {
             "name": "Runnable 名称，默认为 {类名}.{id}",
             "handlers": "EventBlock 迭代器处理函数列表，默认为 [log]，当调用 call 方法时，会使用该列表中的函数逐个处理 EventBlock",
-            **ExecutorManager.available_params(),
-            **BindingManager.available_params(),
+            **ExecutorManager.available_init_params(),
+            **BindingManager.available_init_params(),
         }
+    
+    @classmethod
+    def help(cls):
+        """
+        返回当前可用的参数列表。
+        """
+        return cls.available_init_params()
 
     def __init__(
         self,
@@ -55,8 +62,8 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         - 初始化线程组
         - 工具：作为工具的Runnable列表，在发现工具后是否执行工具的标记等
         """
-        raise_invalid_params(kwargs, self.__class__.available_params())
-        ExecutorManager.__init__(self, **filter_kwargs(kwargs, ExecutorManager.available_params()))
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        ExecutorManager.__init__(self, **filter_kwargs(kwargs, ExecutorManager.available_init_params()))
 
         self.name = name or f'{self.__class__.__name__}.{id(self)}'
         self.continue_running = True
@@ -65,7 +72,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
         self._last_output = None
 
-        BindingManager.__init__(self, **filter_kwargs(kwargs, BindingManager.available_params()))
+        BindingManager.__init__(self, **filter_kwargs(kwargs, BindingManager.available_init_params()))
 
     def __repr__(self):
         if self.__class__.__name__ in self.name:
