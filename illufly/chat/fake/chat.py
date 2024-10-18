@@ -1,15 +1,24 @@
 from typing import Union, List
 
+from ...utils import raise_invalid_params, filter_kwargs
 from ...io import EventBlock, NewLineBlock
 from ...core.runnable.agent import ChatAgent
 from ...core.runnable.message import Messages
 import time
 
 class FakeLLM(ChatAgent):
-    def __init__(self, response: Union[str, List[str]]=None, sleep: float=None, **kwargs):
-        super().__init__(threads_group="FAKE_LLM", **kwargs)
+    @classmethod
+    def available_params(cls):
+        return {
+            "response": "响应内容",
+            "sleep": "睡眠时间",
+            **ChatAgent.available_params(),
+        }
 
-        self.threads_group = "fake_llm"
+    def __init__(self, response: Union[str, List[str]]=None, sleep: float=None, **kwargs):
+        raise_invalid_params(kwargs, self.available_params())
+        super().__init__(threads_group="FAKE_LLM", **filter_kwargs(kwargs, self.available_params()))
+
         self.sleep = sleep if sleep is not None else 0.1
         self.response = response if isinstance(response, list) else ([response] if response else None)
         self.current_response_index = 0

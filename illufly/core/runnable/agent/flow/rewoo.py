@@ -1,6 +1,6 @@
 from typing import Union, List, Callable
 
-from .....utils import extract_segments
+from .....utils import extract_segments, filter_kwargs, raise_invalid_params
 from .....io import EventBlock
 from ...selector import Selector
 from ...prompt_template import PromptTemplate
@@ -17,6 +17,16 @@ class ReWOO(FlowAgent):
     同时，ReWOO 可以通过指令微调和模型专化，将 LLM 的通用推理能力迁移到更小的语言模型中，实现更轻量级的 ALM 系统。
     ReWOO 在多个 NLP 基准数据集上取得了与 ReAct 相当或更好的性能，同时减少了 token 消耗，为构建更高效、可扩展的 ALM 提供了一种新的思路。
     """
+    @classmethod
+    def available_params(cls):
+        return {
+            "planner": "计划者",
+            "solver": "求解者",
+            "tools": "工具列表",
+            "handler_tool_call": "工具调用处理器",
+            **FlowAgent.available_params(),
+        }
+        
     def __init__(
         self,
         planner: BaseAgent=None,
@@ -25,6 +35,8 @@ class ReWOO(FlowAgent):
         handler_tool_call: BaseToolCalling=None,
         **kwargs
     ):
+        raise_invalid_params(kwargs, self.available_params())
+
         merged_tools = planner.tools + (tools or [])
 
         self.planner = planner.reset(
@@ -42,7 +54,7 @@ class ReWOO(FlowAgent):
 
         super().__init__(
             self.planner,
-            **kwargs
+            **filter_kwargs(kwargs, self.available_params())
         )
 
         if not self.planner.get_tools():

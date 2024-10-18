@@ -12,14 +12,24 @@ class BindingManager:
     1. 不能重复绑定，重复绑定将被忽略。
     2. 不能扩散传播 None 的 provider 键值。
     """
+    @classmethod
+    def available_params(cls):
+        """
+        返回当前可用的参数列表。
+        """
+        return {
+            "providers": "绑定的 providers 列表",
+            "consumers": "绑定的 consumers 列表",
+            "dynamic_providers": "动态绑定的 providers 列表",
+            "lazy_binding_map": "懒绑定字典，当 binding 为空时，会使用该字典进行绑定",
+        }
 
     def __init__(
         self,
         providers: List[Tuple[Any, Dict]]=None,
         consumers: List[Tuple[Any, Dict]]=None,
         dynamic_providers: List[Tuple[Any, Dict]]=None,
-        lazy_binding_map: Dict=None,
-        **kwargs
+        lazy_binding_map: Dict=None
     ):
         """
         :param binding: 绑定的 (runnable, binding_map)，字典结构，或 Runnable 实例的列表
