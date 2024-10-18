@@ -53,6 +53,8 @@ def load_resource_template(template_id: str):
         prmopt_str = _get_template_str(f'{part_name.strip()}.mu')
         if prmopt_str:
             include_dict[part_name] = prmopt_str
+        else:
+            raise RuntimeError(f"Can't find {part_name}.mu in {template_id} !")
     for part_name, part_str in include_dict.items():
         prompt_str = prompt_str.replace("{{>" + part_name + "}}", part_str)
 
