@@ -56,7 +56,7 @@ class MarkMeta(Runnable):
         """
         :param dir: 从这个目录路径导入文件
         :param filter: 文件名过滤器，可以直接写文件名，或者使用 * 号等通配符
-        :param exts: 文件扩展名列表，默认支持 md, Md, MD, markdown, MARKDOWN 等
+        :param exts: 文件扩展名列表，默认支持 .md, .Md, .MD, .markdown, .MARKDOWN 等
         :param chunk_size: 每个块的大小，这可能是各个模型处理中对 token 限制要求的，默认 1024
         :param chunk_overlap: 每个块的覆盖大小，默认 100
         """

@@ -18,10 +18,10 @@ class BindingManager:
         返回当前可用的参数列表。
         """
         return {
-            "providers": "绑定的 providers 列表",
-            "consumers": "绑定的 consumers 列表",
-            "dynamic_providers": "动态绑定的 providers 列表",
-            "lazy_binding_map": "懒绑定字典，当 binding 为空时，会使用该字典进行绑定",
+            "providers": "实例的 consumer_dict 属性由 providers 列表中每个 Runnable 的 provider_dict 属性提供",
+            "consumers": "实例的 provider_dict 属性将被 consumers 列表中每个 Runnable 引用",
+            "dynamic_providers": "如果实例在不同周期中重复使用，可能会希望先在绑定前先清除旧的绑定，此时就应该使用动态绑定，即执行 bind_provider 时提供 dynamic=True 参数",
+            "lazy_binding_map": "有时你无法确定被哪个对象绑定，但能确定绑定映射，此时就可以使用 lazy_binding_map 参数，在绑定时由对方根据该参数进行绑定",
         }
 
     def __init__(
