@@ -101,10 +101,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
             **{k:v for k,v in local_dict.items() if v is not None},
         }
 
-    def reset(self):
-        self._last_output = None
-        return self
-
     def __call__(
         self,
         *args,

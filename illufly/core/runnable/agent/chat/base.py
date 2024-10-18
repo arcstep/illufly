@@ -10,9 +10,9 @@ from .....io import EventBlock, EndBlock, NewLineBlock
 from ...message import Messages
 from ..base import BaseAgent
 from ..knowledge_manager import KnowledgeManager
+from ..tools_calling import BaseToolCalling, OpenAIToolsCalling
 from .tools_manager import ToolsManager
 from .memory_manager import MemoryManager
-from ..tools_calling import OpenAIToolsCalling, ToolCall
 
 class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     """
@@ -96,26 +96,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             **{k:v for k,v in local_dict.items() if v is not None},
         }
 
-    def reset(self, reinit=False, **kwargs):
-        """
-        reinit 参数用于在对话过程中重新初始化 ToolsManager 和 MemoryManager.
-        否则仅执行父类的 reset 方法，重置运行时的变量值。
-        """
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
-
-        if reinit:
-            kwargs["tool_params"] = kwargs.get("tool_params", {"prompt": "详细描述用户问题"})
-            ToolsManager.__init__(self, **filter_kwargs(kwargs, ToolsManager.available_init_params()))
-            self._tools_to_exec = self.get_tools()
-            self._resources = ""
-            MemoryManager.__init__(self, **filter_kwargs(kwargs, MemoryManager.available_init_params()))
-        
-        super().reset()
-        self._task = ""
-        self.memory.clear()
-
-        return self
-
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
         raise NotImplementedError("子类必须实现 generate 方法")
@@ -140,6 +120,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         else:
             kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", []))
 
+        # 重新绑定工具处理的 handlers
+        for h in self.tools_handlers:
+            h.reset(self._tools_to_exec)
+
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
 
@@ -152,9 +136,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         to_continue_call_llm = True
         while to_continue_call_llm:
             to_continue_call_llm = False
-            output_text, tools_call = "", []
 
             # 执行模型生成任务
+            output_text, tools_call = "", []
             for block in self.generate(chat_memory, *args, **kwargs):
                 yield block
                 if block.block_type == "chunk":
@@ -166,11 +150,11 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             final_tools_call = merge_tool_calls(tools_call)
             if final_tools_call:
+                # 从返回参数中解析工具
                 handler_openai = OpenAIToolsCalling(
                     short_term_memory=chat_memory,
                     long_term_memory=self.memory,
-                    tools_to_exec=self._tools_to_exec,
-                    exec_tool=self.exec_tool
+                    tools_to_exec=self._tools_to_exec
                 )
                 # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
                 for block in handler_openai.handle(final_tools_call):
@@ -186,18 +170,20 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 self.remember_response(final_output_text)
                 yield EventBlock("text_final", final_output_text)
 
-                # 处理直接在文本中包含的 <tool_call> 风格的工具调用，包括将结果追加到记忆中
-                # 即使没有指明工具，只要在文本中包含 <tool_call> 就会被视为需要处理的工具回调
-                handler_tool_call = ToolCall(
-                    short_term_memory=chat_memory,
-                    long_term_memory=self.memory,
-                    tools_to_exec=self._tools_to_exec,
-                    exec_tool=self.exec_tool
-                )
-                for block in handler_tool_call.handle(final_output_text):
-                    if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
-                        to_continue_call_llm = True
-                    yield block
+                # 从文本中解析工具
+                if "parse" in self.tools_behavior:
+                    for handler in self.tools_handlers:
+                        steps = handler.extract_tools_call(final_output_text)
+                        if steps and "execute" in self.tools_behavior:
+                            for block in handler.handle(
+                                steps,
+                                short_term_memory=chat_memory,
+                                long_term_memory=self.memory
+                            ):
+                                is_final_block = isinstance(block, EventBlock) and block.block_type == "tool_resp_final"
+                                if "continue" in self.tools_behavior and is_final_block:
+                                    to_continue_call_llm = True
+                                yield block
 
         if self.end_chk:
             yield EndBlock(self.last_output)
@@ -207,6 +193,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         messages_std = Messages(prompt, style="text")
         self._task = messages_std.messages[-1].content
+
         for tool in self._tools_to_exec:
             self.bind_consumer(tool, dynamic=True)
 
@@ -216,6 +203,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             kwargs["tools"] = None
         else:
             kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", []))
+
+        # 重新绑定工具处理的 handlers
+        for h in self.tools_handlers:
+            h.reset(self._tools_to_exec)
 
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
@@ -245,8 +236,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 handler_openai = OpenAIToolsCalling(
                     short_term_memory=chat_memory,
                     long_term_memory=self.memory,
-                    tools_to_exec=self._tools_to_exec,
-                    exec_tool=self.exec_tool
+                    tools_to_exec=self._tools_to_exec
                 )
                 async for block in handler_openai.async_handle(final_tools_call):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
@@ -261,16 +251,19 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 self.remember_response(final_output_text)
                 yield EventBlock("text_final", final_output_text)
 
-                handler_tool_call = ToolCall(
-                    short_term_memory=chat_memory,
-                    long_term_memory=self.memory,
-                    tools_to_exec=self._tools_to_exec,
-                    exec_tool=self.exec_tool
-                )
-                async for block in handler_tool_call.async_handle(final_output_text):
-                    if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
-                        to_continue_call_llm = True
-                    yield block
+                if "parse" in self.tools_behavior:
+                    for handler in self.tools_handlers:
+                        steps = handler.extract_tools_call(final_output_text)
+                        if steps and "execute" in self.tools_behavior:
+                            for block in handler.handle(
+                                steps,
+                                short_term_memory=chat_memory,
+                                long_term_memory=self.memory
+                            ):
+                                is_final_block = isinstance(block, EventBlock) and block.block_type == "tool_resp_final"
+                                if "continue" in self.tools_behavior and is_final_block:
+                                    to_continue_call_llm = True
+                                yield block
 
         if self.end_chk:
             yield EndBlock(self.last_output)

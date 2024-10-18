@@ -66,6 +66,13 @@ class ReWOO(FlowAgent):
             self.handler_tool_call.reset()
 
     def after_agent_call(self, agent: BaseAgent):
+        """
+        在调用完 agent 之后，进行一些处理。
+        1. 执行 handler_tool_call.handle(agent.last_output)
+        2. 将 handler_tool_call.completed_work 和 提取到 completed_work
+        3. 将 task 提交给 solver 合成最后输出
+        4. 将 solver 的输出设置为 _last_output 并作为 final_answer 返回
+        """
         output = agent.last_output
         self._last_output = agent.provider_dict["task"]
 

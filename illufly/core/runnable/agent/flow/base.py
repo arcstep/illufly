@@ -38,12 +38,8 @@ class FlowAgent(BaseAgent):
         }
 
     def reset(self):
-        super().reset()
-
         self.completed_work.clear()
         self.final_answer = None
-        for agent in self.agents:
-            agent.reset()
 
     def get_agent_by_name(self, name: str):
         """
