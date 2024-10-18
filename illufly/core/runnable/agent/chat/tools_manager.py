@@ -2,13 +2,21 @@ import json
 
 from typing import Union, List, Dict, Any
 from ..base import BaseAgent
+from .tools_calling import BaseToolCalling, ToolCall
 
 class ToolsManager:
     """
     ToolsManager 基类，用于管理工具相关的功能。
 
-    在实际使用中，tools 参数可能被大模型作为参数引用，也可能被提示语模板引用。
+    在实际使用中, tools 参数可能被大模型作为参数引用，也可能被提示语模板引用。
     如果 tools_desc 被提示语模板绑定，则 tools 就从传递给大模型的参数中剔除。
+
+    tools_handlers 是工具处理器的列表，每个处理器可以处理一种工具调用行为。
+
+    tools_behavior 是工具处理器的处理行为列表，有三种值：
+    - parse: 仅解析工具回调, 不执行
+    - parse-execute: 解析工具回调后执行, 然后停止
+    - parse-execute-continue: 解析工具回调, 执行工具, 然后继续调用模型
     """
     @classmethod
     def available_init_params(cls):
@@ -17,15 +25,25 @@ class ToolsManager:
         """
         return {
             "tools": "工具列表",
-            "exec_tool": "是否执行工具",
+            "tools_handlers": "工具处理器列表",
+            "tools_behavior": "工具处理行为, 包括 parse-execute, parse-execute-continue, parse-continue-execute 三种行为",
         }
 
-    def __init__(self, tools=None, exec_tool=None):
+    def __init__(
+        self,
+        tools=None,
+        tools_handlers: List[BaseToolCalling]=None,
+        tools_behavior: str=None
+    ):
         self.tools = [
             t if isinstance(t, BaseAgent) else BaseAgent(t)
             for t in (tools or [])
         ]
-        self.exec_tool = True if exec_tool is None else exec_tool
+        self.tools_handlers = tools_handlers or [ToolCall()]
+        for h in self.tools_handlers:
+            h.reset(self.tools)
+
+        self.tools_behavior = tools_behavior or "parse-execute-continue"
 
     def get_tools(self, tools: List["BaseAgent"]=None):
         _tools = [

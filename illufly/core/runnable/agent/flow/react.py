@@ -63,6 +63,13 @@ class ReAct(FlowAgent):
         agent.reset()
 
     def after_agent_call(self, agent: BaseAgent):
+        """
+        在调用完 agent 之后，进行一些处理。
+        1. 将 agent 的输出添加到 completed_work 中，作为 T-A-O 循环的 T 部份
+        2. 将 agent 的输出设置为 _last_output
+        3. 根据 final_answer_prompt 提取 final_answer
+        4. 调用工具，并观察工具执行结果，并补充到 completed_work 中，作为 T-A-O 循环的 O 部份
+        """
         output = agent.last_output
         self.completed_work.append(output)
         self._last_output = agent.provider_dict["task"]
