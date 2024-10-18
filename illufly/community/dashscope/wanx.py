@@ -11,6 +11,7 @@ from pathlib import PurePosixPath
 import requests
 
 from ...types import BaseAgent
+from ...utils import raise_invalid_params
 from ..http import (
     EventBlock,
 
@@ -42,8 +43,19 @@ class Text2ImageWanx(BaseAgent):
 
     [详细调用参数可参考通义万相文生图 API](https://help.aliyun.com/zh/dashscope/developer-reference/api-details-9)
     """
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "model": "模型名称",
+            "api_key": "API_KEY",
+            **BaseAgent.available_init_params()
+        }
+
     def __init__(self, model: str=None, api_key: str=None, **kwargs):
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+
         super().__init__(threads_group="WANX", **kwargs)
+
         self.description = "我擅长根据你的文字提示描述生成图片，你必须在 prompt 中详细描述生成要求，你必须展开描述，比如镜头、光线、细部等。"
         self.tool_params = {
             "prompt": "请尽量详细描述生成要求的细节",

@@ -1,4 +1,5 @@
 from typing import List, Union, Optional, Callable, Dict, Generator, AsyncGenerator
+from ...utils import raise_invalid_params
 from ...io import EventBlock
 from .base import Runnable
 import inspect
@@ -17,13 +18,21 @@ def select_random(consumer_dict: Dict, runnables: List[Runnable]):
     return random.choice(runnables)
 
 class End(Runnable):
-    def __init__(self, *args, **kwargs):
+    @classmethod
+    def available_init_params(cls):
+        return {
+            **Runnable.available_init_params()
+        }
+
+    def __init__(self,**kwargs):
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+
         kwargs.update({"name": "__End__"})
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
 
         self.description = "我是一个结束标志"
 
-    def call(*args, **kwargs):
+    def call(self, *args, **kwargs):
         pass
 
 class Selector(Runnable):
@@ -32,6 +41,15 @@ class Selector(Runnable):
 
     可以根据模型，以及配置模型所需的工具集、资源、数据、handlers等不同参数，构建为不同的智能体对象。
     """
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "runnables": "参与路由的 Runnable 列表",
+            "condition": "选择条件，可以是 Callable 或字符串",
+            "embeddings": "用于相似度计算的 embeddings 对象",
+            **Runnable.available_init_params()
+        }
+
     def __init__(
         self,
         runnables: List[Runnable] = None,
@@ -39,6 +57,8 @@ class Selector(Runnable):
         embeddings: "BaseEmbeddings" = None,
         **kwargs
     ):
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+
         super().__init__(**kwargs)
 
         if runnables:

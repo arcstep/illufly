@@ -7,7 +7,7 @@ from ...binding_manager import BindingManager
 
 class MemoryManager(BindingManager):
     @classmethod
-    def available_params(cls):
+    def available_init_params(cls):
         """
         返回当前可用的参数列表。
         """
@@ -15,7 +15,7 @@ class MemoryManager(BindingManager):
             "style": "消息样式",
             "memory": "记忆列表",
             "remember_rounds": "记忆轮数",
-            **BindingManager.available_params(),
+            **BindingManager.available_init_params(),
         }
 
     def __init__(
@@ -25,8 +25,8 @@ class MemoryManager(BindingManager):
         remember_rounds: int=None,
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.available_params())
-        super().__init__(**filter_kwargs(kwargs, BindingManager.available_params()))
+        raise_invalid_params(kwargs, self.available_init_params())
+        super().__init__(**filter_kwargs(kwargs, BindingManager.available_init_params()))
 
         self.style = style
         self.memory = []

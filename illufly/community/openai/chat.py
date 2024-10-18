@@ -2,13 +2,22 @@ from typing import Union, List, Optional, Dict, Any
 
 from ...io import EventBlock, NewLineBlock
 from ...types import ChatAgent
+from ...utils import raise_invalid_params
 
 import os
 import json
 
 
 class ChatOpenAI(ChatAgent):
-    def __init__(self, model: str=None, imitator: str=None, **kwargs):
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "model": "模型名称",
+            "imitator": "兼容 OpenAI 接口协议的模型来源，默认 imitator='OPENAI'，即从环境变量中读取 OPENAI_API_KEY 和 OPENAI_BASE_URL。",
+            **ChatAgent.available_init_params()
+        }
+
+    def __init__(self, model: str=None, imitator: str=None, extra_args: dict={}, **kwargs):
         """
         使用 imitator 参数指定兼容 OpenAI 接口协议的模型来源，默认 imitator="OPENAI"。
         只需要在环境变量中配置 imitator 对应的 API_KEY 和 BASE_URL 即可。
@@ -19,6 +28,8 @@ class ChatOpenAI(ChatAgent):
 
         然后使用类似 `ChatOpenAI(imitator="QWEN")` 的代码就可以使用千问系列模型。
         """
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+
         try:
             from openai import OpenAI
         except ImportError:
@@ -35,7 +46,8 @@ class ChatOpenAI(ChatAgent):
         }
         self.model_args = {
             "base_url": kwargs.pop("base_url", os.getenv(f"{imitator}_BASE_URL")),
-            "api_key": kwargs.pop("api_key", os.getenv(f"{imitator}_API_KEY"))
+            "api_key": kwargs.pop("api_key", os.getenv(f"{imitator}_API_KEY")),
+            **extra_args
         }
         self.client = OpenAI(**self.model_args)
 

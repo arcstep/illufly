@@ -13,7 +13,7 @@ class BindingManager:
     2. 不能扩散传播 None 的 provider 键值。
     """
     @classmethod
-    def available_params(cls):
+    def available_init_params(cls):
         """
         返回当前可用的参数列表。
         """

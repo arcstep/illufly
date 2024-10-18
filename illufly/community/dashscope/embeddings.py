@@ -2,12 +2,23 @@ from typing import Any, List
 from http import HTTPStatus
 
 import os
+from ...utils import raise_invalid_params
 from ...types import BaseEmbeddings
 
 class TextEmbeddings(BaseEmbeddings):
     """支持最新的阿里云模型服务灵积API的文本向量模型"""
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "model": "文本嵌入模型的名称",
+            "api_key": "API_KEY",
+            "output_type": "编码时使用的向量类型",
+            **BaseEmbeddings.available_init_params()
+        }
 
     def __init__(self, model: str=None, api_key: str=None, output_type: str="dense", **kwargs):
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
+
         super().__init__(
             model=model or "text-embedding-v3",
             api_key=api_key or os.getenv("DASHSCOPE_API_KEY"),

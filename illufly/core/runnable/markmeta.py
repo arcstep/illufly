@@ -7,7 +7,7 @@ from ..runnable import Runnable
 from ..document import Document
 from ...io import EventBlock
 from ...config import get_env
-from ...utils import minify_text, count_tokens
+from ...utils import minify_text, count_tokens, raise_invalid_params, filter_kwargs
 import numpy as np
 
 class MarkMeta(Runnable):
@@ -41,6 +41,17 @@ class MarkMeta(Runnable):
 
     导出时，由对话模型将输出结果保存为 MarkMeta 文件。
     """
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "dir": "从这个目录路径导入文件",
+            "filter": "文件名过滤器，可以直接写文件名，或者使用 * 号等通配符",
+            "exts": "文件扩展名列表，默认支持 md, Md, MD, markdown, MARKDOWN 等",
+            "chunk_size": "每个块的大小，这可能是各个模型处理中对 token 限制要求的，默认 1024",
+            "chunk_overlap": "每个块的覆盖大小，默认 100",
+            **Runnable.available_init_params()
+        }
+
     def __init__(self, dir: str=None, filter: str=None, exts: list = None, chunk_size: int=None, chunk_overlap: int=None, **kwargs):
         """
         :param dir: 从这个目录路径导入文件
@@ -49,6 +60,7 @@ class MarkMeta(Runnable):
         :param chunk_size: 每个块的大小，这可能是各个模型处理中对 token 限制要求的，默认 1024
         :param chunk_overlap: 每个块的覆盖大小，默认 100
         """
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
 
         super().__init__(**kwargs)
         self.directory = dir or ""

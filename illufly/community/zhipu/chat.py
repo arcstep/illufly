@@ -2,12 +2,21 @@ from typing import Union, List, Optional, Dict, Any
 
 from ...io import EventBlock, NewLineBlock
 from ...types import ChatAgent
+from ...utils import raise_invalid_params
 
 import os
 import json
 
 class ChatZhipu(ChatAgent):
-    def __init__(self, model: str=None, **kwargs):
+    @classmethod
+    def available_init_params(cls):
+        return {
+            "model": "模型名称",
+            **ChatAgent.available_init_params()
+        }
+
+    def __init__(self, model: str=None, extra_args: dict={}, **kwargs):
+        raise_invalid_params(kwargs, self.__class__.available_init_params())
         try:
             from zhipuai import ZhipuAI
         except ImportError:
@@ -23,7 +32,8 @@ class ChatZhipu(ChatAgent):
         }
         self.model_args = {
             "api_key": kwargs.get("api_key", os.getenv("ZHIPUAI_API_KEY")),
-            "base_url": kwargs.get("base_url", os.getenv("ZHIPUAI_BASE_URL"))
+            "base_url": kwargs.get("base_url", os.getenv("ZHIPUAI_BASE_URL")),
+            **extra_args
         }
         self.client = ZhipuAI(**self.model_args)
 

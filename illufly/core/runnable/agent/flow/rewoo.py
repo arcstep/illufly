@@ -18,13 +18,13 @@ class ReWOO(FlowAgent):
     ReWOO 在多个 NLP 基准数据集上取得了与 ReAct 相当或更好的性能，同时减少了 token 消耗，为构建更高效、可扩展的 ALM 提供了一种新的思路。
     """
     @classmethod
-    def available_params(cls):
+    def available_init_params(cls):
         return {
             "planner": "计划者",
             "solver": "求解者",
             "tools": "工具列表",
             "handler_tool_call": "工具调用处理器",
-            **FlowAgent.available_params(),
+            **FlowAgent.available_init_params(),
         }
         
     def __init__(
@@ -35,7 +35,7 @@ class ReWOO(FlowAgent):
         handler_tool_call: BaseToolCalling=None,
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.available_params())
+        raise_invalid_params(kwargs, self.available_init_params())
 
         merged_tools = planner.tools + (tools or [])
 
@@ -54,7 +54,7 @@ class ReWOO(FlowAgent):
 
         super().__init__(
             self.planner,
-            **filter_kwargs(kwargs, self.available_params())
+            **filter_kwargs(kwargs, self.available_init_params())
         )
 
         if not self.planner.get_tools():
