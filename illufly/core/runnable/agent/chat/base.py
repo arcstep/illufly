@@ -10,7 +10,7 @@ from .....io import EventBlock, EndBlock, NewLineBlock
 from ...message import Messages
 from ..base import BaseAgent
 from ..knowledge_manager import KnowledgeManager
-from ..tools_calling import BaseToolCalling, OpenAIToolsCalling
+from .tools_calling import BaseToolCalling, OpenAIToolsCalling
 from .tools_manager import ToolsManager
 from .memory_manager import MemoryManager
 
