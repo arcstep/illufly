@@ -17,8 +17,8 @@ class Plans(BaseToolCalling):
         """
         completed_work = []
         for step in self.steps:
-            desc = f'Plan: {step.get("description", "No description")}'
-            e = f'{step.get("id", "#E0")} = {step.get("name", "")}[{step.get("arguments", "")}]'
+            desc = f'Step{step.get("index", 0)}: {step.get("description", "No description")}'
+            e = f'{step.get("eid", "#E0")} = {step.get("name", "")}[{step.get("arguments", "")}]'
             result = step.get("result", None)
             if result:
                 result = f'{step.get("name", "")} Value = {result}'
@@ -27,22 +27,25 @@ class Plans(BaseToolCalling):
 
     def extract_tools_call(self, text: str) -> Dict[str, Dict[str, Any]]:
         # 正则表达式解析文本
-        # Regex to match expressions of the form Plan: ... #E... = ...[{"p1":"v1","p2":"v2"}]
-        pattern = r"Plan:\s*(.+?)\s*#(E\d+)\s*=\s*(\w+)[\(\[](\{.*?\})[\)\]]"
+        # Regex to match expressions of the form Step1: ... #E... = ...[{"p1":"v1","p2":"v2"}]
+        pattern = r"Step(\d+):\s*(.+?)\s*#(E\d+)\s*=\s*(\w+)[\(\[](\{.*?\})[\)\]]"
         steps = []
         for match in re.finditer(pattern, text, re.DOTALL):
-            plan_description = match.group(1).strip()
-            function_name = match.group(3)
-            arguments = match.group(4)  # 保留原始参数字符串，包括占位符
+            index = match.group(1).strip()
+            description = match.group(2).strip()
+            eid = match.group(3).strip()
+            function_name = match.group(4).strip()
+            arguments = match.group(5).strip()  # 保留原始参数字符串，包括占位符
 
-            plan = {
-                "id": f"#{match.group(2)}",
-                "description": plan_description,
+            step = {
+                "index": f"{index}",
+                "eid": f"#{eid}",
+                "description": description,
                 "name": function_name,
                 "arguments": arguments,  # 直接存储原始参数字符串
                 "result": None
             }
-            steps.append(plan)
+            steps.append(step)
 
         self.steps.extend(steps)
         return steps
@@ -86,8 +89,8 @@ class Plans(BaseToolCalling):
                 for block in self.execute_tool(tool_to_exec):
                     if block.block_type == "tool_resp_final":
                         # 将结果存储到 pre_build_vars 中
-                        pre_build_vars[step["id"]] = block.text
-                        step["result"] = block.text
+                        pre_build_vars[step["eid"]] = block.text
+                        step["result"] = block.text.strip()
                     yield block
 
             except json.JSONDecodeError as e:
