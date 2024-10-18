@@ -5,7 +5,7 @@ from .....io import EventBlock
 from ...selector import Selector
 from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
-from ..tools_calling import BaseToolCalling, Plans
+# from ..tools_calling import BaseToolCalling, Plans
 from .base import FlowAgent
 
 class ReWOO(FlowAgent):
@@ -32,7 +32,7 @@ class ReWOO(FlowAgent):
         planner: BaseAgent=None,
         solver: BaseAgent=None,
         tools: List[BaseAgent]=None,
-        handler_tool_call: BaseToolCalling=None,
+        handler_tool_call=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.available_init_params())

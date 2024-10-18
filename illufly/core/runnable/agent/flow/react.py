@@ -5,7 +5,7 @@ from .....io import EventBlock
 from ...selector import Selector
 from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
-from ..tools_calling import BaseToolCalling, Plans, SubTask
+# from ..tools_calling import BaseToolCalling, Plans, SubTask
 from .base import FlowAgent
 
 class ReAct(FlowAgent):
@@ -27,7 +27,7 @@ class ReAct(FlowAgent):
         self,
         planner: BaseAgent,
         tools: List[BaseAgent]=None,
-        handler_tool_call: BaseToolCalling=None,
+        handler_tool_call=None,
         final_answer_prompt: str=None,
         **kwargs
     ):
