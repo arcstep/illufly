@@ -29,13 +29,13 @@ class ReWOO(FlowAgent):
 
         self.planner = planner.reset(
             reinit=True,
-            memory=PromptTemplate("FLOW/ReWOO-Planner"),
+            memory=PromptTemplate("FLOW/ReWOO/Planner"),
             tools=merged_tools
         )
 
         self.solver = solver.reset(
             reinit=True,
-            memory=PromptTemplate("FLOW/ReWOO-Solver")
+            memory=PromptTemplate("FLOW/ReWOO/Solver")
         )
 
         self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=self.planner.get_tools())

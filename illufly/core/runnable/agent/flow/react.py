@@ -24,7 +24,7 @@ class ReAct(FlowAgent):
         merged_tools = planner.tools + (tools or [])
         self.planner = planner.reset(
             reinit=True,
-            memory=PromptTemplate("FLOW/ReAct-Planner"),
+            memory=PromptTemplate("FLOW/ReAct/Planner"),
             tools=merged_tools
         )
         self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=self.planner.get_tools())
