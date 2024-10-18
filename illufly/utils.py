@@ -6,6 +6,20 @@ import tiktoken
 from typing import List, Union, Dict, Any
 from .config import get_env
 
+def filter_kwargs(kwargs: Dict, available_params: Dict):
+    """
+    根据 available_params 过滤掉不支持的参数。
+    """
+    return {k: v for k, v in kwargs.items() if k in available_params}
+
+def raise_invalid_params(kwargs: Dict, available_params: Dict):
+    """
+    根据 available_params 检查参数是否合法。
+    """
+    invalid_params = [k for k in kwargs.keys() if k not in available_params]
+    if invalid_params:
+        raise ValueError(f"invalid parameters: {invalid_params}")
+
 def raise_not_install(packages):
     """
     如果指定的包未安装，则抛出错误。

@@ -9,6 +9,15 @@ class ExecutorManager:
     """
     executors = {}
 
+    @classmethod
+    def available_params(cls):
+        """
+        返回当前可用的参数列表。
+        """
+        return {
+            "threads_group": "线程组名称，默认为 DEFAULT",
+        }
+
     def __init__(self, threads_group: str = None, **kwargs):
         self.threads_group = threads_group or "DEFAULT"
         if self.threads_group not in self.executors:

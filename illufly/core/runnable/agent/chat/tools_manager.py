@@ -10,8 +10,17 @@ class ToolsManager:
     在实际使用中，tools 参数可能被大模型作为参数引用，也可能被提示语模板引用。
     如果 tools_desc 被提示语模板绑定，则 tools 就从传递给大模型的参数中剔除。
     """
+    @classmethod
+    def available_params(cls):
+        """
+        返回当前可用的参数列表。
+        """
+        return {
+            "tools": "工具列表",
+            "exec_tool": "是否执行工具",
+        }
 
-    def __init__(self, tools=None, exec_tool=None, **kwargs):
+    def __init__(self, tools=None, exec_tool=None):
         self.tools = [
             t if isinstance(t, BaseAgent) else BaseAgent(t)
             for t in (tools or [])

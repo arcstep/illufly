@@ -5,7 +5,7 @@ import asyncio
 from abc import abstractmethod
 from typing import Union, List, Dict, Any, Set, Callable
 
-from .....utils import merge_tool_calls, extract_text
+from .....utils import merge_tool_calls, extract_text, raise_invalid_params, filter_kwargs
 from .....io import EventBlock, EndBlock, NewLineBlock
 from ...message import Messages
 from ..base import BaseAgent
@@ -18,6 +18,20 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     """
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
     """
+    @classmethod
+    def available_params(cls):
+        """
+        返回当前可用的参数列表。
+        """
+        return {
+            "end_chk": "是否在最后输出一个 EndBlock",
+            "start_marker": "开始标记，默认为 ```",
+            "end_marker": "结束标记，默认为 ```",
+            **BaseAgent.available_params(),
+            **KnowledgeManager.available_params(),
+            **ToolsManager.available_params(),
+            **MemoryManager.available_params(),
+        }
 
     def __init__(
         self,
@@ -32,10 +46,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         - memory：记忆管理
         - knowledge：知识管理
         """
+        raise_invalid_params(kwargs, self.__class__.available_params())
+
         kwargs["tool_params"] = kwargs.get("tool_params", {"prompt": "详细描述用户问题"})
-        BaseAgent.__init__(self, **kwargs)
-        KnowledgeManager.__init__(self, **kwargs)
-        ToolsManager.__init__(self, **kwargs)
+        BaseAgent.__init__(self, **filter_kwargs(kwargs, BaseAgent.available_params()))
+        KnowledgeManager.__init__(self, **filter_kwargs(kwargs, KnowledgeManager.available_params()))
+        ToolsManager.__init__(self, **filter_kwargs(kwargs, ToolsManager.available_params()))
 
         self.end_chk = end_chk
 
@@ -51,7 +67,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         self._tools_to_exec = self.get_tools()
         self._resources = ""
 
-        MemoryManager.__init__(self, **kwargs)
+        MemoryManager.__init__(self, **filter_kwargs(kwargs, MemoryManager.available_params()))
     
     @property
     def runnable_info(self):
@@ -85,12 +101,14 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         reinit 参数用于在对话过程中重新初始化 ToolsManager 和 MemoryManager.
         否则仅执行父类的 reset 方法，重置运行时的变量值。
         """
+        raise_invalid_params(kwargs, self.__class__.available_params())
+
         if reinit:
             kwargs["tool_params"] = kwargs.get("tool_params", {"prompt": "详细描述用户问题"})
-            ToolsManager.__init__(self, **kwargs)
+            ToolsManager.__init__(self, **filter_kwargs(kwargs, ToolsManager.available_params()))
             self._tools_to_exec = self.get_tools()
             self._resources = ""
-            MemoryManager.__init__(self, **kwargs)
+            MemoryManager.__init__(self, **filter_kwargs(kwargs, MemoryManager.available_params()))
         
         super().reset()
         self._task = ""

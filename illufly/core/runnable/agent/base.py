@@ -9,6 +9,7 @@ from .resource_manager import ResourceManager
 from ...dataset import Dataset
 from ..base import Runnable
 from ....io import EventBlock
+from ....utils import filter_kwargs, raise_invalid_params
 
 class BaseAgent(Runnable, ToolAbility, ResourceManager):
     """    
@@ -23,6 +24,18 @@ class BaseAgent(Runnable, ToolAbility, ResourceManager):
     - 需要管理记忆、知识、数据等上下文
     - 例如，对话模型
     """
+    @classmethod
+    def available_params(cls):
+        """
+        返回当前可用的参数列表。
+        """
+        return {
+            "func": "用于自定义工具的同步执行函数",
+            "async_func": "用于自定义工具的异步执行函数",
+            **Runnable.available_params(),
+            **ToolAbility.available_params(),
+            **ResourceManager.available_params(),
+        }
 
     def __init__(
         self,
@@ -30,15 +43,25 @@ class BaseAgent(Runnable, ToolAbility, ResourceManager):
         async_func: Callable=None,
         **kwargs
     ):
-        Runnable.__init__(self, **kwargs)
-        ToolAbility.__init__(self, func=func, async_func=async_func, **kwargs)
-        ResourceManager.__init__(self, **kwargs)
+        raise_invalid_params(kwargs, self.__class__.available_params())
 
+        Runnable.__init__(self, **filter_kwargs(kwargs, Runnable.available_params()))
+        ResourceManager.__init__(self, **filter_kwargs(kwargs, ResourceManager.available_params()))
+
+        name = kwargs.pop("name", self.name)
+        description = kwargs.pop("description", None)
         _func = func or async_func
         if _func:
             self.name = kwargs.get("name", _func.__name__)
-            if _func.__doc__:
-                self.description = kwargs.get("description", _func.__doc__)
+            name = self.name
+            description = _func.__doc__ if _func.__doc__ else description
+        ToolAbility.__init__(
+            self,
+            func=func,
+            async_func=async_func,
+            name=name,
+            description=description
+        )
 
     @property
     def runnable_info(self):

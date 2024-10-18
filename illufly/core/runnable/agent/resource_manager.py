@@ -5,7 +5,16 @@ from ..vectordb import VectorDB
 from ..message import Message
 
 class ResourceManager:
-    def __init__(self, resources: List[Any] = None, **kwargs):
+    @classmethod
+    def available_params(cls):
+        """
+        返回当前可用的参数列表。
+        """
+        return {
+            "resources": "资源列表",
+        }
+
+    def __init__(self, resources: List[Any] = None):
         """
         管理智能体使用到的图片、视频、音频、数据、文档等资源。
         """

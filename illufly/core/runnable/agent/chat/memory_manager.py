@@ -1,10 +1,23 @@
 from typing import Union, List, Dict, Any, Callable
+from .....utils import filter_kwargs, raise_invalid_params
 from .....hub import get_template_variables
 from ...message import Messages, Message
 from ...prompt_template import PromptTemplate
 from ...binding_manager import BindingManager
 
 class MemoryManager(BindingManager):
+    @classmethod
+    def available_params(cls):
+        """
+        返回当前可用的参数列表。
+        """
+        return {
+            "style": "消息样式",
+            "memory": "记忆列表",
+            "remember_rounds": "记忆轮数",
+            **BindingManager.available_params(),
+        }
+
     def __init__(
         self,
         style: str=None,
@@ -12,7 +25,8 @@ class MemoryManager(BindingManager):
         remember_rounds: int=None,
         **kwargs
     ):
-        super().__init__(**kwargs)
+        raise_invalid_params(kwargs, self.available_params())
+        super().__init__(**filter_kwargs(kwargs, BindingManager.available_params()))
 
         self.style = style
         self.memory = []

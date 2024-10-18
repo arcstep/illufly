@@ -4,7 +4,16 @@ from ...document import Document
 from ..vectordb import VectorDB
 
 class KnowledgeManager:
-    def __init__(self, knowledge: Union[Set[Any], List[Any]] = None, **kwargs):
+    @classmethod
+    def available_params(cls):
+        """
+        返回当前可用的参数列表。
+        """
+        return {
+            "knowledge": "知识列表",
+        }
+
+    def __init__(self, knowledge: Union[Set[Any], List[Any]] = None):
         """
         知识库在内存中以集合的方式保存，确保了其具有唯一性。
         """

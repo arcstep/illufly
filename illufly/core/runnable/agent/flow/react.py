@@ -1,6 +1,6 @@
 from typing import Union, List, Callable
 
-from .....utils import extract_segments
+from .....utils import extract_segments, filter_kwargs, raise_invalid_params
 from .....io import EventBlock
 from ...selector import Selector
 from ...prompt_template import PromptTemplate
@@ -13,6 +13,16 @@ class ReAct(FlowAgent):
     ReAct 提供了一种更易于人类理解、诊断和控制的决策和推理过程。
     它的典型流程可以用一个有趣的循环来描述：思考（Thought）→ 行动（Action）→ 观察（Observation），简称TAO循环。
     """
+    @classmethod
+    def available_params(cls):
+        return {
+            "planner": "计划者",
+            "tools": "工具列表",
+            "handler_tool_call": "工具调用处理器",
+            "final_answer_prompt": "最终答案提示词",
+            **FlowAgent.available_params(),
+        }
+
     def __init__(
         self,
         planner: BaseAgent,
@@ -21,6 +31,8 @@ class ReAct(FlowAgent):
         final_answer_prompt: str=None,
         **kwargs
     ):
+        raise_invalid_params(kwargs, self.available_params())
+
         merged_tools = planner.tools + (tools or [])
         self.planner = planner.reset(
             reinit=True,
@@ -36,7 +48,7 @@ class ReAct(FlowAgent):
         super().__init__(
             self.planner,
             Selector([self.planner], condition=should_continue),
-            **kwargs
+            **filter_kwargs(kwargs, self.available_params())
         )
 
         if not self.planner.get_tools():

@@ -2,13 +2,21 @@ import re
 
 from typing import List, Union, Generator, AsyncGenerator
 from .....io import EventBlock, NewLineBlock
-from .....utils import minify_text
+from .....utils import minify_text, filter_kwargs, raise_invalid_params
 from ...selector import Selector
 from ..base import BaseAgent
 
 class FlowAgent(BaseAgent):
+    @classmethod
+    def available_params(cls):
+        return {
+            "max_steps": "最大步骤数",
+            **BaseAgent.available_params(),
+        }
+
     def __init__(self, *agents, max_steps: int=None, **kwargs):
-        super().__init__(**kwargs)
+        raise_invalid_params(kwargs, self.available_params())
+        super().__init__(**filter_kwargs(kwargs, self.available_params()))
 
         self.max_steps = max_steps or 20
 
