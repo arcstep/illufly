@@ -5,8 +5,15 @@ from .....io import EventBlock
 from ...selector import Selector
 from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
-# from ..tools_calling import BaseToolCalling, Plans, SubTask
 from .base import FlowAgent
+
+class Observer(BaseAgent):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.completed_work = []
+
+    def call(self, last_output, **kwargs):
+        self.completed_work.append(last_output)
 
 class ReAct(FlowAgent):
     """
@@ -17,8 +24,6 @@ class ReAct(FlowAgent):
     def available_init_params(cls):
         return {
             "planner": "计划者",
-            "tools": "工具列表",
-            "handler_tool_call": "工具调用处理器",
             "final_answer_prompt": "最终答案提示词",
             **FlowAgent.available_init_params(),
         }
@@ -26,12 +31,14 @@ class ReAct(FlowAgent):
     def __init__(
         self,
         planner: BaseAgent,
-        tools: List[BaseAgent]=None,
-        handler_tool_call=None,
         final_answer_prompt: str=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.available_init_params())
+        self.default_template = PromptTemplate("FLOW/ReAct/Planner")
+        self.observer = Observer()
+        self.planner = planner()
+        self.planner.tools_handler = self.observer
 
         merged_tools = planner.tools + (tools or [])
         self.planner = planner.reset(

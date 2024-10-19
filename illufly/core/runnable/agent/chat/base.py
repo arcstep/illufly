@@ -83,6 +83,13 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         return self.memory[-1]['content'] if self.memory else ""
 
     @property
+    def tools_steps(self):
+        steps = []
+        for h in self.tools_handlers:
+            steps.extend(h.steps)
+        return steps
+
+    @property
     def provider_dict(self):
         local_dict = {
             "task": self._task,
@@ -148,16 +155,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 elif block.block_type == "tools_call_chunk":
                     tools_call.append(json.loads(block.text))
 
-            final_tools_call = merge_tool_calls(tools_call)
-            if final_tools_call:
+            steps = merge_tool_calls(tools_call)
+            if steps:
                 # 从返回参数中解析工具
-                handler_openai = OpenAIToolsCalling(
-                    short_term_memory=chat_memory,
-                    long_term_memory=self.memory,
-                    tools_to_exec=self._tools_to_exec
-                )
+                handler_openai = OpenAIToolsCalling(tools_to_exec=self._tools_to_exec)
                 # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
-                for block in handler_openai.handle(final_tools_call):
+                for block in handler_openai.handle(steps, chat_memory, self.memory):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         to_continue_call_llm = True
                     yield block
