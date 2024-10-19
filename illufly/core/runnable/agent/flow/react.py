@@ -16,7 +16,7 @@ class ReAct(FlowAgent):
     def available_init_params(cls):
         return {
             "planner": "用于推理的ChatAgent, 你应当在其中指定可用的工具",
-            "prompt_template": "用于生成计划的PromptTemplate, 默认为 PromptTemplate('FLOW/ReAct/Planner')",
+            "planner_template": "用于生成计划的PromptTemplate, 默认为 PromptTemplate('FLOW/ReAct/Planner')",
             "final_answer_prompt": "最终答案提示词关键字, 默认为 **最终答案**",
             **FlowAgent.available_init_params(),
         }
@@ -24,7 +24,7 @@ class ReAct(FlowAgent):
     def __init__(
         self,
         planner: BaseAgent,
-        prompt_template: str=None,
+        planner_template: str=None,
         final_answer_prompt: str=None,
         **kwargs
     ):
@@ -38,8 +38,8 @@ class ReAct(FlowAgent):
         final_answer_prompt = final_answer_prompt or "**最终答案**"
         # 设置 planner 的 tools_behavior 为 "parse-execute"，执行后就停止，等待 T-A-O 循环
         planner.tools_behavior = "parse-execute"
-        prompt_template = prompt_template or PromptTemplate("FLOW/ReAct/Planner")
-        planner.set_init_messages(prompt_template)
+        planner_template = planner_template or PromptTemplate("FLOW/ReAct/Planner")
+        planner.set_init_messages(planner_template)
 
         class Observer(BaseAgent):
             def __init__(self, **kwargs):
@@ -51,9 +51,9 @@ class ReAct(FlowAgent):
                 # 主要获得 task, tools_calling_steps
                 self.bind_provider(planner)
 
-                # 将 Observer 绑定到 prompt_template
+                # 将 Observer 绑定到 planner_template
                 # 获得 task, completed_work
-                self.bind_consumer(prompt_template)
+                self.bind_consumer(planner_template)
             
             @property
             def provider_dict(self):

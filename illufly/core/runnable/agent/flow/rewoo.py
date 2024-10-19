@@ -2,11 +2,11 @@ from typing import Union, List, Callable
 
 from .....utils import extract_segments, filter_kwargs, raise_invalid_params
 from .....io import EventBlock
-from ...selector import Selector
 from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
-# from ..tools_calling import BaseToolCalling, Plans
 from .base import FlowAgent
+
+import json
 
 class ReWOO(FlowAgent):
     """
@@ -22,76 +22,62 @@ class ReWOO(FlowAgent):
         return {
             "planner": "计划者",
             "solver": "求解者",
-            "tools": "工具列表",
-            "handler_tool_call": "工具调用处理器",
             **FlowAgent.available_init_params(),
         }
         
     def __init__(
         self,
-        planner: BaseAgent=None,
-        solver: BaseAgent=None,
-        tools: List[BaseAgent]=None,
-        handler_tool_call=None,
+        planner: BaseAgent,
+        solver: BaseAgent,
+        planner_template: PromptTemplate=None,
+        solver_template: PromptTemplate=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.available_init_params())
 
-        merged_tools = planner.tools + (tools or [])
+        if not isinstance(planner, BaseAgent):
+            raise ValueError("planner 必须是 ChatAgent 的子类")
+        if not planner.tools:
+            raise ValueError("planner 必须包含可用的工具")
 
-        self.planner = planner.reset(
-            reinit=True,
-            memory=PromptTemplate("FLOW/ReWOO/Planner"),
-            tools=merged_tools
-        )
+        planner_template = planner_template or PromptTemplate("FLOW/ReWOO/Planner")
+        solver_template = solver_template or PromptTemplate("FLOW/ReWOO/Solver")
 
-        self.solver = solver.reset(
-            reinit=True,
-            memory=PromptTemplate("FLOW/ReWOO/Solver")
-        )
+        planner.tools_behavior = "parse-execute"
+        planner.set_init_messages(planner_template)
+        planner.bind_consumer(planner_template)
 
-        self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=self.planner.get_tools())
+        solver.set_init_messages(solver_template)
+        solver.bind_consumer(solver_template)
+
+        class Observer(BaseAgent):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.completed_work = []
+
+                self.bind_provider(planner)
+                self.bind_consumer(solver)
+
+            @property
+            def provider_dict(self):
+                return {
+                    "completed_work": "\n".join(self.completed_work),
+                    **super().provider_dict,
+                }
+
+            def call(self, agent: BaseAgent, **kwargs):
+                if agent.tools_calling_steps:
+                    for step in agent.tools_calling_steps:
+                        self.completed_work.append(
+                            f'Step{step["index"]}: {step["description"]}\n{step["eid"]} = {step["name"]}[{step["arguments"]}]\n{step["eid"]} 执行结果: {step["result"]}\n'
+                        )
+                    self._last_output = self.consumer_dict.get("task", "请开始")
+
+        observer = Observer(name="observer")
 
         super().__init__(
-            self.planner,
+            planner,
+            observer,
+            solver,
             **filter_kwargs(kwargs, self.available_init_params())
         )
-
-        if not self.planner.get_tools():
-            raise ValueError("planner 必须提供 tools")
-
-    def begin_call(self):
-        super().begin_call()
-        if isinstance(self.handler_tool_call, Plans):
-            self.handler_tool_call.reset()
-
-    def after_agent_call(self, agent: BaseAgent):
-        """
-        在调用完 agent 之后，进行一些处理。
-        1. 执行 handler_tool_call.handle(agent.last_output)
-        2. 将 handler_tool_call.completed_work 和 提取到 completed_work
-        3. 将 task 提交给 solver 合成最后输出
-        4. 将 solver 的输出设置为 _last_output 并作为 final_answer 返回
-        """
-        output = agent.last_output
-        self._last_output = agent.provider_dict["task"]
-
-        # 调用工具，并观察工具执行结果
-        if self.handler_tool_call:
-            for block in self.handler_tool_call.handle(agent.last_output):
-                yield block
-
-        # 提取最终答案
-        self.solver.reset()
-        self.solver.bind_provider(
-            binding_map={
-                "completed_work": self.handler_tool_call.completed_work
-            },
-            dynamic=True
-        )
-        yield from self.solver.call(self.agents[0].provider_dict["task"])
-
-        self.final_answer = self.solver.last_output
-        self._last_output = self.final_answer
-
-        yield EventBlock("text", f"\n**最终答案**\n{self.final_answer}")

@@ -66,6 +66,8 @@ class FlowAgent(BaseAgent):
             if isinstance(call_resp, Generator):
                 yield from call_resp
 
+            self._last_output = selected_agent.last_output
+
             if (current_index + 1) == len(self.agents):
                 # 如果已经超出最后一个节点，就结束
                 break
@@ -77,6 +79,7 @@ class FlowAgent(BaseAgent):
             # 构造下一次调用的参数
             current_args = [selected_agent]
             steps_count += 1
+
 
         yield EventBlock("info", f"执行完毕，所有节点运行 {steps_count} 步")
 
