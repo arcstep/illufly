@@ -7,6 +7,7 @@ from typing import Union, List, Dict, Any, Set, Callable
 
 from .....utils import merge_tool_calls, extract_text, raise_invalid_params, filter_kwargs
 from .....io import EventBlock, EndBlock, NewLineBlock
+from ...base import Runnable
 from ...message import Messages
 from ..base import BaseAgent
 from ..knowledge_manager import KnowledgeManager
@@ -112,7 +113,11 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         for block in await self.run_in_executor(self.generate, prompt, *args, **kwargs):
             yield block
 
-    def call(self, prompt: Union[str, List[dict]], *args, **kwargs):
+    def call(self, prompt: Union[str, List[dict], Runnable], *args, **kwargs):
+        # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
+        if isinstance(prompt, Runnable):
+            prompt = prompt.last_output
+
         new_chat = kwargs.pop("new_chat", False)
 
         messages_std = Messages(prompt, style="text")
@@ -191,7 +196,11 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         if self.end_chk:
             yield EndBlock(self.last_output)
 
-    async def async_call(self, prompt: Union[str, List[dict]], *args, **kwargs):
+    async def async_call(self, prompt: Union[str, List[dict], Runnable], *args, **kwargs):
+        # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
+        if isinstance(prompt, Runnable):
+            prompt = prompt.last_output
+
         new_chat = kwargs.pop("new_chat", False)
 
         messages_std = Messages(prompt, style="text")
