@@ -2,7 +2,7 @@ import json
 
 from typing import Union, List, Dict, Any
 from ..base import BaseAgent
-from .tools_calling import BaseToolCalling, ToolCall
+from .tools_calling import BaseToolCalling, ToolCall, Plans, SubTask
 
 class ToolsManager:
     """
@@ -39,7 +39,7 @@ class ToolsManager:
             t if isinstance(t, BaseAgent) else BaseAgent(t)
             for t in (tools or [])
         ]
-        self.tools_handlers = tools_handlers or [ToolCall()]
+        self.tools_handlers = tools_handlers or [ToolCall(), Plans(), SubTask()]
         for h in self.tools_handlers:
             h.reset(self.tools)
 
