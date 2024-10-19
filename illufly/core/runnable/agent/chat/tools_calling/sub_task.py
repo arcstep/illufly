@@ -27,15 +27,31 @@ class SubTask(BaseToolCalling):
                 start = text.find(start_marker, end)
             else:
                 break
-        self.steps.extend(steps)
+
+        for index, step in enumerate(steps):
+            name = step["function"].get("name", "UNKNOWN_FUNCTION")
+            arguments = step["function"].get("arguments", "")
+            self.steps.append({
+                "index": index + 1,
+                "eid": f"#E{index + 1}",
+                "description": f"调用{name}工具",
+                "name": name,
+                "arguments": arguments,
+                "result": None
+            })
+
         return steps
 
     def handle(self, steps: List[Any], **kwargs):
         for index, tool_call in enumerate(steps):
             for block in self.execute_tool(tool_call):
+                if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
+                    self.steps[index]["result"] = block.text.strip()
                 yield block
 
     async def async_handle(self, steps: List[Any], **kwargs):
         for index, tool_call in enumerate(steps):
             async for block in self.async_execute_tool(tool_call):
+                if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
+                    self.steps[index]["result"] = block.text.strip()
                 yield block

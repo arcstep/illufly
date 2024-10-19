@@ -28,7 +28,19 @@ class ToolCall(BaseToolCalling):
                 start = text.find(start_marker, end)
             else:
                 break
-        self.steps.extend(steps)
+
+        for index, step in enumerate(steps):
+            name = step["function"].get("name", "UNKNOWN_FUNCTION")
+            arguments = step["function"].get("arguments", "")
+            self.steps.append({
+                "index": index + 1,
+                "eid": f"#E{index + 1}",
+                "description": f"调用{name}工具",
+                "name": name,
+                "arguments": arguments,
+                "result": None
+            })
+
         return steps
 
     def handle(self, steps: List[Any], short_term_memory: Messages, long_term_memory: Messages):
@@ -57,6 +69,8 @@ class ToolCall(BaseToolCalling):
                     ]
                     short_term_memory.extend(tool_resp_message)
                     long_term_memory.extend(tool_resp_message)
+                    # 补充结果到 steps
+                    self.steps[index]["result"] = tool_resp.strip()
                 yield block
 
     async def async_handle(self, steps: List[Any], short_term_memory: Messages, long_term_memory: Messages):
@@ -85,4 +99,6 @@ class ToolCall(BaseToolCalling):
                     ]
                     short_term_memory.extend(tool_resp_message)
                     long_term_memory.extend(tool_resp_message)
+                    # 补充结果到 steps
+                    self.steps[index]["result"] = tool_resp.strip()
                 yield block
