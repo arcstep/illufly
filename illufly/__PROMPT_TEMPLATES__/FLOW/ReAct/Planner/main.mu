@@ -25,9 +25,9 @@
 {{{tools_desc}}}
 
 请你按如下格式整理行动的详细计划，其中 #E{n} 时用于保存计划执行后的变量名，n 是子任务的序号:
-Plan: (子任务描述) #E{n} = function_name[kwargs_with_json]
+Step{n}: (子任务描述) #E{n} = function_name[kwargs_with_json]
 
 例如：
-Plan: 查看天气状况. #E1 = get_weather[{"city": "北京"}]
+Step1: 查看天气状况. #E1 = get_weather[{"city": "北京"}]
 
 ...你必须按照 **思考-行动-观察** 的循环过程输出，可以重复N次，直到结束。

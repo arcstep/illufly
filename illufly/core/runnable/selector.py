@@ -5,7 +5,6 @@ from .base import Runnable
 import inspect
 import random
 
-
 def select_first(consumer_dict: Dict, runnables: List[Runnable]):
     return runnables[0]
 
