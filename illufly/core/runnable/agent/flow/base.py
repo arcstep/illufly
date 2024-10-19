@@ -24,22 +24,9 @@ class FlowAgent(BaseAgent):
         for r in self.agents:
             if not isinstance(r, (BaseAgent, Selector)):
                 raise ValueError("only accept BaseAgent or Selector join to Flow")
-            self.bind_consumer(r)
-
-        self.completed_work = []
-        self.final_answer = None
-
-    @property
-    def provider_dict(self):
-        return {
-            **super().provider_dict,
-            "completed_work": "\n".join(self.completed_work),
-            "final_answer": self.final_answer
-        }
 
     def reset(self):
-        self.completed_work.clear()
-        self.final_answer = None
+        pass
 
     def get_agent_by_name(self, name: str):
         """
@@ -47,23 +34,6 @@ class FlowAgent(BaseAgent):
         """
         all = {a.name: (i, a) for i, a in enumerate(self.agents)}
         return all.get(name, None)
-
-    def begin_call(self):
-        self.reset()
-
-    def end_call(self):
-        pass
-
-    def before_agent_call(self, agent: BaseAgent):
-        pass
-
-    def after_agent_call(self, agent: BaseAgent):
-        self._last_output = agent.provider_dict["last_output"]
-
-        if not self.completed_work:
-            if agent.provider_dict.get("task", None):
-                self.completed_work.append("**任务**\n" + agent.provider_dict["task"])
-        self.completed_work.append(f'@{agent.name} :\n{self._last_output}')
 
     def call(self, *args, **kwargs):
         """
@@ -75,34 +45,26 @@ class FlowAgent(BaseAgent):
         current_args = args
         current_kwargs = kwargs
         steps_count = 0
-        self.begin_call()
 
         while(steps_count < self.max_steps):
             # 如果 current_agent 是一个选择器
             selected_agent = current_agent.selected
-            if isinstance(selected_agent, str):
-                (current_index, selected_agent) = self.get_agent_by_name(selected_agent)
-
-            self.before_agent_call(selected_agent)
+            agent_name = selected_agent if isinstance(selected_agent, str) else selected_agent.name
 
             # 如果已经到了 __End__  节点，就退出            
-            if selected_agent.name.lower() == "__end__":
+            if agent_name.lower() == "__end__":
                 break
 
-            # 广播节点信息
-            info = self._get_node_info(current_index + 1, selected_agent, steps_count + 1)
-            yield EventBlock("agent", info)
+            # 确保正确获得 agent 和 当前 index
+            (current_index, selected_agent) = self.get_agent_by_name(agent_name)
 
-            # 绑定并调用 Agent
-            self.bind_consumer(selected_agent, dynamic=True)
+            # 广播节点信息
+            info = self._get_node_info(current_index + 1, selected_agent)
+            yield EventBlock("agent", info)
 
             call_resp = selected_agent.call(*current_args, **current_kwargs)
             if isinstance(call_resp, Generator):
                 yield from call_resp
-
-            after_call_resp = self.after_agent_call(selected_agent)
-            if isinstance(after_call_resp, Generator):
-                yield from after_call_resp
 
             if (current_index + 1) == len(self.agents):
                 # 如果已经超出最后一个节点，就结束
@@ -113,11 +75,11 @@ class FlowAgent(BaseAgent):
                 current_agent = self.agents[current_index]
 
             # 构造下一次调用的参数
-            current_args = [self._last_output]
+            current_args = [selected_agent]
             steps_count += 1
 
-        self.end_call()
+        yield EventBlock("info", f"执行完毕，所有节点运行 {steps_count} 步")
 
-    def _get_node_info(self, index, agent, steps_count):
-        return f"STEP {steps_count} >>> Node {index}: {agent.name}"
+    def _get_node_info(self, index, agent):
+        return f">>> Node {index}: {agent.name}"
 

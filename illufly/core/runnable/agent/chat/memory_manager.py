@@ -32,7 +32,11 @@ class MemoryManager(BindingManager):
         self.memory = []
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
 
-        self.init_messages = Messages(memory, style=self.style)
+        self.init_messages = []
+        self.set_init_messages(memory)
+
+    def set_init_messages(self, messages: Union[str, List[dict]]):
+        self.init_messages = Messages(messages, style=self.style)
         for template in self.init_messages.all_templates:
             self.bind_consumer(template)
 
@@ -75,8 +79,6 @@ class MemoryManager(BindingManager):
         """
 
         # 构建 prompt 标准形式
-        if isinstance(prompt, str):
-            prompt = [{"role": "user", "content": prompt}]
         new_prompt = prompt if isinstance(prompt, Messages) else Messages(prompt, style=self.style)
 
         # 确定是否新一轮对话

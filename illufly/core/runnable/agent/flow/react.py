@@ -7,14 +7,6 @@ from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
 from .base import FlowAgent
 
-class Observer(BaseAgent):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.completed_work = []
-
-    def call(self, last_output, **kwargs):
-        self.completed_work.append(last_output)
-
 class ReAct(FlowAgent):
     """
     ReAct 提供了一种更易于人类理解、诊断和控制的决策和推理过程。
@@ -23,81 +15,90 @@ class ReAct(FlowAgent):
     @classmethod
     def available_init_params(cls):
         return {
-            "planner": "计划者",
-            "final_answer_prompt": "最终答案提示词",
+            "planner": "用于推理的ChatAgent, 你应当在其中指定可用的工具",
+            "prompt_template": "用于生成计划的PromptTemplate, 默认为 PromptTemplate('FLOW/ReAct/Planner')",
+            "final_answer_prompt": "最终答案提示词关键字, 默认为 **最终答案**",
             **FlowAgent.available_init_params(),
         }
 
     def __init__(
         self,
         planner: BaseAgent,
+        prompt_template: str=None,
         final_answer_prompt: str=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.available_init_params())
-        self.default_template = PromptTemplate("FLOW/ReAct/Planner")
-        self.observer = Observer()
-        self.planner = planner()
-        self.planner.tools_handler = self.observer
 
-        merged_tools = planner.tools + (tools or [])
-        self.planner = planner.reset(
-            reinit=True,
-            memory=PromptTemplate("FLOW/ReAct/Planner"),
-            tools=merged_tools
-        )
-        self.handler_tool_call = handler_tool_call or Plans(tools_to_exec=self.planner.get_tools())
-        self.final_answer_prompt = final_answer_prompt or "**最终答案**"
+        if not isinstance(planner, BaseAgent):
+            raise ValueError("planner 必须是 ChatAgent 的子类")
+        if not planner.tools:
+            raise ValueError("planner 必须包含可用的工具")
+
+        final_answer_prompt = final_answer_prompt or "**最终答案**"
+        # 设置 planner 的 tools_behavior 为 "parse-execute"，执行后就停止，等待 T-A-O 循环
+        planner.tools_behavior = "parse-execute"
+        prompt_template = prompt_template or PromptTemplate("FLOW/ReAct/Planner")
+        planner.set_init_messages(prompt_template)
+
+        class Observer(BaseAgent):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.completed_work = []
+                self.final_answer = None
+
+                # 将 Planner 绑定给 Observer
+                # 主要获得 task, tools_calling_steps
+                self.bind_provider(planner)
+
+                # 将 Observer 绑定到 prompt_template
+                # 获得 task, completed_work
+                self.bind_consumer(prompt_template)
+            
+            @property
+            def provider_dict(self):
+                return {
+                    "completed_work": "\n".join(self.completed_work),
+                    **super().provider_dict,
+                }
+
+            def call(self, agent: BaseAgent, **kwargs):
+                # 提取最终答案
+                output = agent.last_output
+
+                if output:
+                    self.completed_work.append(output)
+                else:
+                    self.final_answer = "没有可用的输出"
+                    yield EventBlock("warn", f"{final_answer_prompt}\n{self.final_answer}")
+                    return
+
+                if final_answer_prompt in output:
+                    final_answer_index = output.index(final_answer_prompt)
+                    self.final_answer = output[final_answer_index:].split(final_answer_prompt)[-1].strip()
+                    yield EventBlock("text", f"\n**最终答案**\n{self.final_answer}\n")
+
+                if agent.tools_calling_steps:
+                    all_results = "\n".join([step["result"] for step in agent.tools_calling_steps])
+                    observation = f'\n**观察**\n上面的行动结果为:\n{all_results}\n'
+
+                    self.completed_work.append(observation)
+                    self._last_output = self.consumer_dict.get("task", "请开始")
+
+                    yield EventBlock("text", observation)
+
+        observer = Observer(name="observer")
 
         def should_continue(vars, runs):
-            return "END" if runs[0].provider_dict.get("final_answer", None) else runs[0].name
+            if (final_answer_prompt in planner.last_output) or observer.final_answer:
+                return "END"
+            else:
+                planner.memory.clear()
+                return planner
 
         super().__init__(
-            self.planner,
-            Selector([self.planner], condition=should_continue),
+            planner,
+            observer,
+            Selector([], condition=should_continue, name="react_selector"),
             **filter_kwargs(kwargs, self.available_init_params())
         )
-
-        if not self.planner.get_tools():
-            raise ValueError("planner 必须提供 tools")
-
-    def begin_call(self):
-        super().begin_call()
-        if isinstance(self.handler_tool_call, Plans):
-            self.handler_tool_call.reset()
-
-    def before_agent_call(self, agent: BaseAgent):
-        agent.reset()
-
-    def after_agent_call(self, agent: BaseAgent):
-        """
-        在调用完 agent 之后，进行一些处理。
-        1. 将 agent 的输出添加到 completed_work 中，作为 T-A-O 循环的 T 部份
-        2. 将 agent 的输出设置为 _last_output
-        3. 根据 final_answer_prompt 提取 final_answer
-        4. 调用工具，并观察工具执行结果，并补充到 completed_work 中，作为 T-A-O 循环的 O 部份
-        """
-        output = agent.last_output
-        self.completed_work.append(output)
-        self._last_output = agent.provider_dict["task"]
-
-        # 提取最终答案
-        if self.final_answer_prompt in output:
-            final_answer_index = output.index(self.final_answer_prompt)
-            self.final_answer = output[final_answer_index:].split(self.final_answer_prompt)[-1].strip()
-
-        # 调用工具，并观察工具执行结果
-        if self.handler_tool_call and not self.final_answer:
-            tools_resp = []
-            for block in self.handler_tool_call.handle(agent.last_output):
-                if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
-                    action_result = block.text
-                    tools_resp.append(action_result)
-                yield block
-
-            if tools_resp:
-                action_result = '\n'.join(tools_resp)
-                observation = f"\n**观察** 上面的行动结果为:\n{action_result}\n"
-                self.completed_work.append(observation)
-                yield EventBlock("text", observation)
-

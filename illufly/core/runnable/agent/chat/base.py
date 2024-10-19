@@ -80,11 +80,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         return info
 
     @property
-    def last_output(self):
-        return self.memory[-1]['content'] if self.memory else ""
-
-    @property
-    def tools_steps(self):
+    def tools_calling_steps(self):
         steps = []
         for h in self.tools_handlers:
             steps.extend(h.steps)
@@ -113,7 +109,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         for block in await self.run_in_executor(self.generate, prompt, *args, **kwargs):
             yield block
 
-    def call(self, prompt: Union[str, List[dict], Runnable], *args, **kwargs):
+    def call(self, prompt: Any, *args, **kwargs):
         # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
         if isinstance(prompt, Runnable):
             prompt = prompt.last_output
@@ -121,7 +117,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         new_chat = kwargs.pop("new_chat", False)
 
         messages_std = Messages(prompt, style="text")
-        self._task = messages_std.messages[-1].content
+        self._task = messages_std[-1].content
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
         self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
@@ -160,12 +156,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 elif block.block_type == "tools_call_chunk":
                     tools_call.append(json.loads(block.text))
 
-            steps = merge_tool_calls(tools_call)
-            if steps:
+            openai_tools_calling_steps = merge_tool_calls(tools_call)
+            if openai_tools_calling_steps:
                 # 从返回参数中解析工具
                 handler_openai = OpenAIToolsCalling(tools_to_exec=self._tools_to_exec)
                 # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
-                for block in handler_openai.handle(steps, chat_memory, self.memory):
+                for block in handler_openai.handle(openai_tools_calling_steps, chat_memory, self.memory):
                     if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
                         to_continue_call_llm = True
                     yield block
@@ -177,6 +173,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 })
                 self.remember_response(final_output_text)
                 yield EventBlock("text_final", final_output_text)
+
+                # 将最终的输出结果保存到 last_output 属性中
+                self._last_output = final_output_text
 
                 # 从文本中解析工具
                 if "parse" in self.tools_behavior:
@@ -196,7 +195,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         if self.end_chk:
             yield EndBlock(self.last_output)
 
-    async def async_call(self, prompt: Union[str, List[dict], Runnable], *args, **kwargs):
+    async def async_call(self, prompt: Any, *args, **kwargs):
         # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
         if isinstance(prompt, Runnable):
             prompt = prompt.last_output
