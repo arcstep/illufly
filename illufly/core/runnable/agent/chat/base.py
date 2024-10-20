@@ -112,7 +112,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     def call(self, prompt: Any, *args, **kwargs):
         # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
         if isinstance(prompt, Runnable):
-            prompt = prompt.last_output
+            prompt = prompt.selected.last_output
 
         new_chat = kwargs.pop("new_chat", False)
 
@@ -149,7 +149,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             output_text, tools_call = "", []
             for block in self.generate(chat_memory, *args, **kwargs):
                 yield block
-                if block.block_type == "chunk":
+                if block.block_type in ["chunk", "text"]:
                     output_text += block.text
                 elif block.block_type == "final_text":
                     output_text = block.text
@@ -235,7 +235,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             async for block in self.async_generate(chat_memory, *args, **kwargs):
                 yield block
-                if block.block_type == "chunk":
+                if block.block_type in ["chunk", "text"]:
                     output_text += block.text
                 elif block.block_type == "final_text":
                     output_text = block.text

@@ -39,13 +39,18 @@ class Selector(Runnable):
     路由选择 Runnable 对象的智能体，并将任务分发给被选择对象执行。
 
     可以根据模型，以及配置模型所需的工具集、资源、数据、handlers等不同参数，构建为不同的智能体对象。
+
+    Selector 需要执行 select 方法来确定选中对象，然后你可以通过 selected 属性来提取选中对象。
+    但如果你使用 Selector 的 call 方法，则会自动调用一次 select 方法。
+
+    由于 select 方法不是一个幂等操作，可能两次 select 方法的返回结果并不相同，因此你应当非常小心地管理 select 方法的调用。
     """
     @classmethod
     def available_init_params(cls):
         return {
             "runnables": "参与路由的 Runnable 列表",
-            "condition": "选择条件，可以是 Callable 或字符串",
-            "embeddings": "用于相似度计算的 embeddings 对象",
+            "condition": "选择条件，可以是自定义 Callable 或通过字符串选择内置的条件函数[first, random, similar]。自定义时有三种参数：无参数、仅 consumer_dict 一个参数 或同时提供 consumer_dict 和 runnables 两个参数",
+            "embeddings": "如果 condition 是 similar 则需要提供用于相似度计算的 embeddings 实例",
             **Runnable.available_init_params()
         }
 
@@ -73,12 +78,14 @@ class Selector(Runnable):
 
         for runnable in self.runnables:
             self.bind_consumer(runnable)
+        
+        self._selected = None
 
     def get_condition(self, condition):
         default_selected = {
             "first": select_first,
             "random": select_random,
-            "similar": self.select_with_description
+            "similar": self.similar_with_description
         }
         if condition is None:
             return default_selected['first']
@@ -91,6 +98,9 @@ class Selector(Runnable):
 
     @property
     def selected(self):
+        return self._selected
+
+    def select(self):
         """
         selected 可以是一个 Runnable 对象，也可以是一个字符串（表示备选 Runnable 的名称）
         """
@@ -104,14 +114,18 @@ class Selector(Runnable):
 
         if isinstance(resp, str):
             if resp.lower() == "end":
-                return End()
-        return resp
+                self._selected = End()
+        self._selected = resp
+        return self._selected
 
     def call(self, *args, **kwargs) -> List[dict]:
+        self.select()
         yield from self.selected.call(*args, **kwargs)
+        self._last_output = self.selected.last_output
 
     async def async_call(self, *args, **kwargs) -> List[dict]:
-        resp = self.selected.async_call(*args, **kwargs)
+        self.select()
+        resp = await self.selected.async_call(*args, **kwargs)
         if isinstance(resp, Generator):
             for block in resp:
                 yield block
@@ -120,25 +134,26 @@ class Selector(Runnable):
                 yield block
         else:
             yield resp
+        self._last_output = resp.last_output
 
-    def select_with_description(self, runnables: List[Runnable], consumer_dict: Dict):
+    def similar_with_description(self):
         if not self.embeddings:
             raise ValueError("embeddings is not set")
 
         from ...community.faiss import FaissDB
 
         db = FaissDB(embeddings=self.embeddings)
-        for run in runnables:
+        for run in self.runnables:
             if run.description:
                 db.load_text(run.description)
 
-        query = consumer_dict.get("task")
+        query = self.consumer_dict.get("task")
         if query:
             results = db(query)
             desc = results[0]
-            for run in runnables:
+            for run in self.runnables:
                 if run.description == desc.text:
                     return run
-            raise ValueError(f"router {desc.text} not found in {runnables}")
+            raise ValueError(f"router {desc.text} not found in {self.runnables}")
         else:
-            return runnables[0]
+            return self.runnables[0]
