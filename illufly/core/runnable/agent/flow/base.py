@@ -3,7 +3,7 @@ import re
 from typing import List, Union, Generator, AsyncGenerator, Callable
 from .....io import EventBlock, NewLineBlock
 from .....utils import minify_text, filter_kwargs, raise_invalid_params
-from ...selector import Selector
+from ...selector import Selector, End
 from ..base import BaseAgent
 
 class FlowAgent(BaseAgent):
@@ -49,7 +49,7 @@ class FlowAgent(BaseAgent):
         return f"FlowAgent({[agent[0] for agent in self.agents]})"
 
     def convert_base_agent(self, agent):
-        if isinstance(agent, (BaseAgent, Selector)):
+        if isinstance(agent, (BaseAgent, Selector, End)):
             return agent
         elif isinstance(agent, Callable):
             return BaseAgent(name=agent.__name__, func=agent)
@@ -124,6 +124,9 @@ class FlowAgent(BaseAgent):
                         break
                 else:
                     current_node_name = selected_agent.selected.name
+            elif isinstance(selected_agent, End):
+                yield EventBlock("info", f"到达 __End__ 节点，结束")
+                break
 
             # 广播节点信息给 handlers
             info = self._get_node_info(current_index + 1, current_node_name)

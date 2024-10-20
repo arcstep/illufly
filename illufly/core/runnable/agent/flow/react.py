@@ -45,13 +45,13 @@ class ReAct(FlowAgent):
         planner.tools_behavior = "parse-execute"
         planner.reset_init_memory(planner_template)
         self.planner = planner
+        self.completed_work = []
 
         def observe_func(agent: BaseAgent):
             output = agent.last_output
-            completed_work = []
 
             if output:
-                completed_work.append(output)
+                self.completed_work.append(output)
             else:
                 yield EventBlock("warn", f"{final_answer_prompt}\n没有可用的输出")
 
@@ -60,9 +60,9 @@ class ReAct(FlowAgent):
                 observation = f'\n**观察**\n上面的行动结果为:\n{all_results}\n'
                 yield EventBlock("text", observation)
 
-                completed_work.append(observation)
+                self.completed_work.append(observation)
                 planner_template.bind_provider({
-                    "completed_work": "\n".join(completed_work)
+                    "completed_work": "\n".join(self.completed_work)
                 })
 
             yield EventBlock("final_text", agent.provider_dict['task'])
@@ -83,8 +83,10 @@ class ReAct(FlowAgent):
     
     def begin_call(self):
         self.planner.memory.clear()
+        self.completed_work.clear()
+        self.planner_template.bind_provider({"completed_work": ""})
 
     def end_call(self):
-        if self.final_answer_prompt in self.last_output:
-            final_answer_index = self.last_output.index(self.final_answer_prompt)
-            self._last_output = self.last_output[final_answer_index:].split(self.final_answer_prompt)[-1].strip()
+        if self.final_answer_prompt in self.planner.last_output:
+            final_answer_index = self.planner.last_output.index(self.final_answer_prompt)
+            self._last_output = self.planner.last_output[final_answer_index:].split(self.final_answer_prompt)[-1].strip()
