@@ -45,13 +45,13 @@ class SubTask(BaseToolCalling):
     def handle(self, steps: List[Any], **kwargs):
         for index, tool_call in enumerate(steps):
             for block in self.execute_tool(tool_call):
-                if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
+                if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
                     self.steps[index]["result"] = block.text.strip()
                 yield block
 
     async def async_handle(self, steps: List[Any], **kwargs):
         for index, tool_call in enumerate(steps):
             async for block in self.async_execute_tool(tool_call):
-                if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
+                if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
                     self.steps[index]["result"] = block.text.strip()
                 yield block

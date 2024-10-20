@@ -65,9 +65,9 @@ class EventBlock():
             'tools_call_chunk': "ILLUFLY_COLOR_CHUNK",
             'tool_resp_chunk': "ILLUFLY_COLOR_CHUNK",
             # 将片段累积后的输出
-            'text_final': "ILLUFLY_COLOR_FINAL",
-            'tools_call_final': "ILLUFLY_COLOR_FINAL",
-            'tool_resp_final': "ILLUFLY_COLOR_FINAL",
+            'final_text': "ILLUFLY_COLOR_FINAL",
+            'final_tools_call': "ILLUFLY_COLOR_FINAL",
+            'final_tool_resp': "ILLUFLY_COLOR_FINAL",
             # 直接输出的文本
             'text': "ILLUFLY_COLOR_TEXT",
             'image_url': "ILLUFLY_COLOR_TEXT",

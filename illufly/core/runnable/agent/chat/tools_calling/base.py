@@ -71,7 +71,7 @@ class BaseToolCalling:
                     yield EventBlock("action_parse_failed", tool_args)
                 for x in tool_func_result:
                     if isinstance(x, EventBlock):
-                        if x.block_type == "tool_resp_final":
+                        if x.block_type == "final_tool_resp":
                             tool_resp = x.text
                         elif x.block_type == "chunk":
                             tool_resp += x.text
@@ -80,7 +80,7 @@ class BaseToolCalling:
                         tool_resp += x
                         yield EventBlock("tool_resp_chunk", x)
                 yield NewLineBlock()
-                yield EventBlock("tool_resp_final", tool_resp)
+                yield EventBlock("final_tool_resp", tool_resp)
                 return
 
         yield EventBlock("warn", f"tool {tool} not found")
@@ -100,7 +100,7 @@ class BaseToolCalling:
                     yield EventBlock("action_parse_failed", tool_args)
                 async for x in tool_func_result:
                     if isinstance(x, EventBlock):
-                        if x.block_type == "tool_resp_final":
+                        if x.block_type == "final_tool_resp":
                             tool_resp = x.text
                         elif x.block_type == "chunk":
                             tool_resp += x.text
@@ -110,4 +110,4 @@ class BaseToolCalling:
                         yield EventBlock("tool_resp_chunk", x)
 
                 yield NewLineBlock()
-                yield EventBlock("tool_resp_final", tool_resp)
+                yield EventBlock("final_tool_resp", tool_resp)
