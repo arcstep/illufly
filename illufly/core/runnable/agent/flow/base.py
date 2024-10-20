@@ -25,7 +25,16 @@ class FlowAgent(BaseAgent):
             if not isinstance(r, (BaseAgent, Selector)):
                 raise ValueError("only accept BaseAgent or Selector join to Flow")
 
-    def reset(self):
+    def begin_call(self):
+        """
+        开始执行的回调方法。
+        """
+        pass
+
+    def end_call(self):
+        """
+        结束执行的回调方法。
+        """
         pass
 
     def get_agent_by_name(self, name: str):
@@ -45,6 +54,8 @@ class FlowAgent(BaseAgent):
         current_args = args
         current_kwargs = kwargs
         steps_count = 0
+
+        self.begin_call()
 
         while(steps_count < self.max_steps):
             # 如果 current_agent 是一个选择器
@@ -66,7 +77,9 @@ class FlowAgent(BaseAgent):
             if isinstance(call_resp, Generator):
                 yield from call_resp
 
-            self._last_output = selected_agent.last_output
+            if selected_agent.last_output:
+                # 如果节点已经有了最终的输出，就保存到 FlowAgent 的 last_output 属性中
+                self._last_output = selected_agent.last_output
 
             if (current_index + 1) == len(self.agents):
                 # 如果已经超出最后一个节点，就结束
@@ -80,6 +93,7 @@ class FlowAgent(BaseAgent):
             current_args = [selected_agent]
             steps_count += 1
 
+        self.end_call()
 
         yield EventBlock("info", f"执行完毕，所有节点运行 {steps_count} 步")
 

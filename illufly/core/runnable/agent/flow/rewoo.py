@@ -20,8 +20,11 @@ class ReWOO(FlowAgent):
     @classmethod
     def available_init_params(cls):
         return {
-            "planner": "计划者",
-            "solver": "求解者",
+            "planner": "计划器",
+            "solver": "求解器",
+            "planner_template": "计划器提示语模板, 默认为 PromptTemplate('FLOW/ReWOO/Planner')",
+            "solver_template": "求解器提示语模板, 默认为 PromptTemplate('FLOW/ReWOO/Solver')",
+            "final_answer_prompt": "最终答案提示词关键字, 默认为 **最终答案**",
             **FlowAgent.available_init_params(),
         }
         
@@ -31,6 +34,7 @@ class ReWOO(FlowAgent):
         solver: BaseAgent,
         planner_template: PromptTemplate=None,
         solver_template: PromptTemplate=None,
+        final_answer_prompt: str=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.available_init_params())
@@ -39,24 +43,28 @@ class ReWOO(FlowAgent):
             raise ValueError("planner 必须是 ChatAgent 的子类")
         if not planner.tools:
             raise ValueError("planner 必须包含可用的工具")
+        if planner is solver:
+            raise ValueError("planner 和 solver 不能相同")
 
         planner_template = planner_template or PromptTemplate("FLOW/ReWOO/Planner")
         solver_template = solver_template or PromptTemplate("FLOW/ReWOO/Solver")
 
         planner.tools_behavior = "parse-execute"
-        planner.set_init_messages(planner_template)
+        planner.reset_init_memory(planner_template)
         planner.bind_consumer(planner_template)
 
-        solver.set_init_messages(solver_template)
+        solver.tools_behavior = "nothing"
+        solver.reset_init_memory(solver_template)
         solver.bind_consumer(solver_template)
+
+        self.final_answer_prompt = final_answer_prompt or "**最终答案**"
+        self.planner = planner
+        self.solver = solver
 
         class Observer(BaseAgent):
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
                 self.completed_work = []
-
-                self.bind_provider(planner)
-                self.bind_consumer(solver)
 
             @property
             def provider_dict(self):
@@ -74,6 +82,8 @@ class ReWOO(FlowAgent):
                     self._last_output = self.consumer_dict.get("task", "请开始")
 
         observer = Observer(name="observer")
+        observer.bind_provider(planner)
+        observer.bind_consumer(solver)
 
         super().__init__(
             planner,
@@ -81,3 +91,12 @@ class ReWOO(FlowAgent):
             solver,
             **filter_kwargs(kwargs, self.available_init_params())
         )
+    
+    def begin_call(self):
+        self.planner.memory.clear()
+        self.solver.memory.clear()
+
+    def end_call(self):
+        if self.final_answer_prompt in self.last_output:
+            final_answer_index = self.last_output.index(self.final_answer_prompt)
+            self._last_output = self.last_output[final_answer_index:].split(self.final_answer_prompt)[-1].strip()

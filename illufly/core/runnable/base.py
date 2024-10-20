@@ -142,6 +142,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         **kwargs
     ):
         self.verbose = verbose
+        self._last_output = None
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
             resp = action_method(*args, **kwargs)
             if isinstance(resp, Generator):
@@ -154,12 +155,10 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                     for handler in handlers:
                         if not inspect.iscoroutinefunction(handler):
                             handler(block, verbose=verbose, **kwargs)
-                return self.last_output
-            else:
-                self._last_output = resp
-                return resp
         else:
             raise ValueError("handlers 必须是可调用的列表")
+
+        return self.last_output
 
     async def handle_async_call(
         self,
@@ -170,6 +169,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         **kwargs
     ):
         self.verbose = verbose
+        self._last_output = None
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
             resp = action_method(*args, **kwargs)
             tasks = []
@@ -192,8 +192,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
             elif isinstance(resp, Generator):
                 for block in resp:
                     await handle_block(block)
-            else:
-                self._last_output = resp
 
             return self.last_output
         else:
