@@ -32,12 +32,12 @@ class MemoryManager(BindingManager):
         self.memory = []
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
 
-        self.init_messages = []
-        self.set_init_messages(memory)
+        self.init_memory = []
+        self.reset_init_memory(memory)
 
-    def set_init_messages(self, messages: Union[str, List[dict]]):
-        self.init_messages = Messages(messages, style=self.style)
-        for template in self.init_messages.all_templates:
+    def reset_init_memory(self, messages: Union[str, List[dict]]):
+        self.init_memory = Messages(messages, style=self.style)
+        for template in self.init_memory.all_templates:
             self.bind_consumer(template)
 
     def get_bound_vars(self, new_messages: Messages, new_chat: bool=False):
@@ -47,7 +47,7 @@ class MemoryManager(BindingManager):
         这主要用于判断 provider_dict 中的键值是否被消息列表中的模板绑定使用。
         典型的场景包括：判断 input 和 tools_desc 是否被使用，这将会影响对话过程中组织对话或提供 tools 参数给大模型。
         """
-        _new_messages = self.init_messages
+        _new_messages = self.init_memory
         if new_chat and new_messages.has_role("system"):
             _new_messages = new_messages
         else:
@@ -124,10 +124,10 @@ class MemoryManager(BindingManager):
         for template in templates:
             self.bind_consumer(template, dynamic=True)
 
-        # 如果是新对话，只要没有提供 system 角色，就启用 init_messages 模板
-        # 合并 new_messages 和 init_messages
+        # 如果是新对话，只要没有提供 system 角色，就启用 init_memory 模板
+        # 合并 new_messages 和 init_memory
         if new_chat and not new_messages.has_role("system"):
-            new_messages = self.init_messages + new_messages
+            new_messages = self.init_memory + new_messages
 
         # 如果在合并后的 new_messages 中，task 变量被模板使用
         #   则将尾部消息列表中的 user 角色消息取出，并赋值给 task 变量用于绑定映射
