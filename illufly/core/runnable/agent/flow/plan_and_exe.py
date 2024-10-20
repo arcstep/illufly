@@ -45,15 +45,15 @@ class PlanAndExe(FlowAgent):
         worker_template = worker_template or PromptTemplate("FLOW/PlanAndExe/Worker")
 
         planner.tools_behavior = "parse"
-        planner.set_init_messages(planner_template)
+        planner.reset_init_memory(planner_template)
         planner.bind_consumer(planner_template)
 
         worker.tools_behavior = "parse-execute"
-        worker.set_init_messages(worker_template)
+        worker.reset_init_memory(worker_template)
         worker.bind_consumer(worker_template)
 
         replanner.tools_behavior = "parse"
-        replanner.set_init_messages(replanner_template)
+        replanner.reset_init_memory(replanner_template)
         replanner.bind_consumer(replanner_template)
 
         def should_continue(vars, runs):

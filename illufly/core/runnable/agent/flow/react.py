@@ -35,63 +35,48 @@ class ReAct(FlowAgent):
         if not planner.tools:
             raise ValueError("planner 必须包含可用的工具")
 
-        self.final_answer_prompt = final_answer_prompt or "**最终答案**"
+        final_answer_prompt = final_answer_prompt or "**最终答案**"
+        self.final_answer_prompt = final_answer_prompt
+
+        planner_template = planner_template or PromptTemplate("FLOW/ReAct/Planner")
+        self.planner_template = planner_template
 
         # 设置 planner 的 tools_behavior 为 "parse-execute"，执行后就停止，等待 T-A-O 循环
         planner.tools_behavior = "parse-execute"
-        planner_template = planner_template or PromptTemplate("FLOW/ReAct/Planner")
         planner.reset_init_memory(planner_template)
         self.planner = planner
 
-        class Observer(BaseAgent):
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-                self.completed_work = []
-                self.final_answer = None
-            
-            @property
-            def provider_dict(self):
-                return {
-                    "completed_work": "\n".join(self.completed_work),
-                    **super().provider_dict,
-                }
+        def observe_func(agent: BaseAgent):
+            output = agent.last_output
+            completed_work = []
 
-            def call(self, agent: BaseAgent, **kwargs):
-                self._last_output = None
+            if output:
+                completed_work.append(output)
+            else:
+                yield EventBlock("warn", f"{final_answer_prompt}\n没有可用的输出")
 
-                # 提取最终答案
-                output = agent.last_output
+            if agent.tools_calling_steps:
+                all_results = "\n".join([step["result"] for step in agent.tools_calling_steps])
+                observation = f'\n**观察**\n上面的行动结果为:\n{all_results}\n'
+                yield EventBlock("text", observation)
 
-                if output:
-                    self.completed_work.append(output)
-                else:
-                    self.final_answer = "没有可用的输出"
-                    yield EventBlock("warn", f"{self.final_answer_prompt}\n{self.final_answer}")
-                    return
+                completed_work.append(observation)
+                planner_template.bind_provider({
+                    "completed_work": "\n".join(completed_work)
+                })
 
-                if agent.tools_calling_steps:
-                    all_results = "\n".join([step["result"] for step in agent.tools_calling_steps])
-                    observation = f'\n**观察**\n上面的行动结果为:\n{all_results}\n'
-
-                    self.completed_work.append(observation)
-                    self._last_output = self.consumer_dict.get("task", "请开始")
-
-                    yield EventBlock("text", observation)
-
-        observer = Observer(name="observer")
-        observer.bind_provider(planner)
-        observer.bind_consumer(planner_template)
+            yield EventBlock("final_text", agent.provider_dict['task'])
 
         def should_continue(vars, runs):
-            if (self.final_answer_prompt in planner.last_output) or observer.final_answer:
-                return "END"
+            if final_answer_prompt in planner.last_output:
+                return "__END__"
             else:
                 planner.memory.clear()
-                return planner
+                return "planner"
 
         super().__init__(
-            planner,
-            observer,
+            {"planner": planner},
+            {"observer": observe_func},
             Selector([], condition=should_continue, name="should_continue"),
             **filter_kwargs(kwargs, self.available_init_params())
         )
