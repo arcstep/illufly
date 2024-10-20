@@ -73,14 +73,15 @@ class BaseToolCalling:
                     if isinstance(x, EventBlock):
                         if x.block_type == "final_tool_resp":
                             tool_resp = x.text
-                        elif x.block_type == "chunk":
+                        elif x.block_type in ["chunk", "text"]:
                             tool_resp += x.text
                         yield x
                     else:
                         tool_resp += x
                         yield EventBlock("tool_resp_chunk", x)
                 yield NewLineBlock()
-                yield EventBlock("final_tool_resp", tool_resp)
+                if tool_resp:
+                    yield EventBlock("final_tool_resp", tool_resp)
                 return
 
         yield EventBlock("warn", f"tool {tool} not found")
@@ -102,7 +103,7 @@ class BaseToolCalling:
                     if isinstance(x, EventBlock):
                         if x.block_type == "final_tool_resp":
                             tool_resp = x.text
-                        elif x.block_type == "chunk":
+                        elif x.block_type in ["chunk", "text"]:
                             tool_resp += x.text
                         yield x
                     else:
@@ -110,4 +111,5 @@ class BaseToolCalling:
                         yield EventBlock("tool_resp_chunk", x)
 
                 yield NewLineBlock()
-                yield EventBlock("final_tool_resp", tool_resp)
+                if tool_resp:
+                    yield EventBlock("final_tool_resp", tool_resp)
