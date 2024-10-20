@@ -70,7 +70,7 @@ class Retriever(BaseAgent):
         translated_queries = set()
         for translator in self.translators:
             if isinstance(translator, ChatAgent):
-                if not translator.init_messages:
+                if not translator.init_memory:
                     new_messages = [
                         ('system', PromptTemplate("RAG/Q_GEN", binding_map={"count": self.question_count})),
                         ('user', query),
