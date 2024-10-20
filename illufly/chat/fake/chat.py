@@ -33,7 +33,7 @@ class FakeLLM(ChatAgent):
             self.current_response_index = (self.current_response_index + 1) % len(self.response)
         else:
             std_msg = Messages(prompt, style="text")
-            resp = std_msg.last_content
+            resp = f"Reply >> {std_msg.last_content}"
 
         for content in resp:
             time.sleep(_sleep)

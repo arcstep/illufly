@@ -1,6 +1,6 @@
 import re
 
-from typing import List, Union, Generator, AsyncGenerator
+from typing import List, Union, Generator, AsyncGenerator, Callable
 from .....io import EventBlock, NewLineBlock
 from .....utils import minify_text, filter_kwargs, raise_invalid_params
 from ...selector import Selector
@@ -30,22 +30,31 @@ class FlowAgent(BaseAgent):
         self.agents_index = {}
 
         for i, agent in enumerate(agents):
+            _node_name = None
+            _agent = None
             if isinstance(agent, dict):
-                node_name = list(agent.keys())[0]
-                agent = list(agent.values())[0]
-                self.agents.append((node_name, agent))
-                self.agents_index[node_name] = (i, agent)
-            elif isinstance(agent, (BaseAgent, Selector)):
-                if agent.name in self.agents_index:
-                    node_name = f"{agent.name}-{len(self.agents_index)}"
+                _node_name = list(agent.keys())[0]
+                _agent = self.convert_base_agent(list(agent.values())[0])
+            else:
+                _agent = self.convert_base_agent(agent)
+                if _agent.name in self.agents_index:
+                    _node_name = f"{_agent.name}-{len(self.agents_index)}"
                 else:
-                    node_name = agent.name
-                self.agents.append((node_name, agent))
-                self.agents_index[node_name] = (i, agent)
+                    _node_name = _agent.name
 
-        for (name, agent) in self.agents:
-            if not isinstance(agent, (BaseAgent, Selector)):
-                raise ValueError("only accept BaseAgent or Selector join to Flow")
+            self.agents.append((_node_name, _agent))
+            self.agents_index[_node_name] = (i, _agent)
+
+    def __repr__(self):
+        return f"FlowAgent({[agent[0] for agent in self.agents]})"
+
+    def convert_base_agent(self, agent):
+        if isinstance(agent, (BaseAgent, Selector)):
+            return agent
+        elif isinstance(agent, Callable):
+            return BaseAgent(name=agent.__name__, func=agent)
+        else:
+            raise ValueError("agent must be a BaseAgent, Selector or Callable")
 
     def get_agent(self, name):
         return self.agents_index.get(name, (None, None))[2]
@@ -68,58 +77,85 @@ class FlowAgent(BaseAgent):
         elif isinstance(agent, BaseAgent):
             return agent.name.lower() == "__end__"
 
-        raise ValueError("agent must be a str or BaseAgent")
+        raise ValueError("agent must be a str or BaseAgent", agent)
 
     def call(self, *args, **kwargs):
         """
         执行智能体管道。
         """
 
+        # 初始化当前节点信息
         (current_node_name, current_agent) = self.agents[0]
         current_index = 0
+
+        # 初始化调用参数
         current_args = args
         current_kwargs = kwargs
-        steps_count = 0
 
+        # 初始化总步数
+        steps_count = 1
+
+        # 开始回调
         self.begin_call()
 
         while(steps_count < self.max_steps):
-            # 如果 current_agent 是一个选择器
-            selected_agent = current_agent.selected
-
-            # 如果已经到了 __End__  节点，就退出
-            if self.is_end(selected_agent):
-                break
-
-            # 确保正确获得 agent 和 当前 index
+            # 从 current_node_name 获得 agent 和 当前 index
             (current_index, selected_agent) = self.agents_index.get(current_node_name, (None, None))
             if current_index is None:
+                yield EventBlock("warn", f"节点 {current_node_name} 不存在")
                 break
 
-            # 广播节点信息
+            # 如果 selected_agent 是一个选择器
+            if isinstance(selected_agent, Selector):
+                # 如果是选择器，就执行一次 select 方法
+                selected_agent.select()
+                # 更新当前节点的名称 current_node_name
+                if isinstance(selected_agent.selected, str):
+                    current_node_name = selected_agent.selected
+
+                    # 如果已经到了 __End__  节点，就退出
+                    if current_node_name.lower() == "__end__":
+                        yield EventBlock("info", f"到达 __End__ 节点，结束")
+                        break
+
+                    (current_index, selected_agent) = self.agents_index.get(current_node_name, (None, None))
+                    if current_index is None:
+                        yield EventBlock("warn", f"节点 {current_node_name} 不存在")
+                        break
+                else:
+                    current_node_name = selected_agent.selected.name
+
+            # 广播节点信息给 handlers
             info = self._get_node_info(current_index + 1, current_node_name)
             yield EventBlock("agent", info)
 
-            call_resp = selected_agent.call(*current_args, **current_kwargs)
+            # 执行当前节点的 call 方法
+            call_resp = selected_agent.selected.call(*current_args, **current_kwargs)
             if isinstance(call_resp, Generator):
                 yield from call_resp
 
-            if selected_agent.last_output:
+            # 分析当前节点的输出
+            if selected_agent.selected.last_output:
                 # 如果节点已经有了最终的输出，就保存到 FlowAgent 的 last_output 属性中
-                self._last_output = selected_agent.last_output
+                self._last_output = selected_agent.selected.last_output
+            else:
+                raise ValueError(f"agent {selected_agent.selected.name} must have a last_output")
 
             # 构造下一次调用的参数
-            current_args = [selected_agent]
+            current_args = [selected_agent.selected]
 
             if (current_index + 1) >= len(self.agents):
                 # 如果已经超出最后一个节点，就结束
+                yield EventBlock("warn", f"超出最后一个节点，结束")
                 break
             else:
                 # 否则继续处理下一个节点
                 (current_node_name, current_agent) = self.agents[current_index + 1]
 
+            # 总步数递增
             steps_count += 1
 
+        # 结束回调
         self.end_call()
 
         yield EventBlock("info", f"执行完毕，所有节点运行 {steps_count} 步")

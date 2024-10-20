@@ -95,7 +95,7 @@ class BaseAgent(Runnable, ToolAbility, ResourceManager):
                 yield block
         else:
             self._last_output = resp
-            yield EventBlock("chunk", resp)
+            yield EventBlock("text", resp)
 
     async def async_call(self, *args, **kwargs):
         if self.async_func:
@@ -121,4 +121,4 @@ class BaseAgent(Runnable, ToolAbility, ResourceManager):
                 yield block
         else:
             self._last_output = resp
-            yield EventBlock("chunk", resp)
+            yield EventBlock("text", resp)

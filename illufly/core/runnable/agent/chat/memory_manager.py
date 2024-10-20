@@ -129,15 +129,16 @@ class MemoryManager(BindingManager):
         if new_chat and not new_messages.has_role("system"):
             new_messages = self.init_memory + new_messages
 
-        # 如果在合并后的 new_messages 中，task 变量被模板使用
-        #   则将尾部消息列表中的 user 角色消息取出，并赋值给 task 变量用于绑定映射
-        if 'task' in self.get_bound_vars(new_messages, new_chat=new_chat) and new_messages[-1].role == 'user':
-            new_messages.messages.pop(-1)
+        if new_messages.has_role("system"):
+            # 如果在合并后的 new_messages 中，task 变量被模板使用，
+            # 则将尾部消息列表中的 user 角色消息取出，并赋值给 task 变量用于绑定映射
+            if 'task' in self.get_bound_vars(new_messages, new_chat=new_chat) and new_messages[-1].role == 'user':
+                new_messages.messages.pop(-1)
 
-        if new_messages and new_messages[-1].role == 'system':
             # 如果新消息列表的尾部是 system 消息，则需要补充一个 user 角色消息
             # 否则，缺少用户消息会让大模型拒绝回答任何问题
-            new_messages.append({"role": "user", "content": "请开始"})
+            if new_messages[-1].role == 'system':
+                new_messages.append({"role": "user", "content": "请开始"})
 
         return new_messages
 

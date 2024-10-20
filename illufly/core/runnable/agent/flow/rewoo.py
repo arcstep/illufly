@@ -43,23 +43,14 @@ class ReWOO(FlowAgent):
             raise ValueError("planner 必须是 ChatAgent 的子类")
         if not planner.tools:
             raise ValueError("planner 必须包含可用的工具")
-        if planner is solver:
+        if solver is planner:
             raise ValueError("planner 和 solver 不能相同")
 
-        planner_template = planner_template or PromptTemplate("FLOW/ReWOO/Planner")
-        solver_template = solver_template or PromptTemplate("FLOW/ReWOO/Solver")
-
-        planner.tools_behavior = "parse-execute"
-        planner.reset_init_memory(planner_template)
-        planner.bind_consumer(planner_template)
-
-        solver.tools_behavior = "nothing"
-        solver.reset_init_memory(solver_template)
-        solver.bind_consumer(solver_template)
-
+        self.planner_template = planner_template or PromptTemplate("FLOW/ReWOO/Planner")
+        self.solver_template = solver_template or PromptTemplate("FLOW/ReWOO/Solver")
         self.final_answer_prompt = final_answer_prompt or "**最终答案**"
         self.planner = planner
-        self.solver = solver
+        self.solver = solver or planner
 
         class Observer(BaseAgent):
             def __init__(self, **kwargs):
@@ -93,7 +84,12 @@ class ReWOO(FlowAgent):
         )
     
     def begin_call(self):
+        self.planner.tools_behavior = "parse-execute"
+        self.planner.reset_init_memory(self.planner_template)
         self.planner.memory.clear()
+
+        self.solver.tools_behavior = "nothing"
+        self.solver.reset_init_memory(self.solver_template)
         self.solver.memory.clear()
 
     def end_call(self):
