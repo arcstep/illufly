@@ -57,6 +57,8 @@ class ReAct(FlowAgent):
                 }
 
             def call(self, agent: BaseAgent, **kwargs):
+                self._last_output = None
+
                 # 提取最终答案
                 output = agent.last_output
 
