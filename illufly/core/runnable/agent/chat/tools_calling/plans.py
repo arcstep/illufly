@@ -87,7 +87,7 @@ class Plans(BaseToolCalling):
                     }
                 }
                 for block in self.execute_tool(tool_to_exec):
-                    if block.block_type == "tool_resp_final":
+                    if block.block_type == "final_tool_resp":
                         # 将结果存储到 pre_build_vars 中
                         pre_build_vars[step["eid"]] = block.text
                         step["result"] = block.text.strip()

@@ -73,7 +73,7 @@ class PythonCodeTool(BaseAgent):
         code = parse_code(output_text)
         if code:
             exec_result = execute_code(self.data, code)
-            yield EventBlock("tool_resp_final", exec_result)
+            yield EventBlock("final_tool_resp", exec_result)
         else:
             yield EventBlock("warn", "没有正确生成python代码失败。")
 

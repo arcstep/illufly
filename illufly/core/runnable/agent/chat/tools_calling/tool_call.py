@@ -59,7 +59,7 @@ class ToolCall(BaseToolCalling):
 
             # 执行工具
             for block in self.execute_tool(tool_call):
-                if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
+                if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
                     tool_resp = block.text
                     tool_resp_message = [
                         {
@@ -89,7 +89,7 @@ class ToolCall(BaseToolCalling):
 
             # 执行工具
             async for block in self.async_execute_tool(tool_call):
-                if isinstance(block, EventBlock) and block.block_type == "tool_resp_final":
+                if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
                     tool_resp = block.text
                     tool_resp_message = [
                         {
