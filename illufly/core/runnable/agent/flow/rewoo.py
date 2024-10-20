@@ -3,6 +3,7 @@ from typing import Union, List, Callable
 from .....utils import extract_segments, filter_kwargs, raise_invalid_params
 from .....io import EventBlock
 from ...prompt_template import PromptTemplate
+from ...selector import End
 from ..base import BaseAgent
 from .base import FlowAgent
 
@@ -10,18 +11,13 @@ import json
 
 class ReWOO(FlowAgent):
     """
-    ReWOO 是一种高效的增强语言模型框架，它通过分离 LLM 的推理过程和外部工具调用，并利用可预测推理能力和参数效率，
-    实现了更轻量级和可扩展的 ALM 系统。ReWOO 将 ALM 的核心组件分为 Planner、Worker 和 Solver 三个模块，
-    Planner 负责制定解决问题的计划，Worker 负责使用外部工具获取证据，Solver 负责根据计划和证据得出最终答案。
-    这种方式避免了传统 ALM 中推理和观察的交织，减少了 token 消耗，提高了效率。
-    同时，ReWOO 可以通过指令微调和模型专化，将 LLM 的通用推理能力迁移到更小的语言模型中，实现更轻量级的 ALM 系统。
-    ReWOO 在多个 NLP 基准数据集上取得了与 ReAct 相当或更好的性能，同时减少了 token 消耗，为构建更高效、可扩展的 ALM 提供了一种新的思路。
+    ReWOO 在 ReAct 基础上, 一次性生成所有需要的计划, 但取消观察环节, 从而大大减少与LLM的对话次数。
     """
     @classmethod
     def available_init_params(cls):
         return {
-            "planner": "计划器",
-            "solver": "求解器",
+            "planner": "计划器，用于生成完成任务所有需要的整体计划",
+            "solver": "求解器，根据计划和各步骤执行结果汇总后得出最终答案",
             "planner_template": "计划器提示语模板, 默认为 PromptTemplate('FLOW/ReWOO/Planner')",
             "solver_template": "求解器提示语模板, 默认为 PromptTemplate('FLOW/ReWOO/Solver')",
             "final_answer_prompt": "最终答案提示词关键字, 默认为 **最终答案**",
@@ -46,40 +42,34 @@ class ReWOO(FlowAgent):
         if solver is planner:
             raise ValueError("planner 和 solver 不能相同")
 
-        self.planner_template = planner_template or PromptTemplate("FLOW/ReWOO/Planner")
-        self.solver_template = solver_template or PromptTemplate("FLOW/ReWOO/Solver")
+        planner_template = planner_template or PromptTemplate("FLOW/ReWOO/Planner")
+        self.planner_template = planner_template
+
+        solver_template = solver_template or PromptTemplate("FLOW/ReWOO/Solver")
+        self.solver_template = solver_template
+
         self.final_answer_prompt = final_answer_prompt or "**最终答案**"
         self.planner = planner
-        self.solver = solver or planner
+        self.solver = solver
+        self.completed_work = []
 
-        class Observer(BaseAgent):
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-                self.completed_work = []
+        def observe_func(agent: BaseAgent):
+            if agent.tools_calling_steps:
+                for step in agent.tools_calling_steps:
+                    self.completed_work.append(
+                        f'Step{step["index"]}: {step["description"]}\n{step["eid"]} = {step["name"]}[{step["arguments"]}]\n{step["eid"]} 执行结果: {step["result"]}\n'
+                    )
+                self.solver_template.bind_provider({
+                    "completed_work": "\n".join(self.completed_work)
+                })
 
-            @property
-            def provider_dict(self):
-                return {
-                    "completed_work": "\n".join(self.completed_work),
-                    **super().provider_dict,
-                }
-
-            def call(self, agent: BaseAgent, **kwargs):
-                if agent.tools_calling_steps:
-                    for step in agent.tools_calling_steps:
-                        self.completed_work.append(
-                            f'Step{step["index"]}: {step["description"]}\n{step["eid"]} = {step["name"]}[{step["arguments"]}]\n{step["eid"]} 执行结果: {step["result"]}\n'
-                        )
-                    self._last_output = self.consumer_dict.get("task", "请开始")
-
-        observer = Observer(name="observer")
-        observer.bind_provider(planner)
-        observer.bind_consumer(solver)
+                return planner.provider_dict['task']
 
         super().__init__(
             planner,
-            observer,
+            observe_func,
             solver,
+            End(),
             **filter_kwargs(kwargs, self.available_init_params())
         )
     
@@ -91,6 +81,10 @@ class ReWOO(FlowAgent):
         self.solver.tools_behavior = "nothing"
         self.solver.reset_init_memory(self.solver_template)
         self.solver.memory.clear()
+
+        self.solver_template.bind_provider({
+            "completed_work": ""
+        })
 
     def end_call(self):
         if self.final_answer_prompt in self.last_output:
