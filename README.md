@@ -6,7 +6,7 @@
 
 **illufly** 的目标是快速构建多智能体的对话和写作场景。
 
-## 详细文档导航
+## 一、详细文档导航
 
 * [《illufly 快速指南》](https://github.com/arcstep/illufly/wiki/Home)
 
@@ -30,15 +30,130 @@
 * [自定义大模型](https://github.com/arcstep/illufly/wiki/自定义大模型)
 
 
-## 快速体验
+## 二、illufly 能力展示
 
-### 安装 `illufly` 包
+**1. 基本能力**
+illufly 最主要是封装了 ChatAgent 基类，在进一步实现千问、智谱以及 OpenAI 等大模型厂家的接口后，获得了 ChatQwen、ChatZhipu 以及 ChatOpenAI 等子类。
+
+由于 ChatAgent 封装了多轮对话、工具回调、流输出等常用能力，ChatQwen 等子类可以直接使用这些能力。
+
+```python
+from illufly.chat import ChatQwen
+
+chat = ChatQwen()
+chat("你是什么模型？")
+```
+
+```
+输出内容: (我是一个流式输出的动画)
+```
+
+**2. 工具回调**
+ChatAgent 在使用工具回调时非常简洁，只需要将工具列表传递给类的实例即可，不需要多余的代码。
+
+```python
+from illufly.chat import ChatQwen
+
+def tool1(input: str):
+    """我是一个会写诗的工具"""
+    return "大海啊, 全是水"
+
+chat = ChatQwen(tools=[tool1])
+chat("你是什么模型？")
+```
+
+**3. 复杂推理**
+默认情况下，你只能使用 OpenAI 风格的工具回调。<br>
+但你可能还想使用其他推理模式，illufly 中已经实现这些推理风格:
+
+- ReAct 一边推理一边执行 (ReAct 论文)[https://arxiv.org/abs/2210.03629]
+- ReWOO 一次性规划所有步骤后一起执行 (ReWOO 论文)[https://arxiv.org/abs/2305.18323]
+- PlanAndSolve 一边修订总体计划一边执行 (Plan-and-Solve 论文)[https://arxiv.org/abs/2305.04091]
+
+你也可以参考 illufly 的源码，实现自己的推理模式。
+
+```python
+from illufly.chat import ChatQwen, ReAct
+
+def tool1(input: str):
+    """我是一个会写诗的工具"""
+    return "大海啊, 全是水"
+
+chat = ReAct(
+    planner=ChatQwen(tools=[tool1])
+)
+chat("你是什么模型？")
+```
+
+**3. 多智能体协作**
+illufly 也允许你定义多个智能体，并让它们协作完成任务。
+
+下面的 FlowAgent 代码实现了 **Reflection** 推理模式。
+代码中定义了一个条件循环，写手和评分专家协作完成一首儿歌的创作和评分。
+
+```python
+from illufly.chat import FlowAgent, ChatQwen, Selector
+
+writer = ChatQwen(
+    name="写手",
+    memory=("system", "你是一个写手")
+)
+
+evaluator = ChatQwen(
+    name="评分专家",
+    memory=("system", "你是一个评分专家，根据对方写的内容评价1分-5分，仅输出评价和最终结果")
+)
+
+def should_continue():
+    return "__END__" if "5" in evaluator.last_output else "写手"
+
+flow = FlowAgent(writer, evaluator, Selector(condition=should_continue))
+
+flow("你能帮我写一首关于兔子的四句儿歌?")
+```
+
+## 三、知识塔
+如果你想学习 illufly 的全部内容，下面是一个知识结构的指引。
+
+该图不是模块的继承关系，而是知识主题的依赖关系。
+也就是说，如果你要了解某个上层模块，就必须先了解下层模块。
+
+```mermaid
+graph TD
+    Config[[Config<br>环境变量/默认配置]]
+    Runnable[Runnable<br>绑定机制/流输出/handler]
+
+    Flow[FlowAgent<br>顺序/分支/循环/自定义]
+
+    Agent(ChatAgent<br>记忆/工具/知识/多模态)
+    Selector(Selector<br>意图/条件)
+    BaseAgent(BaseAgent<br>工具/多模态)
+    Messages[Messages<br>文本/多模态/模板]
+    PromptTemplate[[PromptTemplate<br>模板语法/hub]]
+
+    MarkMeta[[MarkMeta<br>切分标记/元数据序列化]]
+    Retriever[Retriever<br>理解/查询/整理]
+
+    Flow --> Agent
+    Agent --> Selector --> Runnable --> Config
+    Agent --> BaseAgent --> Runnable
+    Agent --> Messages -->  PromptTemplate --> Runnable
+    Agent --> Retriever --> MarkMeta --> Runnable
+
+    style Agent stroke-width:2px,stroke-dasharray:5 5
+    style BaseAgent stroke-width:2px,stroke-dasharray:5 5
+
+```
+
+## 四、安装指南
+
+**安装 `illufly` 包**
 
 ```sh
 pip install illufly
 ```
 
-#### 推荐使用 `dotenv` 管理环境变量
+**推荐使用 `dotenv` 管理环境变量**
 
 将`APIKEY`和项目配置保存到`.env`文件，再加载到进程的环境变量中，这是很好的实践策略。
 
@@ -61,164 +176,5 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(), override=True)
 ```
 
-### 使用示例
 
-#### 创建对话应用
-
-使用极简的代码，就可以构建基于通义千问大模型的对话应用。
-
-下面的代码中使用了流式输出，在执行代码的环境中可以看到：输出是一个字、个词蹦出来的。
-
-```python
-from illufly.chat import ChatQwen
-
-# 要使用通义千问，需要先安装 `dashscope` 包
-# 并配置好相应的 DASHSCOPE_API_KEY
-qwen = ChatQwen()
-qwen("你能帮我写一首关于兔子做梦的四句儿歌?")
-```
-
-生成结果：
-```md
-小白兔，梦中跳，  
-胡萝卜，满天飘。  
-月亮船，带它逛，  
-醒来笑，梦真妙。
-```
-
-#### 创建连续对话
-
-`ChatQwen`是一个基于通义千问的对话模型。
-
-所有智能体对象都已经封装了多轮对话、工具回调、知识增强等能力。
-
-请看连续对话的例子：
-
-```python
-from illufly.chat import ChatQwen
-
-# 简单的系统提示语可以在智能体定义时声明，帮助确定角色、任务等
-qwen = ChatQwen(memory="你是一个专门写儿歌的作家，请根据我的提示写作。")
-qwen("来一首关于兔子的，四句")
-```
-
-生成结果：
-```md
-小白兔，蹦蹦跳，  
-耳朵长，尾巴小。  
-爱吃萝卜和青菜，  
-快乐生活在林梢。
-```
-
-连续提问，它依然懂你：
-```python
-qwen("换成两条小鱼")
-```
-
-生成结果：
-```md
-两条��鱼，游啊游，  
-水中穿梭，乐悠悠。  
-摇摇尾巴，吐泡泡，  
-大海深处是故乡。
-```
-
-`illufly` 智能体对象是有记忆的，使用`qwen.memory`查看：
-
-```python
-[{'role': 'system', 'content': '你是一个专门写儿歌的作家，请根据我的提示写作。'},
- {'role': 'user', 'content': '来一首关于兔子的，四句'},
- {'role': 'assistant',
-  'content': '小白兔，蹦蹦跳，  \n耳朵长，尾巴小。  \n爱吃萝卜和青菜，  \n快乐生活在林梢。'},
- {'role': 'user', 'content': '换成两条小鱼'},
- {'role': 'assistant',
-  'content': '两条小鱼，游啊游，  \n水中穿梭乐悠悠。  \n摇摇尾巴，吐泡泡，  \n大海深处是故乡。'}]
-```
-
-#### 使用工具回调
-
-要让`illufly`智能体支持工具回调，只需要提供`tools`参数。
-
-以下示例是定义工具和使用工具的过程：
-```python
-from illufly.chat import ChatQwen
-from types import BaseAgent
-
-def get_current_weather(location: str=None):
-    """获取城市的天气情况"""
-    return f"{location}今天是晴天。"
-
-q = ChatQwen(tools=[BaseAgent(get_current_weather)])
-q("今天广州可以晒被子吗？")
-```
-
-生成结果：
-
-```md
-广州今天是晴天。 
-
-今天广州是晴天，非常适合晒被子。可以放心地把被子拿出来晾晒。
-```
-
-上面的结果中，第一句是工具回调输出的结果，第二句是工具回调后大模型再次生成的流长文本。
-
-你也可以通过设置`verbose=True`来查看工具调用详情：
-
-```python
-q("今天广州可以晒被子吗？", verbose=True)
-```
-
-生成结果：
-
-```md
-[TOOLS_CALL_CHUNK] {"index": 0, "id": "call_8f5d146a77b24d9c97b7ec", "type": "function", "function": {"name": "get_current_weather", "arguments": ""}}
-[TOOLS_CALL_CHUNK] {"index": 0, "id": "", "type": "function", "function": {"arguments": "{\"location\": \""}}
-[TOOLS_CALL_CHUNK] {"index": 0, "id": "", "type": "function", "function": {"arguments": "广州\"}"}}
-[TOOLS_CALL_CHUNK] {"index": 0, "id": "", "type": "function", "function": {}}
-[TOOLS_CALL_FINAL] {"0": {"index": 0, "id": "call_8f5d146a77b24d9c97b7ec", "type": "function", "function": {"name": "get_current_weather", "arguments": "{\"location\": \"广州\"}"}}}
-广州今天是晴天。 
-
-今天广州是晴天，非常适合晒被子。
-```
-
-生成的结果中，增加的`[TOOLS_CALL_CHUNK]...`部分，是大模型第一次推理得出的工具和参数要求，紧接着是工具回调的结果，最后是工具回调后大模型再次合成后的文本。
-
-#### 智能体团队：执行管道
-
-将前面用过的智能体连接起来，就可以形成多智能体团队。
-
-`Pipe` 对象会把多个智能体对象组织起来，分工协作，共同完成任务，使用方法也与普通智能体类似。
-
-```python
-from illufly.chat import ChatQwen, Pipe
-
-pipe = Pipe(
-    ChatQwen(memory="我是一个儿童作家，擅长写儿歌。"),
-    ChatQwen(memory="请你帮我评价文章特色，两句话即可"),
-    ChatQwen(memory="请针对我的写作成果打一个分数，给出一句话的打分点，最终给出1分至5分")
-)
-
-pipe("你能帮我写一首关于兔子做梦的？四句即可。")
-```
-
-生成结果：
-
-```md
-[AGENT] >>> Node 1: 我是一个儿童作家，擅长写儿歌。
-
-> 小白兔，梦中跳，月亮船上摇啊摇。
-> 胡萝卜，变成桥，梦里世界真奇妙。
-
-[AGENT] >>> Node 2: 请你帮我评价文章特色，两句话即可
-
-> 这首短文充满了童趣和想象力，通过"小白兔在月亮船上摇晃"和"胡萝卜变成桥"的奇幻意象，展现了梦境的奇妙与无尽创意，语言简洁，富有诗意，非常适合儿童阅读，激发他们的想象空间。
-
-[AGENT] >>> Node 3: 请针对我的写作成果打一个分数，给出一句话的打分点，最终给出1分至5分
-
-> 4分。打分点在于作品成功营造了富有童趣和想象力的氛围，语言表达既简洁又有诗意，非常适合儿童阅读，但在内容深度或情节构建上还有提升空间。
-```
-
-加入到 `Pipe` 中的智能体对象，都可以使用自己的大模型、提示语、工具箱。其协作过程就像流水线，前一个智能体的输出，直接作为下一个智能体的输入。这是多智能体协作方式的一种，称为`流水线协作`。
-
-`illufly` 中还支持其他协作方式，如`提纲扩写`、`讨论`等。
 
