@@ -6,8 +6,6 @@
 
 **illufly** 的目标是快速构建多智能体的对话和写作场景。
 
-## 一、详细文档导航
-
 * [《illufly 快速指南》](https://github.com/arcstep/illufly/wiki/Home)
 
 **入门指南**
@@ -30,9 +28,10 @@
 * [自定义大模型](https://github.com/arcstep/illufly/wiki/自定义大模型)
 
 
-## 二、illufly 能力展示
+## 使用示例
 
 **1. 基本能力**
+
 illufly 最主要是封装了 ChatAgent 基类，在进一步实现千问、智谱以及 OpenAI 等大模型厂家的接口后，获得了 ChatQwen、ChatZhipu 以及 ChatOpenAI 等子类。
 
 由于 ChatAgent 封装了多轮对话、工具回调、流输出等常用能力，ChatQwen 等子类可以直接使用这些能力。
@@ -49,6 +48,7 @@ chat("你是什么模型？")
 ```
 
 **2. 工具回调**
+
 ChatAgent 在使用工具回调时非常简洁，只需要将工具列表传递给类的实例即可，不需要多余的代码。
 
 ```python
@@ -63,6 +63,7 @@ chat("你是什么模型？")
 ```
 
 **3. 复杂推理**
+
 默认情况下，你只能使用 OpenAI 风格的工具回调。<br>
 但你可能还想使用其他推理模式，illufly 中已经实现这些推理风格:
 
@@ -86,6 +87,7 @@ chat("你是什么模型？")
 ```
 
 **3. 多智能体协作**
+
 illufly 也允许你定义多个智能体，并让它们协作完成任务。
 
 下面的 FlowAgent 代码实现了 **Reflection** 推理模式。
@@ -112,7 +114,8 @@ flow = FlowAgent(writer, evaluator, Selector(condition=should_continue))
 flow("你能帮我写一首关于兔子的四句儿歌?")
 ```
 
-## 三、知识塔
+## 知识塔
+
 如果你想学习 illufly 的全部内容，下面是一个知识结构的指引。
 
 该图不是模块的继承关系，而是知识主题的依赖关系。
@@ -145,7 +148,7 @@ graph TD
 
 ```
 
-## 四、安装指南
+## 安装指南
 
 **安装 `illufly` 包**
 
