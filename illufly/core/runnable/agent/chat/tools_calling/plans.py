@@ -28,21 +28,53 @@ class Plans(BaseToolCalling):
     def extract_tools_call(self, text: str) -> Dict[str, Dict[str, Any]]:
         # 正则表达式解析文本
         # Regex to match expressions of the form Step1: ... #E... = ...[{"p1":"v1","p2":"v2"}]
-        pattern = r"Step(\d+):\s*(.+?)\s*#(E\d+)\s*=\s*(\w+)[\(\[](\{.*?\})[\)\]]"
+        pattern_full = r"Step(\d+):\s*(.+?)\s*#(E\d+)\s*=\s*(\w+)(?:[\(\[](\{.*?\})[\)\]])?"
+        pattern_partial = r"Step(\d+):\s*(.*)(#E\d+)\s*"
         steps = []
-        for match in re.finditer(pattern, text, re.DOTALL):
-            index = match.group(1).strip()
-            description = match.group(2).strip()
-            eid = match.group(3).strip()
-            function_name = match.group(4).strip()
-            arguments = match.group(5).strip()  # 保留原始参数字符串，包括占位符
+        
+        for line in text.splitlines():
+            if not line:
+                continue
+
+            match_full = re.search(pattern_full, line)
+            
+            if match_full:
+                index = match_full.group(1).strip()
+                description = match_full.group(2).strip()
+                eid = match_full.group(3).strip()
+                function_name = match_full.group(4).strip()
+                arguments = match_full.group(5).strip() if match_full.group(5) else ""
+                
+                # 确保 match_full 的关键字段不为空
+                if eid and function_name:
+                    step = {
+                        "index": f"{index}",
+                        "eid": eid,
+                        "description": description,
+                        "name": function_name,
+                        "arguments": arguments,
+                        "result": ""
+                    }
+                    steps.append(step)
+                    continue
+
+            # 如果 match_full 不成功或关键字段为空，尝试 match_partial
+            match_partial = re.search(pattern_partial, line)
+            if match_partial:
+                index = match_partial.group(1).strip()
+                eid = f'#E{index}'
+                description = match_partial.group(2).strip() + f" {eid}"
+                function_name = ""
+                arguments = ""
+            else:
+                continue
 
             step = {
                 "index": f"{index}",
-                "eid": f"#{eid}",
+                "eid": eid,
                 "description": description,
                 "name": function_name,
-                "arguments": arguments,  # 直接存储原始参数字符串
+                "arguments": arguments,
                 "result": None
             }
             steps.append(step)
@@ -76,25 +108,26 @@ class Plans(BaseToolCalling):
                             arguments = arguments.replace(placeholder, json.dumps(result, ensure_ascii=False))
 
             # 确保 arguments 是有效的 JSON
-            try:
-                parsed_arguments = json.loads(arguments)
-                arguments = json.dumps(parsed_arguments, ensure_ascii=False)
+            if arguments:  # 仅在 arguments 非空时尝试解析
+                try:
+                    parsed_arguments = json.loads(arguments)
+                    arguments = json.dumps(parsed_arguments, ensure_ascii=False)
 
-                tool_to_exec = {
-                    "function": {
-                        "name": step.get("name"),
-                        "arguments": arguments
+                    tool_to_exec = {
+                        "function": {
+                            "name": step.get("name"),
+                            "arguments": arguments
+                        }
                     }
-                }
-                for block in self.execute_tool(tool_to_exec):
-                    if block.block_type == "final_tool_resp":
-                        # 将结果存储到 pre_build_vars 中
-                        pre_build_vars[step["eid"]] = block.text
-                        step["result"] = block.text.strip()
-                    yield block
+                    for block in self.execute_tool(tool_to_exec):
+                        if block.block_type == "final_tool_resp":
+                            # 将结果存储到 pre_build_vars 中
+                            pre_build_vars[step["eid"]] = block.text
+                            step["result"] = block.text.strip()
+                        yield block
 
-            except json.JSONDecodeError as e:
-                print(f"JSONDecodeError: {e} in arguments: {arguments}")
+                except json.JSONDecodeError as e:
+                    print(f"JSONDecodeError: {e} in arguments: {arguments}")
 
     async def async_handle(self, final_tool_call):
         async for block in self.async_execute_tool(final_tool_call):
