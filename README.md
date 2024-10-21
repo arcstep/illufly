@@ -75,6 +75,8 @@ chat("你是什么模型？")
 
 你也可以参考 illufly 的源码，实现自己的推理模式。
 
+下面是一个 ReAct 使用的示例，与直接使用 ChatAgent 非常相似：
+
 ```python
 from illufly.chat import ChatQwen, ReAct
 
