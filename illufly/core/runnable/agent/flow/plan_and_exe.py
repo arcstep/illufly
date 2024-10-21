@@ -70,7 +70,7 @@ class PlanAndExe(FlowAgent):
         replanner.reset_init_memory(replanner_template)
         self.replanner = replanner
 
-        self.done = []
+        self.completed_work = []
         self.todo = []
 
         def observe_worker_for_replanner(agent: BaseAgent):
@@ -81,16 +81,14 @@ class PlanAndExe(FlowAgent):
                 for step in agent.tools_calling_steps:
                     item = f'Step{step["index"]}: {step["description"]}\n{step["eid"]} = {step["name"]}[{step["arguments"]}]\n'
                     item = f'{item}{step["eid"]} 执行结果: {step["result"]}\n'
-                    self.done.append(item)
+                    self.completed_work.append(item)
 
-            binding_map = {
+            self.replanner_template.bind_provider({
                 "plan_todo": "\n".join(self.todo),
-                "plan_done": "\n".join(self.done)
-            }
+                "plan_done": "\n".join(self.completed_work)
+            })
 
-            self.replanner_template.bind_provider(binding_map)
-
-            yield EventBlock("final_text", planner.provider_dict['task'])
+            yield EventBlock("final_text", self.task)
 
         def observe_plan_for_worker(agent: BaseAgent):
             worker.memory.clear()
@@ -99,11 +97,9 @@ class PlanAndExe(FlowAgent):
                     item = f'Step{step["index"]}: {step["description"]}\n{step["eid"]} = {step["name"]}[{step["arguments"]}]\n'
                     self.todo.append(item)
 
-            binding_map = {
+            self.worker_template.bind_provider( {
                 "plan_todo": "\n".join(self.todo)
-            }
-
-            self.worker_template.bind_provider(binding_map)
+            })
 
             yield EventBlock("final_text", "请开始\n")
 
@@ -126,7 +122,7 @@ class PlanAndExe(FlowAgent):
 
     def begin_call(self):
         self.planner.memory.clear()
-        self.done.clear()
+        self.completed_work.clear()
         self.todo.clear()
 
     def end_call(self):

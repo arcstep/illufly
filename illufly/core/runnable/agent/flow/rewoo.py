@@ -63,7 +63,7 @@ class ReWOO(FlowAgent):
                     "completed_work": "\n".join(self.completed_work)
                 })
 
-                return planner.provider_dict['task']
+                return self.task
 
         super().__init__(
             planner,

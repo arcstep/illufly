@@ -65,7 +65,7 @@ class ReAct(FlowAgent):
                     "completed_work": "\n".join(self.completed_work)
                 })
 
-            yield EventBlock("final_text", agent.provider_dict['task'])
+            yield EventBlock("final_text", self.task)
 
         def should_continue(vars, runs):
             if final_answer_prompt in planner.last_output:

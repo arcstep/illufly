@@ -26,6 +26,7 @@ class FlowAgent(BaseAgent):
 
         self.max_steps = max_steps or 20
 
+        self.task = None
         self.agents = []
         self.agents_index = {}
 
@@ -97,6 +98,7 @@ class FlowAgent(BaseAgent):
 
         # 开始回调
         self.begin_call()
+        self.task = args[0] if args else None
 
         while(steps_count < self.max_steps):
             # 从 current_node_name 获得 agent 和 当前 index

@@ -8,14 +8,12 @@ graph TD
     Runnable[Runnable<br>绑定机制/流输出/handler]
 
     Application[应用集成<br>API/跨域/跨语言]
-    ADL[ADL<br>Agent Design Language]
     Optimization[Optimization<br>评估/打分/纠正/测评/提取]
-    Living[LivingAgent<br>群聊/模拟/复盘/仿真]
     Flow[FlowAgent<br>顺序/分支/循环/并行]
 
-    Team[TeamAgent<br>意图/思考/规划/行动]
     Agent(ChatAgent<br>记忆/工具/知识/多模态)
-    BaseAgent(BaseAgent<br>工具能力/多模态生成)
+    Selector(Selector<br>意图/条件)
+    BaseAgent(BaseAgent<br>工具/多模态)
     Messages[Messages<br>文本/多模态/模板]
     PromptTemplate[[PromptTemplate<br>模板语法/hub]]
 
@@ -24,16 +22,9 @@ graph TD
     Emb(Embeddings<br>模型/缓存)
     Retriever[Retriever<br>理解/查询/整理]
 
-    Application --> ADL
-    ADL --> Agent
-    ADL --> Team
-    ADL --> Flow
-    Flow --> Team --> Agent
-    Flow --> Agent
-    ADL --> Living --> Team
-    Living --> Agent
+    Application --> Flow --> Agent
     Optimization --> Agent
-    Agent --> Runnable --> Config
+    Agent --> Selector --> Runnable --> Config
     Agent --> BaseAgent --> Runnable
     Agent --> Messages -->  PromptTemplate --> Runnable
     Agent --> Retriever --> VectorDB --> Emb --> MarkMeta --> Runnable
