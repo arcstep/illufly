@@ -67,11 +67,15 @@ chat("你是什么模型？")
 默认情况下，你只能使用 OpenAI 风格的工具回调。<br>
 但你可能还想使用其他推理模式，illufly 中已经实现这些推理风格:
 
-- ReAct 一边推理一边执行 (ReAct 论文)[https://arxiv.org/abs/2210.03629]
-- ReWOO 一次性规划所有步骤后一起执行 (ReWOO 论文)[https://arxiv.org/abs/2305.18323]
-- PlanAndSolve 一边修订总体计划一边执行 (Plan-and-Solve 论文)[https://arxiv.org/abs/2305.04091]
+| FlowAgent子类 | 推理方式 | 论文 |
+|:----|:--------|:------------|
+|ReAct|一边推理一边执行|[ReAct](https://arxiv.org/abs/2210.03629) |
+|ReWOO|一次性规划所有步骤后一起执行|[ReWOO](https://arxiv.org/abs/2305.18323) |
+|PlanAndSolve|一边修订总体计划一边执行|[Plan-and-Solve](https://arxiv.org/abs/2305.04091) |
 
 你也可以参考 illufly 的源码，实现自己的推理模式。
+
+下面是一个 ReAct 使用的示例，与直接使用 ChatAgent 非常相似：
 
 ```python
 from illufly.chat import ChatQwen, ReAct
