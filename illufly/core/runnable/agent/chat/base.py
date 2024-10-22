@@ -194,6 +194,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         if self.end_chk:
             yield EndBlock(self.last_output)
+        self.save_memory()
 
     async def async_call(self, prompt: Any, *args, **kwargs):
         # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
@@ -278,3 +279,4 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         if self.end_chk:
             yield EndBlock(self.last_output)
+        self.save_memory()
