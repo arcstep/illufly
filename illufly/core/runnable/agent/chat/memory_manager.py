@@ -1,9 +1,29 @@
+import os
+import time
+import json
+import random
+
 from typing import Union, List, Dict, Any, Callable
-from .....utils import filter_kwargs, raise_invalid_params
+from .....utils import filter_kwargs, raise_invalid_params, get_env
 from .....hub import get_template_variables
 from ...message import Messages, Message
 from ...prompt_template import PromptTemplate
 from ...binding_manager import BindingManager
+
+class ThreadIDGenerator:
+    def __init__(self):
+        self.counter = 0
+
+    def create_id(self):
+        while True:
+            timestamp = str(int(time.time()))[-6:]
+            random_number = f'{random.randint(0, 9999):04}'
+            counter_str = f'{self.counter:04}'
+            yield f'{timestamp}-{random_number}-{counter_str}'
+            self.counter = 0 if self.counter == 9999 else self.counter + 1
+
+thread_id_generator = ThreadIDGenerator()
+thread_id_gen = thread_id_generator.create_id()
 
 class MemoryManager(BindingManager):
     @classmethod
@@ -35,6 +55,16 @@ class MemoryManager(BindingManager):
         self.init_memory = []
         self.reset_init_memory(memory)
 
+        self._thread_id = None
+
+    @property
+    def thread_id(self):
+        return self._thread_id
+
+    def reset_new_chat(self):
+        self.memory.clear()
+        self._thread_id = next(thread_id_gen)
+
     def reset_init_memory(self, messages: Union[str, List[dict]]):
         self.init_memory = Messages(messages, style=self.style)
         for template in self.init_memory.all_templates:
@@ -65,6 +95,28 @@ class MemoryManager(BindingManager):
                         bound_vars.add(consumer_key)
         return bound_vars
 
+    def get_history_file_path(self, file_path: str=None):
+        return os.path.join(
+            get_env("ILLUFLY_XP"),
+            self.__class__.__name__.upper(),
+            "HISTORY",
+            file_path or f"{self.thread_id}.json"
+        )
+
+    # 保存记忆
+    def save_memory(self, file_path: str=None):
+        path = self.get_history_file_path(file_path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.memory, f, ensure_ascii=False)
+
+    # 加载记忆
+    def load_memory(self, file_path: str=None):
+        path = self.get_history_file_path(file_path)
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                self.memory = json.load(f)
+
     def build_chat_memory(self, prompt: Union[str, List[dict]], new_chat: bool=False, remember_rounds: int = None):
         """
         获取对话所需的短时记忆。
@@ -83,8 +135,8 @@ class MemoryManager(BindingManager):
 
         # 确定是否新一轮对话
         if new_chat or new_prompt.has_role("system") or not self.memory:
-            self.memory.clear()
             new_chat = True
+            self.reset_new_chat()
 
         new_messages = self.build_new_messages(new_prompt, new_chat)
         history_memory = self.get_history_memory(new_chat, remember_rounds)
@@ -124,21 +176,21 @@ class MemoryManager(BindingManager):
         for template in templates:
             self.bind_consumer(template, dynamic=True)
 
-        # 如果是新对话，只要没有提供 system 角色，就启用 init_memory 模板
-        # 合并 new_messages 和 init_memory
-        if new_chat and not new_messages.has_role("system"):
-            new_messages = self.init_memory + new_messages
+        if new_chat:
+            if new_messages.has_role("system"):
+                # 如果在合并后的 new_messages 中，task 变量被模板使用，
+                # 则将尾部消息列表中的 user 角色消息取出，并赋值给 task 变量用于绑定映射
+                if 'task' in self.get_bound_vars(new_messages, new_chat=new_chat) and new_messages[-1].role == 'user':
+                    new_messages.messages.pop(-1)
 
-        if new_messages.has_role("system"):
-            # 如果在合并后的 new_messages 中，task 变量被模板使用，
-            # 则将尾部消息列表中的 user 角色消息取出，并赋值给 task 变量用于绑定映射
-            if 'task' in self.get_bound_vars(new_messages, new_chat=new_chat) and new_messages[-1].role == 'user':
-                new_messages.messages.pop(-1)
-
-            # 如果新消息列表的尾部是 system 消息，则需要补充一个 user 角色消息
-            # 否则，缺少用户消息会让大模型拒绝回答任何问题
-            if new_messages[-1].role == 'system':
-                new_messages.append({"role": "user", "content": "请开始"})
+                # 如果新消息列表的尾部是 system 消息，则需要补充一个 user 角色消息
+                # 否则，缺少用户消息会让大模型拒绝回答任何问题
+                if new_messages[-1].role == 'system':
+                    new_messages.append({"role": "user", "content": "请开始"})
+            else:
+                # 只要没有提供 system 角色，就启用 init_memory 模板
+                # 合并 new_messages 和 init_memory
+                new_messages = self.init_memory + new_messages
 
         return new_messages
 

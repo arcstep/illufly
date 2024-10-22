@@ -10,6 +10,7 @@ from .binding_manager import BindingManager
 from ...io import log, EventBlock
 from ...utils import filter_kwargs, raise_invalid_params
 
+
 class Runnable(ABC, ExecutorManager, BindingManager):
     """
     实现基本可运行类，定义了可运行的基本接口。
@@ -111,7 +112,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     ):
         self.continue_running = True
         handlers = handlers or self.handlers or [log]
-        
+
         try:
             if any(inspect.iscoroutinefunction(handler) for handler in handlers):
                 if action:
