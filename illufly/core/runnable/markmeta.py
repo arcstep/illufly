@@ -18,7 +18,7 @@ class MarkMeta(Runnable):
     MarkMeta 文件中的标签语法：
     - 扩展标签都独占一行，且以 @ 开头，行首不允许多余空格
     - 主要标签包括 @meta @index @end
-    - @meta 包含键值描述语法：@meta k1=v1, k2=v2, …
+    - @meta 包含键值描述语法：<!-- @meta {"k1":v1, "k2":v2, …} -->
     - MarkMeta 文档被 @meta 标签分割成多个片段，从开头或 @meta 标签的下一行开始，到下一个 @meta 标签前一行结束
     - 其他标签智能包含在 @meta 标签中
 
@@ -70,13 +70,13 @@ class MarkMeta(Runnable):
         self.chunk_overlap = chunk_overlap or 100
         self.documents = []
 
+    def clear(self):
+        self.documents.clear()
+
     @property
     def last_output(self):
         return self.documents
     
-    def call(self, *files, **kwargs):
-        yield from self.load(*files, **kwargs)
-
     def save(self) -> List[Document]:
         """
         将文档保存为 MarkMeta 文件。
@@ -99,62 +99,10 @@ class MarkMeta(Runnable):
                     meta_line = f"@meta {json.dumps(doc.meta, ensure_ascii=False)}"
                     f.write("\n<!-- " + meta_line + " -->\n")
                     f.write(doc.text + "\n")
-        return source_files
+                yield EventBlock("info", f"Saved file {source} with {len(docs)} chunks")
 
-    def load_text(self, text: str, source: str=None) -> List[Document]:
-        """
-        将文本内容加载为 MarkMeta 文档。
-        """
-        docs = self.split_with_meta(text)
-        for doc in docs:
-            if doc.meta.get('source') is None:
-                new_source = source or f"{docs[0].meta.get('id', 'unknown')}.md"
-                doc.meta["source"] = new_source
-
-            if count_tokens(doc.text) > self.chunk_size:
-                chunks = self.split_text_recursive(doc.text, doc.meta['source'])
-                self.documents.extend(chunks)
-            else:
-                self.documents.append(doc)
-        return self.documents
-
-    def load_file(self, file_path: str) -> List[Document]:
-        """
-        加载单个文件。
-        """
-        if not file_path or not os.path.exists(file_path):
-            yield(EventBlock("warn", f"文件不存在 {file_path}"))
-
-        with open(file_path, 'r', encoding='utf-8') as f:
-            txt = f.read()
-            if str(txt).strip() == "":
-                yield(EventBlock("warn", f"文件内容为空 {file_path}"))
-                return
-            self.load_text(txt, file_path)
-            yield(EventBlock("info", f"已成功加载文件 {file_path} ，其中包含 {len(self.documents)} 个片段。"))
-
-    def split_with_meta(self, text: str) -> List[Document]:
-        """
-        按照 @meta 标签切分文档，每个片段单元作为独立的 Document 元素，并提取元数据。
-        """
-        documents = []
-        split_text = ("\n" + text).split("\n<!-- @meta")
-        for segment in split_text:
-            if segment.strip() == "":
-                continue
-            lines = segment.split("\n")
-            meta_line = lines[0].strip().replace("<!--", "").replace("-->", "").strip()
-            content = "\n".join(lines[1:]).strip()
-
-            try:
-                # 直接将 meta_line 作为 JSON 解析
-                meta = json.loads(meta_line)
-            except json.JSONDecodeError as e:
-                meta = {"raw_meta": meta_line}
-
-            doc = Document(text=content, meta=meta)
-            documents.append(doc)
-        return documents
+    def call(self, *files, **kwargs):
+        yield from self.load(*files, **kwargs)
 
     def load(self, *files, **kwargs):
         """
@@ -182,6 +130,61 @@ class MarkMeta(Runnable):
                 for filename in fnmatch.filter(filenames, filename_filter + extension):
                     matches.append(os.path.join(root, filename))
         return matches
+
+    def load_file(self, file_path: str) -> List[Document]:
+        """
+        加载单个文件。
+        """
+        if not file_path or not os.path.exists(file_path):
+            yield(EventBlock("warn", f"文件不存在 {file_path}"))
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            txt = f.read()
+            if str(txt).strip() == "":
+                yield(EventBlock("warn", f"文件内容为空 {file_path}"))
+                return
+            self.load_text(txt, file_path)
+            yield(EventBlock("info", f"已成功加载文件 {file_path} ，其中包含 {len(self.documents)} 个片段。"))
+
+    def load_text(self, text: str, source: str=None) -> List[Document]:
+        """
+        将文本内容加载为 MarkMeta 文档。
+        """
+        docs = self.split_with_meta(text)
+        for doc in docs:
+            if doc.meta.get('source') is None:
+                new_source = source or f"{docs[0].meta.get('id', 'unknown')}.md"
+                doc.meta["source"] = new_source
+
+            if count_tokens(doc.text) > self.chunk_size:
+                chunks = self.split_text_recursive(doc.text, doc.meta['source'])
+                self.documents.extend(chunks)
+            else:
+                self.documents.append(doc)
+        return self.documents
+
+    def split_with_meta(self, text: str) -> List[Document]:
+        """
+        按照 @meta 标签切分文档，每个片段单元作为独立的 Document 元素，并提取元数据。
+        """
+        documents = []
+        split_text = re.split(r'\s*<!--\s*@meta', "\n" + text)
+        for segment in split_text:
+            if segment.strip() == "":
+                continue
+            lines = segment.split("\n")
+            meta_line = lines[0].strip().replace("<!--", "").replace("-->", "").strip()
+            content = "\n".join(lines[1:]).strip()
+
+            try:
+                # 直接将 meta_line 作为 JSON 解析
+                meta = json.loads(meta_line)
+            except json.JSONDecodeError as e:
+                meta = {"raw_meta": meta_line}
+
+            doc = Document(text=content, meta=meta)
+            documents.append(doc)
+        return documents
 
     def split_text_recursive(self, text: str, source: str) -> List[Document]:
         """
