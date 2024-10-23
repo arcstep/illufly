@@ -17,6 +17,9 @@ def get_env(key: str=None):
         "ILLUFLY_CACHE_EMBEDDINGS": "__CACHE_EMBEDDINGS__",
         "ILLUFLY_UPLOAD_CACHE_DIR": "__UPLOAD_CACHE__",
 
+        # 提示词
+        "ILLUFLY_FINAL_ANSWER_PROMPT": "**最终答案**",
+
         # 结束语
         "ILLUFLY_AIGC_INFO_DECLARE": "内容由AI生成，其观点仅代表创作者个人立场",
         "ILLUFLY_AIGC_INFO_CHK": "可联系服务商查验校验码",

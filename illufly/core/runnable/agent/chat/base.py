@@ -5,6 +5,7 @@ import asyncio
 from abc import abstractmethod
 from typing import Union, List, Dict, Any, Set, Callable
 
+from .....config import get_env
 from .....utils import merge_tool_calls, extract_text, extract_final_answer, raise_invalid_params, filter_kwargs
 from .....io import EventBlock, EndBlock, NewLineBlock
 from ...base import Runnable
@@ -14,10 +15,20 @@ from ..knowledge_manager import KnowledgeManager
 from .tools_calling import BaseToolCalling, OpenAIToolsCalling
 from .tools_manager import ToolsManager
 from .memory_manager import MemoryManager
+from .tfa_manager import TaskFinalAnswerManager
 
-class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
+class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFinalAnswerManager):
     """
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
+
+    ChatAgent 类包含一些核心属性，用于保存对话过程中的中间结果，例如：
+    - task：用户发起的最初任务，这是 _task 的只读版本
+    - final_answer：对话过程中输出的最终答案，这是 _final_answer 的只读版本
+    - last_output：对话过程中上次调用输出的结果，这是 _last_output 的只读版本
+
+    由于 final_answer 必须经过提示语引导，按照约定格式输出，因此可将 T/FA(task/final_answer) 用于自动化提取 Q/A 预料。
+    而 T/FA 的提取结果可被保存在 __XP__ 等经验目录中，在其他对话时被当作检索资料调用。
+    这就实现了基本的自我进化过程，而「自我进化」也是 illufly 设计的一个核心目标。
     """
     @classmethod
     def available_init_params(cls):
@@ -28,7 +39,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "end_chk": "是否在最后输出一个 EndBlock",
             "start_marker": "开始标记，默认为 ```",
             "end_marker": "结束标记，默认为 ```",
-            "final_answer_prompt": "最终答案提示词，默认为 '最终答案：'",
+            "final_answer_prompt": "最终答案提示词，可通过修改环境变量 ILLUFLY_FINAL_ANSWER_PROMPT 修改默认值",
             **BaseAgent.available_init_params(),
             **KnowledgeManager.available_init_params(),
             **ToolsManager.available_init_params(),
@@ -61,7 +72,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         self.start_marker = start_marker or "```"
         self.end_marker = end_marker or "```"
 
-        self.final_answer_prompt = final_answer_prompt or "**最终答案**"
+        self.final_answer_prompt = final_answer_prompt or get_env("ILLUFLY_FINAL_ANSWER_PROMPT")
 
         # 在子类中应当将模型参数保存到这个属性中，以便持久化管理
         self.model_args = {"base_url": None, "api_key": None}
@@ -78,8 +89,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     def clear(self):
         self.memory.clear()
         self._task = ""
-        self._last_output = ""
         self._final_answer = ""
+        self._last_output = ""
+
+    @property
+    def task(self):
+        return self._task
 
     @property
     def final_answer(self):
@@ -107,13 +122,13 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     @property
     def provider_dict(self):
         local_dict = {
-            "task": self._task,
-            "final_answer": self._final_answer,
+            "task": self.task,
+            "final_answer": self.final_answer,
             "tools_calling_steps": self.tools_calling_steps,
             "tools_name": ",".join([a.name for a in self._tools_to_exec]),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
-            "knowledge": self.get_knowledge(self._task),
-            "resources": self.get_resources(self._task),
+            "knowledge": self.get_knowledge(self.task),
+            "resources": self.get_resources(self.task),
         }
         return {
             **super().provider_dict,
@@ -122,14 +137,14 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
-        raise NotImplementedError("子类必须实现 generate 方法")
+        raise NotImplementedError("ChatAgent 子类必须实现 generate 方法")
     
     async def async_generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
         loop = asyncio.get_running_loop()
         for block in await self.run_in_executor(self.generate, prompt, *args, **kwargs):
             yield block
 
-    def _generate_final_output_text(self, output_text, chat_memory):
+    def _fetch_final_output(self, output_text, chat_memory):
         final_output_text = extract_text(output_text, self.start_marker, self.end_marker)
 
         # 追加到短期记忆中
@@ -146,6 +161,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         # 提取最终答案
         self._final_answer = extract_final_answer(final_output_text, self.final_answer_prompt)
+
+        # 保存 T/FA 语料
+        if self.thread_id and self.task and self.final_answer:
+            self.save_tfa(self.thread_id, self.task, self.final_answer)
 
         return final_output_text
 
@@ -227,7 +246,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         to_continue_call_llm = True
                     yield block
             else:
-                final_output_text = self._generate_final_output_text(output_text, chat_memory)
+                final_output_text = self._fetch_final_output(output_text, chat_memory)
                 yield EventBlock("final_text", final_output_text)
 
                 _tools_behavior = tools_behavior or self.tools_behavior
@@ -300,7 +319,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         to_continue_call_llm = True
                     yield block
             else:
-                final_output_text = self._generate_final_output_text(output_text, chat_memory)
+                final_output_text = self._fetch_final_output(output_text, chat_memory)
                 yield EventBlock("final_text", final_output_text)
 
                 _tools_behavior = tools_behavior or self.tools_behavior
