@@ -92,6 +92,12 @@ def extract_text(resp_md: str, start_marker: str=None, end_marker: str=None):
 
     return resp_md
 
+def extract_final_answer(text: str, final_answer_prompt: str="最终答案："):
+    """
+    提取文本中以 final_answer_prompt 开头的文本。
+    """
+    return text.split(final_answer_prompt)[-1].strip() if final_answer_prompt in text else ''
+
 def hash_text(text):
     """
     计算文本的MD5哈希值。主要用于生成反向索引，便于缓存命中等。
