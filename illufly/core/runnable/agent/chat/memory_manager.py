@@ -24,23 +24,23 @@ class ThreadIDGenerator:
 
 class MemoryManager(BindingManager):
     @classmethod
-    def get_history_dir(cls):
-        return os.path.join(get_env("ILLUFLY_XP"), cls.__name__.upper(), "HISTORY")
+    def get_history_dir(cls, agent_name: str="default"):
+        return os.path.join(get_env("ILLUFLY_XP"), cls.__name__.upper(), agent_name, "HISTORY")
 
     @classmethod
-    def get_history_file_path(cls, thread_id: str=None):
+    def get_history_file_path(cls, thread_id: str=None, agent_name: str="default"):
         _thread_id = thread_id or cls._thread_id
         if _thread_id:
             return os.path.join(
-                cls.get_history_dir(),
+                cls.get_history_dir(agent_name),
                 f"{_thread_id}.json"
             )
         else:
             raise ValueError("thread_id MUST not be None")
 
     @classmethod
-    def list_memory_threads(cls):
-        memory_dir = cls.get_history_dir()
+    def list_memory_threads(cls, agent_name: str="default"):
+        memory_dir = cls.get_history_dir(agent_name)
         if not os.path.exists(memory_dir):
             return []
         file_list = [os.path.basename(file) for file in os.listdir(memory_dir) if file.endswith(".json") and not file.startswith(".")]
@@ -144,15 +144,31 @@ class MemoryManager(BindingManager):
         return bound_vars
     # 保存记忆
     def save_memory(self, thread_id: str=None):
-        path = self.get_history_file_path(thread_id)
+        path = self.get_history_file_path(thread_id, self.name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.memory, f, ensure_ascii=False)
 
+    @property
+    def thread_ids(self):
+        return self.list_memory_threads(self.name)
+
     # 加载记忆
-    def load_memory(self, thread_id: str=None):
-        path = self.get_history_file_path(thread_id)
-        if os.path.exists(path):
+    def load_memory(self, thread_id: Union[str, int]=None):
+        """
+        加载记忆。
+
+        如果 thread_id 是字符串，则直接加载指定线程的记忆；
+        如果 thread_id 是整数，则将其当作索引，例如 thread_id=-1 表示加载最近一轮对话的记忆。
+        """
+        path = None
+        if isinstance(thread_id, str):
+            path = self.get_history_file_path(thread_id, self.name)
+        elif isinstance(thread_id, int):
+            if self.thread_ids and self.thread_ids[thread_id]:
+                path = self.get_history_file_path(self.thread_ids[thread_id], self.name)
+
+        if path and os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 self.memory = json.load(f)
 
