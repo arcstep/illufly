@@ -11,8 +11,8 @@ from ...prompt_template import PromptTemplate
 from ...binding_manager import BindingManager
 
 class ThreadIDGenerator:
-    def __init__(self):
-        self.counter = 0
+    def __init__(self, counter: int=0):
+        self.counter = counter
 
     def create_id(self):
         while True:
@@ -22,10 +22,51 @@ class ThreadIDGenerator:
             yield f'{timestamp}-{random_number}-{counter_str}'
             self.counter = 0 if self.counter == 9999 else self.counter + 1
 
-thread_id_generator = ThreadIDGenerator()
-thread_id_gen = thread_id_generator.create_id()
-
 class MemoryManager(BindingManager):
+    @classmethod
+    def get_history_dir(cls):
+        return os.path.join(get_env("ILLUFLY_XP"), cls.__name__.upper(), "HISTORY")
+
+    @classmethod
+    def get_history_file_path(cls, thread_id: str=None):
+        _thread_id = thread_id or cls._thread_id
+        if _thread_id:
+            return os.path.join(
+                cls.get_history_dir(),
+                f"{_thread_id}.json"
+            )
+        else:
+            raise ValueError("thread_id MUST not be None")
+
+    @classmethod
+    def list_memory_threads(cls):
+        memory_dir = cls.get_history_dir()
+        if not os.path.exists(memory_dir):
+            return []
+        file_list = [os.path.basename(file) for file in os.listdir(memory_dir) if file.endswith(".json") and not file.startswith(".")]
+        thread_ids = [file.replace(".json", "") for file in file_list]
+
+        def thread_id_key(thread_id):
+            ids = thread_id.split("-")
+            return f'{ids[0]}-{ids[-1]}'
+
+        return sorted(thread_ids, key=thread_id_key)
+
+    @classmethod
+    def get_current_thread_rounds(cls):
+        all_thread_ids = cls.list_memory_threads()
+        if all_thread_ids:
+            ids = all_thread_ids[-1].split("-")
+            return int(ids[-1]) + 1
+        else:
+            return 0
+
+    @classmethod
+    def initialize_thread_id_generator(cls):
+        cls.thread_id_generator = ThreadIDGenerator(cls.get_current_thread_rounds())
+        cls.thread_id_gen = cls.thread_id_generator.create_id()
+        cls._thread_id = None
+
     @classmethod
     def available_init_params(cls):
         """
@@ -37,6 +78,15 @@ class MemoryManager(BindingManager):
             "remember_rounds": "记忆轮数",
             **BindingManager.available_init_params(),
         }
+
+    def __init_subclass__(cls, **kwargs):
+        """
+        在子类初始化时，调用初始化方法。
+
+        为每个子类构造独立的 thread_id 生成器，但在其实例中可以共享。
+        """
+        super().__init_subclass__(**kwargs)
+        cls.initialize_thread_id_generator()
 
     def __init__(
         self,
@@ -55,15 +105,13 @@ class MemoryManager(BindingManager):
         self.init_memory = []
         self.reset_init_memory(memory)
 
-        self._thread_id = None
-
     @property
     def thread_id(self):
-        return self._thread_id
+        return self.__class__._thread_id
 
     def reset_new_chat(self):
         self.memory.clear()
-        self._thread_id = next(thread_id_gen)
+        self.__class__._thread_id = next(self.__class__.thread_id_gen)
 
     def reset_init_memory(self, messages: Union[str, List[dict]]):
         self.init_memory = Messages(messages, style=self.style)
@@ -94,25 +142,16 @@ class MemoryManager(BindingManager):
                     if consumer_key in self.provider_dict:
                         bound_vars.add(consumer_key)
         return bound_vars
-
-    def get_history_file_path(self, file_path: str=None):
-        return os.path.join(
-            get_env("ILLUFLY_XP"),
-            self.__class__.__name__.upper(),
-            "HISTORY",
-            file_path or f"{self.thread_id}.json"
-        )
-
     # 保存记忆
-    def save_memory(self, file_path: str=None):
-        path = self.get_history_file_path(file_path)
+    def save_memory(self, thread_id: str=None):
+        path = self.get_history_file_path(thread_id)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.memory, f, ensure_ascii=False)
 
     # 加载记忆
-    def load_memory(self, file_path: str=None):
-        path = self.get_history_file_path(file_path)
+    def load_memory(self, thread_id: str=None):
+        path = self.get_history_file_path(thread_id)
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 self.memory = json.load(f)
@@ -171,7 +210,7 @@ class MemoryManager(BindingManager):
             prompt = [{"role": "user", "content": prompt}]
         new_messages = prompt if isinstance(prompt, Messages) else Messages(prompt, style=self.style)
 
-        # 无论新消息列表中是否包含 system 角色，都需要绑定模板变量，但应当是动态绑定
+        # 无论新消息列表中是否包含 system 角色，都需要绑定模板变量，但应当是��态绑定
         templates = new_messages.all_templates
         for template in templates:
             self.bind_consumer(template, dynamic=True)
@@ -208,4 +247,3 @@ class MemoryManager(BindingManager):
             return new_memory
         else:
             return []
-
