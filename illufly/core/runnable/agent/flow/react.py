@@ -17,7 +17,6 @@ class ReAct(FlowAgent):
         return {
             "planner": "用于推理的ChatAgent, 你应当在其中指定可用的工具",
             "planner_template": "用于生成计划的PromptTemplate, 默认为 PromptTemplate('FLOW/ReAct/Planner')",
-            "final_answer_prompt": "最终答案提示词关键字, 默认为 **最终答案**",
             **FlowAgent.available_init_params(),
         }
 
@@ -25,7 +24,6 @@ class ReAct(FlowAgent):
         self,
         planner: BaseAgent,
         planner_template: str=None,
-        final_answer_prompt: str=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.available_init_params())
@@ -34,9 +32,6 @@ class ReAct(FlowAgent):
             raise ValueError("planner 必须是 ChatAgent 的子类")
         if not planner.tools:
             raise ValueError("planner 必须包含可用的工具")
-
-        final_answer_prompt = final_answer_prompt or "**最终答案**"
-        self.final_answer_prompt = final_answer_prompt
 
         planner_template = planner_template or PromptTemplate("FLOW/ReAct/Planner")
         self.planner_template = planner_template
@@ -68,10 +63,10 @@ class ReAct(FlowAgent):
             yield EventBlock("final_text", self.task)
 
         def should_continue(vars, runs):
-            if final_answer_prompt in planner.last_output:
+            if planner.final_answer:
                 return "__END__"
             else:
-                planner.memory.clear()
+                planner.clear()
                 return "planner"
 
         super().__init__(
@@ -82,11 +77,9 @@ class ReAct(FlowAgent):
         )
     
     def begin_call(self):
-        self.planner.memory.clear()
+        self.planner.clear()
         self.completed_work.clear()
         self.planner_template.bind_provider({"completed_work": ""})
 
     def end_call(self):
-        if self.final_answer_prompt in self.planner.last_output:
-            final_answer_index = self.planner.last_output.index(self.final_answer_prompt)
-            self._last_output = self.planner.last_output[final_answer_index:].split(self.final_answer_prompt)[-1].strip()
+        self._last_output = self.planner.final_answer

@@ -23,7 +23,6 @@ class PlanAndSolve(FlowAgent):
             "planner_template": "计划者模板",
             "worker_template": "执行者模板",
             "replanner_template": "重新计划者模板",
-            "final_answer_prompt": "最终答案提示词",
             **FlowAgent.available_init_params(),
         }
         
@@ -35,7 +34,6 @@ class PlanAndSolve(FlowAgent):
         planner_template: PromptTemplate=None,
         worker_template: PromptTemplate=None,
         replanner_template: PromptTemplate=None,
-        final_answer_prompt: str=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.available_init_params())
@@ -46,8 +44,6 @@ class PlanAndSolve(FlowAgent):
             raise ValueError("planner 必须包含可用的工具")
         if planner is worker or planner is replanner or worker is replanner:
             raise ValueError("planner, worker, replanner 不能相同")
-
-        self.final_answer_prompt = final_answer_prompt or "**最终答案**"
 
         planner_template = planner_template or PromptTemplate("FLOW/PlanAndSolve/Planner")
         self.planner_template = planner_template
@@ -104,10 +100,10 @@ class PlanAndSolve(FlowAgent):
             yield EventBlock("final_text", "请开始\n")
 
         def should_continue(vars, runs):
-            if (self.final_answer_prompt in self.replanner.last_output):
+            if self.replanner.final_answer:
                 return "__END__"
             else:
-                self.replanner.memory.clear()
+                self.replanner.clear()
                 return "observe_plan_for_worker"
 
         super().__init__(
@@ -121,11 +117,11 @@ class PlanAndSolve(FlowAgent):
         )
 
     def begin_call(self):
-        self.planner.memory.clear()
+        self.planner.clear()
+        self.replanner.clear()
+        self.worker.clear()
         self.completed_work.clear()
         self.todo.clear()
 
     def end_call(self):
-        if self.final_answer_prompt in self.last_output:
-            final_answer_index = self.last_output.index(self.final_answer_prompt)
-            self._last_output = self.last_output[final_answer_index:].split(self.final_answer_prompt)[-1].strip()
+        self._last_output = self.replanner.final_answer

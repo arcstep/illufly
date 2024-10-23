@@ -20,7 +20,6 @@ class ReWOO(FlowAgent):
             "solver": "求解器，根据计划和各步骤执行结果汇总后得出最终答案",
             "planner_template": "计划器提示语模板, 默认为 PromptTemplate('FLOW/ReWOO/Planner')",
             "solver_template": "求解器提示语模板, 默认为 PromptTemplate('FLOW/ReWOO/Solver')",
-            "final_answer_prompt": "最终答案提示词关键字, 默认为 **最终答案**",
             **FlowAgent.available_init_params(),
         }
         
@@ -30,7 +29,6 @@ class ReWOO(FlowAgent):
         solver: BaseAgent,
         planner_template: PromptTemplate=None,
         solver_template: PromptTemplate=None,
-        final_answer_prompt: str=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.available_init_params())
@@ -48,7 +46,6 @@ class ReWOO(FlowAgent):
         solver_template = solver_template or PromptTemplate("FLOW/ReWOO/Solver")
         self.solver_template = solver_template
 
-        self.final_answer_prompt = final_answer_prompt or "**最终答案**"
         self.planner = planner
         self.solver = solver
         self.completed_work = []
@@ -76,17 +73,15 @@ class ReWOO(FlowAgent):
     def begin_call(self):
         self.planner.tools_behavior = "parse-execute"
         self.planner.reset_init_memory(self.planner_template)
-        self.planner.memory.clear()
+        self.planner.clear()
 
         self.solver.tools_behavior = "nothing"
         self.solver.reset_init_memory(self.solver_template)
-        self.solver.memory.clear()
+        self.solver.clear()
 
         self.solver_template.bind_provider({
             "completed_work": ""
         })
 
     def end_call(self):
-        if self.final_answer_prompt in self.last_output:
-            final_answer_index = self.last_output.index(self.final_answer_prompt)
-            self._last_output = self.last_output[final_answer_index:].split(self.final_answer_prompt)[-1].strip()
+        self._last_output = self.solver.final_answer

@@ -58,7 +58,7 @@ class FlowAgent(BaseAgent):
             raise ValueError("agent must be a BaseAgent, Selector or Callable")
 
     def get_agent(self, name):
-        return self.agents_index.get(name, (None, None))[2]
+        return self.agents_index.get(name, (None, None))[1]
 
     def begin_call(self):
         """

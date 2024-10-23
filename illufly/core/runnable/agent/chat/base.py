@@ -5,7 +5,7 @@ import asyncio
 from abc import abstractmethod
 from typing import Union, List, Dict, Any, Set, Callable
 
-from .....utils import merge_tool_calls, extract_text, raise_invalid_params, filter_kwargs
+from .....utils import merge_tool_calls, extract_text, extract_final_answer, raise_invalid_params, filter_kwargs
 from .....io import EventBlock, EndBlock, NewLineBlock
 from ...base import Runnable
 from ...message import Messages
@@ -28,6 +28,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "end_chk": "是否在最后输出一个 EndBlock",
             "start_marker": "开始标记，默认为 ```",
             "end_marker": "结束标记，默认为 ```",
+            "final_answer_prompt": "最终答案提示词，默认为 '最终答案：'",
             **BaseAgent.available_init_params(),
             **KnowledgeManager.available_init_params(),
             **ToolsManager.available_init_params(),
@@ -39,6 +40,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         end_chk: bool = False,
         start_marker: str=None,
         end_marker: str=None,
+        final_answer_prompt: str=None,
         **kwargs
     ):
         """
@@ -59,17 +61,30 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         self.start_marker = start_marker or "```"
         self.end_marker = end_marker or "```"
 
+        self.final_answer_prompt = final_answer_prompt or "**最终答案**"
+
         # 在子类中应当将模型参数保存到这个属性中，以便持久化管理
         self.model_args = {"base_url": None, "api_key": None}
         self.default_call_args = {"model": None}
 
         # 增加的可绑定变量
         self._task = ""
+        self._final_answer = ""
         self._tools_to_exec = self.get_tools()
         self._resources = ""
 
         MemoryManager.__init__(self, **filter_kwargs(kwargs, MemoryManager.available_init_params()))
-    
+
+    def clear(self):
+        self.memory.clear()
+        self._task = ""
+        self._last_output = ""
+        self._final_answer = ""
+
+    @property
+    def final_answer(self):
+        return self._final_answer
+
     @property
     def runnable_info(self):
         info = super().runnable_info
@@ -81,6 +96,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     @property
     def tools_calling_steps(self):
+        """
+        返回所有工具回调的计划和中间步骤
+        """
         steps = []
         for h in self.tools_handlers:
             steps.extend(h.steps)
@@ -90,6 +108,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     def provider_dict(self):
         local_dict = {
             "task": self._task,
+            "final_answer": self._final_answer,
+            "tools_calling_steps": self.tools_calling_steps,
             "tools_name": ",".join([a.name for a in self._tools_to_exec]),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
             "knowledge": self.get_knowledge(self._task),
@@ -108,6 +128,38 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         loop = asyncio.get_running_loop()
         for block in await self.run_in_executor(self.generate, prompt, *args, **kwargs):
             yield block
+
+    def _generate_final_output_text(self, output_text, chat_memory):
+        final_output_text = extract_text(output_text, self.start_marker, self.end_marker)
+
+        # 追加到短期记忆中
+        chat_memory.append({
+            "role": "assistant",
+            "content": final_output_text
+        })
+
+        # 追加到长期记忆中
+        self.remember_response(final_output_text)
+
+        # 保存到最近输出
+        self._last_output = final_output_text
+
+        # 提取最终答案
+        self._final_answer = extract_final_answer(final_output_text, self.final_answer_prompt)
+
+        return final_output_text
+
+    def _handle_tool_calls(self, final_output_text, chat_memory):
+        if "parse" in self.tools_behavior:
+            for handler in self.tools_handlers:
+                steps = handler.extract_tools_call(final_output_text)
+                if steps and "execute" in self.tools_behavior:
+                    for block in handler.handle(
+                        steps,
+                        short_term_memory=chat_memory,
+                        long_term_memory=self.memory
+                    ):
+                        yield block
 
     def call(self, prompt: Any, *args, **kwargs):
         # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
@@ -166,31 +218,15 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         to_continue_call_llm = True
                     yield block
             else:
-                final_output_text = extract_text(output_text, self.start_marker, self.end_marker)
-                chat_memory.append({
-                    "role": "assistant",
-                    "content": final_output_text
-                })
-                self.remember_response(final_output_text)
+                final_output_text = self._generate_final_output_text(output_text, chat_memory)
                 yield EventBlock("final_text", final_output_text)
 
-                # 将最终的输出结果保存到 last_output 属性中
-                self._last_output = final_output_text
-
-                # 从文本中解析工具
-                if "parse" in self.tools_behavior:
-                    for handler in self.tools_handlers:
-                        steps = handler.extract_tools_call(final_output_text)
-                        if steps and "execute" in self.tools_behavior:
-                            for block in handler.handle(
-                                steps,
-                                short_term_memory=chat_memory,
-                                long_term_memory=self.memory
-                            ):
-                                is_final_block = isinstance(block, EventBlock) and block.block_type == "final_tool_resp"
-                                if "continue" in self.tools_behavior and is_final_block:
-                                    to_continue_call_llm = True
-                                yield block
+                to_continue_call_llm = False
+                for block in self._handle_tool_calls(final_output_text, chat_memory):
+                    yield block
+                    if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
+                        if "continue" in self.tools_behavior:
+                            to_continue_call_llm = True
 
         if self.end_chk:
             yield EndBlock(self.last_output)
@@ -204,13 +240,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         new_chat = kwargs.pop("new_chat", False)
 
         messages_std = Messages(prompt, style="text")
-        self._task = messages_std.messages[-1].content
-
-        for tool in self._tools_to_exec:
-            self.bind_consumer(tool, dynamic=True)
+        self._task = messages_std[-1].content
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
         self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
+        for tool in self._tools_to_exec:
+            self.bind_consumer(tool, dynamic=True)
         if "tools_desc" in self.get_bound_vars(Messages(prompt), new_chat=new_chat):
             kwargs["tools"] = None
         else:
@@ -255,27 +290,15 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         to_continue_call_llm = True
                     yield block
             else:
-                final_output_text = extract_text(output_text, self.start_marker, self.end_marker)
-                chat_memory.append({
-                    "role": "assistant",
-                    "content": final_output_text
-                })
-                self.remember_response(final_output_text)
+                final_output_text = self._generate_final_output_text(output_text, chat_memory)
                 yield EventBlock("final_text", final_output_text)
 
-                if "parse" in self.tools_behavior:
-                    for handler in self.tools_handlers:
-                        steps = handler.extract_tools_call(final_output_text)
-                        if steps and "execute" in self.tools_behavior:
-                            for block in handler.handle(
-                                steps,
-                                short_term_memory=chat_memory,
-                                long_term_memory=self.memory
-                            ):
-                                is_final_block = isinstance(block, EventBlock) and block.block_type == "final_tool_resp"
-                                if "continue" in self.tools_behavior and is_final_block:
-                                    to_continue_call_llm = True
-                                yield block
+                to_continue_call_llm = False
+                for block in self._handle_tool_calls(final_output_text, chat_memory):
+                    yield block
+                    if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
+                        if "continue" in self.tools_behavior:
+                            to_continue_call_llm = True
 
         if self.end_chk:
             yield EndBlock(self.last_output)
