@@ -149,11 +149,11 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         return final_output_text
 
-    def _handle_tool_calls(self, final_output_text, chat_memory):
-        if "parse" in self.tools_behavior:
+    def _handle_tool_calls(self, final_output_text, chat_memory, tools_behavior: str="none"):
+        if "parse" in tools_behavior:
             for handler in self.tools_handlers:
                 steps = handler.extract_tools_call(final_output_text)
-                if steps and "execute" in self.tools_behavior:
+                if steps and "execute" in tools_behavior:
                     for block in handler.handle(
                         steps,
                         short_term_memory=chat_memory,
@@ -161,7 +161,16 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     ):
                         yield block
 
-    def call(self, prompt: Any, *args, **kwargs):
+    def call(self, prompt: Any, *args, tools_behavior: str=None, **kwargs):
+        """
+        执行对话生成，并处理工具调用。
+
+        illufly 的默认设计中有很多便利，比如自动执行工具回调。
+
+        但这种默认设计有时也带来额外的困扰，例如，当你在工具回调之后想谈论刚刚的工具回调过程，而不是想调用它。
+        此时，你可以使用 tools_behavior 参数临时修改对待工具回调的行为。
+        """
+
         # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
         if isinstance(prompt, Runnable):
             prompt = prompt.selected.last_output
@@ -221,18 +230,19 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 final_output_text = self._generate_final_output_text(output_text, chat_memory)
                 yield EventBlock("final_text", final_output_text)
 
+                _tools_behavior = tools_behavior or self.tools_behavior
                 to_continue_call_llm = False
-                for block in self._handle_tool_calls(final_output_text, chat_memory):
+                for block in self._handle_tool_calls(final_output_text, chat_memory, _tools_behavior):
                     yield block
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
-                        if "continue" in self.tools_behavior:
+                        if "continue" in _tools_behavior:
                             to_continue_call_llm = True
 
         if self.end_chk:
             yield EndBlock(self.last_output)
         self.save_memory()
 
-    async def async_call(self, prompt: Any, *args, **kwargs):
+    async def async_call(self, prompt: Any, *args, tools_behavior: str=None, **kwargs):
         # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
         if isinstance(prompt, Runnable):
             prompt = prompt.last_output
@@ -293,11 +303,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 final_output_text = self._generate_final_output_text(output_text, chat_memory)
                 yield EventBlock("final_text", final_output_text)
 
+                _tools_behavior = tools_behavior or self.tools_behavior
                 to_continue_call_llm = False
-                for block in self._handle_tool_calls(final_output_text, chat_memory):
+                for block in self._handle_tool_calls(final_output_text, chat_memory, _tools_behavior):
                     yield block
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
-                        if "continue" in self.tools_behavior:
+                        if "continue" in _tools_behavior:
                             to_continue_call_llm = True
 
         if self.end_chk:
