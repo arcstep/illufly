@@ -156,7 +156,7 @@ class Messages:
             return 'assistant' if last_role == 'user' else 'user'
 
     def clone(self):
-        return Messages(copy.deepcopy(self.raw_messages))
+        return Messages(copy.deepcopy(self.raw_messages), style=self.style, binding=self.binding)
 
     def __str__(self):
         return "\n".join([str(message) for message in self.messages])

@@ -17,5 +17,6 @@ __all__ = [
     "ChatOpenAI",
     "ChatZhipu",
     "ChatQwen",
+    "ChatQwenVL",
     "FakeLLM",
 ]
