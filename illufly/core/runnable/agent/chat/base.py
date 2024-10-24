@@ -182,7 +182,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
 
     def _patch_knowledge(self, messages: Messages):
         kg = []
-        existing_text = "\n".join([m['content'] for m in messages])
+        existing_text = "\n".join([m['content'] for m in Messages(messages).to_list(style="text")])
         if self.faq:
             for item in self.get_faq(self.task):
                 if item not in existing_text:
@@ -192,12 +192,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
                 if item not in existing_text:
                     kg.append(item)
         if kg:
-            user = {"role": "user", "content": f'回答时你必须参考已有信息：\n' + "\n".join(kg)}
-            ai = {"role": "assistant", "content": "ok"}
-            messages.insert(-1, user)
-            messages.insert(-1, ai)
-            self.memory.insert(-1, user)
-            self.memory.insert(-1, ai)
+            add_messages = Messages([
+                ("user", f'回答时你必须参考已有信息：\n' + "\n".join(kg)),
+                ("assistant", "ok")
+            ], style=self.style).to_list()
+            self.memory.insert(-1, add_messages[0])
+            self.memory.insert(-1, add_messages[1])
 
         return messages
 
@@ -237,7 +237,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
         yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
 
         chat_memory = self.build_chat_memory(
-            prompt=prompt, # 这里依然使用 prompt，而不是 messages_std，因为需要判断到底角色是 system 还是 user
+            prompt=prompt, # 这里依然使用 prompt
             new_chat=new_chat,
             remember_rounds=remember_rounds
         )
