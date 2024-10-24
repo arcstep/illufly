@@ -15,7 +15,7 @@ from ..knowledge_manager import KnowledgeManager
 from .tools_calling import BaseToolCalling, OpenAIToolsCalling
 from .tools_manager import ToolsManager
 from .memory_manager import MemoryManager
-from .tfa_manager import TaskFinalAnswerManager
+from .faq_manager import TaskFinalAnswerManager
 
 class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFinalAnswerManager):
     """
@@ -164,7 +164,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
 
         # 保存 T/FA 语料
         if self.thread_id and self.task and self.final_answer:
-            self.save_tfa(self.thread_id, self.task, self.final_answer)
+            self.save_faq(self.thread_id, self.task, self.final_answer)
 
         return final_output_text
 
@@ -183,8 +183,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
     def _patch_knowledge(self, messages: Messages):
         kg = []
         existing_text = "\n".join([m['content'] for m in messages])
-        if self.tfa:
-            for item in self.get_tfa(self.task):
+        if self.faq:
+            for item in self.get_faq(self.task):
                 if item not in existing_text:
                     kg.append(item)
         if self.knowledge:

@@ -12,30 +12,30 @@ class KnowledgeManager:
         """
         return {
             "knowledge": "待检索的资料列表",
-            "tfa": "Task 和 Final Answer 收集，是得到确认的常识问答",
+            "faq": "Task 和 Final Answer 收集，是得到确认的常识问答",
             "embeddings": "用于文本嵌入的向量模型, 如果提供就使用它构建默认的检索器、向量库"
         }
 
     def __init__(
         self, 
         knowledge: Union[Set[Any], List[Any]] = None,
-        tfa: Union[Set[Any], List[Any]] = None,
+        faq: Union[Set[Any], List[Any]] = None,
     ):
         """
         知识库在内存中以集合的方式保存，确保唯一性。
         """
         self.knowledge = knowledge
-        self.tfa = tfa
+        self.faq = faq
 
         if isinstance(knowledge, list):
             self.knowledge = set(knowledge)
-        if isinstance(tfa, list):
-            self.tfa = set(tfa)
+        if isinstance(faq, list):
+            self.faq = set(faq)
 
         if not isinstance(self.knowledge, set):
             self.knowledge = set({self.knowledge}) if self.knowledge else set()
-        if not isinstance(self.tfa, set):
-            self.tfa = set({self.tfa}) if self.tfa else set()
+        if not isinstance(self.faq, set):
+            self.faq = set({self.faq}) if self.faq else set()
 
         for item in self.knowledge:
             if not isinstance(item, (str, Document, VectorDB)):
@@ -47,7 +47,7 @@ class KnowledgeManager:
                 if not item.documents:
                     item.load(dir=get_env("ILLUFLY_DOCS"))
 
-        for item in self.tfa:
+        for item in self.faq:
             if not isinstance(item, (str, Document, VectorDB)):
                 raise ValueError("Task-Final-Answer MUST be str, Document or VectorDB")
 
@@ -63,9 +63,9 @@ class KnowledgeManager:
         else:
             raise ValueError("Knowledge MUST be a string, Document or VectorDB")
 
-    def add_tfa(self, item: Union[str, Document, VectorDB]):
+    def add_faq(self, item: Union[str, Document, VectorDB]):
         if isinstance(item, (str, Document, VectorDB)):
-            self.tfa.add(item)
+            self.faq.add(item)
         else:
             raise ValueError("Task-Final-Answer MUST be a string, Document or VectorDB")
 
@@ -83,9 +83,9 @@ class KnowledgeManager:
                 raise ValueError("Knowledge MUST be a string, Document or VectorDB")
         return knowledge
 
-    def get_tfa(self, query: str=None, verbose: bool=False):
+    def get_faq(self, query: str=None, verbose: bool=False):
         knowledge = []
-        for kg in self.tfa:
+        for kg in self.faq:
             if isinstance(kg, Document):
                 knowledge.append(kg.text)
             elif isinstance(kg, str):
@@ -100,5 +100,5 @@ class KnowledgeManager:
     def clear_knowledge(self):
         self.knowledge.clear()
 
-    def clear_tfa(self):
-        self.tfa.clear()
+    def clear_faq(self):
+        self.faq.clear()
