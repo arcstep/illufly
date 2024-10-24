@@ -3,6 +3,7 @@ from typing import Any, Set, Union, List
 from ....config import get_env
 from ...document import Document
 from ..vectordb import VectorDB
+from .retriever import Retriever
 
 class KnowledgeManager:
     @classmethod
@@ -11,8 +12,8 @@ class KnowledgeManager:
         返回当前可用的参数列表。
         """
         return {
-            "knowledge": "待检索的资料列表",
-            "faq": "Task 和 Final Answer 收集，是得到确认的常识问答",
+            "knowledge": "待检索的资料",
+            "faq": "待检索的常识",
             "embeddings": "用于文本嵌入的向量模型, 如果提供就使用它构建默认的检索器、向量库"
         }
 
@@ -38,7 +39,7 @@ class KnowledgeManager:
             self.faq = set({self.faq}) if self.faq else set()
 
         for item in self.knowledge:
-            if not isinstance(item, (str, Document, VectorDB)):
+            if not isinstance(item, (str, Document, VectorDB, Retriever)):
                 raise ValueError("Knowledge list items MUST be str, Document or VectorDB")
 
             if isinstance(item, VectorDB):
@@ -48,22 +49,22 @@ class KnowledgeManager:
                     item.load(dir=get_env("ILLUFLY_DOCS"))
 
         for item in self.faq:
-            if not isinstance(item, (str, Document, VectorDB)):
+            if not isinstance(item, (str, Document, VectorDB, Retriever)):
                 raise ValueError("Task-Final-Answer MUST be str, Document or VectorDB")
 
             if isinstance(item, VectorDB):
                 if not item.top_k:
                     item.top_k = 1
                 if not item.documents:
-                    item.load(dir=get_env("ILLUFLY_TFA"))
+                    item.load(dir=get_env("ILLUFLY_FAQ"))
 
-    def add_knowledge(self, item: Union[str, Document, VectorDB]):
-        if isinstance(item, (str, Document, VectorDB)):
+    def add_knowledge(self, item: Union[str, Document, VectorDB, Retriever]):
+        if isinstance(item, (str, Document, VectorDB, Retriever)):
             self.knowledge.add(item)
         else:
             raise ValueError("Knowledge MUST be a string, Document or VectorDB")
 
-    def add_faq(self, item: Union[str, Document, VectorDB]):
+    def add_faq(self, item: Union[str, Document, VectorDB, Retriever]):
         if isinstance(item, (str, Document, VectorDB)):
             self.faq.add(item)
         else:
@@ -76,7 +77,7 @@ class KnowledgeManager:
                 knowledge.append(kg.text)
             elif isinstance(kg, str):
                 knowledge.append(kg)
-            elif isinstance(kg, VectorDB):
+            elif isinstance(kg, (VectorDB, Retriever)):
                 query_results = [doc.text for doc in kg(query, verbose=verbose)]
                 knowledge.append("\n\n".join(query_results))
             else:
@@ -90,7 +91,7 @@ class KnowledgeManager:
                 knowledge.append(kg.text)
             elif isinstance(kg, str):
                 knowledge.append(kg)
-            elif isinstance(kg, VectorDB):
+            elif isinstance(kg, (VectorDB, Retriever)):
                 query_results = [doc.text for doc in kg(query, verbose=verbose)]
                 knowledge.append("\n\n".join(query_results))
             else:

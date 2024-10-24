@@ -6,7 +6,7 @@ class TaskFinalAnswerManager():
     从对话过程中自动提取和保存 T/FA 语料。
     """
     def get_faq_dir(self):
-        return get_env("ILLUFLY_TFA")
+        return get_env("ILLUFLY_FAQ")
 
     def save_faq(self, thread_id: str, task: str, final_answer: str):
         if not thread_id or not task or not final_answer:
