@@ -180,6 +180,27 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
                     ):
                         yield block
 
+    def _patch_knowledge(self, messages: Messages):
+        kg = []
+        existing_text = "\n".join([m['content'] for m in messages])
+        if self.tfa:
+            for item in self.get_tfa(self.task):
+                if item not in existing_text:
+                    kg.append(item)
+        if self.knowledge:
+            for item in self.get_knowledge(self.task):
+                if item not in existing_text:
+                    kg.append(item)
+        if kg:
+            user = {"role": "user", "content": f'回答时你必须参考已有信息：\n' + "\n".join(kg)}
+            ai = {"role": "assistant", "content": "ok"}
+            messages.insert(-1, user)
+            messages.insert(-1, ai)
+            self.memory.insert(-1, user)
+            self.memory.insert(-1, ai)
+
+        return messages
+
     def call(self, prompt: Any, *args, tools_behavior: str=None, **kwargs):
         """
         执行对话生成，并处理工具调用。
@@ -220,6 +241,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
             new_chat=new_chat,
             remember_rounds=remember_rounds
         )
+        chat_memory = self._patch_knowledge(chat_memory)
 
         to_continue_call_llm = True
         while to_continue_call_llm:
@@ -292,6 +314,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
             new_chat=new_chat,
             remember_rounds=remember_rounds
         )
+        chat_memory = self._patch_knowledge(chat_memory)
 
         to_continue_call_llm = True
         while to_continue_call_llm:

@@ -10,7 +10,8 @@ def get_env(key: str=None):
     default_values = {
         # 文件夹配置
         "ILLUFLY_ROOT": "./",
-        "ILLUFLY_XP": "__XP__",
+        "ILLUFLY_HISTORY": "__XP__/HISTORY",
+        "ILLUFLY_TFA": "__XP__/TFA",
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
         "ILLUFLY_DOCS": "__DOCS__",
         "ILLUFLY_MEDIA": "__MEDIA__",
