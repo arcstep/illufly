@@ -1,4 +1,5 @@
 from typing import List, Union, Optional
+from .....config import get_env
 from .....utils import extract_segments, minify_text
 from .....io import EventBlock
 from ....document import Document
@@ -32,19 +33,42 @@ class Retriever(BaseAgent):
         rerank_count: int=5,
         **kwargs
     ):
-        super().__init__(**kwargs)
         if translators and not isinstance(translators, list):
             translators = [translators]
         if searchers and not isinstance(searchers, list):
             searchers = [searchers]
 
-        self.translators = translators or {}
-        self.searchers = searchers or {}
+        self.translators = translators or []
+        self.searchers = searchers or []
         self.reranker = reranker
 
         self.question_count = question_count
         self.search_count = search_count
         self.rerank_count = rerank_count
+
+        super().__init__(**kwargs)
+
+        for item in self.translators:
+            from ..chat import ChatAgent
+            if isinstance(item, ChatAgent) and not item.init_memory:
+                item.reset_init_memory(
+                    PromptTemplate(
+                        "RAG/Q_GEN",
+                        binding_map={"count": self.question_count}
+                    )
+                )
+            elif isinstance(item, VectorDB):
+                if not item.top_k:
+                    item.top_k = question_count
+                if not item.documents:
+                    item.load(dir=get_env("ILLUFLY_IDENT"))
+
+        for item in self.searchers:
+            if isinstance(item, VectorDB):
+                if not item.top_k:
+                    item.top_k = search_count
+                if not item.documents:
+                    item.load(dir=get_env("ILLUFLY_DOCS"))
 
     def call(self, query: str, **kwargs) -> List[dict]:
         """
@@ -70,16 +94,7 @@ class Retriever(BaseAgent):
         translated_queries = set()
         for translator in self.translators:
             if isinstance(translator, ChatAgent):
-                if not translator.init_memory:
-                    new_messages = [
-                        ('system', PromptTemplate("RAG/Q_GEN", binding_map={"count": self.question_count})),
-                        ('user', query),
-                    ]
-                else:
-                    new_messages = [
-                        ('user', query)
-                    ]
-                output_text = translator(new_messages, new_chat=True, **kwargs)
+                output_text = translator(query, new_chat=True)
                 valid_text = extract_segments(output_text, "```", "```", mode="first-last")
                 mm = MarkMeta()
                 docs = mm.load_text("\n".join(valid_text))
@@ -89,7 +104,7 @@ class Retriever(BaseAgent):
 
             elif isinstance(translator, VectorDB):
                 top_k = self.question_count
-                translated_results = translator(query, top_k=top_k, **kwargs)
+                translated_results = translator(query)
                 for result in translated_results:
                     if isinstance(result, str):
                         translated_queries.add(result)
@@ -112,6 +127,7 @@ class Retriever(BaseAgent):
         for query in queries:
             for searcher in self.searchers:
                 yield EventBlock("agent", f"由 {searcher.name} 检索问题：{query}")
+
                 search_results = searcher(query, top_k=top_k, **kwargs)
                 for result in search_results:
                     if isinstance(result, str):
@@ -121,22 +137,23 @@ class Retriever(BaseAgent):
                     else:
                         raise ValueError("Unknown search result type")
 
-                if self.reranker:
-                    yield EventBlock("agent", f"由 {self.reranker.name} 重新排序检索结果")
-                    rerank_results = self.reranker(query, search_results, top_k=self.rerank_count, **kwargs)
+                if search_results:
+                    if self.reranker:
+                        yield EventBlock("agent", f"由 {self.reranker.name} 重新排序检索结果")
+                        rerank_results = self.reranker(query, search_results, top_k=self.rerank_count, **kwargs)
+                        for doc in rerank_results:
+                            if isinstance(doc, Document):
+                                yield EventBlock("info", f"重新排序结果[{doc.meta['rerank_score']}]：{minify_text(doc.text)}")
+                            else:
+                                raise ValueError("Unknown rerank result type")
+                    else:
+                        rerank_results = search_results[:self.rerank_count]
+
                     for doc in rerank_results:
                         if isinstance(doc, Document):
-                            yield EventBlock("info", f"重新排序结果[{doc.meta['rerank_score']}]：{minify_text(doc.text)}")
+                            results.add(doc)
+                        elif isinstance(doc, str):
+                            results.add(Document(doc))
                         else:
-                            raise ValueError("Unknown rerank result type")
-                else:
-                    rerank_results = search_results[:self.rerank_count]
-
-                for doc in rerank_results:
-                    if isinstance(doc, Document):
-                        results.add(doc.text)
-                    elif isinstance(doc, str):
-                        results.add(doc)
-                    else:
-                        raise ValueError("Unknown search result type")
+                            raise ValueError("Unknown search result type")
         self._last_output = results

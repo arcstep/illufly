@@ -11,9 +11,10 @@ def get_env(key: str=None):
         # 文件夹配置
         "ILLUFLY_ROOT": "./",
         "ILLUFLY_HISTORY": "__XP__/HISTORY",
-        "ILLUFLY_TFA": "__XP__/TFA",
-        "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
+        "ILLUFLY_FAQ": "__XP__/FAQ",
+        "ILLUFLY_IDENT": "__XP__/IDENT",
         "ILLUFLY_DOCS": "__DOCS__",
+        "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
         "ILLUFLY_MEDIA": "__MEDIA__",
         "ILLUFLY_CACHE_EMBEDDINGS": "__CACHE_EMBEDDINGS__",
         "ILLUFLY_UPLOAD_CACHE_DIR": "__UPLOAD_CACHE__",
