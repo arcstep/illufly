@@ -50,13 +50,16 @@ class FaissDB(VectorDB):
 
     def load(
         self,
-        directory: str=None,
+        dir: str=None,
         verbose: bool = False,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         call_func: Callable = None,
         **kwargs
     ):
-        mm = MarkMeta(directory=directory, **kwargs)
+        """
+        使用 MarkMeta 的 load 方法从指定目录加载文件。
+        """
+        mm = MarkMeta(dir=dir, **kwargs)
         mm(verbose=verbose, handlers=handlers, action="load", **kwargs)
 
         vectors = self._process_embeddings(mm.last_output)
@@ -96,7 +99,7 @@ class FaissDB(VectorDB):
             # 对输入字符串做向量编码并查询
             vectors = [self.embeddings.query(text)]
             vectors = np.array(vectors, dtype='float32')  # 将查询向量转换为NumPy数组
-            distances, indices = self.index.search(vectors, top_k or self.top_k)
+            distances, indices = self.index.search(vectors, top_k or self.top_k or 5)
 
             # 筛选出文档
             valid_indices = indices[0][indices[0] >= 0]

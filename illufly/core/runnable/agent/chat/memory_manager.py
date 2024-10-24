@@ -25,7 +25,7 @@ class ThreadIDGenerator:
 class MemoryManager(BindingManager):
     @classmethod
     def get_history_dir(cls, agent_name: str="default"):
-        return os.path.join(get_env("ILLUFLY_XP"), cls.__name__.upper(), agent_name, "HISTORY")
+        return os.path.join(get_env("ILLUFLY_HISTORY"), cls.__name__.upper(), agent_name)
 
     @classmethod
     def get_history_file_path(cls, thread_id: str, agent_name: str="default"):
@@ -243,9 +243,10 @@ class MemoryManager(BindingManager):
 
             # 如果在合并后的 new_messages 中，task 变量被模板使用，
             # 则将尾部消息列表中的 user 角色消息取出，并赋值给 task 变量用于绑定映射
-            if 'task' in self.get_bound_vars(new_messages, new_chat=new_chat) and new_messages[-1].role == 'user':
+            bound_vars = self.get_bound_vars(new_messages, new_chat=new_chat)
+            if 'task' in bound_vars and new_messages[-1].role == 'user':
                 new_messages.messages.pop(-1)
-
+            
             # 如果新消息列表的尾部是 system 消息，则需要补充一个 user 角色消息
             # 否则，缺少用户消息会让大模型拒绝回答任何问题
             if new_messages[-1].role == 'system':

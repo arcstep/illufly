@@ -44,7 +44,7 @@ class MarkMeta(Runnable):
     @classmethod
     def available_init_params(cls):
         return {
-            "dir": "从这个目录路径导入文件",
+            "dir": "从这个目录路径导入文件，默认为 ILLUFLY_DOCS 环境变量",
             "filter": "文件名过滤器，可以直接写文件名，或者使用 * 号等通配符",
             "exts": "文件扩展名列表，默认支持 md, Md, MD, markdown, MARKDOWN 等",
             "chunk_size": "每个块的大小，这可能是各个模型处理中对 token 限制要求的，默认 1024",
@@ -53,17 +53,10 @@ class MarkMeta(Runnable):
         }
 
     def __init__(self, dir: str=None, filter: str=None, exts: list = None, chunk_size: int=None, chunk_overlap: int=None, **kwargs):
-        """
-        :param dir: 从这个目录路径导入文件
-        :param filter: 文件名过滤器，可以直接写文件名，或者使用 * 号等通配符
-        :param exts: 文件扩展名列表，默认支持 .md, .Md, .MD, .markdown, .MARKDOWN 等
-        :param chunk_size: 每个块的大小，这可能是各个模型处理中对 token 限制要求的，默认 1024
-        :param chunk_overlap: 每个块的覆盖大小，默认 100
-        """
         raise_invalid_params(kwargs, self.__class__.available_init_params())
 
         super().__init__(**kwargs)
-        self.directory = dir or ""
+        self.directory = dir or get_env("ILLUFLY_DOCS")
         self.filename_filter = filter or '*'
         self.extensions = exts or ['*.md', '*.Md', '*.MD', '*.markdown', '*.MARKDOWN']
         self.chunk_size = chunk_size or 1024
@@ -106,7 +99,11 @@ class MarkMeta(Runnable):
 
     def load(self, *files, **kwargs):
         """
-        将文件作为 markmeta 文本导入。
+        load 方法是加载文档时最常用的方法。
+
+        导入指定的文件，如果没有指定就从 self.directory 目录下查找所有符合条件的文件。
+        1. 如果指定 files 则 self.directotry 将被忽略
+        2. 如果不提供 files 则查找 self.directory 下面所有扩展名在 self.extensions 中的文件，并以 self.filename_filter 为过滤条件
         """
         self.documents.clear()
 
@@ -117,12 +114,11 @@ class MarkMeta(Runnable):
             except Exception as e:
                 yield(EventBlock("warn", f"读取文件失败 {file_path}: {e}"))
 
-    def get_files(self, directory, filename_filter, extensions):
+    def get_files(self, path, filename_filter, extensions):
         """
         获取目录下所有符合条件的文件。
         """
         matches = []
-        path = os.path.join(get_env("ILLUFLY_DOCS"), directory)
         for root, dirnames, filenames in os.walk(path):
             dirnames[:] = [d for d in dirnames if not d.startswith('.')]  # 排除隐藏文件夹
             filenames = [f for f in filenames if not f.startswith('.')]  # 排除隐藏文件
@@ -131,20 +127,20 @@ class MarkMeta(Runnable):
                     matches.append(os.path.join(root, filename))
         return matches
 
-    def load_file(self, file_path: str) -> List[Document]:
+    def load_file(self, abs_path: str) -> List[Document]:
         """
         加载单个文件。
         """
-        if not file_path or not os.path.exists(file_path):
-            yield(EventBlock("warn", f"文件不存在 {file_path}"))
+        if not abs_path or not os.path.exists(abs_path):
+            yield(EventBlock("warn", f"文件不存在 {abs_path}"))
 
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(abs_path, 'r', encoding='utf-8') as f:
             txt = f.read()
             if str(txt).strip() == "":
-                yield(EventBlock("warn", f"文件内容为空 {file_path}"))
+                yield(EventBlock("warn", f"文件内容为空 {abs_path}"))
                 return
-            self.load_text(txt, file_path)
-            yield(EventBlock("info", f"已成功加载文件 {file_path} ，其中包含 {len(self.documents)} 个片段。"))
+            self.load_text(txt, source=abs_path)
+            yield(EventBlock("info", f"已成功加载文件 {abs_path} ，其中包含 {len(self.documents)} 个片段。"))
 
     def load_text(self, text: str, source: str=None) -> List[Document]:
         """
