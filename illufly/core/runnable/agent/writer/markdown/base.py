@@ -3,10 +3,11 @@ import copy
 import os
 import yaml
 from typing import Iterator, List, Union, Optional
+
+from ......config import get_env
+from ......utils import extract_text
+from .....document import Document
 from .utils import parse_markdown, create_front_matter
-from ..document import Document
-from ...config import get_env
-from ...utils import extract_text
 
 class Markdown():
     def __init__(self, doc_str: str=None, md_file: str=None, source: str=None):
