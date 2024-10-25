@@ -33,11 +33,11 @@ class KnowledgeManager:
         if not isinstance(self.knowledge, set):
             self.knowledge = set({self.knowledge}) if self.knowledge else set()
 
+        self.default_vdb = None
         self._recalled_knowledge = []
         self._load_default_knowledge()
 
     def _load_default_knowledge(self):
-        default_vdb = None
         default_docs = set({
             get_env("ILLUFLY_DOCS"),
             get_env("ILLUFLY_FAQ")
@@ -47,14 +47,14 @@ class KnowledgeManager:
                 raise ValueError("Knowledge list items MUST be str, Document or VectorDB")
 
             if isinstance(item, VectorDB):
-                if not default_vdb:
-                    default_vdb = item
+                if not self.default_vdb:
+                    self.default_vdb = item
                 if item in item.sources:
                     default_docs.remove(item)
 
-        if default_vdb:
+        if self.default_vdb:
             for doc_folder in default_docs:
-                default_vdb.load(dir=doc_folder)
+                self.default_vdb.load(dir=doc_folder)
 
     @property
     def recalled_knowledge(self):

@@ -22,11 +22,11 @@ def save_faq(thread_id: str, knowledge: str, question: str="", metadata: dict={}
     metadata = f'<!-- @metadata {str(metadata) if metadata else ""} -->\n'
     q = f"**Question**\n{question}\n\n"
     k = f"**Knowledge**\n{knowledge}"
+    text = (metadata + q + k) or ""
 
     with open(os.path.join(faq_dir, f"{thread_id}.md"), "w") as f:
-        f.write(metadata)
-        f.write(q)
-        f.write(k)
+        f.write(text)
+    return text
 
 class Learn(FlowAgent):
     """
@@ -66,8 +66,11 @@ class Learn(FlowAgent):
             # 保存 Q/K 语料
             for i, knowledge in enumerate(knowledges):
                 q = questions[i] if i < len(questions) else ""
-                save_faq(scribe.thread_id, knowledge, q, metadata)
+                text = save_faq(scribe.thread_id, knowledge, q, metadata)
                 yield EventBlock("faq", f"保存知识到[{scribe.thread_id}]：{minify_text(q)} -> {minify_text(knowledge)}")
+                scribe.clear()
+                if scribe.default_vdb:
+                    scribe.default_vdb.load_text(text, source=scribe.thread_id)
 
         def should_fetch():
             if '<knowledge>' in scribe.last_output:
