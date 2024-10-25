@@ -1,11 +1,12 @@
 from typing import List, Union
 
-from .....utils import raise_invalid_params
+from .....utils import raise_invalid_params, minify_text
 from .....io import EventBlock
-from .markdown import Markdown
+from ....document import Document
+from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
 from ..chat import ChatAgent
-from ...prompt_template import PromptTemplate
+from .markdown import Markdown
 
 import copy
 
@@ -21,7 +22,7 @@ class FromOutline(BaseAgent):
             "next_k": "后 k 个字符"
         }
 
-    def __init__(self, writer: ChatAgent=None, prev_k:int=1000, next_k:int=500, **kwargs):
+    def __init__(self, writer: ChatAgent=None, template_id: str=None, prev_k:int=1000, next_k:int=500, **kwargs):
         raise_invalid_params(kwargs, self.__class__.available_init_params())
 
         if not isinstance(writer, ChatAgent):
@@ -29,6 +30,7 @@ class FromOutline(BaseAgent):
 
         super().__init__(**kwargs)
         self.writer = writer
+        self.template_id = template_id or "WRITER/FromOutline"
 
         self.prev_k = prev_k
         self.next_k = next_k
@@ -49,29 +51,32 @@ class FromOutline(BaseAgent):
         if self.segments:
             md = copy.deepcopy(self.markdown)
             for (thread_id, doc_id, from_outline_text) in self.segments:
-                md.replace_documents(doc_id, doc_id, from_outline_text)
+                md.replace_documents(doc_id, doc_id, [Document(from_outline_text + "\n")])
             return md.text
         else:
             return self.outline_text
 
-    def fetch_outline(self, outline_text: str):
+    def fetch_outline(self):
         """
         提取大纲。
         """
-        self.outline_text = outline_text
         self.markdown = Markdown(self.outline_text)
         return self.markdown.get_outline() if self.markdown else []
 
-    def call(self, outline_text: str, *args, **kwargs):
+    def call(self, outline: Union[str, BaseAgent], *args, **kwargs):
         """
         执行扩写。
         """
 
-        if not isinstance(outline_text, str):
-            raise ValueError("outline_text 必须是字符串")
+        if isinstance(outline, str):
+            self.outline_text = outline
+        elif isinstance(outline, BaseAgent):
+            self.outline_text = outline.last_output
+        else:
+            raise ValueError("outline 必须是字符串或 BaseAgent 实例")
 
         # 提取大纲
-        outline_docs = self.fetch_outline(outline_text)
+        outline_docs = self.fetch_outline()
 
         if outline_docs:
             for doc in outline_docs:
@@ -80,7 +85,7 @@ class FromOutline(BaseAgent):
                 (draft, outline) = self.markdown.fetch_outline_task(doc, prev_k=self.prev_k, next_k=self.next_k)
                 self.writer.reset_init_memory(
                     PromptTemplate(
-                        "FROM_OUTLINE",
+                        self.template_id,
                         binding_map={
                             "outline": f'```markdown\n{outline}\n```',
                             "draft": f'```markdown\n{draft}\n```'
@@ -88,12 +93,18 @@ class FromOutline(BaseAgent):
                     )
                 )
 
-                info = f"执行扩写任务 <{outline_id}>：\n{outline}"
+                info = f"执行扩写任务 <{outline_id}>：\n{minify_text(outline)}"
                 yield EventBlock("agent", info)
 
                 self.writer.clear()
                 yield from self.writer.call("请开始扩写")
-                self.segments.append((self.writer.thread_id, outline_id, self.writer.last_output))
+                self.segments.append(
+                    (
+                        self.writer.thread_id,
+                        outline_id,
+                        self.writer.last_output
+                    )
+                )
 
         else:
             yield EventBlock("info", f"没有提纲可供扩写")
