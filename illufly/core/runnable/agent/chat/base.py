@@ -9,6 +9,7 @@ from .....config import get_env
 from .....utils import merge_tool_calls, extract_text, extract_final_answer, raise_invalid_params, filter_kwargs
 from .....io import EventBlock, EndBlock, NewLineBlock
 from ...base import Runnable
+from ....document import Document
 from ...message import Messages
 from ..base import BaseAgent
 from ..knowledge_manager import KnowledgeManager
@@ -126,7 +127,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "tools_calling_steps": self.tools_calling_steps,
             "tools_name": ",".join([a.name for a in self._tools_to_exec]),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
-            "knowledge": self.get_knowledge(self.task)
+            "knowledge": self.get_knowledge(self.task),
+            "recalled_knowledge": self.recalled_knowledge
         }
         return {
             **super().provider_dict,
@@ -176,12 +178,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     def _patch_knowledge(self, messages: Messages):
         kg = ""
-        faq = ""
         existing_text = "\n".join([m['content'] for m in Messages(messages).to_list(style="text")])
-        if self.faq:
-            for item in self.get_faq(self.task):
-                if item not in existing_text:
-                    faq += item
         if self.knowledge:
             for item in self.get_knowledge(self.task):
                 if item not in existing_text:
@@ -189,8 +186,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         patch_info = ""
         if kg:
             patch_info += f"回答时请参考已有资料类的知识：\n{kg}\n"
-        if faq:
-            patch_info += f"回答时请参考已有常识类的知识：\n{faq}\n"
         if patch_info:
             add_messages = Messages([
                 ("user", patch_info),
@@ -246,6 +241,18 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             remember_rounds=remember_rounds
         )
         chat_memory = self._patch_knowledge(chat_memory)
+        if self.recalled_knowledge:
+            kg_source = {}
+            for item in self.recalled_knowledge:
+                if isinstance(item, Document):
+                    src = item.meta.get("source", "无来源文档")
+                else:
+                    src = "直接资料"
+                if src not in kg_source:
+                    kg_source[src] = []
+                kg_source[src].append(item)
+            for k, v in kg_source.items():
+                yield EventBlock("RAG", f"{k}：发现 {len(v)} 条资料")
 
         to_continue_call_llm = True
         while to_continue_call_llm:

@@ -59,6 +59,9 @@ class FaissDB(VectorDB):
         """
         使用 MarkMeta 的 load 方法从指定目录加载文件。
         """
+        # 记录文档来源
+        self.sources.append(dir)
+
         mm = MarkMeta(dir=dir, **kwargs)
         mm(verbose=verbose, handlers=handlers, action="load", **kwargs)
 
