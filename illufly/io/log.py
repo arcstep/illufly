@@ -7,7 +7,7 @@ from .block import EventBlock, NewLineBlock
 
 __CHUNK_BLOCK_TYPES__ = ["text", "chunk", "tool_resp_chunk"]
 __NOT_PRINT_BLOCK_TYPES__ = ["final_text", "response"]
-__ALLWAYS_PRINT_BLOCK_TYPES__ = ["final_tools_call", "agent", "warn", "error", "image_url"]
+__ALLWAYS_PRINT_BLOCK_TYPES__ = ["final_tools_call", "agent", "faq", "warn", "error", "image_url"]
 
 def process_block(block, verbose:bool):
     if isinstance(block, EventBlock):  

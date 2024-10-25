@@ -112,7 +112,7 @@ class PlanAndSolve(FlowAgent):
             {"worker": worker},
             {"observe_worker_for_replanner": observe_worker_for_replanner},
             {"replanner": replanner},
-            Selector([], condition=should_continue, name="should_continue"),
+            Selector(condition=should_continue, name="should_continue"),
             **filter_kwargs(kwargs, self.available_init_params())
         )
 

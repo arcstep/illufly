@@ -143,8 +143,6 @@ class FlowAgent(BaseAgent):
             if selected_agent.selected.last_output:
                 # 如果节点已经有了最终的输出，就保存到 FlowAgent 的 last_output 属性中
                 self._last_output = selected_agent.selected.last_output
-            else:
-                raise ValueError(f"agent {selected_agent.selected.name} must have a last_output")
 
             # 构造下一次调用的参数
             current_args = [selected_agent.selected]

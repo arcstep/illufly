@@ -56,8 +56,8 @@ class Selector(Runnable):
 
     def __init__(
         self,
-        runnables: List[Runnable] = None,
         condition: Union[Callable, str] = None,
+        runnables: List[Runnable] = None,
         embeddings: "BaseEmbeddings" = None,
         **kwargs
     ):
