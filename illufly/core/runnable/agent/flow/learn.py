@@ -67,7 +67,7 @@ class Learn(FlowAgent):
             for i, knowledge in enumerate(knowledges):
                 q = questions[i] if i < len(questions) else ""
                 save_faq(scribe.thread_id, knowledge, q, metadata)
-                yield EventBlock("faq", f"保存 FAQ 语料：{minify_text(q)} -> {minify_text(knowledge)}")
+                yield EventBlock("faq", f"保存知识到[{scribe.thread_id}]：{minify_text(q)} -> {minify_text(knowledge)}")
 
         def should_fetch():
             if '<knowledge>' in scribe.last_output:
