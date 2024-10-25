@@ -15,9 +15,8 @@ from ..knowledge_manager import KnowledgeManager
 from .tools_calling import BaseToolCalling, OpenAIToolsCalling
 from .tools_manager import ToolsManager
 from .memory_manager import MemoryManager
-from .faq_manager import TaskFinalAnswerManager
 
-class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFinalAnswerManager):
+class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     """
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
 
@@ -127,8 +126,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
             "tools_calling_steps": self.tools_calling_steps,
             "tools_name": ",".join([a.name for a in self._tools_to_exec]),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
-            "knowledge": self.get_knowledge(self.task),
-            "resources": self.get_resources(self.task),
+            "knowledge": self.get_knowledge(self.task)
         }
         return {
             **super().provider_dict,
@@ -162,10 +160,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
         # 提取最终答案
         self._final_answer = extract_final_answer(final_output_text, self.final_answer_prompt)
 
-        # 保存 T/FA 语料
-        if self.thread_id and self.task and self.final_answer:
-            self.save_faq(self.thread_id, self.task, self.final_answer)
-
         return final_output_text
 
     def _handle_tool_calls(self, final_output_text, chat_memory, tools_behavior: str="none"):
@@ -196,8 +190,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager, TaskFi
                 ("user", f'回答时你必须参考已有信息：\n' + "\n".join(kg)),
                 ("assistant", "ok")
             ], style=self.style).to_list()
+
             self.memory.insert(-1, add_messages[0])
             self.memory.insert(-1, add_messages[1])
+
+            messages.insert(-1, add_messages[0])
+            messages.insert(-1, add_messages[1])
 
         return messages
 

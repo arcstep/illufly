@@ -4,7 +4,14 @@
 
 `illufly` 是 `illution butterfly` 的缩写，中文为"幻蝶"。
 
-**illufly** 的目标是快速构建多智能体的对话和写作场景。
+**illufly** 是一个简单易用并具有自我进化能力的智能体应用框架。
+
+我们在使用 AI 时都会报以幻想，希望它能随着时间推移从小白变成老手。<br>
+但我们也希望这个进化过程不用操太多心，而是像小孩子慢慢长大一样，自然而然地完成。
+
+这正是 `illufly` 的设计理念。
+
+目前 `illufly` 随着版本迭代，已经支持了 RAG应用、多种智能体推理模式，并具有了一定的进化能力。
 
 * [《illufly 快速指南》](https://github.com/arcstep/illufly/wiki/Home)
 
@@ -30,7 +37,9 @@
 
 ## 使用示例
 
-**1. 基本能力**
+**1. 基本使用**
+
+在了解 illufly 的进化能力之前，你应当先了解它的基本使用。
 
 illufly 最主要是封装了 ChatAgent 基类，在进一步实现千问、智谱以及 OpenAI 等大模型厂家的接口后，获得了 ChatQwen、ChatZhipu 以及 ChatOpenAI 等子类。
 
@@ -47,6 +56,13 @@ chat("你是什么模型？")
 输出内容: (我是一个流式输出的动画)
 ```
 
+**2. 让你的 AI 越聊越懂**
+
+基本的进化策略是：你跟 AI 聊的内容可以被它记住，并根据这些记忆进化出越来越懂你的能力。<br>
+但实际上你也不想把 AI 变成一只记住任何人说话的鹦鹉。你的 AI 应当能够分辨该记住谁的话、记住什么话。
+
+
+
 **2. 工具回调**
 
 ChatAgent 在使用工具回调时非常简洁，只需要将工具列表传递给类的实例即可，不需要多余的代码。
@@ -54,17 +70,19 @@ ChatAgent 在使用工具回调时非常简洁，只需要将工具列表传递�
 ```python
 from illufly.chat import ChatQwen
 
-def tool1(input: str):
-    """我是一个会写诗的工具"""
-    return "大海啊, 全是水"
+def poet(input: str):
+    """我是诗人，擅长作诗。"""
+    return "请看我的新作：\n大海啊, 全是水"
 
-chat = ChatQwen(tools=[tool1])
-chat("你是什么模型？")
+chat = ChatQwen(tools=[poet])
+chat("帮我写一首小诗？")
 ```
+
+    上述代码会触发 openai 的工具回调，并将 poet 做的诗作为结果返回给你。
 
 **3. 复杂推理**
 
-默认情况下，你只能使用 OpenAI 风格的工具回调。<br>
+你已经学会直接使用 OpenAI 风格的工具回调。<br>
 但你可能还想使用其他推理模式，illufly 中已经实现这些推理风格:
 
 | FlowAgent子类 | 推理方式 | 论文 |
@@ -90,7 +108,7 @@ chat = ReAct(
 chat("你是什么模型？")
 ```
 
-**3. 多智能体协作**
+**4. 多智能体协作**
 
 illufly 也允许你定义多个智能体，并让它们协作完成任务。
 
@@ -132,7 +150,7 @@ graph TD
 
     Flow[FlowAgent<br>顺序/分支/循环/自定义]
 
-    Agent(ChatAgent<br>记忆/工具/知识/多模态)
+    Agent(ChatAgent<br>记忆/工具/进化)
     Selector(Selector<br>意图/条件)
     BaseAgent(BaseAgent<br>工具/多模态)
     Messages[Messages<br>文本/多模态/模板]

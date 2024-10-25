@@ -72,7 +72,7 @@ class ReAct(FlowAgent):
         super().__init__(
             {"planner": planner},
             {"observer": observe_func},
-            Selector([], condition=should_continue, name="should_continue"),
+            Selector(condition=should_continue, name="should_continue"),
             **filter_kwargs(kwargs, self.available_init_params())
         )
     
