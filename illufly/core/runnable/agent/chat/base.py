@@ -185,7 +185,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     kg += item
         patch_info = ""
         if kg:
-            patch_info += f"回答时请参考已有资料类的知识：\n{kg}\n"
+            patch_info += f"回答时请参考已有知识：\n@knowledge\n{kg}\n"
         if patch_info:
             add_messages = Messages([
                 ("user", patch_info),

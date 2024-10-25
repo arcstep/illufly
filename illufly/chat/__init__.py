@@ -3,7 +3,7 @@ from ..community.zhipu import ChatZhipu
 from ..community.dashscope import ChatQwen, ChatQwenVL
 
 from ..core.runnable.agent import ChatPool, FlowAgent, ReAct, ReWOO, PlanAndSolve, FromOutline, Learn
-from ..core.runnable import Selector
+from ..core.runnable import Selector, End
 
 from .fake import FakeLLM
 
