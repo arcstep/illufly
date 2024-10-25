@@ -29,7 +29,7 @@ class VectorDB(Runnable):
         # 必须提供一个向量模型
         self.embeddings = embeddings
         self.dim = embeddings.dim
-        self.top_k = top_k or 5
+        self.top_k = top_k
 
         # 向量数据库中备查的文档，包括了原始文档、元数据，以及由向量模型转换的向量索引
         self.documents = []
@@ -38,5 +38,5 @@ class VectorDB(Runnable):
         pass
 
     def call(self, text: str, top_k: int=None, **kwargs):
-        self._last_output = self.query(text, top_k or self.top_k, **kwargs)
+        self._last_output = self.query(text, top_k or self.top_k or 5, **kwargs)
         yield EventBlock("info", f"查询到{len(self._last_output)}条结果")

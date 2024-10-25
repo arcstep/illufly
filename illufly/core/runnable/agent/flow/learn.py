@@ -11,8 +11,8 @@ from .base import FlowAgent
 def get_faq_dir():
     return get_env("ILLUFLY_FAQ")
 
-def save_faq(thread_id: str, task: str, final_answer: str, metadata: dict={}):
-    if not thread_id or not task or not final_answer:
+def save_faq(thread_id: str, knowledge: str, question: str="", metadata: dict={}):
+    if not thread_id or not knowledge:
         return
 
     faq_dir = get_faq_dir()
@@ -20,13 +20,13 @@ def save_faq(thread_id: str, task: str, final_answer: str, metadata: dict={}):
         os.makedirs(faq_dir)
 
     metadata = f'<!-- @metadata {str(metadata) if metadata else ""} -->\n'
-    task = f"**Question**\n{task}\n\n"
-    fa = f"**Answer**\n{final_answer}"
+    q = f"**Question**\n{question}\n\n"
+    k = f"**Knowledge**\n{knowledge}"
 
     with open(os.path.join(faq_dir, f"{thread_id}.md"), "w") as f:
         f.write(metadata)
-        f.write(task)
-        f.write(fa)
+        f.write(q)
+        f.write(k)
 
 class Learn(FlowAgent):
     """
@@ -60,16 +60,17 @@ class Learn(FlowAgent):
         def fetch_faq(agent: BaseAgent):
             final_output_text = agent.last_output
             questions = extract_segments(final_output_text, '<question>', '</question>')
-            final_answers = extract_segments(final_output_text, '<final_answer>', '</final_answer>')
+            knowledges = extract_segments(final_output_text, '<knowledge>', '</knowledge>')
             metadata = {"class": scribe.__class__.__name__, "name": scribe.name, "thread_id": scribe.thread_id}
 
-            # 保存 T/FA 语料
-            for i, final_answer in enumerate(final_answers):
-                save_faq(scribe.thread_id, questions[i], final_answers[i], metadata)
-                yield EventBlock("faq", f"保存 FAQ 语料：{minify_text(questions[i])} -> {minify_text(final_answers[i])}")
+            # 保存 Q/K 语料
+            for i, knowledge in enumerate(knowledges):
+                q = questions[i] if i < len(questions) else ""
+                save_faq(scribe.thread_id, knowledge, q, metadata)
+                yield EventBlock("faq", f"保存 FAQ 语料：{minify_text(q)} -> {minify_text(knowledge)}")
 
         def should_fetch():
-            if '<final_answer>' in scribe.last_output:
+            if '<knowledge>' in scribe.last_output:
                 return "Fetch_FAQ"
             else:
                 return "__END__"
