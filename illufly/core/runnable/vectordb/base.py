@@ -31,6 +31,9 @@ class VectorDB(Runnable):
         self.dim = embeddings.dim
         self.top_k = top_k
 
+        # 向量数据库所使用的文档来源
+        self.sources = []
+
         # 向量数据库中备查的文档，包括了原始文档、元数据，以及由向量模型转换的向量索引
         self.documents = []
 
