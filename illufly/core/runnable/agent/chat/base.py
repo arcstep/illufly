@@ -175,19 +175,25 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         yield block
 
     def _patch_knowledge(self, messages: Messages):
-        kg = []
+        kg = ""
+        faq = ""
         existing_text = "\n".join([m['content'] for m in Messages(messages).to_list(style="text")])
         if self.faq:
             for item in self.get_faq(self.task):
                 if item not in existing_text:
-                    kg.append(item)
+                    faq += item
         if self.knowledge:
             for item in self.get_knowledge(self.task):
                 if item not in existing_text:
-                    kg.append(item)
+                    kg += item
+        patch_info = ""
         if kg:
+            patch_info += f"回答时请参考已有资料类的知识：\n{kg}\n"
+        if faq:
+            patch_info += f"回答时请参考已有常识类的知识：\n{faq}\n"
+        if patch_info:
             add_messages = Messages([
-                ("user", f'回答时你必须参考已有信息：\n' + "\n".join(kg)),
+                ("user", patch_info),
                 ("assistant", "ok")
             ], style=self.style).to_list()
 

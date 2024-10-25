@@ -7,7 +7,6 @@ from ...utils import raise_invalid_params
 import os
 import json
 
-
 class ChatOpenAI(ChatAgent):
     @classmethod
     def available_init_params(cls):
