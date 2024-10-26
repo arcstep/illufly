@@ -146,7 +146,10 @@ class BindingManager:
             for k, v in binding_map.items():
                 if isinstance(v, Callable):
                     # 实现规则 3
-                    consumer_dict[k] = v(vars)
+                    if v.__code__.co_argcount == 0:
+                        consumer_dict[k] = v()
+                    else:
+                        consumer_dict[k] = v(vars)
                 elif v is None:
                     # 实现规则 4
                     consumer_dict[k] = None
