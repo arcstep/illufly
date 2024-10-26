@@ -3,4 +3,6 @@ from ..community.dashscope import Text2ImageWanx, CosplayWanx
 
 __all__ = [
     "PandasAgent",
+    "Text2ImageWanx",
+    "CosplayWanx",
 ]

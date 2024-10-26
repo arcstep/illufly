@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "illufly"
-version = "0.5.0"
-description = "A simple AI-Agent framework with auto-evolution ability."
+version = "0.5.1"
+description = "A simple Agent framework based on GPT with auto-evolution ability."
 authors = ["arcstep <xuehongwei@illufly.com>"]
 homepage = "https://github.com/arcstep/illufly"
 repository = "https://github.com/arcstep/illufly.git"
