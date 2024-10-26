@@ -28,9 +28,9 @@ def save_faq(thread_id: str, knowledge: str, question: str="", metadata: dict={}
         f.write(text)
     return text
 
-class Learn(FlowAgent):
+class ChatLearn(FlowAgent):
     """
-    Learn，用于从对话中学习知识。
+    ChatLearn，用于从对话中学习知识。
     """
     @classmethod
     def available_init_params(cls):
