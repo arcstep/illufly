@@ -128,7 +128,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "tools_name": ",".join([a.name for a in self._tools_to_exec]),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
             "knowledge": self.get_knowledge(self.task),
-            "recalled_knowledge": self.recalled_knowledge
+            "recalled_knowledge": self.recalled_knowledge,
+            "last_memory": self.last_memory
         }
         return {
             **super().provider_dict,
@@ -218,6 +219,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         messages_std = Messages(prompt, style="text")
         self._task = messages_std[-1].content
+        yield EventBlock("user", self._task)
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
         self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
@@ -303,6 +305,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         messages_std = Messages(prompt, style="text")
         self._task = messages_std[-1].content
+        yield EventBlock("user", self._task)
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
         self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
