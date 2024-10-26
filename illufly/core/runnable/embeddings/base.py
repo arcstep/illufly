@@ -27,18 +27,18 @@ class BaseEmbeddings(Runnable):
     ```
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "model": "文本嵌入模型的名称",
             "base_url": "BASE_URL",
             "api_key": "API_KEY",
             "dim": "编码时使用的向量维度",
             "max_lines": "每次编码时处理的最大行数",
-            **Runnable.available_init_params()
+            **Runnable.allowed_params()
         }
 
     def __init__(self, model: str=None, base_url: str=None, api_key: str=None, dim: int=None, max_lines: int=None, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         super().__init__(**kwargs)
         self.dim = dim

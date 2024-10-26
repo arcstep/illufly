@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List
 
 class ToolAbility:
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         """
         返回当前可用的参数列表。
         """

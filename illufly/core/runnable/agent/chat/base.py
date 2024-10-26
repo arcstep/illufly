@@ -31,7 +31,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     这就实现了基本的自我进化过程，而「自我进化」也是 illufly 设计的一个核心目标。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         """
         返回当前可用的参数列表。
         """
@@ -40,10 +40,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "start_marker": "开始标记，默认为 ```",
             "end_marker": "结束标记，默认为 ```",
             "final_answer_prompt": "最终答案提示词，可通过修改环境变量 ILLUFLY_FINAL_ANSWER_PROMPT 修改默认值",
-            **BaseAgent.available_init_params(),
-            **KnowledgeManager.available_init_params(),
-            **ToolsManager.available_init_params(),
-            **MemoryManager.available_init_params(),
+            **BaseAgent.allowed_params(),
+            **KnowledgeManager.allowed_params(),
+            **ToolsManager.allowed_params(),
+            **MemoryManager.allowed_params(),
         }
 
     def __init__(
@@ -60,12 +60,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         - memory：记忆管理
         - knowledge：知识管理
         """
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         kwargs["tool_params"] = kwargs.get("tool_params", {"prompt": "详细描述用户问题"})
-        BaseAgent.__init__(self, **filter_kwargs(kwargs, BaseAgent.available_init_params()))
-        KnowledgeManager.__init__(self, **filter_kwargs(kwargs, KnowledgeManager.available_init_params()))
-        ToolsManager.__init__(self, **filter_kwargs(kwargs, ToolsManager.available_init_params()))
+        BaseAgent.__init__(self, **filter_kwargs(kwargs, BaseAgent.allowed_params()))
+        KnowledgeManager.__init__(self, **filter_kwargs(kwargs, KnowledgeManager.allowed_params()))
+        ToolsManager.__init__(self, **filter_kwargs(kwargs, ToolsManager.allowed_params()))
 
         self.end_chk = end_chk
 
@@ -84,7 +84,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         self._tools_to_exec = self.get_tools()
         self._resources = ""
 
-        MemoryManager.__init__(self, **filter_kwargs(kwargs, MemoryManager.available_init_params()))
+        MemoryManager.__init__(self, **filter_kwargs(kwargs, MemoryManager.allowed_params()))
 
     def clear(self):
         self.memory.clear()

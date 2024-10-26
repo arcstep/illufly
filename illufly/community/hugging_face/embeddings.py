@@ -8,14 +8,14 @@ class HuggingFaceEmbeddings(BaseEmbeddings):
     """使用开源的 SentenceTransformer 模型进行文本向量化"""
 
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "model": "模型名称",
-            **BaseEmbeddings.available_init_params()
+            **BaseEmbeddings.allowed_params()
         }
 
     def __init__(self, model: str=None, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         try:
             from sentence_transformers import SentenceTransformer

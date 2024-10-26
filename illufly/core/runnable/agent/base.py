@@ -25,16 +25,16 @@ class BaseAgent(Runnable, ToolAbility, ResourceManager):
     - 例如，对话模型
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         """
         返回当前可用的参数列表。
         """
         return {
             "func": "用于自定义工具的同步执行函数",
             "async_func": "用于自定义工具的异步执行函数",
-            **Runnable.available_init_params(),
-            **ToolAbility.available_init_params(),
-            **ResourceManager.available_init_params(),
+            **Runnable.allowed_params(),
+            **ToolAbility.allowed_params(),
+            **ResourceManager.allowed_params(),
         }
 
     def __init__(
@@ -43,10 +43,10 @@ class BaseAgent(Runnable, ToolAbility, ResourceManager):
         async_func: Callable=None,
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
-        Runnable.__init__(self, **filter_kwargs(kwargs, Runnable.available_init_params()))
-        ResourceManager.__init__(self, **filter_kwargs(kwargs, ResourceManager.available_init_params()))
+        Runnable.__init__(self, **filter_kwargs(kwargs, Runnable.allowed_params()))
+        ResourceManager.__init__(self, **filter_kwargs(kwargs, ResourceManager.allowed_params()))
 
         name = kwargs.pop("name", self.name)
         description = kwargs.pop("description", None)

@@ -15,7 +15,7 @@ class PlanAndSolve(FlowAgent):
     这既可以通过一步步思考获得稳定推理, 又可以在每次制定更有利于实现总体目标的计划。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "planner": "计划者",
             "worker": "执行者",
@@ -23,7 +23,7 @@ class PlanAndSolve(FlowAgent):
             "planner_template": "计划者模板",
             "worker_template": "执行者模板",
             "replanner_template": "重新计划者模板",
-            **FlowAgent.available_init_params(),
+            **FlowAgent.allowed_params(),
         }
         
     def __init__(
@@ -36,7 +36,7 @@ class PlanAndSolve(FlowAgent):
         replanner_template: PromptTemplate=None,
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.available_init_params())
+        raise_invalid_params(kwargs, self.allowed_params())
 
         if not isinstance(planner, BaseAgent) or not isinstance(worker, BaseAgent) or not isinstance(replanner, BaseAgent):
             raise ValueError("planner, worker, replanner 必须是 ChatAgent 的子类")
@@ -113,7 +113,7 @@ class PlanAndSolve(FlowAgent):
             {"observe_worker_for_replanner": observe_worker_for_replanner},
             {"replanner": replanner},
             Selector(condition=should_continue, name="should_continue"),
-            **filter_kwargs(kwargs, self.available_init_params())
+            **filter_kwargs(kwargs, self.allowed_params())
         )
 
     def begin_call(self):

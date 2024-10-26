@@ -15,12 +15,12 @@ class PandasAgent(BaseAgent):
     对所提供的 pandas 数据集做分析和处理。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "datasets": "数据集清单, 类型为 Dataset 实例，或者提供 `{name: {description, df}}` 的键值对来创建 Dataset 实例",
             "agent": "生成代码的 ChatAgent 实例",
             "template_id": "生成代码提示语模板ID",
-            **BaseAgent.available_init_params(),
+            **BaseAgent.allowed_params(),
         }
 
     def __init__(self, datasets: Dataset, agent: "ChatAgent", template_id: str=None, **kwargs):

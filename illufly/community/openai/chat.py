@@ -9,11 +9,11 @@ import json
 
 class ChatOpenAI(ChatAgent):
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "model": "模型名称",
             "imitator": "兼容 OpenAI 接口协议的模型来源，默认 imitator='OPENAI'，即从环境变量中读取 OPENAI_API_KEY 和 OPENAI_BASE_URL。",
-            **ChatAgent.available_init_params()
+            **ChatAgent.allowed_params()
         }
 
     def __init__(self, model: str=None, imitator: str=None, extra_args: dict={}, **kwargs):
@@ -27,7 +27,7 @@ class ChatOpenAI(ChatAgent):
 
         然后使用类似 `ChatOpenAI(imitator="QWEN")` 的代码就可以使用千问系列模型。
         """
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         try:
             from openai import OpenAI

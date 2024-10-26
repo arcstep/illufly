@@ -6,17 +6,17 @@ import tiktoken
 from typing import List, Union, Dict, Any
 from .config import get_env
 
-def filter_kwargs(kwargs: Dict, available_init_params: Dict):
+def filter_kwargs(kwargs: Dict, allowed_params: Dict):
     """
-    根据 available_init_params 过滤掉不支持的参数。
+    根据 allowed_params 过滤掉不支持的参数。
     """
-    return {k: v for k, v in kwargs.items() if k in available_init_params}
+    return {k: v for k, v in kwargs.items() if k in allowed_params}
 
-def raise_invalid_params(kwargs: Dict, available_init_params: Dict):
+def raise_invalid_params(kwargs: Dict, allowed_params: Dict):
     """
-    根据 available_init_params 检查参数是否合法。
+    根据 allowed_params 检查参数是否合法。
     """
-    invalid_params = [k for k in kwargs.keys() if k not in available_init_params]
+    invalid_params = [k for k in kwargs.keys() if k not in allowed_params]
     if invalid_params:
         raise ValueError(f"invalid parameters: {invalid_params}")
 

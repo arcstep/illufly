@@ -14,12 +14,12 @@ class PromptTemplate(Runnable):
     dynamic_binding_map 可用于在构造消息时实现动态绑定。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "template_id": "模板 id",
             "text": "模板文本",
             "binding_map": "绑定映射",
-            **Runnable.available_init_params()
+            **Runnable.allowed_params()
         }
         
     def __init__(
@@ -29,7 +29,7 @@ class PromptTemplate(Runnable):
         binding_map: Dict=None,
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         super().__init__(**kwargs)
 

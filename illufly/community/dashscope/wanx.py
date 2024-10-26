@@ -44,15 +44,15 @@ class Text2ImageWanx(BaseAgent):
     [详细调用参数可参考通义万相文生图 API](https://help.aliyun.com/zh/dashscope/developer-reference/api-details-9)
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "model": "模型名称",
             "api_key": "API_KEY",
-            **BaseAgent.available_init_params()
+            **BaseAgent.allowed_params()
         }
 
     def __init__(self, model: str=None, api_key: str=None, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         super().__init__(threads_group="WANX", **kwargs)
 

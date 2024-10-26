@@ -13,11 +13,11 @@ class ReAct(FlowAgent):
     它的典型流程可以用一个有趣的循环来描述：思考（Thought）→ 行动（Action）→ 观察（Observation），简称TAO循环。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "planner": "用于推理的ChatAgent, 你应当在其中指定可用的工具",
             "planner_template": "用于生成计划的PromptTemplate, 默认为 PromptTemplate('FLOW/ReAct/Planner')",
-            **FlowAgent.available_init_params(),
+            **FlowAgent.allowed_params(),
         }
 
     def __init__(
@@ -26,7 +26,7 @@ class ReAct(FlowAgent):
         planner_template: str=None,
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.available_init_params())
+        raise_invalid_params(kwargs, self.allowed_params())
 
         if not isinstance(planner, BaseAgent):
             raise ValueError("planner 必须是 ChatAgent 的子类")
@@ -73,7 +73,7 @@ class ReAct(FlowAgent):
             {"planner": planner},
             {"observer": observe_func},
             Selector(condition=should_continue, name="should_continue"),
-            **filter_kwargs(kwargs, self.available_init_params())
+            **filter_kwargs(kwargs, self.allowed_params())
         )
     
     def begin_call(self):

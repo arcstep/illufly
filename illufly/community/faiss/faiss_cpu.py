@@ -10,14 +10,14 @@ import numpy as np
 
 class FaissDB(VectorDB):
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "train": "是否在加载数据时训练模型",
-            **VectorDB.available_init_params()
+            **VectorDB.allowed_params()
         }
 
     def __init__(self, train: bool=None, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         super().__init__(**kwargs)
         try:
