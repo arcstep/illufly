@@ -1,11 +1,11 @@
 import os
-import time
 import json
+import time
 import random
 
 from typing import Union, List, Dict, Any, Callable
 from .....utils import filter_kwargs, raise_invalid_params, get_env
-from .....hub import get_template_variables
+from ....history import History, HistoryFile as DefaultHistory
 from ...message import Messages, Message
 from ...prompt_template import PromptTemplate
 from ...binding_manager import BindingManager
@@ -14,7 +14,9 @@ class ThreadIDGenerator:
     def __init__(self, counter: int=0):
         self.counter = counter
 
-    def create_id(self):
+    def create_id(self, last_count: str=None):
+        if last_count:
+            self.counter = int(last_count)
         while True:
             timestamp = str(int(time.time()))[-6:]
             random_number = f'{random.randint(0, 9999):04}'
@@ -22,49 +24,9 @@ class ThreadIDGenerator:
             yield f'{timestamp}-{random_number}-{counter_str}'
             self.counter = 0 if self.counter == 9999 else self.counter + 1
 
+thread_id_gen = ThreadIDGenerator()
+
 class MemoryManager(BindingManager):
-    @classmethod
-    def get_history_dir(cls, agent_name: str="default"):
-        return os.path.join(get_env("ILLUFLY_HISTORY"), cls.__name__.upper(), agent_name)
-
-    @classmethod
-    def get_history_file_path(cls, thread_id: str, agent_name: str="default"):
-        if thread_id:
-            return os.path.join(
-                cls.get_history_dir(agent_name),
-                f"{thread_id}.json"
-            )
-        else:
-            raise ValueError("thread_id MUST not be None")
-
-    @classmethod
-    def list_memory_threads(cls, agent_name: str="default"):
-        memory_dir = cls.get_history_dir(agent_name)
-        if not os.path.exists(memory_dir):
-            return []
-        file_list = [os.path.basename(file) for file in os.listdir(memory_dir) if file.endswith(".json") and not file.startswith(".")]
-        thread_ids = [file.replace(".json", "") for file in file_list]
-
-        def thread_id_key(thread_id):
-            ids = thread_id.split("-")
-            return f'{ids[0]}-{ids[-1]}'
-
-        return sorted(thread_ids, key=thread_id_key)
-
-    @classmethod
-    def get_current_thread_rounds(cls):
-        all_thread_ids = cls.list_memory_threads()
-        if all_thread_ids:
-            ids = all_thread_ids[-1].split("-")
-            return int(ids[-1]) + 1
-        else:
-            return 0
-
-    @classmethod
-    def initialize_thread_id_generator(cls):
-        cls.thread_id_generator = ThreadIDGenerator(cls.get_current_thread_rounds())
-        cls.thread_id_gen = cls.thread_id_generator.create_id()
-
     @classmethod
     def allowed_params(cls):
         """
@@ -74,23 +36,16 @@ class MemoryManager(BindingManager):
             "style": "消息样式",
             "memory": "记忆列表",
             "remember_rounds": "记忆轮数",
+            "history": "记忆持久化管理",
             **BindingManager.allowed_params(),
         }
-
-    def __init_subclass__(cls, **kwargs):
-        """
-        在子类初始化时，调用初始化方法。
-
-        为每个子类构造独立的 thread_id 生成器，但在其实例中可以共享。
-        """
-        super().__init_subclass__(**kwargs)
-        cls.initialize_thread_id_generator()
 
     def __init__(
         self,
         style: str=None,
         memory: Union[List[Union[str, "PromptTemplate", Dict[str, Any]]], Messages]=None,
         remember_rounds: int=None,
+        history: History=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.allowed_params())
@@ -99,26 +54,32 @@ class MemoryManager(BindingManager):
         self.style = style
         self.memory = []
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
+        self.history = history or DefaultHistory(self.__class__.__name__, self.name)
 
         self.init_memory = []
         self.reset_init_memory(memory)
         self._thread_id = None
-        self._last_memory = []
+        self._chat_memory = []
 
     @property
     def thread_id(self):
         return self._thread_id
 
+    def create_thread_id(self):
+        last_count = self.history.last_thread_id_count()
+        self._thread_id = thread_id_gen.create_id(last_count)
+        return self._thread_id
+
     @property
-    def last_memory(self):
-        return self._last_memory
+    def chat_memory(self):
+        return self._chat_memory
 
     def create_new_thread(self):
         """
         开启新一轮对话
         """
         self.memory.clear()
-        self._thread_id = next(self.__class__.thread_id_gen)
+        self._thread_id = next(self.create_thread_id())
 
     def reset_init_memory(self, messages: Union[str, List[dict]]):
         self.init_memory = Messages(messages, style=self.style)
@@ -149,37 +110,23 @@ class MemoryManager(BindingManager):
                     if consumer_key in self.provider_dict:
                         bound_vars.add(consumer_key)
         return bound_vars
+
     # 保存记忆
     def save_memory(self):
-        path = self.get_history_file_path(self.thread_id, self.name)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.memory, f, ensure_ascii=False)
+        self.history.save_memory(self.thread_id, self.memory)
 
     @property
     def thread_ids(self):
-        return self.list_memory_threads(self.name)
+        return self.history.list_threads()
 
     # 加载记忆
     def load_memory(self, thread_id: Union[str, int]=None):
         """
-        加载记忆。
-
-        如果 thread_id 是字符串，则直接加载指定线程的记忆；
-        如果 thread_id 是整数，则将其当作索引，例如 thread_id=-1 表示加载最近一轮对话的记忆。
+        加载指定记忆。
+        - 使用整数索引: -1 加载最近一轮对话的记忆; 0 加载首轮记忆
+        - 使用字符串: 加载指定记忆 thread_id
         """
-        path = None
-        if isinstance(thread_id, str):
-            self._thread_id = thread_id
-            path = self.get_history_file_path(thread_id, self.name)
-        elif isinstance(thread_id, int):
-            if self.thread_ids:
-                self._thread_id = self.thread_ids[thread_id]
-                path = self.get_history_file_path(self.thread_ids[thread_id], self.name)
-
-        if path and os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                self.memory = json.load(f)
+        self._thread_id, self.memory = self.history.load_memory(thread_id)
 
     def build_chat_memory(self, prompt: Union[str, List[dict]], new_chat: bool=False, remember_rounds: int = None):
         """
@@ -204,16 +151,15 @@ class MemoryManager(BindingManager):
 
         new_messages = self.build_new_messages(new_prompt, new_chat)
         history_memory = self.get_history_memory(new_chat, remember_rounds)
-        print("history_memory", history_memory.messages)
 
         if new_messages.has_role("system"):
             new_messages_list = Messages((new_messages[:1] + history_memory.messages + new_messages[1:]), style=self.style).to_list()
             self.memory.extend(new_messages_list)
-            self._last_memory = new_messages_list
+            self._chat_memory = new_messages_list
         else:
             self.memory.extend(new_messages.to_list())
-            self._last_memory = (history_memory + new_messages).to_list()
-        return self._last_memory
+            self._chat_memory = (history_memory + new_messages).to_list()
+        return self._chat_memory
 
     def get_history_memory(self, new_chat: bool=False, remember_rounds: int = None):
         """

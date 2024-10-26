@@ -129,7 +129,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
             "knowledge": self.get_knowledge(self.task),
             "recalled_knowledge": self.recalled_knowledge,
-            "last_memory": self.last_memory
+            "chat_memory": self.chat_memory
         }
         return {
             **super().provider_dict,
