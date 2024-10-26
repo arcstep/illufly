@@ -19,7 +19,7 @@ class ToolsManager:
     - parse-execute-continue: 解析工具回调, 执行工具, 然后继续调用模型
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         """
         返回当前可用的参数列表。
         """

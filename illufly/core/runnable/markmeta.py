@@ -42,18 +42,18 @@ class MarkMeta(Runnable):
     导出时，由对话模型将输出结果保存为 MarkMeta 文件。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "dir": "从这个目录路径导入文件，默认为 ILLUFLY_DOCS 环境变量",
             "filter": "文件名过滤器，可以直接写文件名，或者使用 * 号等通配符",
             "exts": "文件扩展名列表，默认支持 md, Md, MD, markdown, MARKDOWN 等",
             "chunk_size": "每个块的大小，这可能是各个模型处理中对 token 限制要求的，默认 1024",
             "chunk_overlap": "每个块的覆盖大小，默认 100",
-            **Runnable.available_init_params()
+            **Runnable.allowed_params()
         }
 
     def __init__(self, dir: str=None, filter: str=None, exts: list = None, chunk_size: int=None, chunk_overlap: int=None, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         super().__init__(**kwargs)
         self.directory = dir or get_env("ILLUFLY_DOCS")

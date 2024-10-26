@@ -14,13 +14,13 @@ class ReWOO(FlowAgent):
     ReWOO 在 ReAct 基础上, 一次性生成所有需要的计划, 但取消观察环节, 从而大大减少与LLM的对话次数。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "planner": "计划器，用于生成完成任务所有需要的整体计划",
             "solver": "求解器，根据计划和各步骤执行结果汇总后得出最终答案",
             "planner_template": "计划器提示语模板, 默认为 PromptTemplate('FLOW/ReWOO/Planner')",
             "solver_template": "求解器提示语模板, 默认为 PromptTemplate('FLOW/ReWOO/Solver')",
-            **FlowAgent.available_init_params(),
+            **FlowAgent.allowed_params(),
         }
         
     def __init__(
@@ -31,7 +31,7 @@ class ReWOO(FlowAgent):
         solver_template: PromptTemplate=None,
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.available_init_params())
+        raise_invalid_params(kwargs, self.allowed_params())
 
         if not isinstance(planner, BaseAgent):
             raise ValueError("planner 必须是 ChatAgent 的子类")
@@ -67,7 +67,7 @@ class ReWOO(FlowAgent):
             observe_func,
             solver,
             End(),
-            **filter_kwargs(kwargs, self.available_init_params())
+            **filter_kwargs(kwargs, self.allowed_params())
         )
     
     def begin_call(self):

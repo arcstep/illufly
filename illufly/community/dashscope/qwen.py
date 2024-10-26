@@ -13,17 +13,17 @@ from ...io import NewLineBlock
 
 class ChatQwen(ChatAgent):
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "model": "模型名称",
             "enable_search": "是否启用搜索",
             "api_key": "API_KEY",
             "base_url": "BASE_URL",
-            **ChatAgent.available_init_params()
+            **ChatAgent.allowed_params()
         }
 
     def __init__(self, model: str=None, enable_search: bool=False, api_key: str=None, base_url: str=None, extra_args: dict={}, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         try:
             import dashscope

@@ -66,7 +66,7 @@ class MemoryManager(BindingManager):
         cls.thread_id_gen = cls.thread_id_generator.create_id()
 
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         """
         返回当前可用的参数列表。
         """
@@ -74,7 +74,7 @@ class MemoryManager(BindingManager):
             "style": "消息样式",
             "memory": "记忆列表",
             "remember_rounds": "记忆轮数",
-            **BindingManager.available_init_params(),
+            **BindingManager.allowed_params(),
         }
 
     def __init_subclass__(cls, **kwargs):
@@ -93,8 +93,8 @@ class MemoryManager(BindingManager):
         remember_rounds: int=None,
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.available_init_params())
-        super().__init__(**filter_kwargs(kwargs, BindingManager.available_init_params()))
+        raise_invalid_params(kwargs, self.allowed_params())
+        super().__init__(**filter_kwargs(kwargs, BindingManager.allowed_params()))
 
         self.style = style
         self.memory = []

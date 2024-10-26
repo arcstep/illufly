@@ -8,10 +8,10 @@ from ..base import BaseAgent
 
 class FlowAgent(BaseAgent):
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "max_steps": "最大步骤数",
-            **BaseAgent.available_init_params(),
+            **BaseAgent.allowed_params(),
         }
 
     def __init__(self, *agents, max_steps: int=None, **kwargs):
@@ -21,8 +21,8 @@ class FlowAgent(BaseAgent):
         agents 是一个字典列表，键值是流程中的名称，值是一个 BaseAgent 或 Selector 实例。
         也可以直接传入一个 BaseAgent 列表，由初始化函数自动生成相应的键名。
         """
-        raise_invalid_params(kwargs, self.available_init_params())
-        super().__init__(**filter_kwargs(kwargs, self.available_init_params()))
+        raise_invalid_params(kwargs, self.allowed_params())
+        super().__init__(**filter_kwargs(kwargs, self.allowed_params()))
 
         self.max_steps = max_steps or 20
 

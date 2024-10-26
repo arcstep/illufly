@@ -15,7 +15,7 @@ class FromOutline(BaseAgent):
     实现扩写：从输出结果提炼大纲，然后生成内容。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "writer": "扩写智能体",
             "prev_k": "前 k 个字符",
@@ -23,7 +23,7 @@ class FromOutline(BaseAgent):
         }
 
     def __init__(self, writer: ChatAgent=None, template_id: str=None, prev_k:int=1000, next_k:int=500, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         if not isinstance(writer, ChatAgent):
             raise ValueError("扩写智能体 writer 必须是 ChatAgent 实例")

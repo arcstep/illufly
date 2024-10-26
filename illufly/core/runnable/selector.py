@@ -18,13 +18,13 @@ def select_random(consumer_dict: Dict, runnables: List[Runnable]):
 
 class End(Runnable):
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
-            **Runnable.available_init_params()
+            **Runnable.allowed_params()
         }
 
     def __init__(self,**kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         kwargs.update({"name": "__End__"})
         super().__init__(**kwargs)
@@ -46,12 +46,12 @@ class Selector(Runnable):
     由于 select 方法不是一个幂等操作，可能两次 select 方法的返回结果并不相同，因此你应当非常小心地管理 select 方法的调用。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "runnables": "参与路由的 Runnable 列表",
             "condition": "选择条件，可以是自定义 Callable 或通过字符串选择内置的条件函数[first, random, similar]。自定义时有三种参数：无参数、仅 consumer_dict 一个参数 或同时提供 consumer_dict 和 runnables 两个参数",
             "embeddings": "如果 condition 是 similar 则需要提供用于相似度计算的 embeddings 实例",
-            **Runnable.available_init_params()
+            **Runnable.allowed_params()
         }
 
     def __init__(
@@ -61,7 +61,7 @@ class Selector(Runnable):
         embeddings: "BaseEmbeddings" = None,
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         super().__init__(**kwargs)
 

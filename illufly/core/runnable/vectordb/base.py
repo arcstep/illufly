@@ -9,15 +9,15 @@ class VectorDB(Runnable):
     向量数据库。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "embeddings": "用于相似度计算的 embeddings 对象",
             "top_k": "返回结果的条数，默认 5",
-            **Runnable.available_init_params()
+            **Runnable.allowed_params()
         }
 
     def __init__(self, embeddings: BaseEmbeddings, top_k: int=None, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         if not isinstance(embeddings, BaseEmbeddings):
             raise ValueError(f"{embeddings} must be an instance of BaseEmbeddings")

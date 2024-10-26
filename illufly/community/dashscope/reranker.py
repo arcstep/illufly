@@ -12,16 +12,16 @@ from http import HTTPStatus
 
 class DashScopeReranker(BaseReranker):
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "model": "模型名称",
             "api_key": "API_KEY",
             "top_k": "返回结果的条数，默认 5",
-            **BaseReranker.available_init_params()
+            **BaseReranker.allowed_params()
         }
 
     def __init__(self, model: str=None, api_key: str=None, top_k: int=None, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         try:
             import dashscope

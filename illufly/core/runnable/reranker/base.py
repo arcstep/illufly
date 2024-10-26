@@ -14,17 +14,17 @@ class BaseReranker(Runnable):
     ```
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "model": "模型名称",
             "base_url": "API 基础 URL",
             "api_key": "API 密钥",
             "top_k": "返回结果的条数，默认 5",
-            **Runnable.available_init_params()
+            **Runnable.allowed_params()
         }
 
     def __init__(self, model: str=None, base_url: str=None, api_key: str=None, top_k: int=None, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         super().__init__(**kwargs)
         self.model = model

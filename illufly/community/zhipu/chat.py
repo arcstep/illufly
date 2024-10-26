@@ -9,14 +9,14 @@ import json
 
 class ChatZhipu(ChatAgent):
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "model": "模型名称",
-            **ChatAgent.available_init_params()
+            **ChatAgent.allowed_params()
         }
 
     def __init__(self, model: str=None, extra_args: dict={}, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.available_init_params())
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
         try:
             from zhipuai import ZhipuAI
         except ImportError:

@@ -33,11 +33,11 @@ class ChatLearn(FlowAgent):
     ChatLearn，用于从对话中学习知识。
     """
     @classmethod
-    def available_init_params(cls):
+    def allowed_params(cls):
         return {
             "scribe": "负责笔记的ChatAgent",
             "scribe_template": "scribe 所使用的 PromptTemplate, 默认为 PromptTemplate('FLOW/Scribe')",
-            **FlowAgent.available_init_params(),
+            **FlowAgent.allowed_params(),
         }
 
     def __init__(
@@ -46,7 +46,7 @@ class ChatLearn(FlowAgent):
         scribe_template: str=None,
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.available_init_params())
+        raise_invalid_params(kwargs, self.allowed_params())
 
         if not isinstance(scribe, BaseAgent):
             raise ValueError("scribe 必须是 ChatAgent 的子类")
@@ -83,7 +83,7 @@ class ChatLearn(FlowAgent):
             Selector(should_fetch),
             {"Fetch_FAQ": fetch_faq},
             End(),
-            **filter_kwargs(kwargs, self.available_init_params())
+            **filter_kwargs(kwargs, self.allowed_params())
         )
     
     def begin_call(self):
