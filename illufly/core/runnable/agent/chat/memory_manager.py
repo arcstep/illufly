@@ -103,10 +103,15 @@ class MemoryManager(BindingManager):
         self.init_memory = []
         self.reset_init_memory(memory)
         self._thread_id = None
+        self._last_memory = []
 
     @property
     def thread_id(self):
         return self._thread_id
+
+    @property
+    def last_memory(self):
+        return self._last_memory
 
     def create_new_thread(self):
         """
@@ -199,14 +204,16 @@ class MemoryManager(BindingManager):
 
         new_messages = self.build_new_messages(new_prompt, new_chat)
         history_memory = self.get_history_memory(new_chat, remember_rounds)
+        print("history_memory", history_memory.messages)
 
         if new_messages.has_role("system"):
             new_messages_list = Messages((new_messages[:1] + history_memory.messages + new_messages[1:]), style=self.style).to_list()
             self.memory.extend(new_messages_list)
-            return new_messages_list
+            self._last_memory = new_messages_list
         else:
             self.memory.extend(new_messages.to_list())
-            return (history_memory + new_messages).to_list()
+            self._last_memory = (history_memory + new_messages).to_list()
+        return self._last_memory
 
     def get_history_memory(self, new_chat: bool=False, remember_rounds: int = None):
         """
