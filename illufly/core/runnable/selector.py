@@ -98,6 +98,8 @@ class Selector(Runnable):
 
     @property
     def selected(self):
+        if self._selected is None:
+            self.select()
         return self._selected
 
     def select(self):
