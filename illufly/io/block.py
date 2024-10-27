@@ -6,7 +6,7 @@ import pandas as pd
 import copy
 from datetime import datetime
 
-from ..config import get_env, color_code
+from ..config import get_env, get_ascii_color_code
 
 class EventBlock():
     def __init__(
@@ -79,7 +79,7 @@ class EventBlock():
 
         env_var_name = color_mapping.get(self.block_type, "ILLUFLY_COLOR_INFO")
         color = get_env(env_var_name)
-        return color_code(color) + self.text + "\033[0m"
+        return get_ascii_color_code(color) + self.text + "\033[0m"
 
 class ResponseBlock(EventBlock):
     """
