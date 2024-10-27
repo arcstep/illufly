@@ -5,26 +5,10 @@ import random
 
 from typing import Union, List, Dict, Any, Callable
 from .....utils import filter_kwargs, raise_invalid_params, get_env
-from ....history import History, HistoryFile as DefaultHistory
+from ....history import thread_id_gen, BaseHistory, LocalFileHistory, InMemoryHistory
 from ...message import Messages, Message
 from ...prompt_template import PromptTemplate
 from ...binding_manager import BindingManager
-
-class ThreadIDGenerator:
-    def __init__(self, counter: int=0):
-        self.counter = counter
-
-    def create_id(self, last_count: str=None):
-        if last_count:
-            self.counter = int(last_count)
-        while True:
-            timestamp = str(int(time.time()))[-6:]
-            random_number = f'{random.randint(0, 9999):04}'
-            counter_str = f'{self.counter:04}'
-            yield f'{timestamp}-{random_number}-{counter_str}'
-            self.counter = 0 if self.counter == 9999 else self.counter + 1
-
-thread_id_gen = ThreadIDGenerator()
 
 class MemoryManager(BindingManager):
     @classmethod
@@ -45,7 +29,7 @@ class MemoryManager(BindingManager):
         style: str=None,
         memory: Union[List[Union[str, "PromptTemplate", Dict[str, Any]]], Messages]=None,
         remember_rounds: int=None,
-        history: History=None,
+        history: BaseHistory=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.allowed_params())
@@ -54,12 +38,18 @@ class MemoryManager(BindingManager):
         self.style = style
         self.memory = []
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
-        self.history = history or DefaultHistory(self.__class__.__name__, self.name)
+
+        self.history = history or InMemoryHistory()
+        self.history.reset_init(self.__class__.__name__, self.name)
 
         self.init_memory = []
         self.reset_init_memory(memory)
         self._thread_id = None
         self._chat_memory = []
+
+    @property
+    def thread_ids(self):
+        return self.history.list_threads()
 
     @property
     def thread_id(self):
@@ -114,10 +104,6 @@ class MemoryManager(BindingManager):
     # 保存记忆
     def save_memory(self):
         self.history.save_memory(self.thread_id, self.memory)
-
-    @property
-    def thread_ids(self):
-        return self.history.list_threads()
 
     # 加载记忆
     def load_memory(self, thread_id: Union[str, int]=None):
