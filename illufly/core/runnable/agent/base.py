@@ -5,13 +5,12 @@ import asyncio
 from typing import Union, List, Dict, Any, Callable, Generator, AsyncGenerator
 
 from .tool_ability import ToolAbility
-from .resource_manager import ResourceManager
 from ...dataset import Dataset
 from ..base import Runnable
 from ....io import EventBlock
 from ....utils import filter_kwargs, raise_invalid_params
 
-class BaseAgent(Runnable, ToolAbility, ResourceManager):
+class BaseAgent(Runnable, ToolAbility):
     """    
     基于 BaseAgent 子类可以实现多智能体协作。
 
@@ -33,8 +32,7 @@ class BaseAgent(Runnable, ToolAbility, ResourceManager):
             "func": "用于自定义工具的同步执行函数",
             "async_func": "用于自定义工具的异步执行函数",
             **Runnable.allowed_params(),
-            **ToolAbility.allowed_params(),
-            **ResourceManager.allowed_params(),
+            **ToolAbility.allowed_params()
         }
 
     def __init__(
@@ -46,21 +44,21 @@ class BaseAgent(Runnable, ToolAbility, ResourceManager):
         raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         Runnable.__init__(self, **filter_kwargs(kwargs, Runnable.allowed_params()))
-        ResourceManager.__init__(self, **filter_kwargs(kwargs, ResourceManager.allowed_params()))
 
         name = kwargs.pop("name", self.name)
         description = kwargs.pop("description", None)
+
         _func = func or async_func
         if _func:
             self.name = kwargs.get("name", _func.__name__)
             name = self.name
             description = _func.__doc__ if _func.__doc__ else description
+
         ToolAbility.__init__(
             self,
             func=func,
             async_func=async_func,
-            name=name,
-            description=description
+            **filter_kwargs(kwargs, ToolAbility.allowed_params())
         )
 
     @property
@@ -71,16 +69,6 @@ class BaseAgent(Runnable, ToolAbility, ResourceManager):
             "agent_description": self.description,
         })
         return info
-
-    @property
-    def provider_dict(self):
-        local_dict = {
-            "resources": "\n".join(self.get_resources()),
-        }
-        return {
-            **super().provider_dict,
-            **{k:v for k,v in local_dict.items() if v is not None},
-        }
 
     def call(self, *args, **kwargs):
         if not isinstance(self.func, Callable):

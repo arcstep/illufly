@@ -128,7 +128,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "tools_name": ",".join([a.name for a in self._tools_to_exec]),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
             "knowledge": self.get_knowledge(self.task),
-            "resources": self.get_resources(self.task),
             "recalled_knowledge": self.recalled_knowledge,
             "chat_memory": self.chat_memory
         }
@@ -191,10 +190,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         existing_text = "\n".join([m['content'] for m in Messages(messages).to_list(style="text")])
         if self.knowledge:
             for item in self.get_knowledge(self.task):
-                if item not in existing_text:
-                    kg += item
-        if self.resources:
-            for item in self.get_resources(self.task):
                 if item not in existing_text:
                     kg += item
         patch_info = ""

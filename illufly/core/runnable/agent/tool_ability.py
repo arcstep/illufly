@@ -18,7 +18,15 @@ class ToolAbility:
             "tool_params": "工具参数",
         }
 
-    def __init__(self, *, func: Callable = None, async_func: Callable = None, name: str = None, description: str = None, tool_params: Dict[str, Any] = None):
+    def __init__(
+        self,
+        *,
+        func: Callable = None,
+        async_func: Callable = None,
+        name: str = None,
+        description: str = None,
+        tool_params: Dict[str, Any] = None
+    ):
         self.func = func
         self.async_func = async_func
         self.description = description or "我还没有工具描述"
