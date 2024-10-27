@@ -7,13 +7,13 @@ def get_env(key: str=None):
     """
     default_values = {
         # 文件夹配置
-        "ILLUFLY_DOCS": "./",
-        "ILLUFLY_MEDIA": "./",
-        "ILLUFLY_HISTORY": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/HISTORY"),
-        "ILLUFLY_FAQ": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/FAQ"),
-        "ILLUFLY_IDENT": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/IDENT"),
-        "ILLUFLY_CACHE_EMBEDDINGS": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/CACHE_EMBEDDINGS"),
-        "ILLUFLY_UPLOAD_CACHE_DIR": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/UPLOAD_CACHE"),
+        "ILLUFLY_DOCS": "__DOCS__", # 从这个目录自动加载 RAG 资料，为避免误将不必要的资料做 RAG，因此需要设置为 __DOCS__
+        "ILLUFLY_MEDIA": "./", # 根据这个媒体文件夹上传文件，因此需要设置为当前目录
+        "ILLUFLY_LOCAL_FILE_MEMORY": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/LOCAL_FILE_MEMORY"), # LocalFileMemory 记忆存储目录
+        "ILLUFLY_CHART_LEARN": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/CHART_LEARN"), # ChatLearn 自我进化经验的存储目录
+        "ILLUFLY_IDENT": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/IDENT"), # 问题转换、意图识别的经验存储目录
+        "ILLUFLY_CACHE_EMBEDDINGS": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/CACHE_EMBEDDINGS"), # 缓存 Embeddings 存储目录
+        "ILLUFLY_UPLOAD_CACHE_DIR": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/UPLOAD_CACHE"), # 上传缓存目录
 
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
