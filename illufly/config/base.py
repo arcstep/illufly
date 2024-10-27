@@ -3,7 +3,7 @@ import tempfile
 
 def get_env(key: str=None):
     """
-    环境变量的默认值。
+    获取环境变量，如果没有设置就根据默认值清单返回默认值。
     """
     default_values = {
         # 文件夹配置
@@ -27,7 +27,7 @@ def get_env(key: str=None):
         "ILLUFLY_OUTLINE_START": "<OUTLINE>",
         "ILLUFLY_OUTLINE_END": "</OUTLINE>",
 
-        # 颜色
+        # log 颜色
         "ILLUFLY_COLOR_DEFAULT": "黑色",
         "ILLUFLY_COLOR_INFO": "蓝色",
         "ILLUFLY_COLOR_TEXT": "黄色",
@@ -50,7 +50,10 @@ def get_env(key: str=None):
     else:
         return default_values
 
-def color_code(color_name: str):
+def get_ascii_color_code(color_name: str):
+    """
+    获取 ASCII 颜色代码。
+    """
     colors = {
         "黑色": "\033[30m",
         "红色": "\033[31m",
