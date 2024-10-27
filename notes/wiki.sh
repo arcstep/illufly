@@ -4,7 +4,7 @@
 filter_name="$1"
 
 # 创建目标目录
-mkdir -p "./notes/99 wiki/__md__"
+mkdir -p "./wiki/__md__"
 
 # 函数处理 Markdown 文件内容
 process_markdown_file() {
@@ -62,12 +62,14 @@ find ./wiki -name "*.ipynb" ! -path "*/.*/*" | while read notebook; do
     
     # 检查文件名是否包含过滤名称（如果有）
     if [ -z "$filter_name" ] || [[ "$filename" == *"$filter_name"* ]]; then
-        # 转换为 Markdown
-        jupyter nbconvert --to markdown "$notebook" --output-dir=./wiki/__md__
-        
-        # 处理 Markdown 文件
-        markdown_file="./wiki/__md__/$filename.md"
-        echo "检查文件: $markdown_file"
-        process_markdown_file "$markdown_file"
+        # 转换为 Markdown，排除点开头的隐藏文件
+        if [[ "$filename" != .* ]]; then
+            jupyter nbconvert --to markdown "$notebook" --output-dir=./wiki/__md__
+            
+            # 处理 Markdown 文件
+            markdown_file="./wiki/__md__/$filename.md"
+            echo "检查文件: $markdown_file"
+            process_markdown_file "$markdown_file"
+        fi
     fi
 done
