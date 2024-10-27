@@ -163,3 +163,5 @@ notes/__*
 notes/*/__*
 demo*
 .vscode/settings.json
+
+notes/*/images
