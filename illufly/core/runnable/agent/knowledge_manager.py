@@ -1,5 +1,7 @@
 import os
+import shutil
 from typing import Any, Set, Union, List
+
 from ....config import get_env
 from ...document import Document
 from ..vectordb import VectorDB
@@ -22,7 +24,7 @@ class KnowledgeManager:
         """
         知识库在内存中以集合的方式保存，确保唯一性。
 
-        默认情况下，会将提供的第一个向量数据库作为默认向量库，默认向量库将自动加载 __ILLUFLY_DOCS__ 和 __ILLUFLY_CHART_LEARN__ 目录下的文档。
+        默认情况下，会将提供的第一个向量数据库作为默认向量库，默认向量库将自动加载 __ILLUFLY_DOCS__ 和 __ILLUFLY_CHAT_LEARN__ 目录下的文档。
         除非在其他向量库中已经指定了如何加载这两个目录。
         """
         self.knowledge = knowledge
@@ -53,7 +55,7 @@ class KnowledgeManager:
         """
         default_docs = set({
             get_env("ILLUFLY_DOCS"),
-            get_env("ILLUFLY_CHART_LEARN")
+            get_env("ILLUFLY_CHAT_LEARN")
         })
         for item in self.knowledge:
             if not isinstance(item, (str, Document, VectorDB, Retriever)):
@@ -129,3 +131,34 @@ class KnowledgeManager:
             else:
                 raise ValueError("Knowledge MUST be a string, Document or VectorDB")
         return knowledge
+
+    def clone_chat_learn(self, dest: str, src: str=None):
+        """
+        克隆 illufly 自身的聊天问答经验。
+        """
+        if not os.path.exists(dest):
+            os.makedirs(dest)
+
+        files_count = 0
+        src = src or get_env("ILLUFLY_CHAT_LEARN")
+        for item in os.listdir(src):
+            if item.startswith('.'):
+                continue
+            src_path = os.path.join(src, item)
+            dst_path = os.path.join(dest, item)
+            if os.path.isdir(src_path):
+                # 如果是目录，递归拷贝
+                self.clone_chat_learn(dst_path, src_path)
+            else:
+                # 如果是文件，直接拷贝
+                shutil.copy2(src_path, dst_path)
+                files_count += 1
+        return f"从 {src} 拷贝到 {dest} 完成，共克隆了 {files_count} 个文件。"
+
+    def clear_chat_learn(self):
+        """
+        清空聊天问答经验。
+        """
+        src = get_env("ILLUFLY_CHAT_LEARN")
+        if os.path.exists(src):
+            shutil.rmtree(src)

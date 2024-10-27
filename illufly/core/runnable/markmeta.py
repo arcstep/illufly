@@ -97,17 +97,13 @@ class MarkMeta(Runnable):
     def call(self, *files, **kwargs):
         yield from self.load(*files, **kwargs)
 
-    def load(self, *files, **kwargs):
+    def load(self, **kwargs):
         """
         load 方法是加载文档时最常用的方法。
-
-        导入指定的文件，如果没有指定就从 self.directory 目录下查找所有符合条件的文件。
-        1. 如果指定 files 则 self.directotry 将被忽略
-        2. 如果不提供 files 则查找 self.directory 下面所有扩展名在 self.extensions 中的文件，并以 self.filename_filter 为过滤条件
         """
         self.documents.clear()
 
-        files = list(files) or self.get_files(self.directory, self.filename_filter, self.extensions)
+        files = self.get_files(self.directory, self.filename_filter, self.extensions)
         for file_path in files:
             try:
                 yield from self.load_file(file_path)
