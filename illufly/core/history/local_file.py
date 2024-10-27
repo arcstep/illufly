@@ -1,33 +1,17 @@
 import os
 import json
 
-from abc import ABC, abstractmethod
 from typing import Union, List
 
-from ..config import get_env
+from ...config import get_env
+from .base import BaseHistory
 
-class History(ABC):
-    def __init__(self, agent_class: str="CHAT_AGENT", agent_name: str="default"):
-        self.agent_class = agent_class
-        self.agent_name = agent_name
-
-    @abstractmethod
-    def last_thread_id_count(self):
-        """获取最近一轮对话的线程 ID"""
-        pass
-
-    @abstractmethod
-    def save_memory(self, thread_id: str, memory: List[dict]):
-        """根据 thread_id 保存记忆"""
-        pass
-
-    @abstractmethod
-    def load_memory(self, thread_id: str):
-        """根据 thread_id 加载记忆"""
-        pass
-
-class HistoryFile(History):
+class LocalFileHistory(BaseHistory):
     """基于文件的记忆管理"""
+
+    def __init__(self, directory: str = None, **kwargs):
+        super().__init__(**kwargs)
+        self.directory = directory or get_env("ILLUFLY_HISTORY")
 
     def last_thread_id_count(self):
         all_thread_ids = self.list_threads()
@@ -80,7 +64,7 @@ class HistoryFile(History):
         return _thread_id, []
 
     def _get_history_dir(self):
-        return os.path.join(get_env("ILLUFLY_HISTORY"), self.agent_class.upper(), self.agent_name)
+        return os.path.join(self.directory, self.agent_class.upper(), self.agent_name)
 
     def _get_history_file_path(self, thread_id: str):
         if thread_id:
