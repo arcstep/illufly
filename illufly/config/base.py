@@ -21,7 +21,7 @@ def get_env(key: str=None):
         "ILLUFLY_CHART_LEARN": os.path.join(FIXED_TEMP_DIR, "CHART_LEARN"), # ChatLearn 自我进化经验的存储目录
         "ILLUFLY_IDENT": os.path.join(FIXED_TEMP_DIR, "IDENT"), # 问题转换、意图识别的经验存储目录
         "ILLUFLY_CACHE_EMBEDDINGS": os.path.join(FIXED_TEMP_DIR, "CACHE_EMBEDDINGS"), # 缓存 Embeddings 存储目录
-        "ILLUFLY_UPLOAD_CACHE_DIR": os.path.join(FIXED_TEMP_DIR, "UPLOAD_CACHE"), # 上传缓存目录
+        "ILLUFLY_UPLOAD_CACHE": os.path.join(FIXED_TEMP_DIR, "UPLOAD_CACHE"), # 上传缓存目录
 
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",

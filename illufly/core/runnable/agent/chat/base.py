@@ -128,6 +128,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "tools_name": ",".join([a.name for a in self._tools_to_exec]),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
             "knowledge": self.get_knowledge(self.task),
+            "resources": self.get_resources(self.task),
             "recalled_knowledge": self.recalled_knowledge,
             "chat_memory": self.chat_memory
         }
@@ -178,10 +179,22 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         yield block
 
     def _patch_knowledge(self, messages: Messages):
+        """
+        根据当前的记忆和知识，对提示语进行补充。
+
+        补充内容包括：
+        - 默认保存在 __DOCS__ 目录中的已有知识
+        - 默认保存在临时目录中的经验信息
+        - 已经添加的资源信息
+        """
         kg = ""
         existing_text = "\n".join([m['content'] for m in Messages(messages).to_list(style="text")])
         if self.knowledge:
             for item in self.get_knowledge(self.task):
+                if item not in existing_text:
+                    kg += item
+        if self.resources:
+            for item in self.get_resources(self.task):
                 if item not in existing_text:
                     kg += item
         patch_info = ""

@@ -16,7 +16,7 @@ DASHSCOPE_BASE_URL = get_env("DASHSCOPE_BASE_URL")
 # 缓存的命名：以年月作为子目录，将上传内容和日期一起做MD5编码作为文件名称
 
 def get_upload_cache(file_path: str, upload_server: str="aliyun_oss") -> str:
-    UPLOAD_CACHE_DIR = get_env("ILLUFLY_UPLOAD_CACHE_DIR")
+    UPLOAD_CACHE_DIR = get_env("ILLUFLY_UPLOAD_CACHE")
     date_dir = time.strftime("%Y-%m")
     cache_dir = os.path.join(UPLOAD_CACHE_DIR, date_dir, upload_server)
     if os.path.exists(file_path):
