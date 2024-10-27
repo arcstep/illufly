@@ -9,7 +9,7 @@ from ..base import BaseAgent
 from .base import FlowAgent
 
 def get_faq_dir():
-    return get_env("ILLUFLY_FAQ")
+    return get_env("ILLUFLY_CHART_LEARN")
 
 def save_faq(thread_id: str, knowledge: str, question: str="", metadata: dict={}):
     if not thread_id or not knowledge:

@@ -11,7 +11,7 @@ class LocalFileHistory(BaseHistory):
 
     def __init__(self, directory: str = None, **kwargs):
         super().__init__(**kwargs)
-        self.directory = directory or get_env("ILLUFLY_HISTORY")
+        self.directory = directory or get_env("ILLUFLY_LOCAL_FILE_MEMORY")
 
     def last_thread_id_count(self):
         all_thread_ids = self.list_threads()

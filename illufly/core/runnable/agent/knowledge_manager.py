@@ -22,7 +22,7 @@ class KnowledgeManager:
         """
         知识库在内存中以集合的方式保存，确保唯一性。
 
-        默认情况下，会将提供的第一个向量数据库作为默认向量库，默认向量库将自动加载 __ILLUFLY_DOCS__ 和 __ILLUFLY_FAQ__ 目录下的文档。
+        默认情况下，会将提供的第一个向量数据库作为默认向量库，默认向量库将自动加载 __ILLUFLY_DOCS__ 和 __ILLUFLY_CHART_LEARN__ 目录下的文档。
         除非在其他向量库中已经指定了如何加载这两个目录。
         """
         self.knowledge = knowledge
@@ -40,7 +40,7 @@ class KnowledgeManager:
     def _load_default_knowledge(self):
         default_docs = set({
             get_env("ILLUFLY_DOCS"),
-            get_env("ILLUFLY_FAQ")
+            get_env("ILLUFLY_CHART_LEARN")
         })
         for item in self.knowledge:
             if not isinstance(item, (str, Document, VectorDB, Retriever)):
