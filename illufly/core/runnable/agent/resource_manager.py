@@ -82,12 +82,12 @@ class ResourceManager:
                             videos.append(v)
                 desc = "resource: "
                 if len(images) > 0:
-                    desc += "[图片] " + " ".join(images) + ", "
+                    desc += "[图片资源] " + " ".join(images) + ", "
                 if len(audios) > 0:
-                    desc += "[音频] " + " ".join(audios) + ", "
+                    desc += "[音频资源] " + " ".join(audios) + ", "
                 if len(videos) > 0:
-                    desc += "[视频] " + " ".join(videos) + ", "
+                    desc += "[视频资源] " + " ".join(videos) + ", "
                 if len(text_descriptions) > 0:
-                    desc += ", ".join(text_descriptions)
+                    desc += "资源说明: " + ", ".join(text_descriptions)
                 resources.append(desc)
         return resources
