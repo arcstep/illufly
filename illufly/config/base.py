@@ -1,7 +1,5 @@
 import os
-
-def get_folder_root():
-    return get_env("ILLUFLY_ROOT")
+import tempfile
 
 def get_env(key: str=None):
     """
@@ -9,14 +7,13 @@ def get_env(key: str=None):
     """
     default_values = {
         # 文件夹配置
-        "ILLUFLY_ROOT": "./",
-        "ILLUFLY_HISTORY": "__XP__/HISTORY",
-        "ILLUFLY_FAQ": "__XP__/FAQ",
-        "ILLUFLY_IDENT": "__XP__/IDENT",
-        "ILLUFLY_DOCS": "__DOCS__",
-        "ILLUFLY_MEDIA": "__MEDIA__",
-        "ILLUFLY_CACHE_EMBEDDINGS": "__CACHE_EMBEDDINGS__",
-        "ILLUFLY_UPLOAD_CACHE_DIR": "__UPLOAD_CACHE__",
+        "ILLUFLY_DOCS": "./",
+        "ILLUFLY_MEDIA": "./",
+        "ILLUFLY_HISTORY": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/HISTORY"),
+        "ILLUFLY_FAQ": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/FAQ"),
+        "ILLUFLY_IDENT": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/IDENT"),
+        "ILLUFLY_CACHE_EMBEDDINGS": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/CACHE_EMBEDDINGS"),
+        "ILLUFLY_UPLOAD_CACHE_DIR": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/UPLOAD_CACHE"),
 
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",

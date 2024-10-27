@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Union
 from importlib.resources import read_text, is_resource, contents
 from chevron.renderer import render as mustache_render
 from chevron.tokenizer import tokenize as mustache_tokenize
-from ..config import get_folder_root, get_env
+from ..config import get_env
 
 import os
 import re
@@ -64,7 +64,7 @@ def _find_prompt_file(template_id: str, file_name, template_folder: str=None, se
     sep = sep or os.sep
     template_id = template_id.strip(f'{sep}| ')
 
-    prompt_folder = os.path.join(get_folder_root(), template_folder or "", template_id)
+    prompt_folder = os.path.join(template_folder or "", template_id)
     if sep != os.sep:
         prompt_folder = prompt_folder.replace(os.sep, sep).strip(sep)
 
