@@ -1,19 +1,27 @@
 import os
-import tempfile
+import platform
 
 def get_env(key: str=None):
     """
     获取环境变量，如果没有设置就根据默认值清单返回默认值。
     """
+    # 根据操作系统设置固定的临时目录
+    if platform.system() == "Windows":
+        FIXED_TEMP_DIR = os.path.join(os.getenv('TEMP'), "__ILLUFLY__")
+    elif platform.system() == "Darwin":  # macOS
+        FIXED_TEMP_DIR = os.path.join(os.getenv('TMPDIR', '/tmp'), "__ILLUFLY__")
+    else:  # Linux and other Unix-like systems
+        FIXED_TEMP_DIR = os.path.join('/tmp', "__ILLUFLY__")
+
     default_values = {
         # 文件夹配置
         "ILLUFLY_DOCS": "__DOCS__", # 从这个目录自动加载 RAG 资料，为避免误将不必要的资料做 RAG，因此需要设置为 __DOCS__
         "ILLUFLY_MEDIA": "./", # 根据这个媒体文件夹上传文件，因此需要设置为当前目录
-        "ILLUFLY_LOCAL_FILE_MEMORY": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/LOCAL_FILE_MEMORY"), # LocalFileMemory 记忆存储目录
-        "ILLUFLY_CHART_LEARN": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/CHART_LEARN"), # ChatLearn 自我进化经验的存储目录
-        "ILLUFLY_IDENT": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/IDENT"), # 问题转换、意图识别的经验存储目录
-        "ILLUFLY_CACHE_EMBEDDINGS": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/CACHE_EMBEDDINGS"), # 缓存 Embeddings 存储目录
-        "ILLUFLY_UPLOAD_CACHE_DIR": os.path.join(tempfile.gettempdir(), "__ILLUFLY__/UPLOAD_CACHE"), # 上传缓存目录
+        "ILLUFLY_LOCAL_FILE_MEMORY": os.path.join(FIXED_TEMP_DIR, "LOCAL_FILE_MEMORY"), # LocalFileMemory 记忆存储目录
+        "ILLUFLY_CHART_LEARN": os.path.join(FIXED_TEMP_DIR, "CHART_LEARN"), # ChatLearn 自我进化经验的存储目录
+        "ILLUFLY_IDENT": os.path.join(FIXED_TEMP_DIR, "IDENT"), # 问题转换、意图识别的经验存储目录
+        "ILLUFLY_CACHE_EMBEDDINGS": os.path.join(FIXED_TEMP_DIR, "CACHE_EMBEDDINGS"), # 缓存 Embeddings 存储目录
+        "ILLUFLY_UPLOAD_CACHE_DIR": os.path.join(FIXED_TEMP_DIR, "UPLOAD_CACHE"), # 上传缓存目录
 
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
@@ -66,4 +74,3 @@ def get_ascii_color_code(color_name: str):
         "重置": "\033[0m" 
     }
     return colors.get(color_name, '黑色')
-
