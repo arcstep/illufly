@@ -60,6 +60,7 @@ class BaseToolCalling:
 
         for struct_tool in self.tools_to_exec:
             if tool.get('function', {}).get('name') == struct_tool.name:
+                yield EventBlock("agent", struct_tool.name)
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
@@ -90,6 +91,7 @@ class BaseToolCalling:
     async def async_execute_tool(self, tool):
         for struct_tool in self.tools_to_exec:
             if tool.get('function', {}).get('name') == struct_tool.name:
+                yield EventBlock("agent", struct_tool.name)
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
