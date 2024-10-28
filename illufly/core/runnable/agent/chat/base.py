@@ -210,7 +210,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         return messages
 
-    def call(self, prompt: Any, *args, tools_behavior: str=None, **kwargs):
+    def call(self, prompt: Any, tools_behavior: str=None, **kwargs):
         """
         执行对话生成，并处理工具调用。
 
@@ -271,7 +271,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             # 执行模型生成任务
             output_text, tools_call = "", []
-            for block in self.generate(chat_memory, *args, **kwargs):
+            for block in self.generate(chat_memory, **kwargs):
                 yield block
                 if block.block_type in ["chunk", "text"]:
                     output_text += block.text
@@ -305,7 +305,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             yield EndBlock(self.last_output)
         self.save_memory()
 
-    async def async_call(self, prompt: Any, *args, tools_behavior: str=None, **kwargs):
+    async def async_call(self, prompt: Any, tools_behavior: str=None, **kwargs):
         # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
         if not isinstance(prompt, PromptTemplate) and isinstance(prompt, Runnable):
             prompt = prompt.selected.last_output
@@ -344,7 +344,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             to_continue_call_llm = False
             output_text, tools_call = "", []
 
-            async for block in self.async_generate(chat_memory, *args, **kwargs):
+            async for block in self.async_generate(chat_memory, **kwargs):
                 yield block
                 if block.block_type in ["chunk", "text"]:
                     output_text += block.text

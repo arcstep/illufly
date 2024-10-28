@@ -58,6 +58,7 @@ class BaseAgent(Runnable, ToolAbility):
             self,
             func=func,
             async_func=async_func,
+            description=description,
             **filter_kwargs(kwargs, ToolAbility.allowed_params())
         )
 
