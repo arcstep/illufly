@@ -8,9 +8,10 @@ from typing import Union, List, Dict, Any, Set, Callable
 from .....config import get_env
 from .....utils import merge_tool_calls, extract_text, extract_final_answer, raise_invalid_params, filter_kwargs
 from .....io import EventBlock, EndBlock, NewLineBlock
-from ...base import Runnable
 from ....document import Document
+from ...base import Runnable
 from ...message import Messages
+from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
 from ..knowledge_manager import KnowledgeManager
 from .tools_calling import BaseToolCalling, OpenAIToolsCalling
@@ -220,20 +221,20 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         """
 
         # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
-        if isinstance(prompt, Runnable):
+        if not isinstance(prompt, PromptTemplate) and isinstance(prompt, Runnable):
             prompt = prompt.selected.last_output
 
         new_chat = kwargs.pop("new_chat", False)
 
         messages_std = Messages(prompt, style="text")
-        self._task = messages_std[-1].content
+        self._task = messages_std.to_list()[-1]['content']
         yield EventBlock("user", self._task)
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
         self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
         for tool in self._tools_to_exec:
             self.bind_consumer(tool, dynamic=True)
-        if "tools_desc" in self.get_bound_vars(Messages(prompt), new_chat=new_chat):
+        if "tools_desc" in self.get_bound_vars(messages_std, new_chat=new_chat):
             kwargs["tools"] = None
         else:
             kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", []))
@@ -306,20 +307,20 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     async def async_call(self, prompt: Any, *args, tools_behavior: str=None, **kwargs):
         # 兼容 Runnable 类型，将其上一次的输出作为 prompt 输入
-        if isinstance(prompt, Runnable):
-            prompt = prompt.last_output
+        if not isinstance(prompt, PromptTemplate) and isinstance(prompt, Runnable):
+            prompt = prompt.selected.last_output
 
         new_chat = kwargs.pop("new_chat", False)
 
         messages_std = Messages(prompt, style="text")
-        self._task = messages_std[-1].content
+        self._task = messages_std.to_list()[-1]['content']
         yield EventBlock("user", self._task)
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
         self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
         for tool in self._tools_to_exec:
             self.bind_consumer(tool, dynamic=True)
-        if "tools_desc" in self.get_bound_vars(Messages(prompt), new_chat=new_chat):
+        if "tools_desc" in self.get_bound_vars(messages_std, new_chat=new_chat):
             kwargs["tools"] = None
         else:
             kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", []))
