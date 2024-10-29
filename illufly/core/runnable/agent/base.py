@@ -5,7 +5,6 @@ import asyncio
 from typing import Union, List, Dict, Any, Callable, Generator, AsyncGenerator
 
 from .tool_ability import ToolAbility
-from ...dataset import Dataset
 from ..base import Runnable
 from ....io import EventBlock
 from ....utils import filter_kwargs, raise_invalid_params

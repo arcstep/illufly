@@ -19,6 +19,8 @@ faiss-cpu = "^1.8.0.post1"
 tiktoken = "^0.7.0"
 asyncio = "^3.4.3"
 aiohttp = "^3.10.10"
+seaborn = "^0.13.2"
+tabulate = "^0.9.0"
 
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "^1.0.1"
