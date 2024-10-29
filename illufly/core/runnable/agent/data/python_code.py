@@ -53,7 +53,10 @@ class PandasAgent(BaseAgent):
         self._last_code = None
 
         # 生成作为工具被使用时的功能描述
-        super().__init__(**kwargs)
+        _tool_params = kwargs.pop("tool_params", {
+            "question": "细致描述数据分析任务的需求描述",
+        })
+        super().__init__(tool_params=_tool_params, **kwargs)
         self.reset_datasets()
 
     def reset_datasets(self):
@@ -134,6 +137,7 @@ class PandasAgent(BaseAgent):
             "frozenset": frozenset,
             "zip": zip,
             "hasattr": hasattr,
+            "print": print,
     }
 
     def add_dataset(self, df: pd.DataFrame, name: str, desc: str=None):
