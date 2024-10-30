@@ -7,7 +7,7 @@
     ... 还有其他一些可用的特性
 """
 
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Set
 from importlib.resources import read_text, is_resource, contents
 from chevron.renderer import render as mustache_render
 from chevron.tokenizer import tokenize as mustache_tokenize
@@ -16,6 +16,7 @@ from ..config import get_env
 import os
 import re
 import json
+from pathlib import Path
 
 PROMPT_WRITING_BASE = 'illufly.__PROMPT_TEMPLATES__'
 
@@ -23,26 +24,27 @@ def find_resource_template(*seg_path):
     """
     过滤出提示语模板所在的目录清单。
     """
-
-    all_resources = contents(".".join([PROMPT_WRITING_BASE, *seg_path]))
-    return [r for r in all_resources if not is_resource(f'{PROMPT_WRITING_BASE}', r)]
+    package_path = ".".join([PROMPT_WRITING_BASE, *seg_path])
+    all_resources = contents(package_path)
+    return [r for r in all_resources if not is_resource(PROMPT_WRITING_BASE, r)]
 
 def load_resource_template(template_id: str):
     """
     从python包资源文件夹加载提示语模板。
     """
-    template_id = template_id.replace(os.sep, '.')
-    parts = template_id.split('.')
+    normalized_template_id = template_id.replace(os.sep, '.').replace('/', '.')
+    parts = normalized_template_id.split('.')
     if parts[-1] not in find_resource_template(*parts[:-1]):
-        raise ValueError(f"<{template_id}> template_id not exist !")
+        raise ValueError(f"<{template_id}> template_id 不存在！")
 
     def _get_template_str(res_file: str):
-        if (res_folder := f'{PROMPT_WRITING_BASE}.{template_id}') and is_resource(res_folder, res_file):
-            return read_text(res_folder, res_file)
-        elif (res_folder := f'{PROMPT_WRITING_BASE}') and is_resource(res_folder, res_file):
-            return read_text(res_folder, res_file)
-        else:
-            return ''
+        resource_folder = f'{PROMPT_WRITING_BASE}.{normalized_template_id}'
+        if is_resource(resource_folder, res_file):
+            return read_text(resource_folder, res_file)
+        resource_base = PROMPT_WRITING_BASE
+        if is_resource(resource_base, res_file):
+            return read_text(resource_base, res_file)
+        return ''
 
     prompt_str = _get_template_str('main.mu')
 
@@ -50,37 +52,40 @@ def load_resource_template(template_id: str):
     include_dict = {}
     matches = re.findall(r'{{>(.*?)}}', prompt_str)
     for part_name in matches:
-        prmopt_str = _get_template_str(f'{part_name.strip()}.mu')
-        if prmopt_str:
-            include_dict[part_name] = prmopt_str
+        included_str = _get_template_str(f'{part_name.strip()}.mu')
+        if included_str:
+            include_dict[part_name] = included_str
         else:
-            raise RuntimeError(f"Can't find {part_name}.mu in {template_id} !")
+            raise RuntimeError(f"无法在 {template_id} 中找到 {part_name}.mu！")
     for part_name, part_str in include_dict.items():
-        prompt_str = prompt_str.replace("{{>" + part_name + "}}", part_str)
+        prompt_str = prompt_str.replace(f"{{>{part_name}}}", part_str)
 
     return prompt_str
 
-def _find_prompt_file(template_id: str, file_name, template_folder: str=None, sep: str=None, all_path: List[str]=[], force: bool=False):
+def _find_prompt_file(template_id: str, file_name: str, template_folder: str = None, sep: str = None, all_path: List[str] = None, force: bool = False):
     sep = sep or os.sep
-    template_id = template_id.strip(f'{sep}| ')
+    if all_path is None:
+        all_path = []
+    normalized_template_id = template_id.replace('/', sep).strip(f'{sep} ').replace('\\', sep)
 
-    prompt_folder = os.path.join(template_folder or "", template_id)
-    if sep != os.sep:
-        prompt_folder = prompt_folder.replace(os.sep, sep).strip(sep)
+    prompt_folder = Path(template_folder or "") / Path(normalized_template_id)
+    prompt_folder = prompt_folder.as_posix() if sep != os.sep else str(prompt_folder)
 
     for ext in ['mu', 'mustache', 'txt']:
-        if (file_path := os.path.join(prompt_folder, f'{file_name}.{ext}')) and os.path.exists(file_path):
+        file_path = prompt_folder / f'{file_name}.{ext}' if isinstance(prompt_folder, Path) else os.path.join(prompt_folder, f'{file_name}.{ext}')
+        if os.path.exists(file_path):
             return file_path
 
     all_path.append(prompt_folder)
-    if not template_id:
+    if not normalized_template_id:
         if force:
-            raise ValueError(f"Can't find {file_name}(.mu, .mustache, .txt) in [ {', '.join(all_path)} ]!")
+            raise ValueError(f"无法在 [ {', '.join(all_path)} ] 中找到 {file_name}(.mu, .mustache, .txt) 文件！")
         else:
             return None
-    return _find_prompt_file(template_id.rpartition(sep)[0], file_name, template_folder, sep, all_path)
+    parent_id = Path(normalized_template_id).parent
+    return _find_prompt_file(parent_id.as_posix() if sep != os.sep else parent_id.name, file_name, template_folder, sep, all_path, force)
 
-def load_prompt_template(template_id: str, template_folder: str=None,):
+def load_prompt_template(template_id: str, template_folder: str = None):
     """
     从模板文件夹加载提示语模板。
 
@@ -90,11 +95,10 @@ def load_prompt_template(template_id: str, template_folder: str=None,):
     3. 预处理 main.mu 中的 {{>include_name}} 语法
     4. 如果找不到 main.mu 文件，则从资源文件夹中加载
     """
-    template_folder = template_folder or get_env("ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER")
     main_prompt = _find_prompt_file(template_id, 'main', template_folder)
 
     if main_prompt:
-        with open(main_prompt, 'r') as f:
+        with open(main_prompt, 'r', encoding='utf-8') as f:
             prompt_str = f.read()
 
             # 替换 {{>include_name}} 变量
@@ -102,10 +106,13 @@ def load_prompt_template(template_id: str, template_folder: str=None,):
             matches = re.findall(r'{{>(.*?)}}', prompt_str)
             for part_name in matches:
                 part_file = _find_prompt_file(template_id, part_name.strip(), template_folder)
-                with open(part_file, 'r') as f:
-                    include_dict[part_name] = f.read()
+                if part_file:
+                    with open(part_file, 'r', encoding='utf-8') as pf:
+                        include_dict[part_name] = pf.read()
+                else:
+                    raise RuntimeError(f"无法找到包含文件 {part_name}.mu")
             for part_name, part_str in include_dict.items():
-                prompt_str = prompt_str.replace("{{>" + part_name + "}}", part_str)
+                prompt_str = prompt_str.replace(f"{{>{part_name}}}", part_str)
 
             return prompt_str
     else:
@@ -131,54 +138,55 @@ def get_template_variables(template_text: str):
             section_depth += 1
     return vars
 
-def clone_prompt_template(template_id: str, template_folder: str=None):
+def clone_prompt_template(template_id: str, template_folder: str = None):
     """
     克隆提示语模板。
     根据指定 template_id 将文件夹和文件拷贝到本地 template_folder 位置。
     
     如果已经存在，就不再覆盖已修改的模板成果。
     """
-    template_path = os.path.join(
-        template_folder or get_env("ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER"),
-        template_id.replace('.', os.sep)
-    )
+    local_folder = Path(template_folder or get_env("ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER"))
+    template_path = local_folder / Path(template_id.replace('.', os.sep))
+    template_path_str = str(template_path)
 
     # 如果已经存在，就不再覆盖已修改的模板成果。
-    if os.path.exists(template_path):
-        files = os.listdir(template_path)
-        if files:
-            raise ValueError(f"template_folder [{template_path}] not empty !")
+    if template_path.exists():
+        if any(template_path.iterdir()):
+            raise ValueError(f"模板文件夹 [{template_path_str}] 非空！")
+    else:
+        template_path.mkdir(parents=True, exist_ok=True)
 
-    # 确保 template_id 是有效的
-    template_id = template_id.replace(os.sep, '.')
-    parts = template_id.split('.')
+    normalized_template_id = template_id.replace(os.sep, '.')
+    parts = normalized_template_id.split('.')
     if parts[-1] not in find_resource_template(*parts[:-1]):
-        raise ValueError(f"<{template_id}> template_id not exist !")
-
-    # 如果模板不存在，则创建目录
-    os.makedirs(template_path, exist_ok=True)
+        raise ValueError(f"<{template_id}> template_id 不存在！")
 
     def _get_template_str(res_file: str):
-        if (res_folder := f'{PROMPT_WRITING_BASE}.{template_id}') and is_resource(res_folder, res_file):
-            return read_text(res_folder, res_file)
-        elif (res_folder := f'{PROMPT_WRITING_BASE}') and is_resource(res_folder, res_file):
-            return read_text(res_folder, res_file)
-        else:
-            return ''
+        resource_folder = f'{PROMPT_WRITING_BASE}.{normalized_template_id}'
+        if is_resource(resource_folder, res_file):
+            return read_text(resource_folder, res_file)
+        resource_base = PROMPT_WRITING_BASE
+        if is_resource(resource_base, res_file):
+            return read_text(resource_base, res_file)
+        return ''
 
     prompt_str = _get_template_str('main.mu')
     if not prompt_str:
-        raise ValueError(f'main.mu MUST exist in {template_id} !')
-    
-    with open(os.path.join(template_path, 'main.mu'), 'w') as f:
+        raise ValueError(f'main.mu 必须存在于 {template_id} 中！')
+
+    main_mu_path = template_path / 'main.mu'
+    with open(main_mu_path, 'w', encoding='utf-8') as f:
         f.write(prompt_str)
 
         # 保存替换 {{>include_name}} 变量文件
         matches = re.findall(r'{{>(.*?)}}', prompt_str)
         for part_name in matches:
-            prmopt_str = _get_template_str(f'{part_name.strip()}.mu')
-            if prmopt_str:
-                with open(os.path.join(template_path, f'{part_name}.mu'), 'w') as f:
-                    f.write(prmopt_str)
+            part_str = _get_template_str(f'{part_name.strip()}.mu')
+            if part_str:
+                part_mu_path = template_path / f'{part_name}.mu'
+                with open(part_mu_path, 'w', encoding='utf-8') as pf:
+                    pf.write(part_str)
+            else:
+                raise RuntimeError(f"无法在 {template_id} 中找到 {part_name}.mu")
 
-    return template_path
+    return template_path_str
