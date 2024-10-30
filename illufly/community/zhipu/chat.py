@@ -65,7 +65,7 @@ class ChatZhipu(ChatAgent):
                 if ai_output.tool_calls:
                     for func in ai_output.tool_calls:
                         func_json = {
-                            "index": func.index or 0,
+                            # "index": func.index or 0,
                             "id": func.id or "",
                             "type": func.type or "function",
                             "function": {
