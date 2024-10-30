@@ -60,11 +60,12 @@ class FlowAgent(BaseAgent):
     def get_agent(self, name):
         return self.agents_index.get(name, (None, None))[1]
 
-    def begin_call(self):
+    def begin_call(self, args):
         """
         开始执行的回调方法。
         """
-        pass
+        self.task = args[0] if args else None
+        return args
 
     def end_call(self):
         """
@@ -90,15 +91,13 @@ class FlowAgent(BaseAgent):
         current_index = 0
 
         # 初始化调用参数
-        current_args = args
         current_kwargs = kwargs
 
         # 初始化总步数
         steps_count = 1
 
         # 开始回调
-        self.begin_call()
-        self.task = args[0] if args else None
+        current_args = self.begin_call(args)
 
         while(steps_count < self.max_steps):
             # 从 current_node_name 获得 agent 和 当前 index

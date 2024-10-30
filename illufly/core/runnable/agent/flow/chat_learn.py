@@ -5,6 +5,7 @@ from .....utils import extract_segments, minify_text, filter_kwargs, raise_inval
 from .....io import EventBlock
 from ...selector import Selector, End
 from ...prompt_template import PromptTemplate
+from ...message import Messages
 from ..base import BaseAgent
 from .base import FlowAgent
 
@@ -86,9 +87,13 @@ class ChatLearn(FlowAgent):
             **filter_kwargs(kwargs, self.allowed_params())
         )
     
-    def begin_call(self):
-        pass
+    def begin_call(self, args):
+        from ..chat import ChatAgent
+        if isinstance(args[0], ChatAgent):
+            self.task = args[0].task
+            memory = Messages(args[0].memory)
+            return [f'请帮我从这段对话过程中提取知识：\n\n{str(memory.to_list(style="text"))}']
+        else:
+            self.task = args[0] if args else None
+            return args
 
-    def end_call(self):
-        pass
-        # self._last_output = self.scribe.final_answer

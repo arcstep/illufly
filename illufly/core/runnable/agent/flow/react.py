@@ -76,10 +76,12 @@ class ReAct(FlowAgent):
             **filter_kwargs(kwargs, self.allowed_params())
         )
     
-    def begin_call(self):
+    def begin_call(self, args):
         self.planner.clear()
         self.completed_work.clear()
         self.planner_template.bind_provider({"completed_work": ""})
+
+        return super().begin_call(args)
 
     def end_call(self):
         self._last_output = self.planner.final_answer

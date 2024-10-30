@@ -70,7 +70,7 @@ class ReWOO(FlowAgent):
             **filter_kwargs(kwargs, self.allowed_params())
         )
     
-    def begin_call(self):
+    def begin_call(self, args):
         self.planner.tools_behavior = "parse-execute"
         self.planner.reset_init_memory(self.planner_template)
         self.planner.clear()
@@ -82,6 +82,8 @@ class ReWOO(FlowAgent):
         self.solver_template.bind_provider({
             "completed_work": ""
         })
+
+        return super().begin_call(args)
 
     def end_call(self):
         self._last_output = self.solver.final_answer

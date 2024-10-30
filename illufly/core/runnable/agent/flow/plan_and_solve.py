@@ -116,12 +116,14 @@ class PlanAndSolve(FlowAgent):
             **filter_kwargs(kwargs, self.allowed_params())
         )
 
-    def begin_call(self):
+    def begin_call(self, args):
         self.planner.clear()
         self.replanner.clear()
         self.worker.clear()
         self.completed_work.clear()
         self.todo.clear()
+
+        return super().begin_call(args)
 
     def end_call(self):
         self._last_output = self.replanner.final_answer
