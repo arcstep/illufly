@@ -353,14 +353,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 elif block.block_type == "tools_call_chunk":
                     tools_call.append(json.loads(block.text))
 
-            final_tools_call = merge_tool_calls(tools_call)
-            if final_tools_call:
-                handler_openai = OpenAIToolsCalling(
-                    short_term_memory=chat_memory,
-                    long_term_memory=self.memory,
-                    tools_to_exec=self._tools_to_exec
-                )
-                async for block in handler_openai.async_handle(final_tools_call):
+            openai_tools_calling_steps = merge_tool_calls(tools_call)
+            if openai_tools_calling_steps:
+                # 从返回参数中解析工具
+                handler_openai = OpenAIToolsCalling(tools_to_exec=self._tools_to_exec)
+                # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
+                async for block in handler_openai.async_handle(openai_tools_calling_steps, chat_memory, self.memory):
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
                         to_continue_call_llm = True
                     yield block
