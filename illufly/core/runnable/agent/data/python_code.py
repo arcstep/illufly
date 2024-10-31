@@ -171,7 +171,6 @@ class PandasAgent(BaseAgent):
             "functools": __import__('functools'),
             "operator": __import__('operator'),
             "scipy": __import__('scipy'),
-            "sklearn": __import__('sklearn'),
             "matplotlib": __import__('matplotlib'),
         }
 
