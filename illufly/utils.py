@@ -96,7 +96,18 @@ def extract_final_answer(text: str, final_answer_prompt: str="最终答案："):
     """
     提取文本中以 final_answer_prompt 开头的文本。
     """
-    return text.split(final_answer_prompt)[-1].strip() if final_answer_prompt in text else ''
+    final_answer_lines = []
+    capture = False
+
+    for line in text.split('\n'):
+        if line.startswith(final_answer_prompt):
+            capture = True
+            final_answer_lines.append(line[len(final_answer_prompt):].strip())
+        elif capture:
+            final_answer_lines.append(line)
+
+    final_answer_text = '\n'.join(final_answer_lines).strip()
+    return extract_text(final_answer_text, "```", "```") if final_answer_text else ''
 
 def hash_text(text):
     """

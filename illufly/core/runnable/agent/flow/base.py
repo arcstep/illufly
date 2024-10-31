@@ -1,5 +1,5 @@
 import re
-
+import uuid
 from typing import List, Union, Generator, AsyncGenerator, Callable
 from .....io import EventBlock, NewLineBlock
 from .....utils import minify_text, filter_kwargs, raise_invalid_params
@@ -26,6 +26,7 @@ class FlowAgent(BaseAgent):
 
         self.max_steps = max_steps or 20
 
+        self.thread_id = None
         self.task = None
         self.agents = []
         self.agents_index = {}
@@ -64,6 +65,7 @@ class FlowAgent(BaseAgent):
         """
         开始执行的回调方法。
         """
+        self.thread_id = str(uuid.uuid4())
         self.task = args[0] if args else None
         return args
 

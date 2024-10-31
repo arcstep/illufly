@@ -30,8 +30,8 @@ class ReAct(FlowAgent):
 
         if not isinstance(planner, BaseAgent):
             raise ValueError("planner 必须是 ChatAgent 的子类")
-        if not planner.tools:
-            raise ValueError("planner 必须包含可用的工具")
+        # if not planner.tools:
+        #     raise ValueError("planner 必须包含可用的工具")
 
         planner_template = planner_template or PromptTemplate("FLOW/ReAct/Planner")
         self.planner_template = planner_template

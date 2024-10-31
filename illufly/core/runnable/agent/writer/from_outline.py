@@ -6,6 +6,7 @@ from ....document import Document
 from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
 from ..chat import ChatAgent
+from ..flow import FlowAgent
 from .markdown import Markdown
 
 import copy
@@ -22,11 +23,11 @@ class FromOutline(BaseAgent):
             "next_k": "后 k 个字符"
         }
 
-    def __init__(self, writer: ChatAgent=None, template_id: str=None, prev_k:int=1000, next_k:int=500, **kwargs):
+    def __init__(self, writer: Union[ChatAgent, FlowAgent]=None, template_id: str=None, prev_k:int=1000, next_k:int=500, **kwargs):
         raise_invalid_params(kwargs, self.__class__.allowed_params())
 
-        if not isinstance(writer, ChatAgent):
-            raise ValueError("扩写智能体 writer 必须是 ChatAgent 实例")
+        if not isinstance(writer, (ChatAgent, FlowAgent)):
+            raise ValueError("扩写智能体 writer 必须是 ChatAgent 或 FlowAgent 实例")
 
         super().__init__(**kwargs)
         self.writer = writer
@@ -81,23 +82,40 @@ class FromOutline(BaseAgent):
         if outline_docs:
             for doc in outline_docs:
                 outline_id = doc.meta['id']
-
                 (draft, outline) = self.markdown.fetch_outline_task(doc, prev_k=self.prev_k, next_k=self.next_k)
-                self.writer.reset_init_memory(
-                    PromptTemplate(
-                        self.template_id,
-                        binding_map={
-                            "outline": f'```markdown\n{outline}\n```',
-                            "draft": f'```markdown\n{draft}\n```'
-                        }
-                    )
-                )
 
                 info = f"执行扩写任务 <{outline_id}>：\n{minify_text(outline)}"
                 yield EventBlock("agent", info)
 
-                self.writer.clear()
-                yield from self.writer.call("请开始扩写")
+                # print("*" * 100)
+                # print(draft)
+                if isinstance(self.writer, FlowAgent):
+                    input_text = PromptTemplate(self.template_id).format({
+                        "outline": lambda: f'```markdown\n{outline}\n```',
+                        "draft": lambda: f'```markdown\n{draft}\n```'
+                    })
+                    yield from self.writer.call(input_text)
+
+                elif isinstance(self.writer, ChatAgent):
+                    yield from self.writer.call([
+                        (
+                            'system',
+                            PromptTemplate(
+                                self.template_id,
+                                binding_map={
+                                    "outline": lambda: f'```markdown\n{outline}\n```',
+                                    "draft": lambda: f'```markdown\n{draft}\n```'
+                                }).format()
+                        ),
+                        (
+                            'user',
+                            "请开始扩写"
+                        )
+                    ])
+                else:
+                    raise ValueError("writer 必须是 ChatAgent 或 FlowAgent 实例")
+
+
                 self.segments.append(
                     (
                         self.writer.thread_id,

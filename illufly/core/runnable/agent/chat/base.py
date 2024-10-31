@@ -162,7 +162,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         self._last_output = final_output_text
 
         # 提取最终答案
-        self._final_answer = extract_final_answer(final_output_text, self.final_answer_prompt)
+        self._final_answer = extract_final_answer(output_text, self.final_answer_prompt)
 
         return final_output_text
 
