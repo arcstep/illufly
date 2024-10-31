@@ -128,8 +128,8 @@ class Markdown():
         prev_docs = self.documents[:_from]
         next_docs = self.documents[_to + 1:]
         
-        prev_heading = next((doc for doc in reversed(prev_docs) if doc.meta['type'] == 'heading'), None)
-        next_heading = next((doc for doc in next_docs if doc.meta['type'] == 'heading'), None)
+        prev_heading = next((doc for doc in reversed(prev_docs) if 'type' in doc.meta and doc.meta['type'] == 'heading'), None)
+        next_heading = next((doc for doc in next_docs if 'type' in doc.meta and doc.meta['type'] == 'heading'), None)
 
         from_index = None
         if prev_heading:
