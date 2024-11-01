@@ -8,16 +8,15 @@ from ..base import BaseAgent
 from ..chat import ChatAgent
 from .base import FlowAgent
 
-class ReAct(FlowAgent):
+class CoT(FlowAgent):
     """
-    ReAct 提供了一种更易于人类理解、诊断和控制的决策和推理过程。
-    它的典型流程可以用一个有趣的循环来描述：思考（Thought）→ 行动（Action）→ 观察（Observation），简称TAO循环。
+    CoT 是 ReAct 的简化版，提供了一种没有工具的反思过程，有利于单步思考时避免不必要的工具回调。
     """
     @classmethod
     def allowed_params(cls):
         return {
             "planner": "用于推理的ChatAgent, 你应当在其中指定可用的工具",
-            "planner_template": "用于生成计划的PromptTemplate, 默认为 PromptTemplate('FLOW/ReAct/Planner')",
+            "planner_template": "用于生成计划的PromptTemplate, 默认为 PromptTemplate('FLOW/CoT/Planner')",
             **FlowAgent.allowed_params(),
         }
 
@@ -31,14 +30,10 @@ class ReAct(FlowAgent):
 
         if not isinstance(planner, ChatAgent):
             raise ValueError("planner 必须是 ChatAgent 的子类")
-        # if not planner.tools:
-        #     raise ValueError("planner 必须包含可用的工具")
 
-        planner_template = planner_template or PromptTemplate("FLOW/ReAct/Planner")
+        planner_template = planner_template or PromptTemplate("FLOW/CoT/Planner")
         self.planner_template = planner_template
 
-        # 设置 planner 的 tools_behavior 为 "parse-execute"，执行后就停止，等待 T-A-O 循环
-        planner.tools_behavior = "parse-execute"
         planner.reset_init_memory(planner_template)
         self.planner = planner
         self.completed_work = []
@@ -51,10 +46,8 @@ class ReAct(FlowAgent):
             else:
                 yield EventBlock("warn", f"{final_answer_prompt}\n没有可用的输出")
 
-            if agent.tools_calling_steps:
-                all_results = "\n".join([step["result"] for step in agent.tools_calling_steps])
-                observation = f'\n**观察**\n上面的行动结果为:\n{all_results}\n'
-                yield EventBlock("text", observation)
+            if agent.last_output:
+                observation = f'\n**观察**\n上面的行动结果为:\n{agent.last_output}\n'
 
                 self.completed_work.append(observation)
                 planner_template.bind_provider({

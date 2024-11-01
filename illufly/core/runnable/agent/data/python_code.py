@@ -5,6 +5,7 @@ from .....io import EventBlock
 from ....dataset import Dataset
 from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
+from ..chat import ChatAgent
 
 import textwrap
 import pandas as pd

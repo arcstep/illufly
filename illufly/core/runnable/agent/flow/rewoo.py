@@ -5,7 +5,7 @@ from .....io import EventBlock
 from ...prompt_template import PromptTemplate
 from ...selector import End
 from ..base import BaseAgent
-from ...chat import ChatAgent
+from ..chat import ChatAgent
 from .base import FlowAgent
 
 import json
