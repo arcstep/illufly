@@ -10,6 +10,7 @@ from ..flow import FlowAgent
 from .markdown import Markdown
 
 import copy
+import asyncio
 
 class FromOutline(BaseAgent):
     """
@@ -115,7 +116,6 @@ class FromOutline(BaseAgent):
                 else:
                     raise ValueError("writer 必须是 ChatAgent 或 FlowAgent 实例")
 
-
                 self.segments.append(
                     (
                         self.writer.thread_id,
@@ -126,4 +126,87 @@ class FromOutline(BaseAgent):
 
         else:
             yield EventBlock("info", f"没有提纲可供扩写")
+
+    async def async_call(self, outline: Union[str, BaseAgent], *args, **kwargs):
+        """
+        执行扩写。
+
+        注意，该异步版本使用使用 asyncio.gather 并行处理异步生成器时，
+        所有的结果会在所有任务完成后一次性返回。
+        这是因为 asyncio.gather 会等待所有协程完成，然后返回结果。 
+        """
+
+        if isinstance(outline, str):
+            self.outline_text = outline
+        elif isinstance(outline, BaseAgent):
+            self.outline_text = outline.last_output
+        else:
+            raise ValueError("outline 必须是字符串或 BaseAgent 实例")
+
+        # 提取大纲
+        outline_docs = self.fetch_outline()
+
+        async def process_doc(doc):
+            outline_id = doc.meta['id']
+            (draft, outline) = self.markdown.fetch_outline_task(doc, prev_k=self.prev_k, next_k=self.next_k)
+
+            info = f"执行扩写任务 <{outline_id}>：\n{minify_text(outline)}"
+            yield EventBlock("agent", info)
+
+            if isinstance(self.writer, FlowAgent):
+                input_text = PromptTemplate(self.template_id).format({
+                    "outline": lambda: f'```markdown\n{outline}\n```',
+                    "draft": lambda: f'```markdown\n{draft}\n```'
+                })
+                async for block in self.writer.async_call(input_text):
+                    yield block
+
+            elif isinstance(self.writer, ChatAgent):
+                async for block in self.writer.async_call([
+                    (
+                        'system',
+                        PromptTemplate(
+                            self.template_id,
+                            binding_map={
+                                "outline": lambda: f'```markdown\n{outline}\n```',
+                                "draft": lambda: f'```markdown\n{draft}\n```'
+                            }).format()
+                    ),
+                    (
+                        'user',
+                        "请开始扩写"
+                    )
+                ]):
+                    yield block
+
+            # 确保在处理完所有块后再更新 segments
+            self.segments.append(
+                (
+                    self.writer.thread_id,
+                    outline_id,
+                    self.writer.last_output
+                )
+            )
+
+        async def gather_docs():
+            if outline_docs:
+                tasks = [process_doc(doc) for doc in outline_docs]
+                results = await asyncio.gather(*[self._consume_async_gen(process_doc(doc)) for doc in outline_docs])
+                for result in results:
+                    for block in result:
+                        yield block
+            else:
+                yield EventBlock("info", f"没有提纲可供扩写")
+
+        async for block in gather_docs():
+            yield block
+
+    async def _consume_async_gen(self, agen):
+        """
+        Helper function to consume an async generator and return a list of results.
+        """
+        results = []
+        async for item in agen:
+            results.append(item)
+        return results
 
