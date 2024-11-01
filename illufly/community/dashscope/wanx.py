@@ -62,7 +62,7 @@ class Text2ImageWanx(BaseAgent):
             "ref_img": "生成图片时所使用的参考图，可使用资源中提供的图片文件名称",
             "image_count": "生成图片的数量",
             "image_style": "生成图片的风格可以是: 摄影, 人像写真, 3D卡通, 动画, 油画, 水彩, 素描, 中国画, 扁平插画, 默认",
-            "output": "指定生成图片的名称，默认按.png为扩展名"
+            "output": "指定生成图片的名称，应当包括扩展名"
         }
 
         self.model = model or "wanx-v1"

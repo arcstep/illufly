@@ -158,8 +158,13 @@ class ChatQwenVL(ChatQwen):
         for m in messages:
             if isinstance(m['content'], list):
                 for obj in m['content']:
-                    if isinstance(obj, dict) and "image" in obj:
-                        obj["image"] = confirm_upload_file(self.default_call_args['model'], obj["image"], self.model_args['api_key'])
+                    if isinstance(obj, dict):
+                        if "image" in obj:
+                            obj["image"] = confirm_upload_file(self.default_call_args['model'], obj["image"], self.model_args['api_key'])
+                        # TODO: 上传视频
+                        # 千问模型暂时仅支持上传图片序列的方式实现视频理解，暂不在此支持
+                        # elif "video" in obj:
+                        #     obj["video"] = confirm_upload_file(self.default_call_args['model'], obj["video"], self.model_args['api_key'])
         _kwargs = self._prepare_kwargs(messages, **kwargs)
         _kwargs["headers"] = {"X-DashScope-OssResourceResolve": "enable"}
 
