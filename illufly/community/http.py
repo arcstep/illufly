@@ -5,6 +5,7 @@ import requests
 import aiohttp
 import asyncio
 import hashlib
+import base64
 
 from ..io import EventBlock
 from ..config import get_env
@@ -68,6 +69,13 @@ def confirm_upload_file(model: str=None, uri: str=None, api_key: str=None):
     else:
         raise ValueError(f"Invalid URI path: {uri}")
 
+def confirm_base64_or_uri(uri: str) -> str:
+    if uri and (uri.startswith('http://') or uri.startswith('https://') or uri.startswith('oss://')):
+        return uri
+    else:
+        with open(uri, 'rb') as file:
+            base64_encoded = base64.b64encode(file.read()).decode('utf-8')
+            return base64_encoded
 
 def get_headers(api_key: str, enable_async: bool = True) -> Dict[str, str]:
     headers = {
