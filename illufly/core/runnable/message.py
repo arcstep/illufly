@@ -1,5 +1,6 @@
 import json
 import copy
+import os
 from typing import Union, Dict, Any, List, Tuple
 
 from ..runnable import Runnable
@@ -133,14 +134,36 @@ class Messages:
             if msg.get('role') == 'ai':
                 msg['role'] = 'assistant'
             message = Message(**msg) # 支持字典构造中其他键值，如工具回调等
-        elif isinstance(msg, tuple) and len(msg) == 2:
-            role, content = msg
-            if role == 'ai':
-                role = 'assistant'
-            if role in ['user', 'assistant', 'system']:
+        elif isinstance(msg, tuple):
+            if len(msg) == 2 and msg[0] in ["ai", "assistant", "user"]:
+                role, content = msg
+                if role == 'ai':
+                    role = 'assistant'
                 message = Message(role=role, content=content)
             else:
-                raise ValueError("Unsupported role type in tuple", msg)
+                # 多模态格式
+                role = self._determine_role(index)
+                msgs = []
+                for item in msg:
+                    if isinstance(item, str):
+                        if item in ["ai", "assistant"]:
+                            role = "assistant"
+                        elif item in ["user"]:
+                            role = "user"
+                        else:
+                            ext = os.path.splitext(item)[1][1:]
+                            if ext in ["png", "jpg", "gif", "jpeg"]:
+                                msg_type = "image"
+                            elif ext in ["mp4", "webm"]:
+                                msg_type = "video"
+                            else:
+                                msg_type = "text"
+                            msgs.append({
+                                msg_type: item
+                            })
+                    else:
+                        raise ValueError("Unsupported message type in tuple", msg)
+                message = Message(role=role, content=msgs)
         else:
             raise ValueError("Unsupported message type", msg)
         
