@@ -7,6 +7,7 @@ from ...selector import Selector, End
 from ...prompt_template import PromptTemplate
 from ...message import Messages
 from ..base import BaseAgent
+from ..chat import ChatAgent
 from .base import FlowAgent
 
 def get_faq_dir():
@@ -43,13 +44,13 @@ class ChatLearn(FlowAgent):
 
     def __init__(
         self,
-        scribe: BaseAgent,
+        scribe: ChatAgent,
         scribe_template: str=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.allowed_params())
 
-        if not isinstance(scribe, BaseAgent):
+        if not isinstance(scribe, ChatAgent):
             raise ValueError("scribe 必须是 ChatAgent 的子类")
 
         scribe_template = scribe_template or PromptTemplate("FLOW/Scribe")

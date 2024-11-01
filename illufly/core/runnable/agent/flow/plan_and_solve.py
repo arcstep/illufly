@@ -5,6 +5,7 @@ from .....io import EventBlock
 from ...prompt_template import PromptTemplate
 from ...selector import Selector, End
 from ..base import BaseAgent
+from ..chat import ChatAgent
 from .base import FlowAgent
 
 import json
@@ -28,9 +29,9 @@ class PlanAndSolve(FlowAgent):
         
     def __init__(
         self,
-        planner: BaseAgent,
-        worker: BaseAgent,
-        replanner: BaseAgent,
+        planner: ChatAgent,
+        worker: ChatAgent,
+        replanner: ChatAgent,
         planner_template: PromptTemplate=None,
         worker_template: PromptTemplate=None,
         replanner_template: PromptTemplate=None,
@@ -38,7 +39,7 @@ class PlanAndSolve(FlowAgent):
     ):
         raise_invalid_params(kwargs, self.allowed_params())
 
-        if not isinstance(planner, BaseAgent) or not isinstance(worker, BaseAgent) or not isinstance(replanner, BaseAgent):
+        if not isinstance(planner, ChatAgent) or not isinstance(worker, ChatAgent) or not isinstance(replanner, ChatAgent):
             raise ValueError("planner, worker, replanner 必须是 ChatAgent 的子类")
         if not planner.tools:
             raise ValueError("planner 必须包含可用的工具")

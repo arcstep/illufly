@@ -24,7 +24,7 @@ class PandasAgent(BaseAgent):
             **BaseAgent.allowed_params(),
         }
 
-    def __init__(self, agent: "ChatAgent", datasets: List[Dataset]=None, template_id: str=None, **kwargs):
+    def __init__(self, agent: ChatAgent, datasets: List[Dataset]=None, template_id: str=None, **kwargs):
         raise_invalid_params(kwargs, self.allowed_params())
 
         if datasets:
@@ -41,7 +41,7 @@ class PandasAgent(BaseAgent):
         else:
             self.datasets = {}
 
-        if not isinstance(agent, BaseAgent):
+        if not isinstance(agent, ChatAgent):
             raise ValueError("agent 必须是 ChatAgent 实例")
 
         self.template_id = template_id or "CODE/Pandas"

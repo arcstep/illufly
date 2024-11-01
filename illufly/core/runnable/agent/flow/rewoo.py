@@ -5,6 +5,7 @@ from .....io import EventBlock
 from ...prompt_template import PromptTemplate
 from ...selector import End
 from ..base import BaseAgent
+from ...chat import ChatAgent
 from .base import FlowAgent
 
 import json
@@ -33,7 +34,7 @@ class ReWOO(FlowAgent):
     ):
         raise_invalid_params(kwargs, self.allowed_params())
 
-        if not isinstance(planner, BaseAgent):
+        if not isinstance(planner, ChatAgent):
             raise ValueError("planner 必须是 ChatAgent 的子类")
         if not planner.tools:
             raise ValueError("planner 必须包含可用的工具")
