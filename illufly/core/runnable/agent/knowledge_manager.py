@@ -86,13 +86,16 @@ class KnowledgeManager:
         resource_docs = resource_dir or get_env("ILLUFLY_RESOURCE")
         if resource_docs:
             if os.path.exists(resource_docs):
-                for root, _, files in os.walk(resource_docs):
+                for root, dirs, files in os.walk(resource_docs):
+                    # 过滤掉.开头的文件夹
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
                     for file in files:
-                        ext = os.path.splitext(file)[1][1:]
-                        if ext in extensions:
-                            name = os.path.splitext(file)[0]
-                            desc = f"{self._get_resource_type(ext)}资源名: {os.path.join(root, file)}, 资源说明: {name}"
-                            self.add_knowledge(desc)
+                        if not file.startswith('.'):  # 过滤掉.开头的文件
+                            ext = os.path.splitext(file)[1][1:]
+                            if ext in extensions:
+                                name = os.path.splitext(file)[0]
+                                desc = f"{self._get_resource_type(ext)}资源名: {os.path.join(root, file)}, 资源说明: {name}"
+                                self.add_knowledge(desc)
 
     def add_resource(self, resource_name: str, description: str=None):
         """
