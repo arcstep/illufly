@@ -12,6 +12,7 @@ from ..config import get_env
 
 CHECK_RESULT_SECONDS = get_env("HTTP_CHECK_RESULT_SECONDS")
 DASHSCOPE_BASE_URL = get_env("DASHSCOPE_BASE_URL")
+ZHIPUAI_API_TOOLS = get_env("ZHIPUAI_API_TOOLS")
 
 # 保留当日上传过的缓存
 # 缓存的命名：以年月作为子目录，将上传内容和日期一起做MD5编码作为文件名称

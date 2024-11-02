@@ -1,0 +1,88 @@
+import json
+import os
+import asyncio
+import aiohttp
+import time
+import requests
+import uuid
+
+from ...types import BaseAgent
+from ...utils import raise_invalid_params
+from ..http import (
+    EventBlock,
+    send_request,
+    ZHIPUAI_API_TOOLS,
+)
+
+class WebSearch(BaseAgent):
+    """
+    [API](https://open.bigmodel.cn/dev/api/search-tool/web-search-pro)
+    """
+    @classmethod
+    def allowed_params(cls):
+        return {
+            "model": "模型名称",
+            "api_key": "API_KEY",
+            **BaseAgent.allowed_params()
+        }
+
+    def __init__(self, tool: str=None, api_key: str=None, **kwargs):
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
+
+        super().__init__(threads_group="WANX", **kwargs)
+
+        self.description = "搜索互联网内容。"
+        self.tool_params = {
+            "prompt": "请给出互联网搜索的内容关键字",
+        }
+
+        self.tool = tool or "web-search-pro"
+        self.api_key = api_key or os.getenv("ZHIPUAI_API_KEY")
+
+    def call(
+        self, 
+        prompt: str=None,
+        **kwargs
+    ):
+        self._last_output = ""
+
+        url = ZHIPUAI_API_TOOLS
+
+        msgs = [{
+            "role": "user",
+            "content": prompt
+        }]
+
+        data = {
+            "request_id": str(uuid.uuid4()),
+            "tool": self.tool,
+            "stream": True,
+            "messages": msgs
+        }
+
+        resp = requests.post(
+            url,
+            json=data,
+            headers={'Authorization': self.api_key},
+            timeout=300
+        )
+
+        resp_content = resp.content.decode()
+        for line in resp_content.splitlines():
+            if line.startswith("data: "):
+                data = line[len("data: "):]
+                if data == "[DONE]":
+                    break
+                content = json.loads(data)
+                if content.get("model", None) == "web-search-pro":
+                    choices = content.get("choices", [])
+                    for choice in choices:
+                        for item in choice.get("delta", {}).get("tool_calls", []):
+                            indent_type = item.get("type", None)
+                            if indent_type == "search_intent":
+                                yield EventBlock("SEARCH_INTENT", item.get("search_intent", ""))
+                            elif indent_type == "search_result":
+                                output = item.get("search_result", "")
+                                if output:
+                                    yield EventBlock("SEARCH_RESULT", output)
+                                    self._last_output += str(output)
