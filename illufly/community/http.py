@@ -70,12 +70,15 @@ def confirm_upload_file(model: str=None, uri: str=None, api_key: str=None):
         raise ValueError(f"Invalid URI path: {uri}")
 
 def confirm_base64_or_uri(uri: str) -> str:
-    if uri and (uri.startswith('http://') or uri.startswith('https://') or uri.startswith('oss://')):
-        return uri
+    if uri:
+        if uri.startswith('http://') or uri.startswith('https://') or uri.startswith('oss://'):
+            return uri
+        else:
+            with open(uri, 'rb') as file:
+                base64_encoded = base64.b64encode(file.read()).decode('utf-8')
+                return base64_encoded
     else:
-        with open(uri, 'rb') as file:
-            base64_encoded = base64.b64encode(file.read()).decode('utf-8')
-            return base64_encoded
+        return uri
 
 def get_headers(api_key: str, enable_async: bool = True) -> Dict[str, str]:
     headers = {
@@ -94,24 +97,24 @@ def validate_output_path(output_path: Union[str, List[str]], n: int) -> List[str
         raise ValueError(f"Invalid output_path: {output_path}, please ensure the number of images is consistent with the n value")
     return output_path
 
-def save_image(url: str, path: str):
-    image_to_save = os.path.join(get_env("ILLUFLY_RESOURCE"), path)
-    if image_to_save and not os.path.exists(image_to_save):
-        os.makedirs(os.path.dirname(image_to_save), exist_ok=True)
-    with open(image_to_save, 'wb+') as f:
+def save_resource(url: str, path: str):
+    res_to_save = os.path.join(get_env("ILLUFLY_RESOURCE"), path)
+    if res_to_save and not os.path.exists(res_to_save):
+        os.makedirs(os.path.dirname(res_to_save), exist_ok=True)
+    with open(res_to_save, 'wb+') as f:
         f.write(requests.get(url).content)
-        yield EventBlock("chunk", f'image was generated and saved to {path}; ')
+        yield EventBlock("chunk", f'resource was generated and saved to {path}; ')
 
-async def async_save_image(url: str, path: str):
-    image_to_save = os.path.join(get_env("ILLUFLY_RESOURCE"), path)
-    if image_to_save and not os.path.exists(image_to_save):
-        os.makedirs(os.path.dirname(image_to_save), exist_ok=True)
+async def async_save_resource(url: str, path: str):
+    res_to_save = os.path.join(get_env("ILLUFLY_RESOURCE"), path)
+    if res_to_save and not os.path.exists(res_to_save):
+        os.makedirs(os.path.dirname(res_to_save), exist_ok=True)
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             content = await response.read()
-            with open(image_to_save, 'wb+') as f:
+            with open(res_to_save, 'wb+') as f:
                 f.write(content)
-                yield EventBlock("chunk", f'an image was generated and saved to {path}')
+                yield EventBlock("chunk", f'an resource was generated and saved to {path}')
 
 def get_request(url: str, headers: Dict[str, str]) -> Dict[str, Any]:
     response = requests.get(url, headers=headers)

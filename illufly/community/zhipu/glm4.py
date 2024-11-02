@@ -11,11 +11,11 @@ from ..http import (
 
     send_request,
     check_task_status,
-    save_image,
+    save_resource,
 
     async_send_request,
     async_check_task_status,
-    async_save_image,
+    async_save_resource,
 
     confirm_base64_or_uri
 )

@@ -20,11 +20,11 @@ from ..http import (
 
     send_request,
     check_task_status,
-    save_image,
+    save_resource,
 
     async_send_request,
     async_check_task_status,
-    async_save_image,
+    async_save_resource,
 
     DASHSCOPE_BASE_URL,
     confirm_upload_file
@@ -144,7 +144,7 @@ class Text2ImageWanx(BaseAgent):
                         output_path = f"{filename.rsplit('.', 1)[0]}.{filename.rsplit('.', 1)[1]}"
                     else:
                         output_path = output[result_index]
-                    yield from save_image(url, output_path)
+                    yield from save_resource(url, output_path)
 
                 if 'usage' in status_result:
                     yield EventBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
