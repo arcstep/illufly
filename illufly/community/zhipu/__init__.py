@@ -1,2 +1,2 @@
 from .embeddings import ZhipuEmbeddings
-from .chat import ChatZhipu, ChatZhipuVL
+from .glm4 import ChatZhipu, ChatZhipuVL
