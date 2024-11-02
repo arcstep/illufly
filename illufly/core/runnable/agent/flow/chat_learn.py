@@ -26,7 +26,7 @@ def save_faq(thread_id: str, knowledge: str, question: str="", metadata: dict={}
     k = f"**Knowledge**\n{knowledge}"
     text = (metadata + q + k) or ""
 
-    with open(os.path.join(faq_dir, f"{thread_id}.md"), "w") as f:
+    with open(os.path.join(faq_dir, f"{thread_id}.md"), "w", encoding="utf-8") as f:
         f.write(text)
     return text
 
