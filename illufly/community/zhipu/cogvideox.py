@@ -72,7 +72,7 @@ class CogVideoX(BaseAgent):
         resp = self.client.videos.generations(**_kwargs)
         while resp.task_status == 'PROCESSING':
             resp = self.client.videos.retrieve_videos_result(id=resp.id)
-            yield EventBlock("task_status", resp.task_status)
+            yield EventBlock("task_status", f'{resp.id} - {resp.task_status}')
 
             if resp.task_status == 'SUCCESS':
                 for result_index, result in enumerate(resp.video_result):
