@@ -6,3 +6,4 @@ from .flow import FlowAgent, CoT, ReAct, ReWOO, PlanAndSolve
 from .flow import ChatLearn
 from .writer import FromOutline
 from .data import PandasAgent
+from .team import TeamAgent
