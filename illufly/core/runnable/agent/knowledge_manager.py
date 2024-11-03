@@ -41,6 +41,7 @@ class KnowledgeManager:
         if not isinstance(self.knowledge, set):
             self.knowledge = set({self.knowledge}) if self.knowledge else set()
 
+        self.default_docs = set({})
         self.default_vdb = None
 
         self._recalled_knowledge = []
@@ -59,7 +60,7 @@ class KnowledgeManager:
         """
         加载默认知识库。
         """
-        default_docs = set({
+        self.default_docs = set({
             get_env("ILLUFLY_DOCS"),
             self.team.chat_learn_folder if self.team else get_env("ILLUFLY_CHAT_LEARN")
         })
@@ -71,10 +72,11 @@ class KnowledgeManager:
                 if not self.default_vdb:
                     self.default_vdb = item
                 if item in item.sources:
-                    default_docs.remove(item)
+                    # 如果已经在向量库中指定了文档目录，则不再从默认文档目录中加载
+                    self.default_docs.remove(item)
 
         if self.default_vdb:
-            for doc_folder in default_docs:
+            for doc_folder in self.default_docs:
                 self.default_vdb.load(dir=doc_folder)
 
     def _get_resource_type(self, ext: str):

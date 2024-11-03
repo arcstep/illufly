@@ -19,9 +19,16 @@ class Team:
         self.agents = agents if agents else set()
         self.chat_learn_folder = chat_learn_folder or get_env("ILLUFLY_CHAT_LEARN")
 
+    def __repr__(self):
+        return f"Team(name={self.name}, agents={self.names}, folder={self.folders})"
+
     @property
     def names(self):
         return [agent.name for agent in self.agents]
+
+    @property
+    def folders(self):
+        return [self.chat_learn_folder]
 
     def hire(self, agent: Union["ChatAgent"]):
         """
