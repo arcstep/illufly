@@ -80,9 +80,14 @@ class WebSearch(BaseAgent):
                         for item in choice.get("delta", {}).get("tool_calls", []):
                             indent_type = item.get("type", None)
                             if indent_type == "search_intent":
-                                yield EventBlock("SEARCH_INTENT", item.get("search_intent", ""))
+                                yield EventBlock("WEB_SEARCH_INTENT", item.get("search_intent", ""))
                             elif indent_type == "search_result":
                                 output = item.get("search_result", "")
                                 if output:
-                                    yield EventBlock("SEARCH_RESULT", output)
-                                    self._last_output += str(output)
+                                    text = "\n\n".join([
+                                        f'## [{r["title"]}]({r["link"]})\n{r["content"]}'
+                                        for r
+                                        in output
+                                    ])
+                                    yield EventBlock("WEB_SEARCH_RESULT", text)
+                                    self._last_output += text
