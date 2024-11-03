@@ -24,7 +24,7 @@ class Markdown():
         _doc_str = doc_str or self.doc_str
         _md_file = md_file or self.md_file
         if _md_file and os.path.isfile(_md_file) and os.path.exists(_md_file):
-            with open(_md_file, 'r') as file:
+            with open(_md_file, 'r', encoding='utf-8') as file:
                 _doc_str = file.read()
 
         if _doc_str:

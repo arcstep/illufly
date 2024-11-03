@@ -54,7 +54,7 @@ def load_token_whitelist():
     try:
         path = get_env("FASTAPI_TOKEN_WHITELIST")
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "r") as file:
+        with open(path, "r", encoding='utf-8') as file:
             return json.load(file)
     except FileNotFoundError:
         return {}
@@ -69,7 +69,7 @@ def save_token_whitelist(whitelist):
     whitelist = {token: data for token, data in whitelist.items() if current_time <= datetime.fromisoformat(data["expire"])}
     path = get_env("FASTAPI_TOKEN_WHITELIST")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as file:
+    with open(path, "w", encoding='utf-8') as file:
         json.dump(whitelist, file)
 
 def is_refresh_token_in_whitelist(refresh_token):

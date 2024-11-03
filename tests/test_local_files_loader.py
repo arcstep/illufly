@@ -15,20 +15,20 @@ def prepare_data():
     # create some files with different extensions in the root directory
     extensions = ['txt', 'docx', 'pdf', 'jpg']
     for i, ext in enumerate(extensions):
-        with open(os.path.join(target_folder, f'test{i}.{ext}'), 'w') as f:
+        with open(os.path.join(target_folder, f'test{i}.{ext}'), 'w', encoding='utf-8') as f:
             f.write('test')
 
     # create a subdirectory and some files in it
     subfolder = os.path.join(target_folder, 'include_dir')
     os.makedirs(subfolder, exist_ok=True)
     for i, ext in enumerate(extensions):
-        with open(os.path.join(subfolder, f'test{i}.{ext}'), 'w') as f:
+        with open(os.path.join(subfolder, f'test{i}.{ext}'), 'w', encoding='utf-8') as f:
             f.write('test')
 
     subfolder = os.path.join(target_folder, 'exclude_dir')
     os.makedirs(subfolder, exist_ok=True)
     for i, ext in enumerate(extensions):
-        with open(os.path.join(subfolder, f'test{i}.{ext}'), 'w') as f:
+        with open(os.path.join(subfolder, f'test{i}.{ext}'), 'w', encoding='utf-8') as f:
             f.write('test')
 
     yield  # this is where the testing happens
