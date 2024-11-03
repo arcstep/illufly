@@ -91,9 +91,9 @@ class BaseAgent(Runnable, ToolAbility):
             if asyncio.iscoroutinefunction(self.async_func):
                 resp = await self.async_func(*args, **kwargs)
             else:
-                resp = self.async_func(*args, **kwargs)
+                resp = await self.run_in_executor(self.async_func, *args, **kwargs)
         else:
-            resp = self.func(*args, **kwargs)
+            resp = await self.run_in_executor(self.func, *args, **kwargs)
 
         if isinstance(resp, Generator):
             for block in resp:
