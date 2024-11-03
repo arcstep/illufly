@@ -5,6 +5,7 @@ from typing import Any, Set, Union, List
 from ....config import get_env
 from ...document import Document
 from ..vectordb import VectorDB
+from ...team import Team
 from .retriever import Retriever
 
 class KnowledgeManager:
@@ -14,12 +15,14 @@ class KnowledgeManager:
         返回当前可用的参数列表。
         """
         return {
-            "knowledge": "待检索的资料或向量数据库"
+            "knowledge": "待检索的资料或向量数据库",
+            "team": "所属团队"
         }
 
     def __init__(
-        self, 
+        self,
         knowledge: Union[Set[Any], List[Any]] = None,
+        team: Team = None,
     ):
         """
         知识库在内存中以集合的方式保存，确保唯一性。
@@ -28,6 +31,9 @@ class KnowledgeManager:
         除非在其他向量库中已经指定了如何加载这两个目录。
         """
         self.knowledge = knowledge
+
+        # 所属团队
+        self.team = team
 
         if isinstance(knowledge, list):
             self.knowledge = set(knowledge)
@@ -55,7 +61,7 @@ class KnowledgeManager:
         """
         default_docs = set({
             get_env("ILLUFLY_DOCS"),
-            get_env("ILLUFLY_CHAT_LEARN")
+            self.team.chat_learn_folder if self.team else get_env("ILLUFLY_CHAT_LEARN")
         })
         for item in self.knowledge:
             if not isinstance(item, (str, Document, VectorDB, Retriever)):
