@@ -11,7 +11,7 @@ from ...utils import raise_invalid_params
 from ..http import (
     EventBlock,
     send_request,
-    ZHIPUAI_API_TOOLS,
+    ZHIPUAI_API_TOOLS_BASE_URL,
 )
 
 class WebSearch(BaseAgent):
@@ -46,22 +46,15 @@ class WebSearch(BaseAgent):
     ):
         self._last_output = ""
 
-        url = ZHIPUAI_API_TOOLS
-
-        msgs = [{
-            "role": "user",
-            "content": prompt
-        }]
-
         data = {
             "request_id": str(uuid.uuid4()),
             "tool": self.tool,
             "stream": True,
-            "messages": msgs
+            "messages": [{"role": "user", "content": prompt}]
         }
 
         resp = requests.post(
-            url,
+            ZHIPUAI_API_TOOLS_BASE_URL,
             json=data,
             headers={'Authorization': self.api_key},
             timeout=300
@@ -89,5 +82,5 @@ class WebSearch(BaseAgent):
                                         for r
                                         in output
                                     ])
-                                    yield EventBlock("WEB_SEARCH_RESULT", text)
+                                    yield EventBlock("TEXT", text)
                                     self._last_output += text

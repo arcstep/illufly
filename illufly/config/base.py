@@ -50,7 +50,7 @@ def get_env(key: str=None):
         # DashScope
         "DASHSCOPE_BASE_URL": "https://dashscope.aliyuncs.com/api/v1",
         # Zhipu
-        "ZHIPUAI_API_TOOLS": "https://open.bigmodel.cn/api/paas/v4/tools"
+        "ZHIPUAI_API_TOOLS_BASE_URL": "https://open.bigmodel.cn/api/paas/v4/tools"
     }
     if key:
         if key not in default_values:
