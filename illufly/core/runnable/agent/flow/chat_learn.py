@@ -1,4 +1,5 @@
 import os
+from typing import Union
 
 from .....config import get_env
 from .....utils import extract_segments, minify_text, filter_kwargs, raise_invalid_params
@@ -87,7 +88,15 @@ class ChatLearn(FlowAgent):
             End(),
             **filter_kwargs(kwargs, self.allowed_params())
         )
-    
+
+        self.description = f"我擅长提炼新知识，所有涉及到总结、提炼新知识的地方都可以召唤我来完成任务"
+        self.tool_params = {
+            "prompt": "请给出你要总结的内容，并在结尾附上一句`请帮我总结其中的新知识`"
+        }
+
+    def call(self, prompt: Union[str, ChatAgent], **kwargs):
+        return super().call(prompt, **kwargs)
+
     def begin_call(self, args):
         from ..chat import ChatAgent
         if isinstance(args[0], ChatAgent):

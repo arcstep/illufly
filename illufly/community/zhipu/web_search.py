@@ -1,8 +1,5 @@
 import json
 import os
-import asyncio
-import aiohttp
-import time
 import requests
 import uuid
 
@@ -29,7 +26,7 @@ class WebSearch(BaseAgent):
     def __init__(self, tool: str=None, api_key: str=None, **kwargs):
         raise_invalid_params(kwargs, self.__class__.allowed_params())
 
-        super().__init__(threads_group="WANX", **kwargs)
+        super().__init__(threads_group="WebSearch", **kwargs)
 
         self.description = "搜索互联网内容。"
         self.tool_params = {
