@@ -121,8 +121,7 @@ class ToolAbility:
                     else:
                         parsed_arguments[key] = bool(value)
                 else:
-                    # 默认转换为字符串
-                    parsed_arguments[key] = str(value)
+                    parsed_arguments[key] = value
             return parsed_arguments
         else:
             return None

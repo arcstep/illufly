@@ -98,14 +98,7 @@ class Messages:
 
     def __init__(
         self,
-        messages: Union[
-            Message,
-            str,
-            Dict[str, Any],
-            Runnable,
-            Tuple[str, Union[str, Runnable]],
-            List[Union[Message, str, Dict[str, Any], Runnable, Tuple[str, Union[str, Runnable]]]]
-        ]=None,
+        messages: Any=None,
         style: str=None,
         binding: Dict[str, Any]=None
     ):
@@ -119,7 +112,7 @@ class Messages:
         for i, msg in enumerate(self.raw_messages):
             self.messages.append(self._convert_to_message(msg, i))
 
-    def _convert_to_message(self, msg: Union[Message, str, Runnable, dict, Tuple[str, Union[str, Runnable]]], index: int) -> Message:
+    def _convert_to_message(self, msg: Any, index: int) -> Message:
         message = None
         if isinstance(msg, Message):
             message = msg
@@ -152,15 +145,17 @@ class Messages:
                             role = "user"
                         else:
                             ext = os.path.splitext(item)[1][1:]
-                            if ext in ["png", "jpg", "gif", "jpeg"]:
+                            if ext.lower() in ["png", "jpg", "gif", "jpeg"]:
                                 msg_type = "image"
-                            elif ext in ["mp4", "webm"]:
+                            elif ext.lower() in ["mp4", "webm"]:
                                 msg_type = "video"
                             else:
                                 msg_type = "text"
                             msgs.append({
                                 msg_type: item
                             })
+                    # elif isinstance(item, Runnable):
+                    #     msgs.append({"text": item})
                     else:
                         raise ValueError("Unsupported message type in tuple", msg)
                 message = Message(role=role, content=msgs)
