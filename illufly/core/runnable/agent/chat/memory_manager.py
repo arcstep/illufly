@@ -45,6 +45,7 @@ class MemoryManager(BindingManager):
         self.init_memory = []
         self.reset_init_memory(memory)
         self._thread_id = None
+        self._current_thread_size = len(self.memory)
         self._chat_memory = []
 
     @property
@@ -52,11 +53,16 @@ class MemoryManager(BindingManager):
         return self.history.list_threads()
 
     @property
+    def current_thread_size(self):
+        return self._current_thread_size
+
+    @property
     def thread_id(self):
         return self._thread_id
 
     def create_thread_id(self):
         last_count = self.history.last_thread_id_count()
+        self._current_thread_size = 0
         self._thread_id = thread_id_gen.create_id(last_count)
         return self._thread_id
 
@@ -69,7 +75,8 @@ class MemoryManager(BindingManager):
         开启新一轮对话
         """
         self.memory.clear()
-        self._thread_id = next(self.create_thread_id())
+        if self._thread_id is None or self.current_thread_size > 0:
+            self._thread_id = next(self.create_thread_id())
 
     def reset_init_memory(self, messages: Union[str, List[dict]]):
         self.init_memory = Messages(messages, style=self.style)
@@ -104,6 +111,7 @@ class MemoryManager(BindingManager):
     # 保存记忆
     def save_memory(self):
         self.history.save_memory(self.thread_id, self.memory)
+        self._current_thread_size = len(self.memory)
 
     # 加载记忆
     def load_memory(self, thread_id: Union[str, int]=None):
@@ -113,6 +121,7 @@ class MemoryManager(BindingManager):
         - 使用字符串: 加载指定记忆 thread_id
         """
         self._thread_id, self.memory = self.history.load_memory(thread_id)
+        self._current_thread_size = len(self.memory)
 
     def build_chat_memory(self, prompt: Union[str, List[dict]], new_chat: bool=False, remember_rounds: int = None):
         """
@@ -142,9 +151,11 @@ class MemoryManager(BindingManager):
             new_messages_list = Messages((new_messages[:1] + history_memory.messages + new_messages[1:]), style=self.style).to_list()
             self.memory.extend(new_messages_list)
             self._chat_memory = new_messages_list
+            self._current_thread_size = len(self.memory)
         else:
             self.memory.extend(new_messages.to_list())
             self._chat_memory = (history_memory + new_messages).to_list()
+            self._current_thread_size = len(self.memory)
         return self._chat_memory
 
     def get_history_memory(self, new_chat: bool=False, remember_rounds: int = None):
@@ -204,6 +215,7 @@ class MemoryManager(BindingManager):
                 new_memory = response
 
             self.memory.extend(new_memory)
+            self._current_thread_size = len(self.memory)
             return new_memory
         else:
             return []
