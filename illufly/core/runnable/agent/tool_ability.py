@@ -1,8 +1,9 @@
 import inspect
 import json
 import textwrap
+from decimal import Decimal
 
-from typing import Any, Callable, Dict, get_origin, get_args, Union
+from typing import Any, Callable, Dict, get_origin, get_args, Union, Tuple, Set
 
 class ToolAbility:
     @classmethod
@@ -61,10 +62,23 @@ class ToolAbility:
         args = get_args(annotation)
 
         if origin is Union:
-            # 处理 Union 类型，假设第一个类型为主要类型
+            # 处理 Union 类型，返回所有可能的类型
             return [self._get_json_type(arg) for arg in args]
         elif origin is list or annotation is list:
             return "array"
+        elif origin is tuple or annotation is tuple:
+            # 假设 Tuple 是一个固定长度的数组
+            return {
+                "type": "array",
+                "items": [self._get_json_type(arg) for arg in args] if args else "string"
+            }
+        elif origin is set or annotation is set:
+            # Set 可以被视为一个不允许重复元素的数组
+            return {
+                "type": "array",
+                "uniqueItems": True,
+                "items": self._get_json_type(args[0]) if args else "string"
+            }
         elif origin is dict or annotation is dict:
             return "object"
         elif annotation is int:
@@ -112,7 +126,11 @@ class ToolAbility:
         """
         解析 arguments 字符串并根据 self.parameters 中的类型信息转换为相应的 Python 类型。
         """
-        parsed_arguments = json.loads(arguments)
+        try:
+            parsed_arguments = json.loads(arguments)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON input: {e}")
+
         parameter_types = self.parameters.get("properties", {})
 
         if isinstance(parsed_arguments, list):
@@ -121,20 +139,34 @@ class ToolAbility:
             for key, value in parsed_arguments.items():
                 expected_type = parameter_types.get(key, {}).get("type", "string")
                 
-                if expected_type == "integer":
-                    parsed_arguments[key] = int(value)
-                elif expected_type == "number":
-                    parsed_arguments[key] = float(value)
-                elif expected_type == "boolean":
-                    if isinstance(value, str):
-                        parsed_arguments[key] = value.lower() == "true"
+                try:
+                    if expected_type == "integer":
+                        parsed_arguments[key] = int(value)
+                    elif expected_type == "number":
+                        parsed_arguments[key] = float(value)
+                    elif expected_type == "boolean":
+                        if isinstance(value, str):
+                            parsed_arguments[key] = value.lower() == "true"
+                        else:
+                            parsed_arguments[key] = bool(value)
+                    elif expected_type == "array":
+                        if "uniqueItems" in parameter_types.get(key, {}):
+                            parsed_arguments[key] = set(value)
+                        elif "items" in parameter_types.get(key, {}):
+                            parsed_arguments[key] = tuple(value)
+                        else:
+                            parsed_arguments[key] = list(value)
+                    elif expected_type == "null":
+                        parsed_arguments[key] = None
+                    elif expected_type == "decimal":
+                        parsed_arguments[key] = Decimal(value)
                     else:
-                        parsed_arguments[key] = bool(value)
-                else:
-                    parsed_arguments[key] = value
+                        parsed_arguments[key] = value
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Error converting {key}: {e}")
             return parsed_arguments
         else:
-            return None
+            raise ValueError("Parsed arguments must be a list or a dictionary")
 
 
 
