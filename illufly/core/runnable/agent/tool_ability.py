@@ -2,7 +2,7 @@ import inspect
 import json
 import textwrap
 
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, get_origin, get_args, Union
 
 class ToolAbility:
     @classmethod
@@ -46,19 +46,7 @@ class ToolAbility:
             param_value = param.default if param.default is not inspect.Parameter.empty else ""
             
             # 根据参数的注解类型设置 JSON 兼容类型
-            param_type = "string"  # 默认类型
-            if param.annotation is int:
-                param_type = "integer"
-            elif param.annotation is float:
-                param_type = "number"
-            elif param.annotation is bool:
-                param_type = "boolean"
-            elif param.annotation is str:
-                param_type = "string"
-            elif param.annotation is list:
-                param_type = "array"
-            elif param.annotation is dict:
-                param_type = "object"
+            param_type = self._get_json_type(param.annotation)
             
             _parameters["properties"][name] = {
                 "type": param_type,
@@ -67,6 +55,28 @@ class ToolAbility:
             if param.default is inspect.Parameter.empty:
                 _parameters["required"].append(name)
         return _parameters
+
+    def _get_json_type(self, annotation):
+        origin = get_origin(annotation)
+        args = get_args(annotation)
+
+        if origin is Union:
+            # 处理 Union 类型，假设第一个类型为主要类型
+            return [self._get_json_type(arg) for arg in args]
+        elif origin is list or annotation is list:
+            return "array"
+        elif origin is dict or annotation is dict:
+            return "object"
+        elif annotation is int:
+            return "integer"
+        elif annotation is float:
+            return "number"
+        elif annotation is bool:
+            return "boolean"
+        elif annotation is str:
+            return "string"
+        else:
+            return "string"  # 默认类型
 
     @property
     def parameters(self) -> str:
