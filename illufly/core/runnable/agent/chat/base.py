@@ -237,7 +237,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         if "tools_desc" in self.get_bound_vars(messages_std, new_chat=new_chat):
             kwargs["tools"] = None
         else:
-            kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", []))
+            kwargs["tools"] = self.get_tools_desc(kwargs.get("tools", [])) or None
 
         # 重新绑定工具处理的 handlers
         for h in self.tools_handlers:
