@@ -148,6 +148,8 @@ class Runnable(ABC, ExecutorManager, BindingManager):
             resp = action_method(*args, **kwargs)
             if isinstance(resp, Generator):
                 for block in resp:
+                    if not self.continue_running:
+                        break
                     if isinstance(block, str):
                         block = EventBlock("text", block)
                     elif not isinstance(block, EventBlock):
@@ -189,9 +191,13 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
             if isinstance(resp, AsyncGenerator):
                 async for block in resp:
+                    if not self.continue_running:
+                        break
                     await handle_block(block)
             elif isinstance(resp, Generator):
                 for block in resp:
+                    if not self.continue_running:
+                        break
                     await handle_block(block)
 
             return self.last_output
