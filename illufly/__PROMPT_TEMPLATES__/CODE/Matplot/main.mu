@@ -10,7 +10,7 @@
 7. 请选择合适的数据集名称，生成对其进行处理的python代码。
 8. 你可以从{{dataset_names}}中选择一个数据集，这些数据集已经保存在名为`datasets`的全局变量字典中，
    在代码中使用`datasets[数据集名称].df`引用将会返回可用的 pandas.DataFrame 类型;
-   而`datasets[数据集名称].desc`将会返回数据集的描述。  
+   而`datasets[数据集名称].desc`将会返回数据集的描述。
 9. 如果你的处理结果是 pandas 数据框类型，可以将其添加到数据集中备用，这可以使用函数 `add_dataset(df, name, desc)` 来完成操作，其中 df 是 pandas 数据框类型，desc 是数据框的描述。
 
 **这些模块已经加载到沙盒环境中，可以直接使用其声明的变量：**

@@ -77,6 +77,7 @@ class MemoryManager(BindingManager):
         self.memory.clear()
         if self._thread_id is None or self.current_thread_size > 0:
             self._thread_id = next(self.create_thread_id())
+        return self._thread_id
 
     def reset_init_memory(self, messages: Union[str, List[dict]]):
         self.init_memory = Messages(messages, style=self.style)
