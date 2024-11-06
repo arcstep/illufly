@@ -73,6 +73,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self.verbose = False
 
         self.calling_events = []
+        self.calling_id = None
 
         self._last_output = None
 
@@ -107,14 +108,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
     def build_calling_id(self):
         return str(uuid.uuid4())
-
-    def collect_event(self, calling_id: str, event: EventBlock):
-        """
-        收集 EventBlock 数据
-        """
-        if not self.calling_events or self.calling_events[-1]["id"] != calling_id:
-            self.calling_events.append({"id": calling_id, "events": []})
-        self.calling_events[-1]["events"].append(event)
 
     def __call__(
         self,
@@ -156,10 +149,9 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         **kwargs
     ):
         self._last_output = None
-        calling_id = calling_id or self.build_calling_id()
+        self.calling_id = calling_id or self.build_calling_id()
 
         def handle_block(block):
-            self.collect_event(calling_id, block)
             if isinstance(block, str):
                 block = EventBlock("text", block)
             elif not isinstance(block, EventBlock):
@@ -195,13 +187,12 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         **kwargs
     ):
         self._last_output = None
-        calling_id = calling_id or self.build_calling_id()
+        self.calling_id = calling_id or self.build_calling_id()
 
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
             resp = action_method(*args, **kwargs)
             tasks = []
             async def async_handle_block(block):
-                self.collect_event(calling_id, block)
                 if isinstance(block, str):
                     block = EventBlock("text", block)
                 elif not isinstance(block, EventBlock):
@@ -243,6 +234,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     def runnable_info(self):
         return {
             "class_name": self.__class__.__name__,
+            "calling_id": self.calling_id,
         }
 
     def halt(self):

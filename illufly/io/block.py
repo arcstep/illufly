@@ -4,6 +4,7 @@ import hashlib
 import numpy as np
 import pandas as pd
 import copy
+import uuid
 from datetime import datetime
 
 from ..config import get_env, get_ascii_color_code
@@ -12,11 +13,14 @@ class EventBlock():
     def __init__(
         self, 
         block_type: str, 
-        content: Any, 
+        content: Any,
+        content_id: str=None,
         created_at: datetime=None, 
         calling_info: dict=None,
         runnable_info: dict=None
     ):
+        self.id = str(uuid.uuid4().hex)
+        self.content_id = content_id or str(uuid.uuid4().hex)
         self.content = content
         self.block_type = block_type.lower()
         self.created_at = created_at or datetime.now()
@@ -32,6 +36,8 @@ class EventBlock():
     @property
     def json(self):
         return json.dumps({
+            "id": self.id,
+            "content_id": self.content_id,
             "block_type": self.block_type,
             "content": self.text,
             "created_at": self.created_at.isoformat(),

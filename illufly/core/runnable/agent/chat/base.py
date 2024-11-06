@@ -1,6 +1,7 @@
 import json
 import copy
 import asyncio
+import uuid
 
 from abc import abstractmethod
 from typing import Union, List, Dict, Any, Set, Callable
@@ -105,6 +106,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     def runnable_info(self):
         info = super().runnable_info
         info.update({
+            "thread_id": self.thread_id,
             "model_name": self.default_call_args.get("model"),
             **self.model_args
         })
@@ -271,8 +273,12 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             # 执行模型生成任务
             output_text, tools_call = "", []
+            content_id = str(uuid.uuid4().hex)
+
             for block in self.generate(chat_memory, **kwargs):
+                block.content_id = content_id
                 yield block
+
                 if block.block_type in ["chunk", "text"]:
                     output_text += block.text
                 elif block.block_type == "final_text":
@@ -286,17 +292,21 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 handler_openai = OpenAIToolsCalling(tools_to_exec=self._tools_to_exec)
                 # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
                 for block in handler_openai.handle(openai_tools_calling_steps, chat_memory, self.memory):
+                    block.content_id = content_id
+                    yield block
+
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
                         to_continue_call_llm = True
-                    yield block
             else:
                 final_output_text = self._fetch_final_output(output_text, chat_memory)
-                yield EventBlock("final_text", final_output_text)
+                yield EventBlock("final_text", final_output_text, content_id=content_id)
 
                 _tools_behavior = tools_behavior or self.tools_behavior
                 to_continue_call_llm = False
                 for block in self._handle_tool_calls(final_output_text, chat_memory, _tools_behavior):
+                    block.content_id = content_id
                     yield block
+
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
                         if "continue" in _tools_behavior:
                             to_continue_call_llm = True
@@ -342,10 +352,14 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         to_continue_call_llm = True
         while to_continue_call_llm:
             to_continue_call_llm = False
+
             output_text, tools_call = "", []
+            content_id = str(uuid.uuid4().hex)
 
             async for block in self.async_generate(chat_memory, **kwargs):
+                block.content_id = content_id
                 yield block
+
                 if block.block_type in ["chunk", "text"]:
                     output_text += block.text
                 elif block.block_type == "final_text":
@@ -359,17 +373,22 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 handler_openai = OpenAIToolsCalling(tools_to_exec=self._tools_to_exec)
                 # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
                 async for block in handler_openai.async_handle(openai_tools_calling_steps, chat_memory, self.memory):
+                    block.content_id = content_id
+                    yield block
+
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
                         to_continue_call_llm = True
-                    yield block
+
             else:
                 final_output_text = self._fetch_final_output(output_text, chat_memory)
-                yield EventBlock("final_text", final_output_text)
+                yield EventBlock("final_text", final_output_text, content_id=content_id)
 
                 _tools_behavior = tools_behavior or self.tools_behavior
                 to_continue_call_llm = False
                 for block in self._handle_tool_calls(final_output_text, chat_memory, _tools_behavior):
+                    block.content_id = content_id
                     yield block
+
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
                         if "continue" in _tools_behavior:
                             to_continue_call_llm = True
