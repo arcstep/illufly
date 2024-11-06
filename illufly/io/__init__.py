@@ -3,6 +3,7 @@ from .block import EventBlock, EndBlock, NewLineBlock, ResponseBlock
 from .log import log, alog
 from .usage import usage, async_usage
 from .event_stream import event_stream
+from .collect_events import create_collector
 
 from ..core.history import BaseHistory, LocalFileHistory, InMemoryHistory
 
