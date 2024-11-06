@@ -44,7 +44,7 @@ class WebSearch(BaseAgent):
         self._last_output = ""
 
         data = {
-            "request_id": str(uuid.uuid4()),
+            "request_id": str(uuid.uuid1()),
             "tool": self.tool,
             "stream": True,
             "messages": [{"role": "user", "content": prompt}]

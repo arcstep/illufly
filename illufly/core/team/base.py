@@ -14,7 +14,7 @@ class Team:
         name: str=None,
         description: str=None,
     ):
-        self.name = name or str(uuid.uuid4())
+        self.name = name or str(uuid.uuid1())
         self.description = description or ""
         self.agents = agents if agents else set()
         self.chat_learn_folder = chat_learn_folder or get_env("ILLUFLY_CHAT_LEARN")

@@ -273,7 +273,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             # 执行模型生成任务
             output_text, tools_call = "", []
-            content_id = str(uuid.uuid4().hex)
+            content_id = str(uuid.uuid1().hex)
 
             for block in self.generate(chat_memory, **kwargs):
                 block.content_id = content_id
@@ -293,6 +293,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
                 for block in handler_openai.handle(openai_tools_calling_steps, chat_memory, self.memory):
                     block.content_id = content_id
+                    if block.block_type == "chunk":
+                        block.block_type = "tool_resp_chunk"
+                    elif block.block_type == "text":
+                        block.block_type = "tool_resp_text"
                     yield block
 
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
@@ -305,6 +309,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 to_continue_call_llm = False
                 for block in self._handle_tool_calls(final_output_text, chat_memory, _tools_behavior):
                     block.content_id = content_id
+                    if block.block_type == "chunk":
+                        block.block_type = "tool_resp_chunk"
+                    elif block.block_type == "text":
+                        block.block_type = "tool_resp_text"
                     yield block
 
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
@@ -354,7 +362,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             to_continue_call_llm = False
 
             output_text, tools_call = "", []
-            content_id = str(uuid.uuid4().hex)
+            content_id = str(uuid.uuid1().hex)
 
             async for block in self.async_generate(chat_memory, **kwargs):
                 block.content_id = content_id
@@ -374,6 +382,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
                 async for block in handler_openai.async_handle(openai_tools_calling_steps, chat_memory, self.memory):
                     block.content_id = content_id
+                    if block.block_type == "chunk":
+                        block.block_type = "tool_resp_chunk"
+                    elif block.block_type == "text":
+                        block.block_type = "tool_resp_text"
                     yield block
 
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
@@ -387,6 +399,10 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 to_continue_call_llm = False
                 for block in self._handle_tool_calls(final_output_text, chat_memory, _tools_behavior):
                     block.content_id = content_id
+                    if block.block_type == "chunk":
+                        block.block_type = "tool_resp_chunk"
+                    elif block.block_type == "text":
+                        block.block_type = "tool_resp_text"
                     yield block
 
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":

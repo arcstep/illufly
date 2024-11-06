@@ -41,7 +41,7 @@ class OutlineRequest(BaseModel):
 
 @app.post("/start_conversation")
 async def start_conversation():
-    conversation_id = str(uuid.uuid4())
+    conversation_id = str(uuid.uuid1())
     logging.info(f"Starting new conversation with ID: {conversation_id}")
     desk_instances[conversation_id] = Desk(llm=qwen)  # 假设 llm 是 None，实际使用时需要传入具体的 llm 实例
     return {"conversation_id": conversation_id}

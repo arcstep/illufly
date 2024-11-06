@@ -19,8 +19,8 @@ class EventBlock():
         calling_info: dict=None,
         runnable_info: dict=None
     ):
-        self.id = str(uuid.uuid4().hex)
-        self.content_id = content_id or str(uuid.uuid4().hex)
+        self.id = str(uuid.uuid1().hex)
+        self.content_id = content_id or str(uuid.uuid1().hex)
         self.content = content
         self.block_type = block_type.lower()
         self.created_at = created_at or datetime.now()

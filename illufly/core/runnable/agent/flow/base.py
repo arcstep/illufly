@@ -65,7 +65,7 @@ class FlowAgent(BaseAgent):
         """
         开始执行的回调方法。
         """
-        self.thread_id = str(uuid.uuid4())
+        self.thread_id = str(uuid.uuid1())
         self.task = args[0] if args else None
         return args
 
