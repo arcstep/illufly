@@ -83,6 +83,14 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
         BindingManager.__init__(self, **filter_kwargs(kwargs, BindingManager.allowed_params()))
 
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.name == other.name
+        return False
+
     def __repr__(self):
         if self.__class__.__name__ in self.name:
             return f"<{self.name}>"

@@ -77,7 +77,8 @@ class Team():
 
     def hire(self, *agents: Union["ChatAgent"]):
         """
-        雇佣一个智能体
+        雇佣一个智能体。
+        如果名字相同会保留已有实例，不会重复创建。
         """
         for agent in agents:
             agent.team = self
@@ -85,7 +86,7 @@ class Team():
 
     def fire(self, *agents: Union["ChatAgent"]):
         """
-        解雇一个智能体
+        解雇一个智能体。
         """
         for agent in agents:
             agent.team = None
