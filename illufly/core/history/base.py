@@ -33,6 +33,11 @@ class BaseHistory(ABC):
         """列举所有记忆线"""
         pass
 
+    @property
+    def last_thread_id(self):
+        all_thread_ids = self.list_threads()
+        return all_thread_ids[-1] if all_thread_ids else None
+
     @abstractmethod
     def last_thread_id_count(self):
         """获取最近一轮对话的线程 ID"""

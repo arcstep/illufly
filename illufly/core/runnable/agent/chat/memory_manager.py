@@ -41,6 +41,8 @@ class MemoryManager(BindingManager):
 
         self.history = history or InMemoryHistory()
         self.history.reset_init(self.__class__.__name__, self.name)
+        # 加载最近一轮对话的记忆
+        self.history.load_memory(self.history.last_thread_id)
 
         self.init_memory = []
         self.reset_init_memory(memory)
