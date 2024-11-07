@@ -74,39 +74,51 @@ class BaseAgent(Runnable, ToolAbility):
         if not isinstance(self.func, Callable):
             raise ValueError("func must be a callable")
 
-        resp = self.func(*args, **kwargs)
-        if isinstance(resp, Generator):
-            for block in resp:
-                if isinstance(block, EventBlock):
-                    if block.block_type == "final_text":
-                        self._last_output = block.content
-                yield block
-        else:
-            self._last_output = resp
+        try:
+            resp = self.func(*args, **kwargs)
+
+            if isinstance(resp, Generator):
+                for block in resp:
+                    if isinstance(block, EventBlock):
+                        if block.block_type == "final_text":
+                            self._last_output = block.content
+                    yield block
+            else:
+                self._last_output = resp
+                yield EventBlock("text", resp)
+
+        except Exception as e:
+            print(e)
+            resp = str(e)
             yield EventBlock("text", resp)
 
     async def async_call(self, *args, **kwargs):
-        if self.async_func:
-            # 使用 asyncio.iscoroutinefunction 判断是否为协程函数
-            if asyncio.iscoroutinefunction(self.async_func):
-                resp = await self.async_func(*args, **kwargs)
+        try:
+            if self.async_func:
+                # 使用 asyncio.iscoroutinefunction 判断是否为协程函数
+                if asyncio.iscoroutinefunction(self.async_func):
+                    resp = await self.async_func(*args, **kwargs)
+                else:
+                    resp = await self.run_in_executor(self.async_func, *args, **kwargs)
             else:
-                resp = await self.run_in_executor(self.async_func, *args, **kwargs)
-        else:
-            resp = await self.run_in_executor(self.func, *args, **kwargs)
+                resp = await self.run_in_executor(self.func, *args, **kwargs)
 
-        if isinstance(resp, Generator):
-            for block in resp:
-                if isinstance(block, EventBlock):
-                    if block.type == "final_text":
-                        self._last_output = block.content
-                yield block
-        elif isinstance(resp, AsyncGenerator):
-            async for block in resp:
-                if isinstance(block, EventBlock):
-                    if block.type == "final_text":
-                        self._last_output = block.content
-                yield block
-        else:
-            self._last_output = resp
+            if isinstance(resp, Generator):
+                for block in resp:
+                    if isinstance(block, EventBlock):
+                        if block.type == "final_text":
+                            self._last_output = block.content
+                    yield block
+            elif isinstance(resp, AsyncGenerator):
+                async for block in resp:
+                    if isinstance(block, EventBlock):
+                        if block.type == "final_text":
+                            self._last_output = block.content
+                    yield block
+            else:
+                self._last_output = resp
+                yield EventBlock("text", resp)
+
+        except Exception as e:
+            resp = str(e)
             yield EventBlock("text", resp)
