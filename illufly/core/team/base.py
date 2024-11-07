@@ -1,5 +1,6 @@
 from typing import Set, Union
 import uuid
+import re
 
 from ...io import log
 from ...config import get_env
@@ -51,11 +52,14 @@ class Team():
         根据 prompt 中包含的 @agent_name 名称调用团队成员，如果未指定就调用默认成员。
         """
         handlers = kwargs.pop("handlers", [log, self.collect_event])
-        agents = self.get_agent(prompt)
-        for agent in agents:
-            agent.selected(prompt, handllers=handlers, **kwargs)
+        names = self.get_agent_names(prompt)
+        for name in names:
+            prompt = re.sub(rf"(^|\s)@{name}\s", " ", prompt)
+        prompt = prompt.strip()
+        for agent in self.get_agents(names):
+            agent(prompt, handlers=handlers, **kwargs)
 
-    def get_agent(self, prompt: str):
+    def get_agent_names(self, prompt: str):
         """
         返回agent名称列表，如果列表为空就返回self.agents中的第一个
         """
@@ -65,21 +69,30 @@ class Team():
         else:
             return [next(iter(self.agents)).name] if self.agents else []
 
-    def hire(self, agent: Union["ChatAgent"]):
+    def get_agents(self, names: str):
+        """
+        根据名称返回智能体
+        """
+        return [agent for agent in self.agents if agent.name in names]
+
+    def hire(self, *agents: Union["ChatAgent"]):
         """
         雇佣一个智能体
         """
-        agent.team = self
-        self.agents.add(agent)
+        for agent in agents:
+            agent.team = self
+            self.agents.add(agent)
 
-    def fire(self, agent: Union["ChatAgent"]):
+    def fire(self, *agents: Union["ChatAgent"]):
         """
         解雇一个智能体
         """
-        agent.team = None
-        self.agents.discard(agent)
+        for agent in agents:
+            agent.team = None
+            self.agents.discard(agent)
 
-    def collect_event(self, event, **kwargs):
+    @property
+    def collect_event(self):
         """
         收集事件到 store 中。
 
@@ -93,26 +106,29 @@ class Team():
         - thread_id 如果智能体包含连续记忆，则标记连续记忆的 thread_id
         - segments 将 chunk 类事件收集到一起，形成完整段落
         """
-        if self.last_history_id not in self.store:
-            self.store[self.last_history_id] = {}
+        def _collect(event, **kwargs):
+            if self.last_history_id not in self.store:
+                self.store[self.last_history_id] = {}
 
-        calling_id = event.runnable_info["calling_id"]
-        if calling_id not in self.store[self.last_history_id]:
-            self.store[self.last_history_id][calling_id] = {
-                "input": "",
-                "output": "",
-                "segments": {},
-                "other_events": []
-            }
+            calling_id = event.runnable_info["calling_id"]
+            if calling_id not in self.store[self.last_history_id]:
+                self.store[self.last_history_id][calling_id] = {
+                    "input": "",
+                    "output": "",
+                    "segments": {},
+                    "other_events": []
+                }
 
-        node = self.store[self.last_history_id][calling_id]
-        if event.block_type == "user":
-            node["input"] = event.text
-        elif event.block_type in self.chunk_types:
-            node["segments"][event.content_id] = node["segments"].get(event.content_id, "") + event.text
-        elif event.block_type == "final_text":
-            node["output"] = event.text
-        elif event.block_type in self.other_types or self.other_types == "__all__":
-            node["other_events"].append(event.json)
-        else:
-            pass
+            node = self.store[self.last_history_id][calling_id]
+            if event.block_type == "user":
+                node["input"] = event.text
+            elif event.block_type in self.chunk_types:
+                node["segments"][event.content_id] = node["segments"].get(event.content_id, "") + event.text
+            elif event.block_type == "final_text":
+                node["output"] = event.text
+            elif event.block_type in self.other_types or self.other_types == "__all__":
+                node["other_events"].append(event.json)
+            else:
+                pass
+
+        return _collect
