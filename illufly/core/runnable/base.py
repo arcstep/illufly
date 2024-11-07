@@ -32,6 +32,10 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     - 如果需要在多智能体中协同处理
     - 如果包含服务端调度逻辑
 
+    calling_id 是 Runnable 的属性，用于标识一次调用。
+    如果在 Runnable 中调用另一个 Runnable，则需要将该 Runnable 的 calling_id 传递给被调用的 Runnable。
+    这样，即使在一次调用中嵌套了多层的 Runnable，也可以将当次调用中的事件收集到当前调用的上下文，在下次恢复时，
+    可以看到当时的完整调用场景。
     """
     @classmethod
     def allowed_params(cls):
@@ -175,6 +179,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         else:
             raise ValueError("handlers 必须是Callable列表")
 
+        self.calling_id = None
         return self.last_output
 
     async def handle_async_call(
@@ -220,11 +225,11 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                 block.runnable_info = self.runnable_info
                 await async_handle_block(block)
 
+            self.calling_id = None
             return self.last_output
         else:
+            self.calling_id = None
             raise ValueError("handlers 必须是Callable列表")
-
-        return self.last_output
 
     @property
     def is_running(self):
