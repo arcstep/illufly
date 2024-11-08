@@ -28,8 +28,8 @@ class FromOutline(BaseAgent):
     def __init__(self, writer: Union[ChatAgent, FlowAgent]=None, template_id: str=None, prev_k:int=1000, next_k:int=500, **kwargs):
         raise_invalid_params(kwargs, self.__class__.allowed_params())
 
-        if not isinstance(writer, (ChatAgent, FlowAgent, Selector)):
-            raise ValueError("扩写智能体 writer 必须是 ChatAgent 或 FlowAgent 或 Selector 实例")
+        if not isinstance(writer, (ChatAgent, FlowAgent, Selector, BaseAgent)):
+            raise ValueError("扩写智能体 writer 必须是 ChatAgent 或 FlowAgent 或 Selector 或 BaseAgent 实例")
 
         super().__init__(**kwargs)
         self.writer = writer
@@ -89,45 +89,53 @@ class FromOutline(BaseAgent):
                 info = f"执行扩写任务 <{outline_id}>：\n{minify_text(outline)}"
                 yield EventBlock("agent", info)
 
-                # print("*" * 100)
-                # print(draft)
+                self.bind_consumer(
+                    self.writer,
+                    binding_map={
+                        "task": lambda: outline,
+                        "outline": lambda: f'```markdown\n{outline}\n```',
+                        "draft": lambda: f'```markdown\n{draft}\n```'
+                    }
+                )
+
+                messages_for_chat = [
+                    (
+                        'system',
+                        PromptTemplate(
+                            self.template_id,
+                            binding_map={
+                                "outline": lambda: f'```markdown\n{outline}\n```',
+                                "draft": lambda: f'```markdown\n{draft}\n```'
+                            }).format()
+                    ),
+                    (
+                        'user',
+                        "请开始扩写"
+                    )
+                ]
+
                 if isinstance(self.writer, FlowAgent):
+                    for a in self.writer.agents:
+                        if isinstance(a, ChatAgent):
+                            a.clear()
                     input_text = PromptTemplate(self.template_id).format({
                         "outline": lambda: f'```markdown\n{outline}\n```',
                         "draft": lambda: f'```markdown\n{draft}\n```'
                     })
                     yield from self.writer.call(input_text)
-
                 elif isinstance(self.writer, ChatAgent):
-                    yield from self.writer.call([
-                        (
-                            'system',
-                            PromptTemplate(
-                                self.template_id,
-                                binding_map={
-                                    "outline": lambda: f'```markdown\n{outline}\n```',
-                                    "draft": lambda: f'```markdown\n{draft}\n```'
-                                }).format()
-                        ),
-                        (
-                            'user',
-                            "请开始扩写"
-                        )
-                    ])
+                    if self.writer.init_memory:
+                        yield from self.writer.call(outline, new_chat=True)
+                    else:
+                        yield from self.writer.call(messages_for_chat)
                 elif isinstance(self.writer, Selector):
-                    self.bind_consumer(
-                        self.writer,
-                        binding_map={
-                            "task": outline,
-                            "outline": lambda: f'```markdown\n{outline}\n```',
-                            "draft": lambda: f'```markdown\n{draft}\n```'
-                        }
-                    )
                     self.writer.select()
-                    print(self.writer.selected)
-                    yield from self.writer.selected.call(outline, *args, **kwargs)
+                    if isinstance(self.writer.selected, ChatAgent) and not self.writer.selected.init_memory:
+                        yield from self.writer.selected.call(messages_for_chat)
+                    else:
+                        yield from self.writer.selected.call(outline)
                 else:
-                    raise ValueError("writer 必须是 ChatAgent 或 FlowAgent 实例")
+                    yield from self.writer.call(outline, *args, **kwargs)
 
                 self.segments.append(
                     (

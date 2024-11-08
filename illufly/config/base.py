@@ -25,7 +25,7 @@ def get_env(key: str=None):
 
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
-        "ILLUFLY_FINAL_ANSWER_PROMPT": "**最终答案**",
+        "ILLUFLY_FINAL_ANSWER_PROMPT": "最终答案",
 
         # 结束语
         "ILLUFLY_AIGC_INFO_DECLARE": "内容由AI生成，其观点仅代表创作者个人立场",

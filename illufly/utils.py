@@ -92,20 +92,25 @@ def extract_text(resp_md: str, start_marker: str=None, end_marker: str=None):
 
     return resp_md
 
-def extract_final_answer(text: str, final_answer_prompt: str="最终答案："):
+def extract_final_answer(text: str, final_answer_prompt: str="最终答案"):
     """
     提取文本中以 final_answer_prompt 开头的文本。
     """
     final_answer_lines = []
     capture = False
 
+    # 预处理 final_answer_prompt，仅保留字母、中文、数字、下划线和横杠
+    processed_prompt = re.sub(r'[^\w\u4e00-\u9fff-]', '', final_answer_prompt)
+
     for line in text.split('\n'):
-        if line.startswith(final_answer_prompt):
+        # 预处理行，仅保留字母、中文、数字、下划线和横杠
+        processed_line = re.sub(r'[^\w\u4e00-\u9fff-]', '', line)
+        if processed_line == processed_prompt:
             capture = True
-            final_answer_lines.append(line[len(final_answer_prompt):].strip())
+            # 直接添加整行，而不是从 final_answer_prompt 的长度位置开始
+            final_answer_lines.append(line.strip())
         elif capture:
             final_answer_lines.append(line)
-
     final_answer_text = '\n'.join(final_answer_lines).strip()
     return extract_text(final_answer_text, "```", "```") if final_answer_text else ''
 
