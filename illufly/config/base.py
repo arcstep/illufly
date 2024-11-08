@@ -26,6 +26,12 @@ def get_env(key: str=None):
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
         "ILLUFLY_FINAL_ANSWER_PROMPT": "最终答案",
+        "ILLUFLY_FINAL_ANSWER_START": "<final_answer>",
+        "ILLUFLY_FINAL_ANSWER_END": "</final_answer>",
+        "ILLUFLY_CONTEXT_START": "<context>",
+        "ILLUFLY_CONTEXT_END": "</context>",
+        "ILLUFLY_KNOWLEDGE_START": "<knowledge>",
+        "ILLUFLY_KNOWLEDGE_END": "</knowledge>",
 
         # 结束语
         "ILLUFLY_AIGC_INFO_DECLARE": "内容由AI生成，其观点仅代表创作者个人立场",

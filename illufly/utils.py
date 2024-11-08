@@ -3,7 +3,7 @@ import os
 import json
 import hashlib
 import tiktoken
-from typing import List, Union, Dict, Any
+from typing import List, Union, Dict, Any, Tuple
 from .config import get_env
 
 def filter_kwargs(kwargs: Dict, allowed_params: Dict):
@@ -73,22 +73,25 @@ def extract_segments(text: str, start_marker: str, end_marker: str, mode: str = 
 
     return segments
 
-def extract_text(resp_md: str, start_marker: str=None, end_marker: str=None):
+def extract_text(resp_md: str, marker: Tuple[str, str]):
     """
     如果指定开始和结束的标记，就提取标记中间的文本，并移除标记所在的行。
     一旦文本出现Markdown标题（若干个#开头的行），之后的内容就都不要进行start_marker匹配。
     """
+    start_marker, end_marker = marker
+
     if start_marker and end_marker:
         start_lines = resp_md.split('\n')
         # 查找第一个Markdown标题的索引
         markdown_title_index = next((i for i, line in enumerate(start_lines) if line.strip().startswith('#')), len(start_lines))
         
         # 在第一个Markdown标题之前查找start_marker
-        start_index = next((i for i, line in enumerate(start_lines[:markdown_title_index]) if start_marker in line), None)
-        end_index = next((i for i, line in enumerate(reversed(start_lines), 1) if end_marker in line), None)
+        start_index = next((i for i, line in enumerate(start_lines[:markdown_title_index]) if re.search(start_marker, line, re.IGNORECASE)), None)
+        end_index = next((i for i, line in enumerate(reversed(start_lines), 1) if re.search(end_marker, line, re.IGNORECASE)), None)
 
         if start_index is not None and end_index is not None and start_index < len(start_lines) - end_index:
-            return '\n'.join(start_lines[start_index+1:len(start_lines)-end_index]).strip()
+            extracted_text = '\n'.join(start_lines[start_index+1:len(start_lines)-end_index]).strip()
+            return extracted_text
 
     return resp_md
 
@@ -112,7 +115,8 @@ def extract_final_answer(text: str, final_answer_prompt: str="最终答案"):
         elif capture:
             final_answer_lines.append(line)
     final_answer_text = '\n'.join(final_answer_lines).strip()
-    return extract_text(final_answer_text, "```", "```") if final_answer_text else ''
+
+    return extract_text(final_answer_text, ("```", "```")) if final_answer_text else ''
 
 def hash_text(text):
     """

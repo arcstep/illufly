@@ -4,10 +4,10 @@ import asyncio
 import uuid
 
 from abc import abstractmethod
-from typing import Union, List, Dict, Any, Set, Callable
+from typing import Union, List, Tuple, Any
 
 from .....config import get_env
-from .....utils import merge_tool_calls, extract_text, extract_final_answer, raise_invalid_params, filter_kwargs
+from .....utils import merge_tool_calls, extract_text, raise_invalid_params, filter_kwargs
 from .....io import EventBlock, EndBlock, NewLineBlock
 from ....document import Document
 from ...base import Runnable
@@ -41,7 +41,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "end_chk": "是否在最后输出一个 EndBlock",
             "start_marker": "开始标记，默认为 ```",
             "end_marker": "结束标记，默认为 ```",
-            "final_answer_prompt": "最终答案提示词，可通过修改环境变量 ILLUFLY_FINAL_ANSWER_PROMPT 修改默认值",
+            "fetching_context": "上下文提取标记，可通过修改环境变量 ILLUFLY_CONTEXT_START 和 ILLUFLY_CONTEXT_END 修改默认值",
+            "fetching_final_answer": "最终答案提取标记，可通过修改环境变量 ILLUFLY_FINAL_ANSWER_START 和 ILLUFLY_FINAL_ANSWER_END 修改默认值",
             **BaseAgent.allowed_params(),
             **KnowledgeManager.allowed_params(),
             **ToolsManager.allowed_params(),
@@ -53,7 +54,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         end_chk: bool = False,
         start_marker: str=None,
         end_marker: str=None,
-        final_answer_prompt: str=None,
+        fetching_context: Tuple[str, str]=None,
+        fetching_final_answer: Tuple[str, str]=None,
         **kwargs
     ):
         """
@@ -74,7 +76,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         self.start_marker = start_marker or "```"
         self.end_marker = end_marker or "```"
 
-        self.final_answer_prompt = final_answer_prompt or get_env("ILLUFLY_FINAL_ANSWER_PROMPT")
+        self.fetching_context = fetching_context or (get_env("ILLUFLY_CONTEXT_START"), get_env("ILLUFLY_CONTEXT_END"))
+        self.fetching_final_answer = fetching_final_answer or (get_env("ILLUFLY_FINAL_ANSWER_START"), get_env("ILLUFLY_FINAL_ANSWER_END"))
 
         # 在子类中应当将模型参数保存到这个属性中，以便持久化管理
         self.model_args = {"base_url": None, "api_key": None}
@@ -149,24 +152,26 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             yield block
 
     def _fetch_final_output(self, output_text, chat_memory):
-        final_output_text = extract_text(output_text, self.start_marker, self.end_marker)
+        # 提取最终答案
+        self._final_answer = extract_text(output_text, self.fetching_final_answer)
 
-        # 追加到短期记忆中
-        chat_memory.append({
-            "role": "assistant",
-            "content": final_output_text
-        })
+        # 提取上下文
+        context = extract_text(output_text, self.fetching_context)
 
-        # 追加到长期记忆中
-        self.remember_response(final_output_text)
-
+        final_output_text = extract_text(output_text, (self.start_marker, self.end_marker))
         # 保存到最近输出
         self._last_output = final_output_text
 
-        # 提取最终答案
-        self._final_answer = extract_final_answer(output_text, self.final_answer_prompt)
+        messages = Messages([("ai", final_output_text)], style=self.style).to_list()
+        # 追加到短期记忆中
+        chat_memory.extend(messages)
+        # 追加到长期记忆中
+        self.remember_response(messages)
 
-        return final_output_text
+        return {
+            "final_output_text": final_output_text,
+            "context": context
+        }
 
     def _handle_tool_calls(self, final_output_text, chat_memory, tools_behavior: str="none"):
         if "parse" in tools_behavior:
@@ -303,11 +308,13 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         to_continue_call_llm = True
             else:
                 final_output_text = self._fetch_final_output(output_text, chat_memory)
-                yield EventBlock("final_text", final_output_text, content_id=content_id)
+                yield EventBlock("final_text", final_output_text["final_output_text"], content_id=content_id)
+                if final_output_text["context"]:
+                    yield EventBlock("context", final_output_text["context"], content_id=content_id)
 
                 _tools_behavior = tools_behavior or self.tools_behavior
                 to_continue_call_llm = False
-                for block in self._handle_tool_calls(final_output_text, chat_memory, _tools_behavior):
+                for block in self._handle_tool_calls(final_output_text["final_output_text"], chat_memory, _tools_behavior):
                     block.content_id = content_id
                     if block.block_type == "chunk":
                         block.block_type = "tool_resp_chunk"
@@ -393,11 +400,13 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             else:
                 final_output_text = self._fetch_final_output(output_text, chat_memory)
-                yield EventBlock("final_text", final_output_text, content_id=content_id)
+                yield EventBlock("final_text", final_output_text["final_output_text"], content_id=content_id)
+                if final_output_text["context"]:
+                    yield EventBlock("context", final_output_text["context"], content_id=content_id)
 
                 _tools_behavior = tools_behavior or self.tools_behavior
                 to_continue_call_llm = False
-                for block in self._handle_tool_calls(final_output_text, chat_memory, _tools_behavior):
+                for block in self._handle_tool_calls(final_output_text["final_output_text"], chat_memory, _tools_behavior):
                     block.content_id = content_id
                     if block.block_type == "chunk":
                         block.block_type = "tool_resp_chunk"
