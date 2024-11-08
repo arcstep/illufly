@@ -3,6 +3,7 @@ from typing import List, Union
 from .....utils import raise_invalid_params, minify_text
 from .....io import EventBlock
 from ....document import Document
+from ...selector import Selector
 from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
 from ..chat import ChatAgent
@@ -27,8 +28,8 @@ class FromOutline(BaseAgent):
     def __init__(self, writer: Union[ChatAgent, FlowAgent]=None, template_id: str=None, prev_k:int=1000, next_k:int=500, **kwargs):
         raise_invalid_params(kwargs, self.__class__.allowed_params())
 
-        if not isinstance(writer, (ChatAgent, FlowAgent)):
-            raise ValueError("扩写智能体 writer 必须是 ChatAgent 或 FlowAgent 实例")
+        if not isinstance(writer, (ChatAgent, FlowAgent, Selector)):
+            raise ValueError("扩写智能体 writer 必须是 ChatAgent 或 FlowAgent 或 Selector 实例")
 
         super().__init__(**kwargs)
         self.writer = writer
@@ -113,14 +114,26 @@ class FromOutline(BaseAgent):
                             "请开始扩写"
                         )
                     ])
+                elif isinstance(self.writer, Selector):
+                    self.bind_consumer(
+                        self.writer,
+                        binding_map={
+                            "task": outline,
+                            "outline": lambda: f'```markdown\n{outline}\n```',
+                            "draft": lambda: f'```markdown\n{draft}\n```'
+                        }
+                    )
+                    self.writer.select()
+                    print(self.writer.selected)
+                    yield from self.writer.selected.call(outline, *args, **kwargs)
                 else:
                     raise ValueError("writer 必须是 ChatAgent 或 FlowAgent 实例")
 
                 self.segments.append(
                     (
-                        self.writer.thread_id,
+                        self.writer.selected.calling_id,
                         outline_id,
-                        self.writer.last_output
+                        self.writer.selected.last_output
                     )
                 )
 

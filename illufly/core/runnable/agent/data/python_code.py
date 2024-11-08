@@ -271,7 +271,11 @@ class PythonAgent(BaseAgent):
         try:
             if self.exec_code:
                 if self.last_code:
-                    self._last_output = self.execute_code(self.last_code)
+                    result = self.execute_code(self.last_code)
+                    if isinstance(result, pd.DataFrame):
+                        self._last_output = result.to_markdown()
+                    else:
+                        self._last_output = str(result)
                     yield EventBlock("text", self._last_output)
                 else:
                     yield EventBlock("warn", "没有正确生成python代码, 执行失败。")
