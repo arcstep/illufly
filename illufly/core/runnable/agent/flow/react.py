@@ -49,7 +49,8 @@ class ReAct(FlowAgent):
             if output:
                 self.completed_work.append(output)
             else:
-                yield EventBlock("warn", f"{final_answer_prompt}\n没有可用的输出")
+                if not planner.final_answer:
+                    yield EventBlock("warn", f"观察结果中没有 final_answer，可能导致无法结束")
 
             if agent.tools_calling_steps:
                 all_results = "\n".join([step["result"] for step in agent.tools_calling_steps])

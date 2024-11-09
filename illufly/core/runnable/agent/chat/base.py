@@ -73,7 +73,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         self.fetching_context = fetching_context or (get_env("ILLUFLY_CONTEXT_START"), get_env("ILLUFLY_CONTEXT_END"))
         self.fetching_final_answer = fetching_final_answer or (get_env("ILLUFLY_FINAL_ANSWER_START"), get_env("ILLUFLY_FINAL_ANSWER_END"))
-        self.fetching_output = fetching_output
+        self.fetching_output = fetching_output or (get_env("ILLUFLY_OUTPUT_START"), get_env("ILLUFLY_OUTPUT_END"))
 
         # 在子类中应当将模型参数保存到这个属性中，以便持久化管理
         self.model_args = {"base_url": None, "api_key": None}
@@ -149,12 +149,14 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     def _fetch_final_output(self, output_text, chat_memory):
         # 提取最终答案
-        self._final_answer = extract_text(output_text, self.fetching_final_answer)
+        self._final_answer = extract_text(output_text, self.fetching_final_answer, mode="single")
 
         # 提取上下文
-        context = extract_text(output_text, self.fetching_context)
+        context = extract_text(output_text, self.fetching_context, mode="multiple")
 
-        final_output_text = extract_text(output_text, self.fetching_output)
+        # 提取输出内容
+        final_output_text = extract_text(output_text, self.fetching_output, mode="single")
+
         # 保存到最近输出
         self._last_output = final_output_text
 

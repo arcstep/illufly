@@ -90,7 +90,7 @@ class Markdown():
         tag_start = get_env("ILLUFLY_OUTLINE_START")
         tag_end = get_env("ILLUFLY_OUTLINE_END")
         md = self.__class__.to_text([outline_doc])
-        task = extract_text(md, (tag_start, tag_end))
+        task = extract_text(md, (tag_start, tag_end), mode="single")
 
         return (draft, task)
 

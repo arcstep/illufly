@@ -44,7 +44,8 @@ class CoT(FlowAgent):
             if output:
                 self.completed_work.append(output)
             else:
-                yield EventBlock("warn", f"{final_answer_prompt}\n没有可用的输出")
+                if not planner.final_answer:
+                    yield EventBlock("warn", f"观察结果中没有 final_answer，可能导致无法结束")
 
             if agent.last_output:
                 observation = f'\n**观察**\n上面的行动结果为:\n{agent.last_output}\n'

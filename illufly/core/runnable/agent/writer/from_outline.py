@@ -130,8 +130,11 @@ class FromOutline(BaseAgent):
                         yield from self.writer.call(messages_for_chat)
                 elif isinstance(self.writer, Selector):
                     self.writer.select()
-                    if isinstance(self.writer.selected, ChatAgent) and not self.writer.selected.init_memory:
-                        yield from self.writer.selected.call(messages_for_chat)
+                    if isinstance(self.writer.selected, ChatAgent): 
+                        if not self.writer.selected.init_memory:
+                            yield from self.writer.selected.call(messages_for_chat)
+                        else:
+                            yield from self.writer.selected.call(outline)
                     else:
                         yield from self.writer.selected.call(outline)
                 else:

@@ -1,6 +1,6 @@
 from typing import List, Union, Optional
 from .....config import get_env
-from .....utils import extract_segments, minify_text
+from .....utils import extract_text, minify_text
 from .....io import EventBlock
 from ....document import Document
 from ...base import Runnable
@@ -94,10 +94,10 @@ class Retriever(BaseAgent):
         translated_queries = set()
         for translator in self.translators:
             if isinstance(translator, ChatAgent):
-                output_text = translator(query, new_chat=True)
-                valid_text = extract_segments(output_text, ("```", "```"), mode="first-last")
                 mm = MarkMeta()
-                docs = mm.load_text("\n".join(valid_text))
+                output_text = translator(query, new_chat=True)
+                valid_text = extract_text(output_text, ("```", "```"), mode="single")
+                docs = mm.load_text(valid_text)
                 # mm.save()
                 for doc in docs:
                     translated_queries.add(doc.text)

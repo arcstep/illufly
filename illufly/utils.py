@@ -35,11 +35,11 @@ def raise_not_supply_all(info: str, *args):
     if all(arg is None for arg in args):
         raise ValueError(info)
 
-def extract_segments(text: str, marker: Tuple[str, str], mode: str = 'all', include_markers: bool = False) -> List[str]:
+def extract_segments(text: str, marker: Tuple[str, str], mode: str = 'single', include_markers: bool = False) -> List[str]:
     """
     根据模式提取文本中符合条件的片段。
-    mode='all'：提取每一对start_marker和end_marker之间的内容。
-    mode='first_last'：提取第一个start_marker和最后一个end_marker之间的内容。
+    mode='multiple'：提取每一对start_marker和end_marker之间的内容。
+    mode='single'：提取第一个start_marker和最后一个end_marker之间的内容。
     """
     if not marker:
         return [text] if text else []
@@ -48,7 +48,7 @@ def extract_segments(text: str, marker: Tuple[str, str], mode: str = 'all', incl
     lines = text.split('\n')
     segments = []
 
-    if mode == 'all':
+    if mode == 'multiple':
         capture = False
         current_segment = []
         for line in lines:
@@ -83,7 +83,7 @@ def extract_segments(text: str, marker: Tuple[str, str], mode: str = 'all', incl
             segments.append('\n'.join(current_segment).strip())
             capture = False
 
-    elif mode == 'first_last':
+    elif mode == 'single':
         start_index = None
         end_index = None
 
@@ -111,6 +111,9 @@ def extract_segments(text: str, marker: Tuple[str, str], mode: str = 'all', incl
 
         if start_index is not None and end_index is not None and start_index < end_index:
             segments.append('\n'.join(lines[start_index:end_index]).strip())
+        
+        if not segments:
+            return [text]
 
     return segments
 
@@ -138,7 +141,7 @@ def extract_final_answer(text: str, final_answer_prompt: str="最终答案"):
             final_answer_lines.append(line)
     final_answer_text = '\n'.join(final_answer_lines).strip()
 
-    return extract_text(final_answer_text, ("```", "```")) if final_answer_text else ''
+    return extract_text(final_answer_text, ("```", "```"), mode="single") if final_answer_text else ''
 
 def hash_text(text):
     """

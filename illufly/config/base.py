@@ -32,6 +32,8 @@ def get_env(key: str=None):
         "ILLUFLY_CONTEXT_END": "</context>",
         "ILLUFLY_KNOWLEDGE_START": "<knowledge>",
         "ILLUFLY_KNOWLEDGE_END": "</knowledge>",
+        "ILLUFLY_OUTPUT_START": "```markdown",
+        "ILLUFLY_OUTPUT_END": "```",
 
         # 结束语
         "ILLUFLY_AIGC_INFO_DECLARE": "内容由AI生成，其观点仅代表创作者个人立场",

@@ -46,8 +46,7 @@ class PythonAgent(BaseAgent):
             raise ValueError("agent 必须是 ChatAgent 实例")
 
         self.agent = agent
-        self.agent.start_marker = "```python"
-        self.agent.end_marker = "```"
+        self.agent.fetching_output = ("```python", "```")
 
         self._last_code = None
 
@@ -146,7 +145,14 @@ class PythonAgent(BaseAgent):
         except Exception as e:
             return f"执行代码时发生错误: {e}"
 
-        return exec_namespace.get('last_output', "生成的代码已经执行，但返回了空结果。")
+        # 提取需要的结果
+        last_output = exec_namespace.get('last_output', "生成的代码已经执行，但返回了空结果。")
+
+        # 显式删除 exec_namespace
+        del exec_namespace
+
+        # 返回提取的结果
+        return last_output
 
     @property
     def registered_global(self):
@@ -158,6 +164,7 @@ class PythonAgent(BaseAgent):
             "last_output": None,
             "datasets": self.datasets,  # 数据集清单
             "add_dataset": self.add_dataset,  # 添加数据集
+            "main": lambda: None,  # 默认的 main 函数
         }
 
     @property
@@ -189,6 +196,7 @@ class PythonAgent(BaseAgent):
             raise RuntimeError("Unsupported operating system for setting Chinese font.")
 
         return [
+            "# 设置中文字体",
             f"font_prop = fm.FontProperties(fname='{font_path}')",
             "plt.rcParams['font.family'] = font_prop.get_name()",
         ]
@@ -266,7 +274,11 @@ class PythonAgent(BaseAgent):
             in self.agent.last_output.split('\n')
             if not line.strip().startswith('import')
         ])
-        self._last_code = f"{self.safe_header_code}\n{safety_code}\nlast_output = main()\n"
+        self._last_code = "\n\n".join([
+            self.safe_header_code,
+            safety_code,
+            "last_output = main()",
+        ])
 
         try:
             if self.exec_code:
