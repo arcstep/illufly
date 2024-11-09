@@ -1,6 +1,6 @@
 from typing import List, Dict
 
-from .....utils import extract_segments, raise_invalid_params
+from .....utils import raise_invalid_params
 from .....io import EventBlock
 from ....dataset import Dataset
 from ...prompt_template import PromptTemplate

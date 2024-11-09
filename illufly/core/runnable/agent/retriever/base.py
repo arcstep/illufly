@@ -95,7 +95,7 @@ class Retriever(BaseAgent):
         for translator in self.translators:
             if isinstance(translator, ChatAgent):
                 output_text = translator(query, new_chat=True)
-                valid_text = extract_segments(output_text, "```", "```", mode="first-last")
+                valid_text = extract_segments(output_text, ("```", "```"), mode="first-last")
                 mm = MarkMeta()
                 docs = mm.load_text("\n".join(valid_text))
                 # mm.save()

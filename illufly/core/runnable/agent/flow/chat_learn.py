@@ -62,8 +62,8 @@ class ChatLearn(FlowAgent):
 
         def fetch_faq(agent: BaseAgent):
             final_output_text = agent.last_output
-            questions = extract_segments(final_output_text, '<question>', '</question>')
-            knowledges = extract_segments(final_output_text, '<knowledge>', '</knowledge>')
+            questions = extract_segments(final_output_text, ('<question>', '</question>'))
+            knowledges = extract_segments(final_output_text, ('<knowledge>', '</knowledge>'))
             metadata = {"class": scribe.__class__.__name__, "name": scribe.name, "thread_id": scribe.thread_id}
 
             # 保存 Q/K 语料

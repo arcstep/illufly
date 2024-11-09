@@ -1,6 +1,6 @@
 from typing import Union, List, Callable
 
-from .....utils import extract_segments, filter_kwargs, raise_invalid_params
+from .....utils import filter_kwargs, raise_invalid_params
 from .....io import EventBlock
 from ...prompt_template import PromptTemplate
 from ...selector import Selector, End

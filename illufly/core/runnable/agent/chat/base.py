@@ -39,10 +39,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         """
         return {
             "end_chk": "是否在最后输出一个 EndBlock",
-            "start_marker": "开始标记，默认为 ```",
-            "end_marker": "结束标记，默认为 ```",
             "fetching_context": "上下文提取标记，可通过修改环境变量 ILLUFLY_CONTEXT_START 和 ILLUFLY_CONTEXT_END 修改默认值",
             "fetching_final_answer": "最终答案提取标记，可通过修改环境变量 ILLUFLY_FINAL_ANSWER_START 和 ILLUFLY_FINAL_ANSWER_END 修改默认值",
+            "fetching_output": "输出内容提取标记",
             **BaseAgent.allowed_params(),
             **KnowledgeManager.allowed_params(),
             **ToolsManager.allowed_params(),
@@ -52,10 +51,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     def __init__(
         self,
         end_chk: bool = False,
-        start_marker: str=None,
-        end_marker: str=None,
         fetching_context: Tuple[str, str]=None,
         fetching_final_answer: Tuple[str, str]=None,
+        fetching_output: Tuple[str, str]=None,
         **kwargs
     ):
         """
@@ -73,11 +71,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         self.end_chk = end_chk
 
-        self.start_marker = start_marker or "```"
-        self.end_marker = end_marker or "```"
-
         self.fetching_context = fetching_context or (get_env("ILLUFLY_CONTEXT_START"), get_env("ILLUFLY_CONTEXT_END"))
         self.fetching_final_answer = fetching_final_answer or (get_env("ILLUFLY_FINAL_ANSWER_START"), get_env("ILLUFLY_FINAL_ANSWER_END"))
+        self.fetching_output = fetching_output
 
         # 在子类中应当将模型参数保存到这个属性中，以便持久化管理
         self.model_args = {"base_url": None, "api_key": None}
@@ -158,7 +154,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         # 提取上下文
         context = extract_text(output_text, self.fetching_context)
 
-        final_output_text = extract_text(output_text, (self.start_marker, self.end_marker))
+        final_output_text = extract_text(output_text, self.fetching_output)
         # 保存到最近输出
         self._last_output = final_output_text
 
