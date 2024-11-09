@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Any, Callable
 
 from .....utils import raise_invalid_params
 from .....io import EventBlock
@@ -34,6 +34,9 @@ class PythonAgent(BaseAgent):
         datasets: List[Dataset]=None,
         exec_code: bool=True,
         font_path: str=None,
+        allow_vars: Dict[str, Any]=None,
+        allow_safe_builtins: Dict[str, Callable]=None,
+        allow_safe_header_code: List[str]=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.allowed_params())
@@ -41,6 +44,9 @@ class PythonAgent(BaseAgent):
 
         self.datasets = self._initialize_datasets(datasets)
         self.exec_code = exec_code
+        self.allow_vars = allow_vars
+        self.allow_safe_builtins = allow_safe_builtins
+        self.allow_safe_header_code = allow_safe_header_code
 
         if not isinstance(agent, ChatAgent):
             raise ValueError("agent 必须是 ChatAgent 实例")
@@ -134,7 +140,7 @@ class PythonAgent(BaseAgent):
         """
         return self._last_code
 
-    def execute_code(self, code: str):
+    def exec(self, code: str):
         """
         执行代码，并返回执行结果。
         """
@@ -145,14 +151,18 @@ class PythonAgent(BaseAgent):
         except Exception as e:
             return f"执行代码时发生错误: {e}"
 
-        # 提取需要的结果
-        last_output = exec_namespace.get('last_output', "生成的代码已经执行，但返回了空结果。")
+        # 优先提取 result 变量的值
+        last_output = exec_namespace.get('result')
+
+        # 如果 result 不存在，则提取最后一个变量的值
+        if last_output is None and exec_namespace:
+            last_output = list(exec_namespace.values())[-1]
 
         # 显式删除 exec_namespace
         del exec_namespace
 
         # 返回提取的结果
-        return last_output
+        return last_output if last_output is not None else "生成的代码已经执行，但返回了空结果。"
 
     @property
     def registered_global(self):
@@ -165,6 +175,7 @@ class PythonAgent(BaseAgent):
             "datasets": self.datasets,  # 数据集清单
             "add_dataset": self.add_dataset,  # 添加数据集
             "main": lambda: None,  # 默认的 main 函数
+            **(self.allow_vars or {}),
         }
 
     @property
@@ -179,6 +190,7 @@ class PythonAgent(BaseAgent):
             "import matplotlib.pyplot as plt",
             "import matplotlib.font_manager as fm",
             *self.get_set_chinese_font_code(),
+            *(self.allow_safe_header_code or []),
         ])
 
     def get_set_chinese_font_code(self):
@@ -257,6 +269,7 @@ class PythonAgent(BaseAgent):
             "isinstance": isinstance,
             "iter": iter,
             "next": next,
+            **(self.allow_safe_builtins or {}),
         }
 
     def call(self, question: str, **kwargs):
@@ -277,13 +290,13 @@ class PythonAgent(BaseAgent):
         self._last_code = "\n\n".join([
             self.safe_header_code,
             safety_code,
-            "last_output = main()",
+            "result = main()",
         ])
 
         try:
             if self.exec_code:
                 if self.last_code:
-                    result = self.execute_code(self.last_code)
+                    result = self.exec(self.last_code)
                     if isinstance(result, pd.DataFrame):
                         self._last_output = result.to_markdown()
                     else:
