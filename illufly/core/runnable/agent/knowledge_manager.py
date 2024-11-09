@@ -5,7 +5,7 @@ from typing import Any, Set, Union, List
 from ....config import get_env
 from ...document import Document
 from ..vectordb import VectorDB
-from ...team import Team
+from ..team import Team
 from .retriever import Retriever
 
 class KnowledgeManager:

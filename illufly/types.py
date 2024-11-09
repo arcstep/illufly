@@ -5,7 +5,6 @@ from .core.runnable.agent.chat.tools_calling import BaseToolCalling, ToolCall, S
 from .core.runnable.agent.tool_ability import ToolAbility
 from .core.document import Document
 from .core.dataset import Dataset
-from .core.team import Team
 from .io import EventBlock, EndBlock
 
 __all__ = [
@@ -23,5 +22,4 @@ __all__ = [
     "EventBlock",
     "EndBlock",
     "Dataset",
-    "Team",
 ]

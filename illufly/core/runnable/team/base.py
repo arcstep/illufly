@@ -2,10 +2,11 @@ from typing import Set, Union
 import uuid
 import re
 
-from ...io import log
-from ...config import get_env
+from ....io import log
+from ....config import get_env
+from ..base import Runnable
 
-class Team():
+class Team(Runnable):
     """
     管理多个 ChatAgent 实例，以及他们之间的共享资源、事件收集。
     """
@@ -19,9 +20,11 @@ class Team():
         description: str=None,
         chunk_types: list=None,
         other_types: list=None,
+        **kwargs
     ):
-        self.name = name or str(uuid.uuid1())
-        self.description = description or ""
+        super().__init__(
+            **kwargs
+        )
 
         self.agents = agents if agents else set()
         self.agents_thread_ids = {}
@@ -31,6 +34,7 @@ class Team():
         self.store = store or {}
         self.chunk_types = chunk_types or ["chunk", "tool_resp_chunk", "text", "tool_resp_text"]
         self.other_types = other_types or ["warn", "error", "info"]
+        self.handlers.append(self.collect_event)
 
         self.last_history_id = None
         self.create_new_history()
@@ -53,17 +57,16 @@ class Team():
             "callings": {}
         }
 
-    def __call__(self, prompt: str, **kwargs):
+    def call(self, prompt: str, **kwargs):
         """
         根据 prompt 中包含的 @agent_name 名称调用团队成员，如果未指定就调用默认成员。
         """
-        handlers = kwargs.pop("handlers", [log, self.collect_event])
         names = self.fetch_agent_names(prompt)
         for name in names:
             prompt = re.sub(rf"(^|\s)@{name}\s", " ", prompt)
         prompt = prompt.strip()
         for agent in self.get_agents(names):
-            agent(prompt, handlers=handlers, **kwargs)
+            yield from agent.call(prompt, **kwargs)
 
     def fetch_agent_names(self, prompt: str):
         """

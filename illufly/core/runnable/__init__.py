@@ -12,3 +12,4 @@ from .embeddings import BaseEmbeddings
 from .vectordb import VectorDB
 from .markmeta import MarkMeta
 from .reranker import BaseReranker
+from .team import Team
