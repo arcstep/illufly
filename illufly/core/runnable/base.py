@@ -8,7 +8,7 @@ from functools import partial
 
 from .executor_manager import ExecutorManager
 from .binding_manager import BindingManager
-from ...io import log, EventBlock
+from ...io import log, EventBlock, event_stream
 from ...utils import filter_kwargs, raise_invalid_params
 
 
@@ -128,6 +128,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         verbose: bool = False,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         block_processor: Callable = None,
+        generator: str = None,
         action: str = None,
         calling_id: str = None,
         **kwargs
@@ -138,15 +139,15 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self._last_output = None
         self.calling_id = calling_id or self.build_calling_id()
 
-        block_processor = block_processor or self.block_processor
+        block_processor = block_processor or self.block_processor or event_stream
         self.continue_running = True
         _handlers = handlers or self.handlers
         _verbose = self.verbose or verbose
 
-        if any(inspect.iscoroutinefunction(handler) for handler in _handlers):
+        if generator == "async" or any(inspect.iscoroutinefunction(handler) for handler in _handlers):
             method = getattr(self, action) if action else self.async_call
 
-            if block_processor:
+            if generator:
                 return self.generate_async_call(
                     *args,
                     verbose=_verbose,
@@ -166,7 +167,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         else:
             method = getattr(self, action) if action else self.call
 
-            if block_processor:
+            if generator:
                 return self.generate_sync_call(
                     *args,
                     verbose=_verbose,
