@@ -3,7 +3,7 @@ from typing import AsyncIterable, Union
 import logging
 import asyncio
 
-from .block import EventBlock
+from ..block import EventBlock
 
 def mask_sensitive_info(data):
     """

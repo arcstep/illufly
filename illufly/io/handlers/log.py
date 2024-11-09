@@ -3,7 +3,7 @@ import time
 import asyncio
 
 from typing import Callable, Iterable, Union, AsyncIterable
-from .block import EventBlock, NewLineBlock
+from ..block import EventBlock, NewLineBlock
 
 __CHUNK_BLOCK_TYPES__ = ["text", "chunk", "tool_resp_text", "tool_resp_chunk"]
 __NOT_PRINT_BLOCK_TYPES__ = ["final_text", "response"]

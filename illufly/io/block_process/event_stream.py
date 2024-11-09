@@ -3,7 +3,7 @@ from typing import AsyncIterable, Union
 import logging
 import asyncio
 
-from .block import EventBlock
+from ..block import EventBlock
 
 def event_stream(block, verbose: bool=False, **kwargs):
     """
