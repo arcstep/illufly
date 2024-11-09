@@ -133,7 +133,7 @@ class FlowAgent(BaseAgent):
 
             # 广播节点信息给 handlers
             info = self._get_node_info(current_index + 1, current_node_name)
-            yield EventBlock("agent", info)
+            yield EventBlock("node", info)
 
             # 执行当前节点的 call 方法
             call_resp = selected_agent.selected.call(*current_args, **current_kwargs)
@@ -214,7 +214,7 @@ class FlowAgent(BaseAgent):
 
             # 广播节点信息给 handlers
             info = self._get_node_info(current_index + 1, current_node_name)
-            yield EventBlock("agent", info)
+            yield EventBlock("node", info)
 
             # 执行当前节点的 call 方法
             call_resp = await selected_agent.selected.async_call(*current_args, **current_kwargs)
@@ -248,5 +248,5 @@ class FlowAgent(BaseAgent):
 
 
     def _get_node_info(self, index, node_name):
-        return f">>> Node {index}: {node_name}"
+        return f">>> flow-node-{index}: {node_name}"
 

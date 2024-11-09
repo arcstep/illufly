@@ -29,9 +29,11 @@ class Team():
         self.chat_learn_folder = chat_learn_folder or get_env("ILLUFLY_CHAT_LEARN")
 
         self.store = store or {}
-        self.last_history_id = str(uuid.uuid1())
         self.chunk_types = chunk_types or ["chunk", "tool_resp_chunk", "text", "tool_resp_text"]
-        self.other_types = other_types or []
+        self.other_types = other_types or ["warn", "error", "info"]
+
+        self.last_history_id = None
+        self.create_new_history()
 
     def __repr__(self):
         return f"Team(name={self.name}, agents={self.names}, folder={self.folders})"
@@ -46,24 +48,28 @@ class Team():
 
     def create_new_history(self):
         self.last_history_id = str(uuid.uuid1())
+        self.store[self.last_history_id] = {
+            "threads": set({}),
+            "callings": {}
+        }
 
     def __call__(self, prompt: str, **kwargs):
         """
         根据 prompt 中包含的 @agent_name 名称调用团队成员，如果未指定就调用默认成员。
         """
         handlers = kwargs.pop("handlers", [log, self.collect_event])
-        names = self.get_agent_names(prompt)
+        names = self.fetch_agent_names(prompt)
         for name in names:
             prompt = re.sub(rf"(^|\s)@{name}\s", " ", prompt)
         prompt = prompt.strip()
         for agent in self.get_agents(names):
             agent(prompt, handlers=handlers, **kwargs)
 
-    def get_agent_names(self, prompt: str):
+    def fetch_agent_names(self, prompt: str):
         """
         返回agent名称列表，如果列表为空就返回self.agents中的第一个
         """
-        agent_names = [agent.name for agent in self.agents if re.search(r"(^|\s)@(\w+)\s", prompt)]
+        agent_names = re.findall(r"(?:^|\s)@(\w+)(?=\s)", prompt)
         if agent_names:
             return agent_names
         else:
@@ -108,19 +114,28 @@ class Team():
         - segments 将 chunk 类事件收集到一起，形成完整段落
         """
         def _collect(event, **kwargs):
+            if event.runnable_info.get("thread_id", None):
+                thread = (
+                    event.runnable_info["name"],
+                    event.runnable_info["thread_id"],
+                )
+                self.store[self.last_history_id]["threads"].add(thread)
+
             if self.last_history_id not in self.store:
-                self.store[self.last_history_id] = {}
+                self.store[self.last_history_id]["callings"] = {}
 
             calling_id = event.runnable_info["calling_id"]
-            if calling_id not in self.store[self.last_history_id]:
-                self.store[self.last_history_id][calling_id] = {
+            if calling_id not in self.store[self.last_history_id]["callings"]:
+                self.store[self.last_history_id]["callings"][calling_id] = {
+                    "agent_name": event.runnable_info["name"],
                     "input": "",
                     "output": "",
                     "segments": {},
                     "other_events": []
                 }
 
-            node = self.store[self.last_history_id][calling_id]
+            node = self.store[self.last_history_id]["callings"][calling_id]
+
             if event.block_type == "user":
                 node["input"] = event.text
             elif event.block_type in self.chunk_types:

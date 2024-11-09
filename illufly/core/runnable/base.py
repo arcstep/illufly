@@ -173,6 +173,10 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                 if not inspect.iscoroutinefunction(handler):
                     handler(block, verbose=verbose, **kwargs)
 
+        block = EventBlock("runnable", self.name)
+        block.runnable_info = self.runnable_info
+        handle_block(block)
+
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
             resp = action_method(*args, **kwargs)
             if isinstance(resp, Generator):
@@ -201,6 +205,10 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     ):
         self._last_output = None
         self.calling_id = calling_id or self.build_calling_id()
+
+        block = EventBlock("runnable", self.name)
+        block.runnable_info = self.runnable_info
+        handle_block(block)
 
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
             resp = action_method(*args, **kwargs)
@@ -246,6 +254,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     @property
     def runnable_info(self):
         return {
+            "name": self.name,
             "class_name": self.__class__.__name__,
             "calling_id": self.calling_id,
         }
