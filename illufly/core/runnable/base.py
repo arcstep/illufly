@@ -141,7 +141,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
         block_processor = block_processor or self.block_processor or event_stream
         self.continue_running = True
-        _handlers = handlers or self.handlers
+        _handlers = handlers if handlers is not None else self.handlers
         _verbose = self.verbose or verbose
 
         if generator == "async" or any(inspect.iscoroutinefunction(handler) for handler in _handlers):

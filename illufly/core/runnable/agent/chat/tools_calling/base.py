@@ -74,7 +74,11 @@ class BaseToolCalling:
                     if isinstance(x, EventBlock):
                         if x.block_type == "final_tool_resp":
                             tool_resp = x.text
-                        elif x.block_type in ["chunk", "text"]:
+                        elif x.block_type == "chunk":
+                            x.block_type = "tool_resp_chunk"
+                            tool_resp += x.text
+                        elif x.block_type == "text":
+                            x.block_type = "tool_resp_text"
                             tool_resp += x.text
                         yield x
                     else:
@@ -105,7 +109,11 @@ class BaseToolCalling:
                     if isinstance(x, EventBlock):
                         if x.block_type == "final_tool_resp":
                             tool_resp = x.text
-                        elif x.block_type in ["chunk", "text"]:
+                        elif x.block_type == "chunk":
+                            x.block_type = "tool_resp_chunk"
+                            tool_resp += x.text
+                        elif x.block_type == "text":
+                            x.block_type = "tool_resp_text"
                             tool_resp += x.text
                         yield x
                     else:
