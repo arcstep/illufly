@@ -217,10 +217,14 @@ class FlowAgent(BaseAgent):
             yield EventBlock("node", info)
 
             # 执行当前节点的 call 方法
-            call_resp = await selected_agent.selected.async_call(*current_args, **current_kwargs)
+            call_resp = selected_agent.selected.async_call(*current_args, **current_kwargs)
             if isinstance(call_resp, AsyncGenerator):
                 async for block in call_resp:
                     yield block
+            else:
+                # 如果 call_resp 不是异步生成器，直接 await
+                result = await call_resp
+                yield result
 
             # 分析当前节点的输出
             if selected_agent.selected.last_output:
