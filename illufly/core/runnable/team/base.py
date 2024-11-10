@@ -2,7 +2,7 @@ from typing import Set, Union
 import uuid
 import re
 
-from ....io import log
+from ....io import log, EventBlock
 from ....config import get_env
 from ..base import Runnable
 
@@ -34,7 +34,10 @@ class Team(Runnable):
         self.store = store or {}
         self.chunk_types = chunk_types or ["chunk", "tool_resp_chunk", "text", "tool_resp_text"]
         self.other_types = other_types or ["warn", "error", "info"]
+
         self.handlers.append(self.collect_event)
+        if self.block_processor is None:
+            self.block_processor = self.event_stream
 
         self.last_history_id = None
         self.create_new_history()
@@ -100,6 +103,20 @@ class Team(Runnable):
         for agent in agents:
             agent.team = None
             self.agents.discard(agent)
+
+    @property
+    def event_stream(self):
+        """
+        生成适合于 Web 处理的 SSE 事件流格式的数据。
+        """
+        valid_block_types = self.chunk_types + self.other_types
+        def _event_stream(block, verbose: bool=False, **kwargs):
+            if isinstance(block, EventBlock) and block.block_type in valid_block_types:
+                return f"event: {block.block_type}\ndata: {block.text}\n"
+            else:
+                return ""
+
+        return _event_stream
 
     @property
     def collect_event(self):

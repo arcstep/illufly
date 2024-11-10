@@ -234,14 +234,16 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                         return
 
                     self.handle_block(block, handlers, verbose, **kwargs)
-                    yield block_processor(block, verbose=verbose, **kwargs)
-                    asyncio.sleep(0)
+                    block_text = block_processor(block, verbose=verbose, **kwargs)
+                    if block_text:
+                        yield block_text
             else:
                 block = EventBlock("text", str(resp))
                 block.runnable_info = self.runnable_info
                 self.handle_block(block, handlers, verbose, **kwargs)
-                yield block_processor(block, verbose=verbose, **kwargs)
-                asyncio.sleep(0)
+                block_text = block_processor(block, verbose=verbose, **kwargs)
+                if block_text:
+                    yield block_text
         else:
             raise ValueError("handlers 必须是Callable列表")
 
@@ -297,21 +299,27 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                     if not self.continue_running:
                         return
                     await self.async_handle_block(block, handlers, verbose, **kwargs)
-                    yield block_processor(block, verbose=verbose, **kwargs)
-                    await asyncio.sleep(0)
+                    block_text = block_processor(block, verbose=verbose, **kwargs)
+                    if block_text:
+                        yield block_text
+                        await asyncio.sleep(0)
             elif isinstance(resp, Generator):
                 for block in resp:
                     if not self.continue_running:
                         return
                     await self.async_handle_block(block, handlers, verbose, **kwargs)
-                    yield block_processor(block, verbose=verbose, **kwargs)
-                    await asyncio.sleep(0)
+                    block_text = block_processor(block, verbose=verbose, **kwargs)
+                    if block_text:
+                        yield block_text
+                        await asyncio.sleep(0)
             else:
                 block = EventBlock("text", str(resp))
                 block.runnable_info = self.runnable_info
                 await self.async_handle_block(block, handlers, verbose, **kwargs)
-                yield block_processor(block, verbose=verbose, **kwargs)
-                await asyncio.sleep(0)
+                block_text = block_processor(block, verbose=verbose, **kwargs)
+                if block_text:
+                    yield block_text
+                    await asyncio.sleep(0)
         else:
             raise ValueError("handlers 必须是Callable列表")
 
