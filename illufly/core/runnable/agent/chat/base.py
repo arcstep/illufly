@@ -149,13 +149,13 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
     def _fetch_final_output(self, output_text, chat_memory):
         # 提取最终答案
-        self._final_answer = extract_text(output_text, self.fetching_final_answer, mode="single")
+        self._final_answer = extract_text(output_text, self.fetching_final_answer, strict=True)
 
         # 提取上下文
-        context = extract_text(output_text, self.fetching_context, mode="multiple")
+        context = extract_text(output_text, self.fetching_context, strict=True)
 
         # 提取输出内容
-        final_output_text = extract_text(output_text, self.fetching_output, mode="single")
+        final_output_text = extract_text(output_text, self.fetching_output, strict=False)
 
         # 保存到最近输出
         self._last_output = final_output_text

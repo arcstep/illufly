@@ -35,7 +35,7 @@ def raise_not_supply_all(info: str, *args):
     if all(arg is None for arg in args):
         raise ValueError(info)
 
-def extract_segments(text: str, marker: Tuple[str, str], mode: str = 'single', include_markers: bool = False) -> List[str]:
+def extract_segments(text: str, marker: Tuple[str, str], include_markers: bool = False, strict: bool = False) -> List[str]:
     """
     根据模式提取文本中符合条件的片段。
     mode='multiple'：提取每一对start_marker和end_marker之间的内容。
@@ -48,77 +48,49 @@ def extract_segments(text: str, marker: Tuple[str, str], mode: str = 'single', i
     lines = text.split('\n')
     segments = []
 
-    if mode == 'multiple':
-        capture = False
-        current_segment = []
-        for line in lines:
-            stripped_line = line.strip().lower()
-            if not capture and start_marker.lower() in stripped_line:
-                capture = True
-                if include_markers:
-                    current_segment.append(line)
-                else:
-                    start_pos = line.lower().index(start_marker.lower()) + len(start_marker)
-                    current_segment.append(line[start_pos:].strip())
-                # 检查 end_marker 是否在同一行
-                if end_marker.lower() in stripped_line[start_pos:]:
-                    end_pos = line.lower().index(end_marker.lower(), start_pos)
-                    current_segment[-1] = line[start_pos:end_pos].strip()
-                    segments.append('\n'.join(current_segment).strip())
-                    capture = False
-                    current_segment = []  # 重置 current_segment
-            elif capture and end_marker.lower() in stripped_line:
-                if include_markers:
-                    current_segment.append(line)
-                else:
-                    end_pos = line.lower().index(end_marker.lower())
-                    current_segment.append(line[:end_pos].strip())
+    capture = False
+    current_segment = []
+    for line in lines:
+        stripped_line = line.strip().lower()
+        if not capture and start_marker.lower() in stripped_line:
+            capture = True
+            if include_markers:
+                current_segment.append(line)
+                start_pos = stripped_line.index(start_marker.lower()) + len(start_marker)
+            else:
+                start_pos = line.lower().index(start_marker.lower()) + len(start_marker)
+                current_segment.append(line[start_pos:].strip())
+            # 检查 end_marker 是否在同一行
+            if end_marker.lower() in stripped_line[start_pos:]:
+                end_pos = line.lower().index(end_marker.lower(), start_pos)
+                current_segment[-1] = line[start_pos:end_pos].strip()
                 segments.append('\n'.join(current_segment).strip())
                 capture = False
                 current_segment = []  # 重置 current_segment
-            elif capture:
-                current_segment.append(line.strip())
-        # 确保在捕获结束后清空 current_segment
-        if capture:
+        elif capture and end_marker.lower() in stripped_line:
+            if include_markers:
+                current_segment.append(line)
+            else:
+                end_pos = line.lower().index(end_marker.lower())
+                current_segment.append(line[:end_pos].strip())
             segments.append('\n'.join(current_segment).strip())
             capture = False
-
-    elif mode == 'single':
-        start_index = None
-        end_index = None
-
-        # 从前向后找第一个 start_marker
-        for i, line in enumerate(lines):
-            if start_index is None and start_marker.lower() in line.lower():
-                if include_markers:
-                    start_index = i
-                else:
-                    start_index = i
-                    start_pos = line.lower().index(start_marker.lower()) + len(start_marker)
-                    lines[i] = line[start_pos:].strip()
-                break
-
-        # 从后向前找最后一个 end_marker
-        for i in range(len(lines) - 1, -1, -1):
-            if end_marker.lower() in lines[i].lower():
-                if include_markers:
-                    end_index = i + 1
-                else:
-                    end_index = i
-                    end_pos = lines[i].lower().index(end_marker.lower())
-                    lines[i] = lines[i][:end_pos].strip()
-                break
-
-        if start_index is not None and end_index is not None and start_index < end_index:
-            segments.append('\n'.join(lines[start_index:end_index]).strip())
-        
-        if not segments:
-            return [text]
+            current_segment = []  # 重置 current_segment
+        elif capture:
+            current_segment.append(line.strip())
+    # 确保在捕获结束后清空 current_segment
+    if capture:
+        segments.append('\n'.join(current_segment).strip())
+        capture = False
+    
+    if not strict and not segments:
+        # 如果什么都没发现就返回原始输入
+        return [text]
 
     return segments
 
-def extract_text(resp_md: str, marker: Tuple[str, str], mode: str='all', include_markers: bool=False):
-    return "\n".join(extract_segments(resp_md, marker, mode=mode, include_markers=include_markers))
+def extract_text(resp_md: str, marker: Tuple[str, str], include_markers: bool=False, strict: bool=False):
+    return "\n".join(extract_segments(resp_md, marker, include_markers=include_markers, strict=strict))
 
 def extract_final_answer(text: str, final_answer_prompt: str="最终答案"):
     """
@@ -141,7 +113,7 @@ def extract_final_answer(text: str, final_answer_prompt: str="最终答案"):
             final_answer_lines.append(line)
     final_answer_text = '\n'.join(final_answer_lines).strip()
 
-    return extract_text(final_answer_text, ("```", "```"), mode="single") if final_answer_text else ''
+    return extract_text(final_answer_text, ("```markdown", "```")) if final_answer_text else ''
 
 def hash_text(text):
     """
