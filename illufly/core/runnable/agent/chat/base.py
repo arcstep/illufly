@@ -4,7 +4,7 @@ import asyncio
 import uuid
 
 from abc import abstractmethod
-from typing import Union, List, Tuple, Any
+from typing import Union, List, Tuple, Set, Any
 
 from .....config import get_env
 from .....utils import merge_tool_calls, extract_text, raise_invalid_params, filter_kwargs
@@ -13,6 +13,8 @@ from ....document import Document
 from ...base import Runnable
 from ...message import Messages
 from ...prompt_template import PromptTemplate
+from ...vectordb import VectorDB
+from ..retriever import Retriever
 from ..base import BaseAgent
 from ..knowledge_manager import KnowledgeManager
 from .tools_calling import BaseToolCalling, OpenAIToolsCalling
@@ -42,6 +44,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "fetching_context": "上下文提取标记，可通过修改环境变量 ILLUFLY_CONTEXT_START 和 ILLUFLY_CONTEXT_END 修改默认值",
             "fetching_final_answer": "最终答案提取标记，可通过修改环境变量 ILLUFLY_FINAL_ANSWER_START 和 ILLUFLY_FINAL_ANSWER_END 修改默认值",
             "fetching_output": "输出内容提取标记",
+            "chat_learn_folder": "知识库目录，可通过修改环境变量 ILLUFLY_CHAT_LEARN 修改默认值",
+            "default_docs": "默认文档目录，可通过修改环境变量 ILLUFLY_DOCS 修改默认值",
             **BaseAgent.allowed_params(),
             **KnowledgeManager.allowed_params(),
             **ToolsManager.allowed_params(),
@@ -54,6 +58,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         fetching_context: Tuple[str, str]=None,
         fetching_final_answer: Tuple[str, str]=None,
         fetching_output: Tuple[str, str]=None,
+        chat_learn_folder: str=None,
+        default_docs: Set[str]=None,
         **kwargs
     ):
         """
@@ -87,11 +93,65 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         MemoryManager.__init__(self, **filter_kwargs(kwargs, MemoryManager.allowed_params()))
 
+        self.chat_learn_folder = chat_learn_folder or get_env("ILLUFLY_CHAT_LEARN")
+        self.default_docs = default_docs or set({get_env("ILLUFLY_DOCS"), self.chat_learn_folder})
+        self.load_default_knowledge()
+
     def clear(self):
         self.memory.clear()
         self._task = ""
         self._final_answer = ""
         self._last_output = ""
+
+    def load_default_knowledge(self):
+        """
+        加载默认知识库。
+        """
+        for item in self.knowledge:
+            if not isinstance(item, (str, Document, VectorDB, Retriever)):
+                raise ValueError("Knowledge list items MUST be str, Document or VectorDB")
+
+            if isinstance(item, VectorDB):
+                if not self.default_vdb:
+                    self.default_vdb = item
+                if item in item.sources:
+                    # 如果已经在向量库中指定了文档目录，则不再从默认文档目录中加载
+                    self.default_docs.remove(item)
+
+        if self.default_vdb:
+            for doc_folder in self.default_docs:
+                self.default_vdb.load(dir=doc_folder)
+
+    def clone_chat_learn(self, dest: str, src: str=None):
+        """
+        克隆 illufly 自身的聊天问答经验。
+        """
+        if not os.path.exists(dest):
+            os.makedirs(dest)
+
+        files_count = 0
+        src = self.chat_learn_folder
+        for item in os.listdir(src):
+            if item.startswith('.'):
+                continue
+            src_path = os.path.join(src, item)
+            dst_path = os.path.join(dest, item)
+            if os.path.isdir(src_path):
+                # 如果是目录，递归拷贝
+                self.clone_chat_learn(dst_path, src_path)
+            else:
+                # 如果是文件，直接拷贝
+                shutil.copy2(src_path, dst_path)
+                files_count += 1
+        return f"从 {src} 拷贝到 {dest} 完成，共克隆了 {files_count} 个文件。"
+
+    def clear_chat_learn(self):
+        """
+        清空聊天问答经验。
+        """
+        src = self.chat_learn_folder
+        if os.path.exists(src):
+            shutil.rmtree(src)
 
     @property
     def task(self):

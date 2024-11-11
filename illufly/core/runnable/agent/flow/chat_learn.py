@@ -11,23 +11,19 @@ from ..base import BaseAgent
 from ..chat import ChatAgent
 from .base import FlowAgent
 
-def get_faq_dir():
-    return get_env("ILLUFLY_CHAT_LEARN")
-
-def save_faq(thread_id: str, knowledge: str, question: str="", metadata: dict={}):
+def save_faq(thread_id: str, chat_learn_folder: str, knowledge: str, question: str="", metadata: dict={}):
     if not thread_id or not knowledge:
         return
 
-    faq_dir = get_faq_dir()
-    if not os.path.exists(faq_dir):
-        os.makedirs(faq_dir)
+    if not os.path.exists(chat_learn_folder):
+        os.makedirs(chat_learn_folder)
 
     metadata = f'<!-- @metadata {str(metadata) if metadata else ""} -->\n'
     q = f"**Question**\n{question}\n\n"
     k = f"**Knowledge**\n{knowledge}"
     text = (metadata + q + k) or ""
 
-    with open(os.path.join(faq_dir, f"{thread_id}.md"), "w", encoding="utf-8") as f:
+    with open(os.path.join(chat_learn_folder, f"{thread_id}.md"), "w", encoding="utf-8") as f:
         f.write(text)
     return text
 
@@ -69,7 +65,7 @@ class ChatLearn(FlowAgent):
             # 保存 Q/K 语料
             for i, knowledge in enumerate(knowledges):
                 q = questions[i] if i < len(questions) else ""
-                text = save_faq(scribe.thread_id, knowledge, q, metadata)
+                text = save_faq(scribe.thread_id, scribe.chat_learn_folder, knowledge, q, metadata)
                 yield EventBlock("faq", f"保存知识到[{scribe.thread_id}]：{minify_text(q)} -> {minify_text(knowledge)}")
                 scribe.clear()
                 if scribe.default_vdb:

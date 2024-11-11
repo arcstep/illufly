@@ -5,7 +5,6 @@ from typing import Any, Set, Union, List
 from ....config import get_env
 from ...document import Document
 from ..vectordb import VectorDB
-from ..team import Team
 from .retriever import Retriever
 
 class KnowledgeManager:
@@ -16,13 +15,11 @@ class KnowledgeManager:
         """
         return {
             "knowledge": "待检索的资料或向量数据库",
-            "team": "所属团队"
         }
 
     def __init__(
         self,
         knowledge: Union[Set[Any], List[Any]] = None,
-        team: Team = None,
     ):
         """
         知识库在内存中以集合的方式保存，确保唯一性。
@@ -32,22 +29,17 @@ class KnowledgeManager:
         """
         self.knowledge = knowledge
 
-        # 所属团队
-        self.team = team
-
         if isinstance(knowledge, list):
             self.knowledge = set(knowledge)
 
         if not isinstance(self.knowledge, set):
             self.knowledge = set({self.knowledge}) if self.knowledge else set()
 
-        self.default_docs = set({})
         self.default_vdb = None
 
         self._recalled_knowledge = []
 
-        self.load_default_knowledge()
-        self.load_resource_knowledge()
+        # self.load_resource_knowledge()
 
     @property
     def recalled_knowledge(self):
@@ -55,29 +47,6 @@ class KnowledgeManager:
         返回最近一次调用 get_knowledge 方法时返回的资料列表。
         """
         return self._recalled_knowledge
-
-    def load_default_knowledge(self):
-        """
-        加载默认知识库。
-        """
-        self.default_docs = set({
-            get_env("ILLUFLY_DOCS"),
-            self.team.chat_learn_folder if self.team else get_env("ILLUFLY_CHAT_LEARN")
-        })
-        for item in self.knowledge:
-            if not isinstance(item, (str, Document, VectorDB, Retriever)):
-                raise ValueError("Knowledge list items MUST be str, Document or VectorDB")
-
-            if isinstance(item, VectorDB):
-                if not self.default_vdb:
-                    self.default_vdb = item
-                if item in item.sources:
-                    # 如果已经在向量库中指定了文档目录，则不再从默认文档目录中加载
-                    self.default_docs.remove(item)
-
-        if self.default_vdb:
-            for doc_folder in self.default_docs:
-                self.default_vdb.load(dir=doc_folder)
 
     def _get_resource_type(self, ext: str):
         return {
@@ -142,34 +111,3 @@ class KnowledgeManager:
             else:
                 raise ValueError("Knowledge MUST be a string, Document or VectorDB")
         return knowledge
-
-    def clone_chat_learn(self, dest: str, src: str=None):
-        """
-        克隆 illufly 自身的聊天问答经验。
-        """
-        if not os.path.exists(dest):
-            os.makedirs(dest)
-
-        files_count = 0
-        src = src or get_env("ILLUFLY_CHAT_LEARN")
-        for item in os.listdir(src):
-            if item.startswith('.'):
-                continue
-            src_path = os.path.join(src, item)
-            dst_path = os.path.join(dest, item)
-            if os.path.isdir(src_path):
-                # 如果是目录，递归拷贝
-                self.clone_chat_learn(dst_path, src_path)
-            else:
-                # 如果是文件，直接拷贝
-                shutil.copy2(src_path, dst_path)
-                files_count += 1
-        return f"从 {src} 拷贝到 {dest} 完成，共克隆了 {files_count} 个文件。"
-
-    def clear_chat_learn(self):
-        """
-        清空聊天问答经验。
-        """
-        src = get_env("ILLUFLY_CHAT_LEARN")
-        if os.path.exists(src):
-            shutil.rmtree(src)
