@@ -159,3 +159,6 @@ class ChatZhipuVL(ChatZhipu):
                 "output": output,
             }
         )
+
+ChatZhipu.__doc__ = ChatAgent.help.__func__(ChatZhipu)
+ChatZhipuVL.__doc__ = ChatAgent.help.__func__(ChatZhipuVL)

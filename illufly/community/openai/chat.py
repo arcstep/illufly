@@ -107,3 +107,5 @@ class ChatOpenAI(ChatAgent):
                 "output": output,
             }
         )
+
+ChatOpenAI.__doc__ = ChatAgent.help.__func__(ChatOpenAI)
