@@ -55,7 +55,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         """
         返回当前可用的参数列表。
         """
-        return cls.allowed_params()
+        return f'{cls.__doc__}\n\n{cls.__name__} 参数列表：\n' + "\n".join([f"- {k}: {v}" for k, v in cls.allowed_params().items()])
 
     def __init__(
         self,

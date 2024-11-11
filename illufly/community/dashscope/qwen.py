@@ -12,6 +12,9 @@ from ..http import confirm_upload_file
 from ...io import NewLineBlock
 
 class ChatQwen(ChatAgent):
+    """
+    千问对话智能体
+    """
     @classmethod
     def allowed_params(cls):
         return {
@@ -209,3 +212,6 @@ class ChatQwenVL(ChatQwen):
     async def async_generate(self, messages: List[dict], **kwargs):
         for block in await self.run_in_executor(self.generate, messages, **kwargs):
             yield block
+
+ChatQwen.__doc__ = ChatAgent.help.__func__(ChatQwen)
+ChatQwenVL.__doc__ = ChatAgent.help.__func__(ChatQwenVL)

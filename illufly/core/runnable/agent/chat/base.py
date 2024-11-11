@@ -24,16 +24,15 @@ from .memory_manager import MemoryManager
 class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
     """
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
-
-    ChatAgent 类包含一些核心属性，用于保存对话过程中的中间结果，例如：
-    - task：用户发起的最初任务，这是 _task 的只读版本
-    - final_answer：对话过程中输出的最终答案，这是 _final_answer 的只读版本
-    - last_output：对话过程中上次调用输出的结果，这是 _last_output 的只读版本
-
-    由于 final_answer 必须经过提示语引导，按照约定格式输出，因此可将 T/FA(task/final_answer) 用于自动化提取 Q/A 预料。
-    而 T/FA 的提取结果可被保存在 __XP__ 等经验目录中，在其他对话时被当作检索资料调用。
-    这就实现了基本的自我进化过程，而「自我进化」也是 illufly 设计的一个核心目标。
     """
+
+    @classmethod
+    def help(cls):
+        """
+        返回当前可用的参数列表。
+        """
+        return f'{cls.__doc__ or ChatAgent.__doc__}\n\n{cls.__name__} 参数列表：\n' + "\n".join([f"- {k}: {v}" for k, v in cls.allowed_params().items()])
+
     @classmethod
     def allowed_params(cls):
         """
