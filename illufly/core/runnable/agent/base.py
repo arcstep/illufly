@@ -79,9 +79,8 @@ class BaseAgent(Runnable, ToolAbility):
 
             if isinstance(resp, Generator):
                 for block in resp:
-                    if isinstance(block, EventBlock):
-                        if block.block_type == "final_text":
-                            self._last_output = block.content
+                    if isinstance(block, EventBlock) and block.block_type == "final_text":
+                        self._last_output = block.content
                     yield block
             else:
                 self._last_output = resp
@@ -105,15 +104,13 @@ class BaseAgent(Runnable, ToolAbility):
 
             if isinstance(resp, Generator):
                 for block in resp:
-                    if isinstance(block, EventBlock):
-                        if block.type == "final_text":
-                            self._last_output = block.content
+                    if isinstance(block, EventBlock) and block.block_type == "final_text":
+                        self._last_output = block.content
                     yield block
             elif isinstance(resp, AsyncGenerator):
                 async for block in resp:
-                    if isinstance(block, EventBlock):
-                        if block.type == "final_text":
-                            self._last_output = block.content
+                    if isinstance(block, EventBlock) and block.block_type == "final_text":
+                        self._last_output = block.content
                     yield block
             else:
                 self._last_output = resp
