@@ -15,7 +15,6 @@ class Team(Runnable):
         agents: Set[Union["ChatAgent"]]=None,
         default_agent: Union["ChatAgent"]=None,
         store: dict=None,
-        chat_learn_folder: str=None,
         name: str=None,
         description: str=None,
         chunk_types: list=None,
@@ -29,7 +28,6 @@ class Team(Runnable):
         self.agents = agents if agents else set()
         self.agents_thread_ids = {}
         self.default_agent = default_agent or next(iter(self.agents), None)
-        self.chat_learn_folder = chat_learn_folder or get_env("ILLUFLY_CHAT_LEARN")
 
         self.store = store or {}
         self.chunk_types = chunk_types or ["chunk", "tool_resp_chunk", "text", "tool_resp_text"]
@@ -43,15 +41,11 @@ class Team(Runnable):
         self.create_new_history()
 
     def __repr__(self):
-        return f"Team(name={self.name}, agents={self.names}, folder={self.folders})"
+        return f"Team(name={self.name}, agents={self.names})"
 
     @property
     def names(self):
         return [agent.name for agent in self.agents]
-
-    @property
-    def folders(self):
-        return [self.chat_learn_folder]
 
     def create_new_history(self):
         self.last_history_id = str(uuid.uuid1())
