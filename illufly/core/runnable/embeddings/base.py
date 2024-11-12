@@ -108,7 +108,7 @@ class BaseEmbeddings(Runnable):
             batch_docs = [doc for doc, exists in zip(batch_docs, existing_files) if not exists]
 
             if batch_texts:
-                yield EventBlock("info", f"文本向量转换 {sum(len(d.text) for d in batch_docs)} 字 / {len(batch_docs)} 个文件")
+                yield self.create_event_block("info", f"文本向量转换 {sum(len(d.text) for d in batch_docs)} 字 / {len(batch_docs)} 个文件")
                 vectors = self.embed_documents(batch_texts)
                 yield from self._save_vectors_to_cache(batch_docs, batch_texts, vectors, vector_folder)
 
@@ -135,4 +135,4 @@ class BaseEmbeddings(Runnable):
             with open(cache_path, 'wb') as f:
                 pickle.dump(vectors[index], f)
                 docs[index].meta['embeddings'] = vectors[index]
-                yield EventBlock('info', f'wrote embedding cache {cache_path} {text[0:50]}{"..." if len(text) > 50 else ""}')
+                yield self.create_event_block('info', f'wrote embedding cache {cache_path} {text[0:50]}{"..." if len(text) > 50 else ""}')

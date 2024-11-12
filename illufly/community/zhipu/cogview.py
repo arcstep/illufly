@@ -66,7 +66,7 @@ class CogView(BaseAgent):
         resp = self.client.images.generations(**_kwargs)
         for result_index, result in enumerate(resp.data):
             url = result.url
-            yield EventBlock("image_url", url)
+            yield self.create_event_block("image_url", url)
             if not output or result_index >= len(output):
                 parsed_url = urlparse(url)
                 filename = os.path.basename(parsed_url.path)

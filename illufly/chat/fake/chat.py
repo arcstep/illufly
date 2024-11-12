@@ -24,7 +24,7 @@ class FakeLLM(ChatAgent):
         self.current_response_index = 0
 
     def generate(self, prompt: Union[str, List[str]], sleep: float=0, **kwargs):
-        yield EventBlock("info", f'I am FakeLLM')
+        yield self.create_event_block("info", f'I am FakeLLM')
 
         _sleep = self.sleep if sleep <= 0 else sleep
 
@@ -37,5 +37,5 @@ class FakeLLM(ChatAgent):
 
         for content in resp:
             time.sleep(_sleep)
-            yield EventBlock("chunk", content)
+            yield self.create_event_block("chunk", content)
         yield NewLineBlock()

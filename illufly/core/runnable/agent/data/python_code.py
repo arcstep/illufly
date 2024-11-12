@@ -301,11 +301,11 @@ class PythonAgent(BaseAgent):
                         self._last_output = result.to_markdown()
                     else:
                         self._last_output = str(result)
-                    yield EventBlock("text", self._last_output)
+                    yield self.create_event_block("text", self._last_output)
                 else:
-                    yield EventBlock("warn", "没有正确生成python代码, 执行失败。")
+                    yield self.create_event_block("warn", "没有正确生成python代码, 执行失败。")
             else:
                 self._last_output = self.agent.last_output
         except Exception as e:
             self._last_output = str(e)
-            yield EventBlock("text", self._last_output)
+            yield self.create_event_block("text", self._last_output)

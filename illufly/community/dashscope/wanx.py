@@ -132,12 +132,12 @@ class Text2ImageWanx(BaseAgent):
                 else:
                     raise Exception(f"output not be list or str, but got {type(result_url)}: output={result_url}")
             else:
-                yield EventBlock("warn", "生成失败")
+                yield self.create_event_block("warn", "生成失败")
 
             if results:
                 for result_index, result in enumerate(results):
                     url = result['url']
-                    yield EventBlock("image_url", url)
+                    yield self.create_event_block("image_url", url)
                     if not output or result_index >= len(output):
                         parsed_url = urlparse(url)
                         filename = os.path.basename(parsed_url.path)
@@ -147,16 +147,16 @@ class Text2ImageWanx(BaseAgent):
                     yield from save_resource(url, output_path)
 
                 if 'usage' in status_result:
-                    yield EventBlock("usage", json.dumps(status_result["usage"], ensure_ascii=False))
+                    yield self.create_event_block("usage", json.dumps(status_result["usage"], ensure_ascii=False))
 
     def parse_resp(self, resp):
-        yield EventBlock("info", f'{json.dumps(resp, ensure_ascii=False)}')
+        yield self.create_event_block("info", f'{json.dumps(resp, ensure_ascii=False)}')
         # 解析提交结果
         if "output" in resp:
             task_id = resp['output']['task_id']        
-            yield EventBlock("info", f'{task_id}: {resp["output"]["task_status"]}')
+            yield self.create_event_block("info", f'{task_id}: {resp["output"]["task_status"]}')
             if "usage" in resp:
-                yield EventBlock("usage", json.dumps(resp["usage"]))
+                yield self.create_event_block("usage", json.dumps(resp["usage"]))
     
     @property
     def aigc_base_url(self):

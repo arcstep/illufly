@@ -92,7 +92,7 @@ class MarkMeta(Runnable):
                     meta_line = f"@meta {json.dumps(doc.meta, ensure_ascii=False)}"
                     f.write("\n<!-- " + meta_line + " -->\n")
                     f.write(doc.text + "\n")
-                yield EventBlock("info", f"Saved file {source} with {len(docs)} chunks")
+                yield self.create_event_block("info", f"Saved file {source} with {len(docs)} chunks")
 
     def call(self, *files, **kwargs):
         yield from self.load(*files, **kwargs)
@@ -108,7 +108,7 @@ class MarkMeta(Runnable):
             try:
                 yield from self.load_file(file_path)
             except Exception as e:
-                yield(EventBlock("warn", f"读取文件失败 {file_path}: {e}"))
+                yield(self.create_event_block("warn", f"读取文件失败 {file_path}: {e}"))
 
     def get_files(self, path, filename_filter, extensions):
         """
@@ -128,15 +128,15 @@ class MarkMeta(Runnable):
         加载单个文件。
         """
         if not abs_path or not os.path.exists(abs_path):
-            yield(EventBlock("warn", f"文件不存在 {abs_path}"))
+            yield(self.create_event_block("warn", f"文件不存在 {abs_path}"))
 
         with open(abs_path, 'r', encoding='utf-8') as f:
             txt = f.read()
             if str(txt).strip() == "":
-                yield(EventBlock("warn", f"文件内容为空 {abs_path}"))
+                yield(self.create_event_block("warn", f"文件内容为空 {abs_path}"))
                 return
             self.load_text(txt, source=abs_path)
-            yield(EventBlock("info", f"已成功加载文件 {abs_path} ，其中包含 {len(self.documents)} 个片段。"))
+            yield(self.create_event_block("info", f"已成功加载文件 {abs_path} ，其中包含 {len(self.documents)} 个片段。"))
 
     def load_text(self, text: str, source: str=None) -> List[Document]:
         """

@@ -55,12 +55,12 @@ class BaseToolCalling:
         arguments 则必须为一个可转换为 Python 字典的 JSON 字符串。
         """
         if not self.tools_to_exec:
-            yield EventBlock("warn", f"tools_to_exec is empty")
+            yield self.create_event_block("warn", f"tools_to_exec is empty")
             return
 
         for struct_tool in self.tools_to_exec:
             if tool.get('function', {}).get('name') == struct_tool.name:
-                yield EventBlock("agent", struct_tool.name)
+                yield self.create_event_block("agent", struct_tool.name)
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
@@ -69,7 +69,7 @@ class BaseToolCalling:
                 elif isinstance(tool_args, list):
                     tool_func_result = struct_tool.call(*tool_args)
                 else:
-                    yield EventBlock("action_parse_failed", tool_args)
+                    yield self.create_event_block("action_parse_failed", tool_args)
                 for x in tool_func_result:
                     if isinstance(x, EventBlock):
                         if x.block_type == "final_tool_resp":
@@ -83,19 +83,19 @@ class BaseToolCalling:
                         yield x
                     else:
                         tool_resp += x
-                        yield EventBlock("tool_resp_chunk", x)
+                        yield self.create_event_block("tool_resp_chunk", x)
                 yield NewLineBlock()
                 if tool_resp:
-                    yield EventBlock("final_tool_resp", tool_resp)
+                    yield self.create_event_block("final_tool_resp", tool_resp)
                 return
 
-        yield EventBlock("warn", f"tool {tool} not found")
+        yield self.create_event_block("warn", f"tool {tool} not found")
             
 
     async def async_execute_tool(self, tool):
         for struct_tool in self.tools_to_exec:
             if tool.get('function', {}).get('name') == struct_tool.name:
-                yield EventBlock("agent", struct_tool.name)
+                yield self.create_event_block("agent", struct_tool.name)
                 tool_args = struct_tool.parse_arguments(tool['function']['arguments'])
                 tool_resp = ""
 
@@ -104,7 +104,7 @@ class BaseToolCalling:
                 elif isinstance(tool_args, list):
                     tool_func_result = struct_tool.async_call(*tool_args)
                 else:
-                    yield EventBlock("action_parse_failed", tool_args)
+                    yield self.create_event_block("action_parse_failed", tool_args)
                 async for x in tool_func_result:
                     if isinstance(x, EventBlock):
                         if x.block_type == "final_tool_resp":
@@ -118,8 +118,8 @@ class BaseToolCalling:
                         yield x
                     else:
                         tool_resp += x
-                        yield EventBlock("tool_resp_chunk", x)
+                        yield self.create_event_block("tool_resp_chunk", x)
 
                 yield NewLineBlock()
                 if tool_resp:
-                    yield EventBlock("final_tool_resp", tool_resp)
+                    yield self.create_event_block("final_tool_resp", tool_resp)

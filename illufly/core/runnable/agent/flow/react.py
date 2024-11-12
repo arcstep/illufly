@@ -50,19 +50,19 @@ class ReAct(FlowAgent):
                 self.completed_work.append(output)
             else:
                 if not planner.final_answer:
-                    yield EventBlock("warn", f"观察结果中没有 final_answer，可能导致无法结束")
+                    yield self.create_event_block("warn", f"观察结果中没有 final_answer，可能导致无法结束")
 
             if agent.tools_calling_steps:
                 all_results = "\n".join([step["result"] for step in agent.tools_calling_steps])
                 observation = f'\n**观察**\n上面的行动结果为:\n{all_results}\n'
-                yield EventBlock("text", observation)
+                yield self.create_event_block("text", observation)
 
                 self.completed_work.append(observation)
                 planner_template.bind_provider({
                     "completed_work": "\n".join(self.completed_work)
                 })
 
-            yield EventBlock("final_text", self.task)
+            yield self.create_event_block("final_text", self.task)
 
         def should_continue(vars, runs):
             if planner.final_answer:

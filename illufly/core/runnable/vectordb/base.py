@@ -42,7 +42,7 @@ class VectorDB(Runnable):
 
     def call(self, text: str, top_k: int=None, **kwargs):
         self._last_output = self.query(text, top_k or self.top_k or 5, **kwargs)
-        yield EventBlock("info", f"查询到{len(self._last_output)}条结果")
+        yield self.create_event_block("info", f"查询到{len(self._last_output)}条结果")
 
     def load_text(self, text: str):
         pass

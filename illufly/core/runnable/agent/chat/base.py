@@ -196,7 +196,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             **super().provider_dict,
             **{k:v for k,v in local_dict.items() if v is not None},
         }
-
+    
     @abstractmethod
     def generate(self, prompt: Union[str, List[dict]], *args, **kwargs):
         raise NotImplementedError("ChatAgent 子类必须实现 generate 方法")
@@ -292,8 +292,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         messages_std = Messages(prompt, style="text")
         self._task = messages_std.to_list()[-1]['content']
-        yield EventBlock("user", self._task)
-        yield EventBlock("agent", self.name)
+        yield self.create_event_block("user", self._task)
+        yield self.create_event_block("agent", self.name)
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
         self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
@@ -309,7 +309,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             h.reset(self._tools_to_exec)
 
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
-        yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
+        yield self.create_event_block("info", f'记住 {remember_rounds} 轮对话')
 
         chat_memory = self.build_chat_memory(
             prompt=prompt, # 这里依然使用 prompt
@@ -328,7 +328,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     kg_source[src] = []
                 kg_source[src].append(item)
             for k, v in kg_source.items():
-                yield EventBlock("RAG", f"{k}：发现 {len(v)} 条资料")
+                yield self.create_event_block("RAG", f"{k}：发现 {len(v)} 条资料")
 
         to_continue_call_llm = True
         while to_continue_call_llm:
@@ -362,9 +362,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                         to_continue_call_llm = True
             else:
                 final_output_text = self._fetch_final_output(output_text, chat_memory)
-                yield EventBlock("final_text", final_output_text["final_output_text"], content_id=content_id)
+                yield self.create_event_block("final_text", final_output_text["final_output_text"], content_id=content_id)
                 if final_output_text["context"]:
-                    yield EventBlock("context", final_output_text["context"], content_id=content_id)
+                    yield self.create_event_block("context", final_output_text["context"], content_id=content_id)
 
                 _tools_behavior = tools_behavior or self.tools_behavior
                 to_continue_call_llm = False
@@ -389,8 +389,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         messages_std = Messages(prompt, style="text")
         self._task = messages_std.to_list()[-1]['content']
-        yield EventBlock("user", self._task)
-        yield EventBlock("agent", self.name)
+        yield self.create_event_block("user", self._task)
+        yield self.create_event_block("agent", self.name)
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
         self._tools_to_exec = self.get_tools(kwargs.get("tools", []))
@@ -406,7 +406,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             h.reset(self._tools_to_exec)
 
         remember_rounds = kwargs.pop("remember_rounds", self.remember_rounds)
-        yield EventBlock("info", f'记住 {remember_rounds} 轮对话')
+        yield self.create_event_block("info", f'记住 {remember_rounds} 轮对话')
 
         chat_memory = self.build_chat_memory(
             prompt=prompt,
@@ -451,9 +451,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
             else:
                 final_output_text = self._fetch_final_output(output_text, chat_memory)
-                yield EventBlock("final_text", final_output_text["final_output_text"], content_id=content_id)
+                yield self.create_event_block("final_text", final_output_text["final_output_text"], content_id=content_id)
                 if final_output_text["context"]:
-                    yield EventBlock("context", final_output_text["context"], content_id=content_id)
+                    yield self.create_event_block("context", final_output_text["context"], content_id=content_id)
 
                 _tools_behavior = tools_behavior or self.tools_behavior
                 to_continue_call_llm = False

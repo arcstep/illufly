@@ -86,18 +86,18 @@ class ChatQwen(ChatAgent):
                 output.append(ai_output)
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
-                        yield EventBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
+                        yield self.create_event_block("tools_call_chunk", json.dumps(func, ensure_ascii=False))
                 else:
                     content = ai_output.content
-                    yield EventBlock("chunk", content)
+                    yield self.create_event_block("chunk", content)
             else:
-                yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+                yield self.create_event_block("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
 
         yield NewLineBlock()
-        yield EventBlock(
+        yield self.create_event_block(
             "usage",
             json.dumps(usage, ensure_ascii=False),
             calling_info={
@@ -126,24 +126,24 @@ class ChatQwen(ChatAgent):
                 output.append(ai_output)
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
-                        yield EventBlock(
+                        yield self.create_event_block(
                             "tools_call_chunk",
                             json.dumps(func, ensure_ascii=False)
                         )
                 else:
                     content = ai_output.content
-                    yield EventBlock(
+                    yield self.create_event_block(
                         "chunk",
                         content
                     )
             else:
-                yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+                yield self.create_event_block("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
 
         yield NewLineBlock()
-        yield EventBlock(
+        yield self.create_event_block(
             "usage",
             json.dumps(usage, ensure_ascii=False),
             calling_info={
@@ -187,19 +187,19 @@ class ChatQwenVL(ChatQwen):
                 if 'tool_calls' in ai_output:
                     for func in ai_output.tool_calls:
                         output.append({"tools_call_chunk": func})
-                        yield EventBlock("tools_call_chunk", json.dumps(func, ensure_ascii=False))
+                        yield self.create_event_block("tools_call_chunk", json.dumps(func, ensure_ascii=False))
                 else:
                     content = ai_output.content
                     output.append({"chunk": content})
-                    yield EventBlock("chunk", content)
+                    yield self.create_event_block("chunk", content)
             else:
-                yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+                yield self.create_event_block("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                     response.request_id, response.status_code,
                     response.code, response.message
                 )))
 
         yield NewLineBlock()
-        yield EventBlock(
+        yield self.create_event_block(
             "usage",
             json.dumps(usage, ensure_ascii=False),
             calling_info={

@@ -52,7 +52,7 @@ class PromptTemplate(Runnable):
 
     def call(self, *args, **kwargs):
         self._last_output = self.format(*args, **kwargs)
-        yield EventBlock("info", self._last_output)
+        yield self.create_event_block("info", self._last_output)
 
     def format(self, binding_map: Dict[str, Any]=None):
         if binding_map:

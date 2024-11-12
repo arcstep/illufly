@@ -87,7 +87,7 @@ class FromOutline(BaseAgent):
                 (draft, outline) = self.markdown.fetch_outline_task(doc, prev_k=self.prev_k, next_k=self.next_k)
 
                 info = f"执行扩写任务 <{outline_id}>：\n{minify_text(outline)}"
-                yield EventBlock("agent", info)
+                yield self.create_event_block("agent", info)
 
                 self.bind_consumer(
                     self.writer,
@@ -149,7 +149,7 @@ class FromOutline(BaseAgent):
                 )
 
         else:
-            yield EventBlock("info", f"没有提纲可供扩写")
+            yield self.create_event_block("info", f"没有提纲可供扩写")
 
     async def async_call(self, outline: Union[str, BaseAgent], *args, **kwargs):
         """
@@ -175,7 +175,7 @@ class FromOutline(BaseAgent):
             (draft, outline) = self.markdown.fetch_outline_task(doc, prev_k=self.prev_k, next_k=self.next_k)
 
             info = f"执行扩写任务 <{outline_id}>：\n{minify_text(outline)}"
-            yield EventBlock("agent", info)
+            yield self.create_event_block("agent", info)
 
             if isinstance(self.writer, FlowAgent):
                 input_text = PromptTemplate(self.template_id).format({
@@ -220,7 +220,7 @@ class FromOutline(BaseAgent):
                     for block in result:
                         yield block
             else:
-                yield EventBlock("info", f"没有提纲可供扩写")
+                yield self.create_event_block("info", f"没有提纲可供扩写")
 
         async for block in gather_docs():
             yield block

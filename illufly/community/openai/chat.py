@@ -86,19 +86,19 @@ class ChatOpenAI(ChatAgent):
                             }
                         }
                         output.append({"tools_call_chunk": func_json})
-                        yield EventBlock("tools_call_chunk", json.dumps(func_json, ensure_ascii=False))
+                        yield self.create_event_block("tools_call_chunk", json.dumps(func_json, ensure_ascii=False))
                 else:
                     content = ai_output.content
                     if content:
                         output.append({"chunk": content})
-                        yield EventBlock("chunk", content)
+                        yield self.create_event_block("chunk", content)
         yield NewLineBlock()
         usage_dict = {
             "prompt_tokens": usage.prompt_tokens if usage else None,
             "completion_tokens": usage.completion_tokens if usage else None,
             "total_tokens": usage.total_tokens if usage else None
         }
-        yield EventBlock(
+        yield self.create_event_block(
             "usage",
             json.dumps(usage_dict, ensure_ascii=False),
             calling_info={

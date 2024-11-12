@@ -126,24 +126,24 @@ class Retriever(BaseAgent):
         top_k = self.search_count
         for query in queries:
             for searcher in self.searchers:
-                yield EventBlock("agent", f"由 {searcher.name} 检索问题：{query}")
+                yield self.create_event_block("agent", f"由 {searcher.name} 检索问题：{query}")
 
                 search_results = searcher(query, top_k=top_k, **kwargs)
                 for result in search_results:
                     if isinstance(result, str):
-                        yield EventBlock("info", f"检索结果[-]：{result}")
+                        yield self.create_event_block("info", f"检索结果[-]：{result}")
                     elif isinstance(result, Document):
-                        yield EventBlock("info", f"检索结果[{result.meta['distance']}]：{minify_text(result.text, 30)}")
+                        yield self.create_event_block("info", f"检索结果[{result.meta['distance']}]：{minify_text(result.text, 30)}")
                     else:
                         raise ValueError("Unknown search result type")
 
                 if search_results:
                     if self.reranker:
-                        yield EventBlock("agent", f"由 {self.reranker.name} 重新排序检索结果")
+                        yield self.create_event_block("agent", f"由 {self.reranker.name} 重新排序检索结果")
                         rerank_results = self.reranker(query, search_results, top_k=self.rerank_count, **kwargs)
                         for doc in rerank_results:
                             if isinstance(doc, Document):
-                                yield EventBlock("info", f"重新排序结果[{doc.meta['rerank_score']}]：{minify_text(doc.text)}")
+                                yield self.create_event_block("info", f"重新排序结果[{doc.meta['rerank_score']}]：{minify_text(doc.text)}")
                             else:
                                 raise ValueError("Unknown rerank result type")
                     else:

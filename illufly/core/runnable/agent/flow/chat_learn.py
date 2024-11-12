@@ -66,7 +66,7 @@ class ChatLearn(FlowAgent):
             for i, knowledge in enumerate(knowledges):
                 q = questions[i] if i < len(questions) else ""
                 text = save_faq(scribe.thread_id, scribe.chat_learn_folder, knowledge, q, metadata)
-                yield EventBlock("faq", f"保存知识到[{scribe.thread_id}]：{minify_text(q)} -> {minify_text(knowledge)}")
+                yield self.create_event_block("faq", f"保存知识到[{scribe.thread_id}]：{minify_text(q)} -> {minify_text(knowledge)}")
                 scribe.clear()
                 if scribe.default_vdb:
                     scribe.default_vdb.load_text(text, source=scribe.thread_id)

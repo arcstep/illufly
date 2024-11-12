@@ -122,6 +122,9 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     def build_calling_id(self):
         return str(uuid.uuid1())
 
+    def create_event_block(self, *args, **kwargs):
+        return EventBlock(*args, runnable_info=self.runnable_info, **kwargs)
+
     def __call__(
         self,
         *args,
@@ -187,10 +190,11 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
     def handle_block(self, block, handlers, verbose, **kwargs):
         if isinstance(block, str):
-            block = EventBlock("text", block)
+            block = self.create_event_block("text", block)
         elif not isinstance(block, EventBlock):
-            block = EventBlock("text", str(block))
-        block.runnable_info = self.runnable_info
+            block = self.create_event_block("text", str(block))
+
+        block.runnable_info.update({"calling_id": self.calling_id})
 
         for handler in handlers:
             if not inspect.iscoroutinefunction(handler):
@@ -198,10 +202,11 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
     async def async_handle_block(self, block, handlers, verbose, **kwargs):
         if isinstance(block, str):
-            block = EventBlock("text", block)
+            block = self.create_event_block("text", block)
         elif not isinstance(block, EventBlock):
-            block = EventBlock("text", str(block))
-        block.runnable_info = self.runnable_info
+            block = self.create_event_block("text", str(block))
+
+        block.runnable_info.update({"calling_id": self.calling_id})
 
         tasks = []
         for handler in handlers:
@@ -221,8 +226,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         block_processor: Callable = None,
         **kwargs
     ):
-        block = EventBlock("runnable", self.name)
-        block.runnable_info = self.runnable_info
+        block = self.create_event_block("runnable", self.name)
         self.handle_block(block, handlers, verbose, **kwargs)
         yield block_processor(block, verbose=verbose, **kwargs)
 
@@ -238,8 +242,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                     if block_text:
                         yield block_text
             else:
-                block = EventBlock("text", str(resp))
-                block.runnable_info = self.runnable_info
+                block = self.create_event_block("text", str(resp))
                 self.handle_block(block, handlers, verbose, **kwargs)
                 block_text = block_processor(block, verbose=verbose, **kwargs)
                 if block_text:
@@ -256,8 +259,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         action_method: Callable = None,
         **kwargs
     ):
-        block = EventBlock("runnable", self.name)
-        block.runnable_info = self.runnable_info
+        block = self.create_event_block("runnable", self.name)
         self.handle_block(block, handlers, verbose, **kwargs)
 
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
@@ -268,8 +270,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                         return
                     self.handle_block(block, handlers, verbose, **kwargs)
             else:
-                block = EventBlock("text", str(resp))
-                block.runnable_info = self.runnable_info
+                block = self.create_event_block("text", str(resp))
                 self.handle_block(block, handlers, verbose, **kwargs)
         else:
             raise ValueError("handlers 必须是Callable列表")
@@ -286,8 +287,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         block_processor: Callable = None,
         **kwargs
     ):
-        block = EventBlock("runnable", self.name)
-        block.runnable_info = self.runnable_info
+        block = self.create_event_block("runnable", self.name)
         await self.async_handle_block(block, handlers, verbose, **kwargs)
         yield block_processor(block, verbose=verbose, **kwargs)
 
@@ -313,8 +313,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                         yield block_text
                         await asyncio.sleep(0)
             else:
-                block = EventBlock("text", str(resp))
-                block.runnable_info = self.runnable_info
+                block = self.create_event_block("text", str(resp))
                 await self.async_handle_block(block, handlers, verbose, **kwargs)
                 block_text = block_processor(block, verbose=verbose, **kwargs)
                 if block_text:
@@ -332,8 +331,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         action_method: Callable = None,
         **kwargs
     ):
-        block = EventBlock("runnable", self.name)
-        block.runnable_info = self.runnable_info
+        block = self.create_event_block("runnable", self.name)
         await self.async_handle_block(block, handlers, verbose, **kwargs)
 
         if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
@@ -349,8 +347,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                         return
                     await self.async_handle_block(block, handlers, verbose, **kwargs)
             else:
-                block = EventBlock("text", str(resp))
-                block.runnable_info = self.runnable_info
+                block = self.create_event_block("text", str(resp))
                 await self.async_handle_block(block, handlers, verbose, **kwargs)
         else:
             raise ValueError("handlers 必须是Callable列表")

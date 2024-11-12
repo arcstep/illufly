@@ -84,12 +84,12 @@ class BaseAgent(Runnable, ToolAbility):
                     yield block
             else:
                 self._last_output = resp
-                yield EventBlock("text", resp)
+                yield self.create_event_block("text", resp)
 
         except Exception as e:
             print(e)
             resp = str(e)
-            yield EventBlock("text", resp)
+            yield self.create_event_block("text", resp)
 
     async def async_call(self, *args, **kwargs):
         try:
@@ -114,8 +114,8 @@ class BaseAgent(Runnable, ToolAbility):
                     yield block
             else:
                 self._last_output = resp
-                yield EventBlock("text", resp)
+                yield self.create_event_block("text", resp)
 
         except Exception as e:
             resp = str(e)
-            yield EventBlock("text", resp)
+            yield self.create_event_block("text", resp)

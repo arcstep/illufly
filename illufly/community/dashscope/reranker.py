@@ -78,13 +78,13 @@ class DashScopeReranker(BaseReranker):
                     self._last_output = final_docs[:(top_k or self.top_k)]
 
         else:
-            yield EventBlock("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
+            yield self.create_event_block("warn", ('Request id: %s, Status code: %s, error code: %s, error message: %s' % (
                 resp.request_id, resp.status_code,
                 resp.code, resp.message
             )))
 
         yield NewLineBlock()
-        yield EventBlock(
+        yield self.create_event_block(
             "usage",
             json.dumps(usage, ensure_ascii=False),
             calling_info={

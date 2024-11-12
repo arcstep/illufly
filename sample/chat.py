@@ -11,7 +11,7 @@ from illufly.flow import Team, ReAct
 from illufly.chat import ChatQwen
 
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from sse_starlette.sse import EventSourceResponse
 
 app = FastAPI()
 
@@ -19,17 +19,14 @@ app = FastAPI()
 chat = ChatQwen(name="qwen")
 @app.get("/chat")
 async def chat_endpoint(prompt: str):
-    return StreamingResponse(
-        chat(prompt, generator="async"),
-        media_type="text/plain"
-    )
+    return EventSourceResponse(chat(prompt, generator="async"))
 
 # ReAct
 naming = ChatQwen(name="naming", description="我是一个命名专家，根据问题生成一个名字")
 react = ReAct(ChatQwen(tools=[naming]), name="react")
 @app.get("/react")
 async def react_endpoint(prompt: str):
-    return StreamingResponse(
+    return EventSourceResponse(
         react(prompt, generator="async"),
         media_type="text/plain"
     )
@@ -43,7 +40,7 @@ team.hire(
 
 @app.get("/team")
 async def team_endpoint(prompt: str):
-    return StreamingResponse(
+    return EventSourceResponse(
         team(prompt, generator="async"),
         media_type="text/plain"
     )

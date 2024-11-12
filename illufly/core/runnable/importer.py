@@ -11,4 +11,4 @@ class Importer(Runnable):
 
     def call(self, text: str, **kwargs):
         self._last_output = text
-        yield EventBlock("chunk", minify_text(text))
+        yield self.create_event_block("chunk", minify_text(text))

@@ -72,13 +72,13 @@ class CogVideoX(BaseAgent):
         resp = self.client.videos.generations(**_kwargs)
         while resp.task_status == 'PROCESSING':
             resp = self.client.videos.retrieve_videos_result(id=resp.id)
-            yield EventBlock("task_status", f'{resp.id} - {resp.task_status}')
+            yield self.create_event_block("task_status", f'{resp.id} - {resp.task_status}')
 
             if resp.task_status == 'SUCCESS':
                 for result_index, result in enumerate(resp.video_result):
                     url = result.url
                     cover_url = result.cover_image_url
-                    yield EventBlock("video_url", url)
+                    yield self.create_event_block("video_url", url)
                     if not output or result_index >= len(output):
                         parsed_url = urlparse(url)
                         filename = os.path.basename(parsed_url.path)

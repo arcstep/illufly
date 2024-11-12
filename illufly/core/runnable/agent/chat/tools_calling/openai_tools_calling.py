@@ -12,7 +12,7 @@ class OpenAIToolsCalling(BaseToolCalling):
         # 由于 OpenAI 风格工具回调是从文本之外的参数返回的，因此额外追加一次 EventBlock
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
         yield NewLineBlock()
-        yield EventBlock("final_tools_call", final_tools_call_text)
+        yield self.create_event_block("final_tools_call", final_tools_call_text)
 
         for index, tool in enumerate(final_tools_call):
             tools_call_message = [{
@@ -43,7 +43,7 @@ class OpenAIToolsCalling(BaseToolCalling):
 
     async def async_handle(self, final_tools_call: str, short_term_memory: Messages, long_term_memory: Messages):
         final_tools_call_text = json.dumps(final_tools_call, ensure_ascii=False)
-        yield EventBlock("final_tools_call", final_tools_call_text)
+        yield self.create_event_block("final_tools_call", final_tools_call_text)
 
         for index, tool in enumerate(final_tools_call):
             tools_call_message = [{

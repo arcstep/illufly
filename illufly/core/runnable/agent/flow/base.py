@@ -105,7 +105,7 @@ class FlowAgent(BaseAgent):
             # 从 current_node_name 获得 agent 和 当前 index
             (current_index, selected_agent) = self.agents_index.get(current_node_name, (None, None))
             if current_index is None:
-                yield EventBlock("warn", f"节点 {current_node_name} 不存在")
+                yield self.create_event_block("warn", f"节点 {current_node_name} 不存在")
                 break
 
             # 如果 selected_agent 是一个选择器
@@ -118,22 +118,22 @@ class FlowAgent(BaseAgent):
 
                     # 如果已经到了 __End__  节点，就退出
                     if current_node_name.lower() == "__end__":
-                        yield EventBlock("info", f"到达 __End__ 节点，结束")
+                        yield self.create_event_block("info", f"到达 __End__ 节点，结束")
                         break
 
                     (current_index, selected_agent) = self.agents_index.get(current_node_name, (None, None))
                     if current_index is None:
-                        yield EventBlock("warn", f"节点 {current_node_name} 不存在")
+                        yield self.create_event_block("warn", f"节点 {current_node_name} 不存在")
                         break
                 else:
                     current_node_name = selected_agent.selected.name
             elif isinstance(selected_agent, End):
-                yield EventBlock("info", f"到达 __End__ 节点，结束")
+                yield self.create_event_block("info", f"到达 __End__ 节点，结束")
                 break
 
             # 广播节点信息给 handlers
             info = self._get_node_info(current_index + 1, current_node_name)
-            yield EventBlock("node", info)
+            yield self.create_event_block("node", info)
 
             # 执行当前节点的 call 方法
             call_resp = selected_agent.selected.call(*current_args, **current_kwargs)
@@ -150,7 +150,7 @@ class FlowAgent(BaseAgent):
 
             if (current_index + 1) >= len(self.agents):
                 # 如果已经超出最后一个节点，就结束
-                yield EventBlock("warn", f"超出最后一个节点，结束")
+                yield self.create_event_block("warn", f"超出最后一个节点，结束")
                 break
             else:
                 # 否则继续处理下一个节点
@@ -162,7 +162,7 @@ class FlowAgent(BaseAgent):
         # 结束回调
         self.end_call()
 
-        yield EventBlock("info", f"执行完毕，所有节点运行 {steps_count} 步")
+        yield self.create_event_block("info", f"执行完毕，所有节点运行 {steps_count} 步")
 
     async def async_call(self, *args, **kwargs):
         """
@@ -186,7 +186,7 @@ class FlowAgent(BaseAgent):
             # 从 current_node_name 获得 agent 和 当前 index
             (current_index, selected_agent) = self.agents_index.get(current_node_name, (None, None))
             if current_index is None:
-                yield EventBlock("warn", f"节点 {current_node_name} 不存在")
+                yield self.create_event_block("warn", f"节点 {current_node_name} 不存在")
                 break
 
             # 如果 selected_agent 是一个选择器
@@ -199,22 +199,22 @@ class FlowAgent(BaseAgent):
 
                     # 如果已经到了 __End__  节点，就退出
                     if current_node_name.lower() == "__end__":
-                        yield EventBlock("info", f"到达 __End__ 节点，结束")
+                        yield self.create_event_block("info", f"到达 __End__ 节点，结束")
                         break
 
                     (current_index, selected_agent) = self.agents_index.get(current_node_name, (None, None))
                     if current_index is None:
-                        yield EventBlock("warn", f"节点 {current_node_name} 不存在")
+                        yield self.create_event_block("warn", f"节点 {current_node_name} 不存在")
                         break
                 else:
                     current_node_name = selected_agent.selected.name
             elif isinstance(selected_agent, End):
-                yield EventBlock("info", f"到达 __End__ 节点，结束")
+                yield self.create_event_block("info", f"到达 __End__ 节点，结束")
                 break
 
             # 广播节点信息给 handlers
             info = self._get_node_info(current_index + 1, current_node_name)
-            yield EventBlock("node", info)
+            yield self.create_event_block("node", info)
 
             # 执行当前节点的 call 方法
             call_resp = selected_agent.selected.async_call(*current_args, **current_kwargs)
@@ -236,7 +236,7 @@ class FlowAgent(BaseAgent):
 
             if (current_index + 1) >= len(self.agents):
                 # 如果已经超出最后一个节点，就结束
-                yield EventBlock("warn", f"超出最后一个节点，结束")
+                yield self.create_event_block("warn", f"超出最后一个节点，结束")
                 break
             else:
                 # 否则继续处理下一个节点
@@ -248,7 +248,7 @@ class FlowAgent(BaseAgent):
         # 结束回调
         self.end_call()
 
-        yield EventBlock("info", f"执行完毕，所有节点运行 {steps_count} 步")
+        yield self.create_event_block("info", f"执行完毕，所有节点运行 {steps_count} 步")
 
 
     def _get_node_info(self, index, node_name):

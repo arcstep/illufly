@@ -85,7 +85,7 @@ class PlanAndSolve(FlowAgent):
                 "plan_done": "\n".join(self.completed_work)
             })
 
-            yield EventBlock("final_text", self.task)
+            yield self.create_event_block("final_text", self.task)
 
         def observe_plan_for_worker(agent: BaseAgent):
             worker.memory.clear()
@@ -98,7 +98,7 @@ class PlanAndSolve(FlowAgent):
                 "plan_todo": "\n".join(self.todo)
             })
 
-            yield EventBlock("final_text", "请开始\n")
+            yield self.create_event_block("final_text", "请开始\n")
 
         def should_continue(vars, runs):
             if self.replanner.final_answer:
