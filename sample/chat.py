@@ -26,10 +26,7 @@ naming = ChatQwen(name="naming", description="我是一个命名专家，根据�
 react = ReAct(ChatQwen(tools=[naming]), name="react")
 @app.get("/react")
 async def react_endpoint(prompt: str):
-    return EventSourceResponse(
-        react(prompt, generator="async"),
-        media_type="text/plain"
-    )
+    return EventSourceResponse(react(prompt, generator="async"))
 
 # Team
 team = Team(name="if1")
@@ -40,10 +37,7 @@ team.hire(
 
 @app.get("/team")
 async def team_endpoint(prompt: str):
-    return EventSourceResponse(
-        team(prompt, generator="async"),
-        media_type="text/plain"
-    )
+    return EventSourceResponse(team(prompt, generator="async"))
 
 if __name__ == "__main__":
     import uvicorn

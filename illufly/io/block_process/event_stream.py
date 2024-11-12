@@ -14,9 +14,11 @@ def event_stream(block: Union[EventBlock, str], verbose: bool=False, **kwargs):
             "data": {
                 "block_type": block.block_type,
                 "content": block.text,
+                "content_id": block.content_id,
                 "thread_id": block.runnable_info.get("thread_id", None),
-                "calling_id": block.runnable_info["calling_id"],
-                "agent_name": block.runnable_info["name"]
+                "calling_id": block.runnable_info.get("calling_id", None),
+                "agent_name": block.runnable_info.get("name", None),
+                "model_name": block.runnable_info.get("model_name", None),
             }
         }
     elif isinstance(block, str):
