@@ -354,6 +354,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 # 从返回参数中解析工具
                 handler_openai = OpenAIToolsCalling(tools_to_exec=self._tools_to_exec)
                 # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
+                yield NewLineBlock()
+                yield self.create_event_block("final_tools_call", openai_tools_calling_steps)
                 for block in handler_openai.handle(openai_tools_calling_steps, chat_memory, self.memory):
                     block.content_id = content_id
                     yield block
@@ -438,6 +440,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                 # 从返回参数中解析工具
                 handler_openai = OpenAIToolsCalling(tools_to_exec=self._tools_to_exec)
                 # 处理在返回结构中包含的 openai 风格的 tools-calling 工具调用，包括将结果追加到记忆中
+                yield NewLineBlock()
+                yield self.create_event_block("final_tools_call", openai_tools_calling_steps)
                 async for block in handler_openai.async_handle(openai_tools_calling_steps, chat_memory, self.memory):
                     block.content_id = content_id
                     if block.block_type == "chunk":
