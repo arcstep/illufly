@@ -15,8 +15,6 @@ class Team(Runnable):
         agents: Set[Union["ChatAgent"]]=None,
         default_agent: Union["ChatAgent"]=None,
         store: dict=None,
-        name: str=None,
-        description: str=None,
         chunk_types: list=None,
         other_types: list=None,
         **kwargs
@@ -119,7 +117,7 @@ class Team(Runnable):
                     }
                 }
             else:
-                return ""
+                return {}
 
         return _event_stream
 
