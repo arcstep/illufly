@@ -257,3 +257,21 @@ def get_token_ids(text: str, token_encoding: str=None, allowed_special: str=None
         allowed_special = allowed_special or set(),
         disallowed_special = disallowed_special or "all",
     )
+
+def escape_xml_tags(text, tags_to_escape=None):
+    if tags_to_escape is None:
+        tags_to_escape = ['tool_call', 'final_answer', 'sub_task', 'context', 'knowledge']
+    
+    def replace_tag(match):
+        tag = match.group(0)
+        return tag.replace("<", "&lt;").replace(">", "&gt;")
+    
+    # 构建正则表达式，仅匹配行首的需要转义的标签
+    tags_pattern = '|'.join(tags_to_escape)
+    regex_pattern = rf'^(</?({tags_pattern})>)|((</?({tags_pattern})>)$)'
+    
+    # 对每一行进行处理
+    lines = text.splitlines()
+    escaped_lines = [re.sub(regex_pattern, replace_tag, line) for line in lines]
+    
+    return '\n'.join(escaped_lines)

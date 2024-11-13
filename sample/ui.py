@@ -9,23 +9,18 @@ import gradio as gr
 import json
 from illufly.flow import Team, ReAct
 from illufly.chat import ChatQwen, FakeLLM
+from illufly.utils import escape_xml_tags
+from illufly.toolkits import WebSearch, Text2ImageWanx, CogView, PandasAgent
 
 # ChatAgent
 qwen = ChatQwen(name="通义千问")
 fake = FakeLLM(name="FakeLLM", sleep=0.3)
-react = ReAct(planner=ChatQwen(), name="ReAct 长推理")
+react = ReAct(planner=ChatQwen(tools=[WebSearch]), name="ReAct 长推理")
 team = Team(agents=[qwen, fake, react], name="团队协作")
 
 all_agents = [qwen, fake, react, team]
 
 import re
-
-def escape_xml_tags(text):
-    def replace_tag(match):
-        tag = match.group(0)
-        return tag.replace("<", "&lt;").replace(">", "&gt;")
-    
-    return re.sub(r'<[^>]+>', replace_tag, text)
 
 def select_agent(agent_name):
     print("select_agent >>>", agent_name)
