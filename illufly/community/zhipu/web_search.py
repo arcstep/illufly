@@ -26,12 +26,15 @@ class WebSearch(BaseAgent):
     def __init__(self, tool: str=None, api_key: str=None, **kwargs):
         raise_invalid_params(kwargs, self.__class__.allowed_params())
 
-        super().__init__(threads_group="WebSearch", **kwargs)
+        tools_params = kwargs.pop("tool_params", {"prompt": "请给出互联网搜索的内容关键字"})
+        description = kwargs.pop("description", "搜索互联网内容")
 
-        self.description = "搜索互联网内容。"
-        self.tool_params = {
-            "prompt": "请给出互联网搜索的内容关键字",
-        }
+        super().__init__(
+            threads_group="WebSearch",
+            tool_params=tools_params,
+            description=description,
+            **kwargs
+        )
 
         self.tool = tool or "web-search-pro"
         self.api_key = api_key or os.getenv("ZHIPUAI_API_KEY")
@@ -75,7 +78,7 @@ class WebSearch(BaseAgent):
                                 output = item.get("search_result", "")
                                 if output:
                                     text = "\n\n".join([
-                                        f'## [{r["title"]}]({r["link"]})\n{r["content"]}'
+                                        f'## [{r.get("title", "No Title")}]({r.get("link", "#")})\n{r.get("content", "No Content")}'
                                         for r
                                         in output
                                     ])

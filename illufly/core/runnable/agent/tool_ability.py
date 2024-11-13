@@ -43,19 +43,23 @@ class ToolAbility:
             "required": []
         }
         sig = inspect.signature(self.func or self.async_func or self.call)
-        for name, param in sig.parameters.items():
-            param_value = param.default if param.default is not inspect.Parameter.empty else ""
-            
-            # 根据参数的注解类型设置 JSON 兼容类型
-            param_type = self._get_json_type(param.annotation)
-            
-            _parameters["properties"][name] = {
-                "type": param_type,
-                "description": str(param_value)
-            }
-            if param.default is inspect.Parameter.empty:
-                _parameters["required"].append(name)
-        return _parameters
+        if sig.parameters.items():
+            for name, param in sig.parameters.items():
+                param_value = param.default if param.default is not inspect.Parameter.empty else ""
+                
+                # 根据参数的注解类型设置 JSON 兼容类型
+                param_type = self._get_json_type(param.annotation)
+                
+                _parameters["properties"][name] = {
+                    "type": param_type,
+                    "description": str(param_value)
+                }
+                exclude_keys = {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
+                if param.default is inspect.Parameter.empty and param.kind not in exclude_keys:
+                    _parameters["required"].append(name)
+            return _parameters
+        else:
+            return {}
 
     def _get_json_type(self, annotation):
         origin = get_origin(annotation)
@@ -95,16 +99,22 @@ class ToolAbility:
     @property
     def parameters(self) -> str:
         default_params = self.get_default_parameters()
-        final_params = {'type': default_params["type"], 'properties': {}, 'required': []}
-        if not self.tool_params:
+        if not default_params:
+            return {}
+
+        if self.tool_params is None:
             return default_params
         else:
-            for prop_name, prop_dict in default_params["properties"].items():
-                if prop_name in self.tool_params.keys():
-                    final_params["properties"][prop_name] = prop_dict
-                    final_params["properties"][prop_name]["description"] = self.tool_params[prop_name]
-            final_params["required"] = [k for k in default_params["required"] if k in final_params["properties"].keys()]
-            return final_params
+            for prop_name, prop_dict in list(default_params["properties"].items()):
+                if prop_name in self.tool_params.keys() and prop_name in default_params["properties"].keys():
+                    default_params["properties"][prop_name]["description"] = self.tool_params[prop_name]
+                else:
+                    del default_params["properties"][prop_name]
+            default_params["required"] = [
+                k for k in default_params["required"]
+                if k in default_params["properties"].keys() and k in self.tool_params.keys()
+            ]
+            return default_params
 
     @property
     def tool_desc(self) -> Dict[str, Any]:
@@ -118,7 +128,7 @@ class ToolAbility:
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters,
+                "parameters": self.parameters or {},
             }
         }
 
@@ -134,8 +144,13 @@ class ToolAbility:
         parameter_types = self.parameters.get("properties", {})
 
         if isinstance(parsed_arguments, list):
+            # 过滤掉多余的顺序参数
+            required_params = self.parameters.get("required", [])
+            parsed_arguments = parsed_arguments[:len(required_params)]
             return parsed_arguments
         elif isinstance(parsed_arguments, dict):
+            # 过滤掉���存在的字典参数
+            parsed_arguments = {k: v for k, v in parsed_arguments.items() if k in parameter_types}
             for key, value in parsed_arguments.items():
                 expected_type = parameter_types.get(key, {}).get("type", "string")
                 
