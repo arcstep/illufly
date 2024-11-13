@@ -18,8 +18,14 @@ team = Team(agents=[qwen, fake, react], name="团队协作")
 
 all_agents = [qwen, fake, react, team]
 
+import re
+
 def escape_xml_tags(text):
-    return text.replace("<", "&lt;").replace(">", "&gt;")
+    def replace_tag(match):
+        tag = match.group(0)
+        return tag.replace("<", "&lt;").replace(">", "&gt;")
+    
+    return re.sub(r'<[^>]+>', replace_tag, text)
 
 def select_agent(agent_name):
     print("select_agent >>>", agent_name)
@@ -60,9 +66,18 @@ with gr.Blocks() as main_ui:
             agent_image = gr.Image(label="智能体形象")
             agent_config = gr.Textbox(label="智能体配置")
 
-        with gr.Column(scale=3):
+        with gr.Column(scale=2):
             toggle_button = gr.Button("...")
-            chat_history = gr.Chatbot(type="messages", label="聊天记录")
+
+            # 确保路径正确
+            user_avatar_path = os.path.join(os.getcwd(), "icon/user.png")
+            qwen_avatar_path = os.path.join(os.getcwd(), "icon/qwen.png")
+
+            chat_history = gr.Chatbot(
+                type="messages", 
+                label="聊天记录",
+                avatar_images=(user_avatar_path, qwen_avatar_path),
+            )
             user_input = gr.Textbox(label="输入消息")
 
             user_input.submit(
@@ -94,12 +109,17 @@ with gr.Blocks() as main_ui:
         outputs=[right_panel, visibility_state]
     )
 
-    # 添加自定义 CSS 来隐藏默认的 Gradio footer
+    # 添加自定义 CSS 来隐藏默认的 Gradio footer 和调整头像对齐
     gr.HTML("""
     <style>
         footer{display:none !important}
         body {
             font-family: Arial, sans-serif;
+        }
+        /* 使用更高层级的选择器来应用样式 */
+        .avatar-container.svelte-1x5p6hu:not(.thumbnail-item) img {
+            margin: 0;
+            padding: 0;
         }
     </style>
     <div style="text-align: center; padding: 10px; background-color: var(--background-secondary); color: var(--text-color);">
