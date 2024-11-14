@@ -149,6 +149,134 @@ files = [
 frozenlist = ">=1.1.0"
 
 [[package]]
+name = "alibabacloud-avatar20220130"
+version = "2.5.3"
+description = "Alibaba Cloud avatar (20220130) SDK Library for Python"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "alibabacloud_avatar20220130-2.5.3-py3-none-any.whl", hash = "sha256:ab9585c63832291b0665e53ad5014ec8a27de3c202aec7d5f09508a7b69ecf68"},
+    {file = "alibabacloud_avatar20220130-2.5.3.tar.gz", hash = "sha256:f460976d9e73ae67b1d911091896bf632d3afe0e068d7d84507206de9bf740d7"},
+]
+
+[package.dependencies]
+alibabacloud-endpoint-util = ">=0.0.3,<1.0.0"
+alibabacloud-openapi-util = ">=0.2.1,<1.0.0"
+alibabacloud-tea-openapi = ">=0.3.8,<1.0.0"
+alibabacloud-tea-util = ">=0.3.11,<1.0.0"
+
+[[package]]
+name = "alibabacloud-credentials"
+version = "0.3.6"
+description = "The alibabacloud credentials module of alibabaCloud Python SDK."
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "alibabacloud_credentials-0.3.6.tar.gz", hash = "sha256:caa82cf258648dcbe1ca14aeba50ba21845567d6ac3cd48d318e0a445fff7f96"},
+]
+
+[package.dependencies]
+alibabacloud-tea = ">=0.3.9"
+
+[[package]]
+name = "alibabacloud-endpoint-util"
+version = "0.0.3"
+description = "The endpoint-util module of alibabaCloud Python SDK."
+optional = false
+python-versions = "*"
+files = [
+    {file = "alibabacloud_endpoint_util-0.0.3.tar.gz", hash = "sha256:8c0efb76fdcc3af4ca716ef24bbce770201a3f83f98c0afcf81655f684b9c7d2"},
+]
+
+[package.dependencies]
+alibabacloud-tea = ">=0.0.1"
+
+[[package]]
+name = "alibabacloud-gateway-spi"
+version = "0.0.2"
+description = "Alibaba Cloud Gateway SPI SDK Library for Python"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "alibabacloud_gateway_spi-0.0.2.tar.gz", hash = "sha256:f932c8ba67291531dfbee6ca521dcf3523eb4ff93512bf0aaf135f2d4fc4704d"},
+]
+
+[package.dependencies]
+alibabacloud_credentials = ">=0.3.4,<1.0.0"
+
+[[package]]
+name = "alibabacloud-openapi-util"
+version = "0.2.2"
+description = "Aliyun Tea OpenApi Library for Python"
+optional = false
+python-versions = "*"
+files = [
+    {file = "alibabacloud_openapi_util-0.2.2.tar.gz", hash = "sha256:ebbc3906f554cb4bf8f513e43e8a33e8b6a3d4a0ef13617a0e14c3dda8ef52a8"},
+]
+
+[package.dependencies]
+alibabacloud_tea_util = ">=0.0.2"
+cryptography = ">=3.0.0"
+
+[[package]]
+name = "alibabacloud-tea"
+version = "0.4.0"
+description = "The tea module of alibabaCloud Python SDK."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "alibabacloud-tea-0.4.0.tar.gz", hash = "sha256:bdf72d747723bab190331b3c8593109fe2807504469bc0147f78c8c4945ed396"},
+    {file = "alibabacloud_tea-0.4.0-py3-none-any.whl", hash = "sha256:59fae5765e6654f884e130233df6fb61ca0fbe01a29ed0755a1cf099a3d4d863"},
+]
+
+[package.dependencies]
+aiohttp = ">=3.7.0,<4.0.0"
+requests = ">=2.21.0,<3.0.0"
+
+[[package]]
+name = "alibabacloud-tea-openapi"
+version = "0.3.12"
+description = "Alibaba Cloud openapi SDK Library for Python"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "alibabacloud_tea_openapi-0.3.12.tar.gz", hash = "sha256:2e14809f357438e62c1ef4976a7655110dd54a75bbfa7d905fa3798355cfd974"},
+]
+
+[package.dependencies]
+alibabacloud_credentials = ">=0.3.5,<1.0.0"
+alibabacloud_gateway_spi = ">=0.0.2,<1.0.0"
+alibabacloud_openapi_util = ">=0.2.1,<1.0.0"
+alibabacloud_tea_util = ">=0.3.13,<1.0.0"
+alibabacloud_tea_xml = ">=0.0.2,<1.0.0"
+
+[[package]]
+name = "alibabacloud-tea-util"
+version = "0.3.13"
+description = "The tea-util module of alibabaCloud Python SDK."
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "alibabacloud_tea_util-0.3.13.tar.gz", hash = "sha256:8cbdfd2a03fbbf622f901439fa08643898290dd40e1d928347f6346e43f63c90"},
+]
+
+[package.dependencies]
+alibabacloud-tea = ">=0.3.3"
+
+[[package]]
+name = "alibabacloud-tea-xml"
+version = "0.0.2"
+description = "The tea-xml module of alibabaCloud Python SDK."
+optional = false
+python-versions = "*"
+files = [
+    {file = "alibabacloud_tea_xml-0.0.2.tar.gz", hash = "sha256:f0135e8148fd7d9c1f029db161863f37f144f837c280cba16c2edeb2f9c549d8"},
+]
+
+[package.dependencies]
+alibabacloud-tea = ">=0.0.1"
+
+[[package]]
 name = "annotated-types"
 version = "0.7.0"
 description = "Reusable constraint types to use with typing.Annotated"
@@ -563,6 +691,55 @@ docs = ["furo", "sphinx (>=7.2)", "sphinx-copybutton"]
 mypy = ["contourpy[bokeh,docs]", "docutils-stubs", "mypy (==1.11.1)", "types-Pillow"]
 test = ["Pillow", "contourpy[test-no-images]", "matplotlib"]
 test-no-images = ["pytest", "pytest-cov", "pytest-rerunfailures", "pytest-xdist", "wurlitzer"]
+
+[[package]]
+name = "cryptography"
+version = "43.0.3"
+description = "cryptography is a package which provides cryptographic recipes and primitives to Python developers."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "cryptography-43.0.3-cp37-abi3-macosx_10_9_universal2.whl", hash = "sha256:bf7a1932ac4176486eab36a19ed4c0492da5d97123f1406cf15e41b05e787d2e"},
+    {file = "cryptography-43.0.3-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:63efa177ff54aec6e1c0aefaa1a241232dcd37413835a9b674b6e3f0ae2bfd3e"},
+    {file = "cryptography-43.0.3-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7e1ce50266f4f70bf41a2c6dc4358afadae90e2a1e5342d3c08883df1675374f"},
+    {file = "cryptography-43.0.3-cp37-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:443c4a81bb10daed9a8f334365fe52542771f25aedaf889fd323a853ce7377d6"},
+    {file = "cryptography-43.0.3-cp37-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:74f57f24754fe349223792466a709f8e0c093205ff0dca557af51072ff47ab18"},
+    {file = "cryptography-43.0.3-cp37-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:9762ea51a8fc2a88b70cf2995e5675b38d93bf36bd67d91721c309df184f49bd"},
+    {file = "cryptography-43.0.3-cp37-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:81ef806b1fef6b06dcebad789f988d3b37ccaee225695cf3e07648eee0fc6b73"},
+    {file = "cryptography-43.0.3-cp37-abi3-win32.whl", hash = "sha256:cbeb489927bd7af4aa98d4b261af9a5bc025bd87f0e3547e11584be9e9427be2"},
+    {file = "cryptography-43.0.3-cp37-abi3-win_amd64.whl", hash = "sha256:f46304d6f0c6ab8e52770addfa2fc41e6629495548862279641972b6215451cd"},
+    {file = "cryptography-43.0.3-cp39-abi3-macosx_10_9_universal2.whl", hash = "sha256:8ac43ae87929a5982f5948ceda07001ee5e83227fd69cf55b109144938d96984"},
+    {file = "cryptography-43.0.3-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:846da004a5804145a5f441b8530b4bf35afbf7da70f82409f151695b127213d5"},
+    {file = "cryptography-43.0.3-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0f996e7268af62598f2fc1204afa98a3b5712313a55c4c9d434aef49cadc91d4"},
+    {file = "cryptography-43.0.3-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:f7b178f11ed3664fd0e995a47ed2b5ff0a12d893e41dd0494f406d1cf555cab7"},
+    {file = "cryptography-43.0.3-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:c2e6fc39c4ab499049df3bdf567f768a723a5e8464816e8f009f121a5a9f4405"},
+    {file = "cryptography-43.0.3-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:e1be4655c7ef6e1bbe6b5d0403526601323420bcf414598955968c9ef3eb7d16"},
+    {file = "cryptography-43.0.3-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:df6b6c6d742395dd77a23ea3728ab62f98379eff8fb61be2744d4679ab678f73"},
+    {file = "cryptography-43.0.3-cp39-abi3-win32.whl", hash = "sha256:d56e96520b1020449bbace2b78b603442e7e378a9b3bd68de65c782db1507995"},
+    {file = "cryptography-43.0.3-cp39-abi3-win_amd64.whl", hash = "sha256:0c580952eef9bf68c4747774cde7ec1d85a6e61de97281f2dba83c7d2c806362"},
+    {file = "cryptography-43.0.3-pp310-pypy310_pp73-macosx_10_9_x86_64.whl", hash = "sha256:d03b5621a135bffecad2c73e9f4deb1a0f977b9a8ffe6f8e002bf6c9d07b918c"},
+    {file = "cryptography-43.0.3-pp310-pypy310_pp73-manylinux_2_28_aarch64.whl", hash = "sha256:a2a431ee15799d6db9fe80c82b055bae5a752bef645bba795e8e52687c69efe3"},
+    {file = "cryptography-43.0.3-pp310-pypy310_pp73-manylinux_2_28_x86_64.whl", hash = "sha256:281c945d0e28c92ca5e5930664c1cefd85efe80e5c0d2bc58dd63383fda29f83"},
+    {file = "cryptography-43.0.3-pp310-pypy310_pp73-win_amd64.whl", hash = "sha256:f18c716be16bc1fea8e95def49edf46b82fccaa88587a45f8dc0ff6ab5d8e0a7"},
+    {file = "cryptography-43.0.3-pp39-pypy39_pp73-macosx_10_9_x86_64.whl", hash = "sha256:4a02ded6cd4f0a5562a8887df8b3bd14e822a90f97ac5e544c162899bc467664"},
+    {file = "cryptography-43.0.3-pp39-pypy39_pp73-manylinux_2_28_aarch64.whl", hash = "sha256:53a583b6637ab4c4e3591a15bc9db855b8d9dee9a669b550f311480acab6eb08"},
+    {file = "cryptography-43.0.3-pp39-pypy39_pp73-manylinux_2_28_x86_64.whl", hash = "sha256:1ec0bcf7e17c0c5669d881b1cd38c4972fade441b27bda1051665faaa89bdcaa"},
+    {file = "cryptography-43.0.3-pp39-pypy39_pp73-win_amd64.whl", hash = "sha256:2ce6fae5bdad59577b44e4dfed356944fbf1d925269114c28be377692643b4ff"},
+    {file = "cryptography-43.0.3.tar.gz", hash = "sha256:315b9001266a492a6ff443b61238f956b214dbec9910a081ba5b6646a055a805"},
+]
+
+[package.dependencies]
+cffi = {version = ">=1.12", markers = "platform_python_implementation != \"PyPy\""}
+
+[package.extras]
+docs = ["sphinx (>=5.3.0)", "sphinx-rtd-theme (>=1.1.1)"]
+docstest = ["pyenchant (>=1.6.11)", "readme-renderer", "sphinxcontrib-spelling (>=4.0.1)"]
+nox = ["nox"]
+pep8test = ["check-sdist", "click", "mypy", "ruff"]
+sdist = ["build"]
+ssh = ["bcrypt (>=3.1.5)"]
+test = ["certifi", "cryptography-vectors (==43.0.3)", "pretend", "pytest (>=6.2.0)", "pytest-benchmark", "pytest-cov", "pytest-xdist"]
+test-randomorder = ["pytest-randomly"]
 
 [[package]]
 name = "cycler"
@@ -4397,4 +4574,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4"
-content-hash = "1ef07013cc4a8134b3dea8944264f51fa5ae3be4392843900c636549d75637fa"
+content-hash = "092dddede186068a409e28c75109f2f358400d6b05b585260dc78bfdf2b9e86a"

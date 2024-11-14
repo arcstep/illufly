@@ -38,6 +38,7 @@ torch = "2.0.1"
 sentence-transformers = "^3.1.1"
 gradio = "^5.1.0"
 dashscope = "^1.20.11"
+alibabacloud-avatar20220130 = "^2.5.3"
 
 [build-system]
 requires = ["poetry-core"]

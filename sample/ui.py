@@ -10,17 +10,24 @@ import json
 from illufly.flow import Team, ReAct
 from illufly.chat import ChatQwen, FakeLLM
 from illufly.utils import escape_xml_tags
-from illufly.toolkits import WebSearch, Text2ImageWanx, CogView, PandasAgent
+from illufly.toolkits import WebSearch, Text2ImageWanx, CogView, PandasAgent, Now
+import pandas as pd
 
 # ChatAgent
 qwen = ChatQwen(name="通义千问")
 fake = FakeLLM(name="FakeLLM", sleep=0.3)
-react = ReAct(planner=ChatQwen(tools=[WebSearch]), name="ReAct 长推理")
+react = ReAct(
+    planner=ChatQwen(
+        tools=[
+            WebSearch(name="互联网搜索"),
+            Now(name="时钟")
+        ]
+    ),
+    name="ReAct 长推理"
+)
 team = Team(agents=[qwen, fake, react], name="团队协作")
 
 all_agents = [qwen, fake, react, team]
-
-import re
 
 def select_agent(agent_name):
     print("select_agent >>>", agent_name)
@@ -47,6 +54,15 @@ def bot(agent_name, prompt: str, hist: list, state: dict):
         final_hist.append({"role": "assistant", "content": "No response available."})
     return final_hist
 
+def get_list_data():
+    # 示例数据
+    items = [
+        {"name": "Item 1", "link": "#"},
+        {"name": "Item 2", "link": "#"},
+        {"name": "Item 3", "link": "#"}
+    ]
+    return items
+
 with gr.Blocks() as main_ui:
     gr.Markdown("# 🌈 小虹 AI")
     state = gr.State()
@@ -58,13 +74,19 @@ with gr.Blocks() as main_ui:
                 label="选择智能体",
                 value=qwen.name
             )
-            agent_image = gr.Image(label="智能体形象")
             agent_config = gr.Textbox(label="智能体配置")
+            
+            # 使用 HTML 组件来显示可点击的列表
+            list_items = get_list_data()
+            list_html = "<ul>" + "".join(
+                f'<li><a href="{item["link"]}" onclick="reloadChatHistory(\'{item["name"]}\'); return false;">{item["name"]}</a></li>'
+                for item in list_items
+            ) + "</ul>"
+            gr.HTML(list_html)
 
-        with gr.Column(scale=2):
-            toggle_button = gr.Button("...")
+            clear = gr.Button("开始新对话")
 
-            # 确保路径正确
+        with gr.Column(scale=4):
             user_avatar_path = os.path.join(os.getcwd(), "icon/user.png")
             qwen_avatar_path = os.path.join(os.getcwd(), "icon/qwen.png")
 
@@ -86,37 +108,27 @@ with gr.Blocks() as main_ui:
                 chat_history
             )
 
-        right_panel = gr.Column(scale=1, visible=False)
-        with right_panel:
-            clear = gr.Button("开始新对话")
-            chat_threads = gr.Chatbot(type="messages", label="历史聊天记录")
-
         clear.click(lambda: None, None, chat_history, queue=False)
 
-    visibility_state = gr.State(value=False)
-    def toggle_visibility(visible):
-        new_visibility = not visible
-        return gr.update(visible=new_visibility), new_visibility
-
-    toggle_button.click(
-        toggle_visibility,
-        inputs=visibility_state,
-        outputs=[right_panel, visibility_state]
-    )
-
-    # 添加自定义 CSS 来隐藏默认的 Gradio footer 和调整头像对齐
+    # 添加自定义 CSS 和 JavaScript
     gr.HTML("""
     <style>
         footer{display:none !important}
         body {
             font-family: Arial, sans-serif;
         }
-        /* 使用更高层级的选择器来应用样式 */
         .avatar-container.svelte-1x5p6hu:not(.thumbnail-item) img {
             margin: 0;
             padding: 0;
         }
     </style>
+    <script>
+        function reloadChatHistory(itemName) {
+            // 在这里实现重新加载聊天历史的逻辑
+            console.log("Reload chat history for:", itemName);
+            // 你可以在这里调用 Gradio 的 Python 函数来更新聊天记录
+        }
+    </script>
     <div style="text-align: center; padding: 10px; background-color: var(--background-secondary); color: var(--text-color);">
         <p>✨🦋 illufly © 2024</p>
     </div>
