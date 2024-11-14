@@ -18,7 +18,7 @@ def save_faq(thread_id: str, chat_learn_folder: str, knowledge: str, question: s
     if not os.path.exists(chat_learn_folder):
         os.makedirs(chat_learn_folder)
 
-    metadata = f'<!-- @metadata {str(metadata) if metadata else ""} -->\n'
+    metadata = f'<!-- @meta {str(metadata) if metadata else ""} -->\n'
     q = f"**Question**\n{question}\n\n"
     k = f"**Knowledge**\n{knowledge}"
     text = (metadata + q + k) or ""
