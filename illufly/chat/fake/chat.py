@@ -19,7 +19,7 @@ class FakeLLM(ChatAgent):
         raise_invalid_params(kwargs, self.allowed_params())
         super().__init__(threads_group="FAKE_LLM", **filter_kwargs(kwargs, self.allowed_params()))
 
-        self.sleep = sleep if sleep is not None else 0.01
+        self.sleep = sleep if sleep is not None else 0.2
         self.response = response if isinstance(response, list) else ([response] if response else None)
         self.current_response_index = 0
 

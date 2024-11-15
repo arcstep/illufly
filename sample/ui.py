@@ -7,7 +7,7 @@ load_dotenv(find_dotenv(), override=True)
 
 import gradio as gr
 import json
-from illufly.flow import Team, ReAct
+from illufly.flow import Team, ReAct, CoT
 from illufly.chat import ChatQwen, FakeLLM
 from illufly.utils import escape_xml_tags
 from illufly.toolkits import WebSearch, Text2ImageWanx, CogView, PandasAgent, Now
@@ -15,7 +15,11 @@ import pandas as pd
 
 # ChatAgent
 qwen = ChatQwen(name="通义千问")
-fake = FakeLLM(name="FakeLLM", sleep=0.3)
+fake = FakeLLM(name="FakeLLM", sleep=0.2)
+cot = CoT(
+    planner=ChatQwen(model="qwen2.5-math-72b-instruct"),
+    name="思维链长推理"
+)
 react = ReAct(
     planner=ChatQwen(
         tools=[
@@ -25,9 +29,9 @@ react = ReAct(
     ),
     name="ReAct 长推理"
 )
-team = Team(agents=[qwen, fake, react], name="团队协作")
+team = Team(agents=[qwen, fake, cot, react], name="团队协作")
 
-all_agents = [qwen, fake, react, team]
+all_agents = [team, *list(team.agents)]
 
 def select_agent(agent_name):
     print("select_agent >>>", agent_name)
