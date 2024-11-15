@@ -22,6 +22,7 @@ def get_env(key: str=None):
         "ILLUFLY_IDENT": os.path.join(FIXED_TEMP_DIR, "IDENT"), # 问题转换、意图识别的经验存储目录
         "ILLUFLY_CACHE_EMBEDDINGS": os.path.join(FIXED_TEMP_DIR, "CACHE_EMBEDDINGS"), # 缓存 Embeddings 存储目录
         "ILLUFLY_UPLOAD_CACHE": os.path.join(FIXED_TEMP_DIR, "UPLOAD_CACHE"), # 上传缓存目录
+        "FASTAPI_TOKEN_WHITELIST": os.path.join(FIXED_TEMP_DIR, "AUTH", "whitelist.json"),
 
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
@@ -58,7 +59,11 @@ def get_env(key: str=None):
         # DashScope
         "DASHSCOPE_BASE_URL": "https://dashscope.aliyuncs.com/api/v1",
         # Zhipu
-        "ZHIPUAI_API_TOOLS_BASE_URL": "https://open.bigmodel.cn/api/paas/v4/tools"
+        "ZHIPUAI_API_TOOLS_BASE_URL": "https://open.bigmodel.cn/api/paas/v4/tools",
+
+        # Auth
+        "FASTAPI_SECRET_KEY": "MY-SECRET-KEY",
+        "FASTAPI_ALGORITHM": "HS256",
     }
     if key:
         if key not in default_values:
