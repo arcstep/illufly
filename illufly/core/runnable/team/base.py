@@ -14,7 +14,6 @@ class Team(Runnable):
         self,
         agents: Set[Union["ChatAgent"]]=None,
         default_agent: Union["ChatAgent"]=None,
-        store: dict=None,
         chunk_types: list=None,
         other_types: list=None,
         **kwargs
@@ -77,28 +76,3 @@ class Team(Runnable):
         for agent in agents:
             agent.team = None
             self.agents.discard(agent)
-
-    @property
-    def event_stream(self):
-        """
-        生成适合于 Web 处理的 SSE 事件流格式的数据。
-        如果使用 FastAPI，则可以使用 `event_stream` 作为 `EventSourceResponse` 的生成器。
-        """
-        valid_block_types = self.chunk_types + self.other_types
-        def _event_stream(block, verbose: bool=False, **kwargs):
-            if isinstance(block, EventBlock) and block.block_type in valid_block_types:
-                return {
-                    "data": {
-                        "block_type": block.block_type,
-                        "content": block.text,
-                        "content_id": block.content_id,
-                        "thread_id": block.runnable_info.get("thread_id", None),
-                        "calling_id": block.runnable_info.get("calling_id", None),
-                        "agent_name": block.runnable_info.get("name", None),
-                        "model_name": block.runnable_info.get("model_name", None),
-                    }
-                }
-            else:
-                return {}
-
-        return _event_stream

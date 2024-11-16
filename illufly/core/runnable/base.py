@@ -6,11 +6,11 @@ from typing import Union, List, Dict, Any, Callable, Generator, AsyncGenerator
 from abc import ABC, abstractmethod
 from functools import partial
 
-from .executor_manager import ExecutorManager
-from .binding_manager import BindingManager
 from ...io import log, EventBlock, event_stream
 from ...utils import filter_kwargs, raise_invalid_params
-
+from ..events_history import BaseEventsHistory
+from .executor_manager import ExecutorManager
+from .binding_manager import BindingManager
 
 class Runnable(ABC, ExecutorManager, BindingManager):
     """
@@ -46,7 +46,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
             "name": "Runnable 名称，默认为 {类名}.{id}",
             "handlers": "EventBlock 迭代器处理函数列表，默认为 [log]，当调用 call 方法时，会使用该列表中的函数逐个处理 EventBlock",
             "block_processor": "在 yield 之前将 EventBlock 事件转换为新的格式，在 __call__ 方法的输出生成器时使用",
-            "store": "可运行实例的事件存储",
             **ExecutorManager.allowed_params(),
             **BindingManager.allowed_params(),
         }
@@ -64,9 +63,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         name: str = None,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         block_processor: Callable = None,
-        store: dict=None,
-        chunk_types: list=None,
-        other_types: list=None,
+        events_history: BaseEventsHistory = None,
         **kwargs
     ):
         """
@@ -78,24 +75,17 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         ExecutorManager.__init__(self, **filter_kwargs(kwargs, ExecutorManager.allowed_params()))
 
         self.name = name or f'{self.__class__.__name__}.{id(self)}'
-        self.continue_running = True
+
+        self.events_history = events_history or BaseEventsHistory()
         self.handlers = [log] if handlers is None else handlers
-        self.block_processor = block_processor
-        self.verbose = False
-
-        self.calling_id = None
-        self._last_output = None
-
-        self.store = store or {}
-        self.last_history_id = None
-        self.create_new_history()
-
-        self.chunk_types = chunk_types or ["chunk", "tool_resp_chunk", "text", "tool_resp_text"]
-        self.other_types = other_types or ["warn", "error", "info"]
-
         self.handlers.append(self.collect_event)
         if self.block_processor is None:
-            self.block_processor = self.event_stream
+            self.block_processor = self.events_history.event_stream
+
+        self.verbose = False
+        self.continue_running = True
+        self.calling_id = None
+        self._last_output = None
 
         BindingManager.__init__(self, **filter_kwargs(kwargs, BindingManager.allowed_params()))
 
@@ -134,64 +124,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
             **{k:v for k,v in local_dict.items() if v is not None},
         }
 
-    def create_new_history(self):
-        self.last_history_id = str(uuid.uuid1())
-        self.store[self.last_history_id] = {
-            "threads": set({}),
-            "callings": {}
-        }
-
-    @property
-    def collect_event(self):
-        """
-        收集事件到 store 中。
-
-        每个 EventBlock 都包含 runnable_info 属性，其中包含 thread_id 和 calling_id。
-        只有最初发起调用的 Runnable 才创建为一个 calling_id，在嵌套调用时，需要将 calling_id 传递给被调用的 Runnable。
-
-        事件流的层次结构分为：
-        - history_id 标记一个完整的对话流历史
-        - calling_id 标记一次调用
-        - agent_name 标记一次调用中，由哪个智能体发起
-        - thread_id 如果智能体包含连续记忆，则标记连续记忆的 thread_id
-        - segments 将 chunk 类事件收集到一起，形成完整段落
-        """
-        def _collect(event, **kwargs):
-            if event.runnable_info.get("thread_id", None):
-                thread = (
-                    event.runnable_info["name"],
-                    event.runnable_info["thread_id"],
-                )
-                self.store[self.last_history_id]["threads"].add(thread)
-
-            if self.last_history_id not in self.store:
-                self.store[self.last_history_id]["callings"] = {}
-
-            calling_id = event.runnable_info["calling_id"]
-            if calling_id not in self.store[self.last_history_id]["callings"]:
-                self.store[self.last_history_id]["callings"][calling_id] = {
-                    "agent_name": event.runnable_info["name"],
-                    "input": "",
-                    "output": "",
-                    "segments": {},
-                    "other_events": []
-                }
-
-            node = self.store[self.last_history_id]["callings"][calling_id]
-
-            if event.block_type == "user":
-                node["input"] = event.text
-            elif event.block_type in self.chunk_types:
-                node["segments"][event.content_id] = node["segments"].get(event.content_id, "") + event.text
-            elif event.block_type == "final_text":
-                node["output"] = event.text
-            elif event.block_type in self.other_types or self.other_types == "__all__":
-                node["other_events"].append(event.json)
-            else:
-                pass
-
-        return _collect
-        
     def build_calling_id(self):
         return str(uuid.uuid1())
 
