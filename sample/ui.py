@@ -129,7 +129,7 @@ with gr.Blocks() as main_ui:
     <script>
         function reloadChatHistory(itemName) {
             // 在这里实现重新加载聊天历史的逻辑
-            console.log("Reload chat history for:", itemName);
+            console.log("Reload chat memory_history for:", itemName);
             // 你可以在这里调用 Gradio 的 Python 函数来更新聊天记录
         }
     </script>

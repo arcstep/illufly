@@ -20,7 +20,7 @@ class ThreadIDGenerator:
 thread_id_gen = ThreadIDGenerator()
 
 
-class BaseHistory(ABC):
+class BaseMemoryHistory(ABC):
     def __init__(self, agent_class: str="CHAT_AGENT", agent_name: str="default"):
         self.reset_init(agent_class, agent_name)
 

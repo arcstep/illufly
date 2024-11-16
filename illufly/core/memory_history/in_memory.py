@@ -4,9 +4,9 @@ import copy
 
 from typing import Union, List
 
-from .base import BaseHistory
+from .base import BaseMemoryHistory
 
-class InMemoryHistory(BaseHistory):
+class InMemoryHistory(BaseMemoryHistory):
     """基于内存的记忆管理"""
 
     def __init__(self, memory: dict = {}, **kwargs):

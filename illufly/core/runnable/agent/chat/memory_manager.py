@@ -5,7 +5,7 @@ import random
 
 from typing import Union, List, Dict, Any, Callable
 from .....utils import filter_kwargs, raise_invalid_params, get_env
-from ....history import thread_id_gen, BaseHistory, LocalFileHistory, InMemoryHistory
+from ....memory_history import thread_id_gen, BaseMemoryHistory, LocalFileMemoryHistory, InMemoryHistory
 from ...message import Messages, Message
 from ...prompt_template import PromptTemplate
 from ...binding_manager import BindingManager
@@ -20,7 +20,7 @@ class MemoryManager(BindingManager):
             "style": "消息样式",
             "memory": "记忆列表",
             "remember_rounds": "记忆轮数",
-            "history": "记忆持久化管理",
+            "memory_history": "记忆持久化管理",
             **BindingManager.allowed_params(),
         }
 
@@ -29,7 +29,7 @@ class MemoryManager(BindingManager):
         style: str=None,
         memory: Union[List[Union[str, "PromptTemplate", Dict[str, Any]]], Messages]=None,
         remember_rounds: int=None,
-        history: BaseHistory=None,
+        memory_history: BaseMemoryHistory=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.allowed_params())
@@ -39,10 +39,10 @@ class MemoryManager(BindingManager):
         self.memory = []
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
 
-        self.history = history or InMemoryHistory()
-        self.history.reset_init(self.__class__.__name__, self.name)
+        self.memory_history = memory_history or InMemoryHistory()
+        self.memory_history.reset_init(self.__class__.__name__, self.name)
         # 加载最近一轮对话的记忆
-        self.history.load_memory(self.history.last_thread_id)
+        self.memory_history.load_memory(self.memory_history.last_thread_id)
 
         self.init_memory = []
         self.reset_init_memory(memory)
@@ -52,7 +52,7 @@ class MemoryManager(BindingManager):
 
     @property
     def thread_ids(self):
-        return self.history.list_threads()
+        return self.memory_history.list_threads()
 
     @property
     def current_thread_size(self):
@@ -63,7 +63,7 @@ class MemoryManager(BindingManager):
         return self._thread_id
 
     def create_thread_id(self):
-        last_count = self.history.last_thread_id_count()
+        last_count = self.memory_history.last_thread_id_count()
         self._current_thread_size = 0
         self._thread_id = thread_id_gen.create_id(last_count)
         return self._thread_id
@@ -113,7 +113,7 @@ class MemoryManager(BindingManager):
 
     # 保存记忆
     def save_memory(self):
-        self.history.save_memory(self.thread_id, self.memory)
+        self.memory_history.save_memory(self.thread_id, self.memory)
         self._current_thread_size = len(self.memory)
 
     # 加载记忆
@@ -123,7 +123,7 @@ class MemoryManager(BindingManager):
         - 使用整数索引: -1 加载最近一轮对话的记忆; 0 加载首轮记忆
         - 使用字符串: 加载指定记忆 thread_id
         """
-        self._thread_id, self.memory = self.history.load_memory(thread_id)
+        self._thread_id, self.memory = self.memory_history.load_memory(thread_id)
         self._current_thread_size = len(self.memory)
 
     def build_chat_memory(self, prompt: Union[str, List[dict]], new_chat: bool=False, remember_rounds: int = None):

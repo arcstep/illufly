@@ -4,9 +4,9 @@ import json
 from typing import Union, List
 
 from ...config import get_env
-from .base import BaseHistory
+from .base import BaseMemoryHistory
 
-class LocalFileHistory(BaseHistory):
+class LocalFileMemoryHistory(BaseMemoryHistory):
     """基于文件的记忆管理"""
 
     def __init__(self, directory: str = None, **kwargs):
