@@ -10,4 +10,4 @@ app.include_router(create_auth_api())
 ```
 """
 
-from .auth import create_auth_api, get_current_user
+from .base import create_auth_api, get_current_user
