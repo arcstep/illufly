@@ -98,14 +98,16 @@ class BaseEventsHistory():
         def _event_stream(block, verbose: bool=False, **kwargs):
             if isinstance(block, EventBlock) and block.block_type in valid_block_types:
                 return {
+                    "event": block.block_type,
+                    "id": block.id,
                     "data": {
-                        "block_type": block.block_type,
                         "content": block.text,
                         "content_id": block.content_id,
                         "thread_id": block.runnable_info.get("thread_id", None),
                         "calling_id": block.runnable_info.get("calling_id", None),
                         "agent_name": block.runnable_info.get("name", None),
                         "model_name": block.runnable_info.get("model_name", None),
+                        "created_at": block.created_at.isoformat(),
                     }
                 }
             else:
