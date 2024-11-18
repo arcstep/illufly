@@ -16,7 +16,7 @@ from sse_starlette.sse import EventSourceResponse
 app = FastAPI()
 
 # ChatAgent
-chat = ChatQwen(name="qwen")
+chat = ChatQwen(name="qwen", events_history=RedisEventsHistory(server="redis://localhost:6379"))
 @app.get("/chat")
 async def chat_endpoint(prompt: str):
     return EventSourceResponse(chat(prompt, generator="async"))

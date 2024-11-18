@@ -27,7 +27,7 @@ class EventsHistoryIDGenerator:
             timestamp = str(int(time.time()))[-5:]
             random_number = f'{random.randint(0, 9999):04}'
             counter_str = f'{self.counter:04}'
-            yield f'{date_str}-{timestamp}-{random_number}-{counter_str}'
+            yield f'{date_str}-{timestamp}-{counter_str}-{random_number}'
             self.counter = 0 if self.counter == 9999 else self.counter + 1
 
 events_history_id_gen = EventsHistoryIDGenerator()
@@ -43,7 +43,6 @@ class BaseEventsHistory():
         self.chunk_types = chunk_types or ["chunk", "tool_resp_chunk", "text", "tool_resp_text"]
         self.other_types = other_types or ["warn", "error", "info"]
 
-        self.last_history_id = None
         self.create_new_history()
 
     def list_events_histories(self):
@@ -51,7 +50,7 @@ class BaseEventsHistory():
         return sorted(self.store.keys())
 
     @property
-    def last_events_history_id(self):
+    def last_history_id(self):
         all_events_history_ids = self.list_events_histories()
         return all_events_history_ids[-1] if all_events_history_ids else None
 
@@ -68,22 +67,22 @@ class BaseEventsHistory():
         """根据 events_history_id 保存历史事件"""
         self.store[events_history_id] = copy.deepcopy(events_history)
 
-    def load_events_history(self, events_history_id: str):
+    def load_events_history(self, events_history_id: str=None):
         """根据 events_history_id 加载历史事件"""
-        _events_history_id = events_history_id
+        _events_history_id = events_history_id or self.last_history_id
         if isinstance(events_history_id, str):
-            return _events_history_id, self.store.get(events_history_id, [])
+            return _events_history_id, self.store.get(events_history_id, {})
         elif isinstance(events_history_id, int):
             all_events_history_ids = self.list_events_histories()
             if all_events_history_ids:
                 _events_history_id = all_events_history_ids[events_history_id]
-                return _events_history_id, self.store.get(_events_history_id, [])
+                return _events_history_id, self.store.get(_events_history_id, {})
 
-        return _events_history_id, []
+        return _events_history_id, {}
 
     def create_new_history(self):
-        self.last_history_id = next(events_history_id_gen.create_id())
-        self.store[self.last_history_id] = {
+        last_history_id = next(events_history_id_gen.create_id())
+        self.store[last_history_id] = {
             "threads": set({}),
             "callings": {}
         }
@@ -131,19 +130,18 @@ class BaseEventsHistory():
         - segments 将 chunk 类事件收集到一起，形成完整段落
         """
         def _collect(event, **kwargs):
+            last_history_id = self.last_history_id
+
             if event.runnable_info.get("thread_id", None):
                 thread = (
                     event.runnable_info["name"],
                     event.runnable_info["thread_id"],
                 )
-                self.store[self.last_history_id]["threads"].add(thread)
-
-            if self.last_history_id not in self.store:
-                self.store[self.last_history_id]["callings"] = {}
+                self.store[last_history_id]["threads"].add(thread)
 
             calling_id = event.runnable_info["calling_id"]
-            if calling_id not in self.store[self.last_history_id]["callings"]:
-                self.store[self.last_history_id]["callings"][calling_id] = {
+            if calling_id not in self.store[last_history_id]["callings"]:
+                self.store[last_history_id]["callings"][calling_id] = {
                     "agent_name": event.runnable_info["name"],
                     "input": "",
                     "output": "",
@@ -151,7 +149,7 @@ class BaseEventsHistory():
                     "other_events": []
                 }
 
-            node = self.store[self.last_history_id]["callings"][calling_id]
+            node = self.store[last_history_id]["callings"][calling_id]
 
             if event.block_type == "user":
                 node["input"] = event.text

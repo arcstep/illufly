@@ -124,6 +124,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         }
 
     def build_calling_id(self):
+        """确保 calling_id 是唯一的且按时间顺序排序的"""
         return str(uuid.uuid1())
 
     def create_event_block(self, *args, **kwargs):
