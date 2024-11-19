@@ -3,6 +3,8 @@ import os
 import json
 import hashlib
 import tiktoken
+import time
+import random
 from typing import List, Union, Dict, Any, Tuple
 from .config import get_env
 
@@ -275,3 +277,30 @@ def escape_xml_tags(text, tags_to_escape=None):
     escaped_lines = [re.sub(regex_pattern, replace_tag, line) for line in lines]
     
     return '\n'.join(escaped_lines)
+
+def create_id_generator(counter: int=0):
+    class IDGenerator:
+        """
+        ID 生成器。
+
+        ID 的格式为：`YYYYMMDD-TIMESTAMP-NNNN-XXXX`
+        其中，YYYYMMDD 表示日期，TIMESTAMP 表示当日秒数，XXXX 表示随机数，NNNN 表示计数。
+        """
+        def __init__(
+            self,
+            counter: int=0,
+        ):
+            self.counter = counter
+
+        def create_id(self, last_count: str=None):
+            if last_count:
+                self.counter = int(last_count)
+            while True:
+                date_str = time.strftime("%Y%m%d")
+                timestamp = str(int(time.time()))[-5:]
+                random_number = f'{random.randint(0, 9999):04}'
+                counter_str = f'{self.counter:04}'
+                yield f'{date_str}-{timestamp}-{counter_str}-{random_number}'
+                self.counter = 0 if self.counter == 9999 else self.counter + 1
+
+    return IDGenerator(counter)

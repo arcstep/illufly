@@ -4,11 +4,13 @@ import time
 import random
 
 from typing import Union, List, Dict, Any, Callable
-from .....utils import filter_kwargs, raise_invalid_params, get_env
-from ....memory_history import thread_id_gen, BaseMemoryHistory, LocalFileMemoryHistory, InMemoryHistory
+from .....utils import filter_kwargs, raise_invalid_params, create_id_generator
+from ....memory_history import BaseMemoryHistory, LocalFileMemoryHistory, InMemoryHistory
 from ...message import Messages, Message
 from ...prompt_template import PromptTemplate
 from ...binding_manager import BindingManager
+
+thread_id_gen = create_id_generator()
 
 class MemoryManager(BindingManager):
     @classmethod

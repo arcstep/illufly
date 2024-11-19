@@ -1,36 +1,10 @@
 from typing import List
-import time
-import random
 import copy
-import uuid
 
 from ...io import EventBlock
+from ...utils import create_id_generator
 
-class EventsHistoryIDGenerator:
-    """
-    生成事件历史 ID 的生成器。
-
-    事件历史 ID 的格式为：`YYYYMMDD-HHMMSS-XXXX-NNNN`
-    其中，YYYYMMDD 表示日期，HHMMSS 表示时间，XXXX 表示随机数，NNNN 表示计数。
-    """
-    def __init__(
-        self,
-        counter: int=0,
-    ):
-        self.counter = counter
-
-    def create_id(self, last_count: str=None):
-        if last_count:
-            self.counter = int(last_count)
-        while True:
-            date_str = time.strftime("%Y%m%d")
-            timestamp = str(int(time.time()))[-5:]
-            random_number = f'{random.randint(0, 9999):04}'
-            counter_str = f'{self.counter:04}'
-            yield f'{date_str}-{timestamp}-{counter_str}-{random_number}'
-            self.counter = 0 if self.counter == 9999 else self.counter + 1
-
-events_history_id_gen = EventsHistoryIDGenerator()
+events_history_id_gen = create_id_generator()
 
 class BaseEventsHistory():
     def __init__(
