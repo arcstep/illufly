@@ -127,7 +127,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
     def build_calling_id(self):
         """确保 calling_id 是唯一的且按时间顺序排序的"""
-        return calling_id_gen.create_id()
+        return next(calling_id_gen)
 
     def create_event_block(self, *args, **kwargs):
         return EventBlock(*args, runnable_info=self.runnable_info, **kwargs)
@@ -147,7 +147,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
             raise AttributeError(f"方法 '{action}' 不存在于实例中")
 
         self._last_output = None
-        self.calling_id = calling_id or next(self.build_calling_id())
+        self.calling_id = calling_id or self.build_calling_id()
 
         block_processor = block_processor or self.block_processor
         self.continue_running = True

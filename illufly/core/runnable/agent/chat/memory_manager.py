@@ -64,12 +64,6 @@ class MemoryManager(BindingManager):
     def thread_id(self):
         return self._thread_id
 
-    def create_thread_id(self):
-        last_count = self.memory_history.last_thread_id_count()
-        self._current_thread_size = 0
-        self._thread_id = thread_id_gen.create_id(last_count)
-        return self._thread_id
-
     @property
     def chat_memory(self):
         return self._chat_memory
@@ -78,9 +72,10 @@ class MemoryManager(BindingManager):
         """
         开启新一轮对话
         """
+        self._current_thread_size = 0
         self.memory.clear()
         if self._thread_id is None or self.current_thread_size > 0:
-            self._thread_id = next(self.create_thread_id())
+            self._thread_id = next(thread_id_gen)
         return self._thread_id
 
     def reset_init_memory(self, messages: Union[str, List[dict]]):

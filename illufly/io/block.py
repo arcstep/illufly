@@ -6,6 +6,9 @@ import uuid
 from datetime import datetime
 
 from ..config import get_env, get_ascii_color_code
+from ..utils import create_id_generator
+
+block_id_generator = create_id_generator()
 
 class EventBlock():
     def __init__(
@@ -17,8 +20,8 @@ class EventBlock():
         calling_info: dict=None,
         runnable_info: dict=None
     ):
-        self.id = str(uuid.uuid1().hex)
-        self.content_id = content_id or str(uuid.uuid1().hex)
+        self.id = next(block_id_generator)
+        self.content_id = content_id or next(block_id_generator)
         self.content = content
         self.block_type = block_type.lower()
         self.created_at = created_at or datetime.now()

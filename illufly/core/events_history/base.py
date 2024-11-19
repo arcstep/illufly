@@ -55,7 +55,7 @@ class BaseEventsHistory():
         return _events_history_id, {}
 
     def create_new_history(self):
-        last_history_id = next(events_history_id_gen.create_id())
+        last_history_id = next(events_history_id_gen)
         self.store[last_history_id] = {
             "threads": set({}),
             "callings": {}

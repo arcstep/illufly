@@ -13,14 +13,6 @@ class LocalFileMemoryHistory(BaseMemoryHistory):
         super().__init__(**kwargs)
         self.directory = directory or get_env("ILLUFLY_LOCAL_FILE_MEMORY")
 
-    def last_thread_id_count(self):
-        all_thread_ids = self.list_threads()
-        if all_thread_ids:
-            ids = all_thread_ids[-1].split("-")
-            return int(ids[-1]) + 1
-        else:
-            return 0
-
     # 列举所有记忆线
     def list_threads(self):
         memory_dir = self._get_history_dir()

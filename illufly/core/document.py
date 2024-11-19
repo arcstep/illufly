@@ -1,23 +1,9 @@
 from typing import Dict, Any, List, Union
-from ..utils import minify_text
+from ..utils import minify_text, create_id_generator
 import json
 import time
-import random
 
-class IDGenerator:
-    def __init__(self):
-        self.counter = 0
-
-    def create_id(self):
-        while True:
-            timestamp = str(int(time.time()))[-4:]
-            random_number = f'{random.randint(0, 999):03}'
-            counter_str = f'{self.counter:03}'
-            yield f'{timestamp}-{random_number}-{counter_str}'
-            self.counter = 0 if self.counter == 999 else self.counter + 1
-
-id_generator = IDGenerator()
-id_gen = id_generator.create_id()
+doc_id_generator = create_id_generator()
 
 class Document():
     def __init__(self, text: str=None, index: str=None, meta: Dict[str, Any] = None):
@@ -25,7 +11,7 @@ class Document():
         self.index = index or ""
         self.meta = {**(meta or {})}
         if 'id' not in self.meta:
-            self.meta['id'] = next(id_gen)
+            self.meta['id'] = next(doc_id_generator)
 
     def __repr__(self):
         meta_converted = [k for k, _v in self.meta.items()]
