@@ -72,7 +72,7 @@ class BaseToolCalling():
                     tool_func_result = struct_tool.last_output
                 else:
                     yield struct_tool.create_event_block("action_parse_failed", tool_args)
-                for x in tool_func_result:
+                for x in (tool_func_result or []):
                     if isinstance(x, EventBlock):
                         if x.block_type == "final_tool_resp":
                             tool_resp = x.text
