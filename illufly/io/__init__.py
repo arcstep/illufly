@@ -16,6 +16,7 @@ __all__ = [
     "event_stream",
     "usage",
     "async_usage",
+    "BaseEventsHistory",
     "BaseMemoryHistory",
     "LocalFileMemoryHistory",
 ]

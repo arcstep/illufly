@@ -79,6 +79,8 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self.name = name or f'{self.__class__.__name__}.{id(self)}'
 
         self.events_history = events_history or BaseEventsHistory()
+        self.events_history.agent_name = self.name
+
         self.handlers = [log] if handlers is None else handlers
         self.handlers.append(self.events_history.collect_event)
         self.block_processor = block_processor or self.events_history.event_stream

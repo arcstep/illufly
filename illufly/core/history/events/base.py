@@ -13,9 +13,11 @@ class BaseEventsHistory():
         chunk_types: list=None,
         other_types: list=None,
     ):
+        # 构建实例后由 Runnable 赋值
+        self.agent_name = None
+
         self.store = store or {}
         self.chunk_types = chunk_types or ["chunk", "tool_resp_chunk", "text", "tool_resp_text"]
-        self.other_types = other_types or ["warn", "error", "info"]
 
         self.create_new_history()
 
@@ -61,27 +63,46 @@ class BaseEventsHistory():
             "callings": {}
         }
 
+    def get_event_type(self, block: EventBlock):
+        event_type = "log"
+        is_self_generated = self.agent_name == block.runnable_info.get("name", None)
+
+        # input
+        if block.block_type == "user" and is_self_generated:
+            event_type = "input"
+        elif block.block_type == "final_text" and is_self_generated:
+            event_type = "output"
+        elif block.block_type in ["tools_call_final", "tool_resp_chunk", "tool_resp_text", "tool_resp_final_text"]:
+            event_type = "tools"
+        else:
+            event_type = "log"
+
+        return event_type
+
+    def get_event_data(self, block: EventBlock):
+        return {
+            "content": block.text,
+            "block_type": block.block_type,
+            "content_id": block.content_id,
+            "created_at": block.created_at.isoformat(),
+            "thread_id": block.runnable_info.get("thread_id", None),
+            "calling_id": block.runnable_info.get("calling_id", None),
+            "agent_name": block.runnable_info.get("name", None),
+            "model_name": block.runnable_info.get("model_name", None),
+        }
+    
     @property
     def event_stream(self):
         """
         生成适合于 Web 处理的 SSE 事件流格式的数据。
         如果使用 FastAPI，则可以使用 `event_stream` 作为 `EventSourceResponse` 的生成器。
         """
-        valid_block_types = self.chunk_types + self.other_types
         def _event_stream(block, verbose: bool=False, **kwargs):
-            if isinstance(block, EventBlock) and block.block_type in valid_block_types:
+            if isinstance(block, EventBlock):
                 return {
-                    "event": block.block_type,
+                    "event": self.get_event_type(block),
                     "id": block.id,
-                    "data": {
-                        "content": block.text,
-                        "content_id": block.content_id,
-                        "thread_id": block.runnable_info.get("thread_id", None),
-                        "calling_id": block.runnable_info.get("calling_id", None),
-                        "agent_name": block.runnable_info.get("name", None),
-                        "model_name": block.runnable_info.get("model_name", None),
-                        "created_at": block.created_at.isoformat(),
-                    }
+                    "data": self.get_event_data(block)
                 }
             else:
                 return {}
@@ -116,24 +137,9 @@ class BaseEventsHistory():
             calling_id = event.runnable_info["calling_id"]
             if calling_id not in self.store[last_history_id]["callings"]:
                 self.store[last_history_id]["callings"][calling_id] = {
-                    "agent_name": event.runnable_info["name"],
-                    "input": "",
-                    "output": "",
-                    "segments": {},
-                    "other_events": []
+                    "id": event.id,
+                    "event_type": self.get_event_type(event),
+                    "data": self.get_event_data(event),
                 }
-
-            node = self.store[last_history_id]["callings"][calling_id]
-
-            if event.block_type == "user":
-                node["input"] = event.text
-            elif event.block_type in self.chunk_types:
-                node["segments"][event.content_id] = node["segments"].get(event.content_id, "") + event.text
-            elif event.block_type == "final_text":
-                node["output"] = event.text
-            elif event.block_type in self.other_types or self.other_types == "__all__":
-                node["other_events"].append(event.json)
-            else:
-                pass
 
         return _collect
