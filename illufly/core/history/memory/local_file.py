@@ -3,7 +3,7 @@ import json
 
 from typing import Union, List
 
-from ...config import get_env
+from ....config import get_env
 from .base import BaseMemoryHistory
 
 class LocalFileMemoryHistory(BaseMemoryHistory):

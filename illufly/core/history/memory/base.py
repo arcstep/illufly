@@ -1,23 +1,27 @@
-import os
-import json
+from abc import ABC, abstractmethod
+from typing import List, Union
 import copy
 
-from typing import Union, List
+class BaseMemoryHistory(ABC):
+    def __init__(self, agent_class: str="CHAT_AGENT", agent_name: str="default"):
+        self.memory = {}
+        self.reset_init(agent_class, agent_name)
 
-from .base import BaseMemoryHistory
+    def reset_init(self, agent_class: str, agent_name: str):
+        self.agent_class = agent_class
+        self.agent_name = agent_name
 
-class InMemoryHistory(BaseMemoryHistory):
-    """基于内存的记忆管理"""
-
-    def __init__(self, memory: dict = {}, **kwargs):
-        super().__init__(**kwargs)
-        self.memory = memory or {}
-
-    # 列举所有记忆线
     def list_threads(self):
+        """列举所有记忆线"""
         return sorted(self.memory.keys())
 
+    @property
+    def last_thread_id(self):
+        all_thread_ids = self.list_threads()
+        return all_thread_ids[-1] if all_thread_ids else None
+
     def save_memory(self, thread_id: str, memory: List[dict]):
+        """根据 thread_id 保存记忆"""
         self.memory[thread_id] = copy.deepcopy(memory)
 
     def load_memory(self, thread_id: Union[str, int] = None):

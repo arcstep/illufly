@@ -8,7 +8,7 @@ from functools import partial
 
 from ...io import log, EventBlock
 from ...utils import filter_kwargs, raise_invalid_params, create_id_generator
-from ..events_history import BaseEventsHistory
+from ..history import BaseEventsHistory
 from .executor_manager import ExecutorManager
 from .binding_manager import BindingManager
 

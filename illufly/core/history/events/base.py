@@ -1,8 +1,8 @@
 from typing import List
 import copy
 
-from ...io import EventBlock
-from ...utils import create_id_generator
+from ....io import EventBlock
+from ....utils import create_id_generator
 
 events_history_id_gen = create_id_generator()
 

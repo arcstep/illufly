@@ -5,7 +5,7 @@ import random
 
 from typing import Union, List, Dict, Any, Callable
 from .....utils import filter_kwargs, raise_invalid_params, create_id_generator
-from ....memory_history import BaseMemoryHistory, LocalFileMemoryHistory, InMemoryHistory
+from ....history import BaseMemoryHistory, LocalFileMemoryHistory
 from ...message import Messages, Message
 from ...prompt_template import PromptTemplate
 from ...binding_manager import BindingManager
@@ -41,7 +41,7 @@ class MemoryManager(BindingManager):
         self.memory = []
         self.remember_rounds = remember_rounds if remember_rounds is not None else 10
 
-        self.memory_history = memory_history or InMemoryHistory()
+        self.memory_history = memory_history or BaseMemoryHistory()
         self.memory_history.reset_init(self.__class__.__name__, self.name)
         # 加载最近一轮对话的记忆
         self.memory_history.load_memory(self.memory_history.last_thread_id)
