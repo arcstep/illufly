@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Request
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
@@ -92,9 +92,10 @@ def create_auth_api(auth_func: callable=None):
     router = APIRouter()
 
     @router.post("/token/refresh")
-    async def refresh_token(refresh_token: str):
-        # 检查刷新令牌是否在白名单中
-        if not is_refresh_token_in_whitelist(refresh_token):
+    async def refresh_token(request: Request):
+        # 从 Cookies 中获取 refresh_token
+        refresh_token = request.cookies.get("refresh_token")
+        if not refresh_token or not is_refresh_token_in_whitelist(refresh_token):
             raise HTTPException(status_code=403, detail="Refresh token is not in whitelist")
         try:
             payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -107,7 +108,8 @@ def create_auth_api(auth_func: callable=None):
             raise HTTPException(status_code=403, detail="Token is expired or invalid")
 
     @router.post("/login")
-    async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    async def login_for_access_token(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
+        # print(">>> login_for_access_token", form_data.username, form_data.password)
         user_info = auth_func(form_data.username, form_data.password)
         if not user_info:
             raise HTTPException(
@@ -116,10 +118,19 @@ def create_auth_api(auth_func: callable=None):
             )
         access_token = _create_access_token(data=user_info)
         refresh_token = _create_refresh_token(data=user_info)
+
+        # 设置 HttpOnly Cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,  # 在生产环境中使用 HTTPS 时设置为 True
+            samesite="Lax"  # 或者 "Strict" 根据需求
+        )
+
         return {
             "token_type": "bearer",
-            "access_token": access_token,
-            "refresh_token": refresh_token
+            "access_token": access_token
         }
 
     @router.post("/logout")
