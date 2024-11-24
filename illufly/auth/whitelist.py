@@ -21,10 +21,13 @@ def add_access_token_to_whitelist(access_token, username, expire_minutes):
         "expire": expire_time
     }
 
-def remove_access_token_from_whitelist(user_info: str):
+def remove_access_token_from_whitelist(username: str):
     """从内存白名单中移除用户的所有access_token"""
-    tokens_to_remove = [token for token, details in access_token_whitelist.items() if details["username"] == user_info['username']]
-    print('remove_access_token_from_whitelist:', user_info)
+    tokens_to_remove = [
+        token for token, details in access_token_whitelist.items()
+        if details["username"] == username
+    ]
+    print('remove_access_token_from_whitelist:', username)
     for token in tokens_to_remove:
         print(token)
         access_token_whitelist.pop(token)
