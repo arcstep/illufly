@@ -1,6 +1,6 @@
 from typing import List
 import copy
-
+import json
 from ....io import EventBlock
 from ....utils import create_id_generator
 
@@ -80,7 +80,7 @@ class BaseEventsHistory():
         return event_type
 
     def get_event_data(self, block: EventBlock):
-        return {
+        return json.dumps({
             "content": block.text,
             "block_type": block.block_type,
             "content_id": block.content_id,
@@ -89,7 +89,7 @@ class BaseEventsHistory():
             "calling_id": block.runnable_info.get("calling_id", None),
             "agent_name": block.runnable_info.get("name", None),
             "model_name": block.runnable_info.get("model_name", None),
-        }
+        }, ensure_ascii=False)
     
     @property
     def event_stream(self):
@@ -105,7 +105,7 @@ class BaseEventsHistory():
                     "data": self.get_event_data(block)
                 }
             else:
-                return {}
+                return {"data": ""}
 
         return _event_stream
 

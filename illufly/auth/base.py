@@ -2,6 +2,7 @@ from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Request,
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from typing import Dict
+from fastapi.security import OAuth2PasswordRequestForm
 
 from .whitelist import (
     is_refresh_token_in_whitelist,
@@ -42,6 +43,7 @@ def default_auth_func(username: str, password: str):
 async def get_current_user(request: Request):
     token = request.cookies.get("access_token")
     if not token:
+        print("没有 token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated"
@@ -49,6 +51,7 @@ async def get_current_user(request: Request):
 
     try:
         if not is_access_token_in_whitelist(token):
+            print("token 不在白名单中")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token not in whitelist"
@@ -56,11 +59,13 @@ async def get_current_user(request: Request):
 
         username: str = verify_jwt(token)
         if username is None:
+            print("token 无效")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
             )
     except JWTError:
+        print("token 解码失败")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials"
