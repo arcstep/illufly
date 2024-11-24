@@ -51,29 +51,38 @@ def default_auth_func(username: str, password: str):
     """
     return {"username": username}
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    """从JWT中解析当前用户"""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail=f"Could not validate credentials. Please obtain a valid token from {TOKEN_URL}",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+async def get_current_user(request: Request):
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     try:
         # 检查令牌是否在白名单中
         if not is_access_token_in_whitelist(token):
-            raise credentials_exception
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token not in whitelist",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
         # 使用 verify_jwt 方法验证 JWT 并获取 payload
         username: str = verify_jwt(token)
         if username is None:
-            raise credentials_exception
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     except JWTError:
-        # 捕获JWT解码错误并抛出自定义异常
-        raise credentials_exception
-    except HTTPException as e:
-        # 直接抛出 verify_jwt 中可能产生的异常
-        raise e
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     return {"username": username}
 
@@ -103,13 +112,23 @@ def create_auth_api(auth_func: callable=None):
             if username is None:
                 raise HTTPException(status_code=400, detail="Invalid refresh token")
             new_access_token = _create_access_token(data={"sub": username})
+            
+            # 设置新的 access_token 到 HttpOnly Cookie
+            response = Response()
+            response.set_cookie(
+                key="access_token",
+                value=new_access_token,
+                httponly=True,
+                secure=True,  # 在生产环境中使用 HTTPS 时设置为 True
+                samesite="Lax"  # 或者 "Strict" 根据需求
+            )
+            
             return {"access_token": new_access_token, "token_type": "bearer"}
         except JWTError:
             raise HTTPException(status_code=403, detail="Token is expired or invalid")
 
     @router.post("/login")
     async def login_for_access_token(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
-        # print(">>> login_for_access_token", form_data.username, form_data.password)
         user_info = auth_func(form_data.username, form_data.password)
         if not user_info:
             raise HTTPException(
@@ -120,27 +139,24 @@ def create_auth_api(auth_func: callable=None):
         refresh_token = _create_refresh_token(data=user_info)
 
         # 设置 HttpOnly Cookie
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
-            secure=True,  # 在生产环境中使用 HTTPS 时设置为 True
-            samesite="Lax"  # 或者 "Strict" 根据需求
-        )
+        set_auth_cookies(response, access_token, refresh_token)
 
-        return {
-            "token_type": "bearer",
-            "access_token": access_token
-        }
+        return user_info
 
     @router.post("/logout")
-    async def logout(current_user: dict = Depends(get_current_user), token: str = Depends(oauth2_scheme)):
+    async def logout(response: Response, current_user: dict = Depends(get_current_user)):
         remove_access_token_from_whitelist(current_user)
         remove_refresh_token_from_whitelist(current_user)
+        
+        # 清除 cookies
+        response.delete_cookie(key="access_token")
+        response.delete_cookie(key="refresh_token")
+        
         return {"message": "User logged out successfully"}
 
-    @router.get("/users/me")
-    async def read_users_me(user: dict = Depends(get_current_user)):
+    @router.get("/profile")
+    async def read_user_me(user: dict = Depends(get_current_user)):
+        print("user", user)
         return user
     
     return router
@@ -176,4 +192,20 @@ def _create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     add_access_token_to_whitelist(encoded_jwt, data['username'], expire_minutes)
     return encoded_jwt
+
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,  # 在生产环境中使用 HTTPS 时设置为 True
+        samesite="Lax"  # 或者 "Strict" 根据需求
+    )
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,  # 在生产环境中使用 HTTPS 时设置为 True
+        samesite="Lax"  # 或者 "Strict" 根据需求
+    )
 
