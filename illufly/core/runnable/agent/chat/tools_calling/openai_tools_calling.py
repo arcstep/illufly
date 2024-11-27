@@ -10,20 +10,21 @@ class OpenAIToolsCalling(BaseToolCalling):
     """
     def handle(self, final_tools_call:str, short_term_memory:Messages, long_term_memory:Messages):
         # 由于 OpenAI 风格工具回调是从文本之外的参数返回的，因此额外追加一次 EventBlock
+        tools_call_message = []
         for index, tool in enumerate(final_tools_call):
-            tools_call_message = [{
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [tool]
-            }]
-
             if self.tools_to_exec:
-                # 记忆追加
-                short_term_memory.extend(tools_call_message)
-                long_term_memory.extend(tools_call_message)
-
                 for block in self.execute_tool(tool):
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
+                        if not tools_call_message:
+                            # 确保 tool_calls 和 tool_call_id 消息同时出现
+                            tools_call_message = [{
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [tool]
+                            }]
+                            short_term_memory.extend(tools_call_message)
+                            long_term_memory.extend(tools_call_message)
+
                         tool_resp = block.text
                         tool_resp_message = [{
                             "tool_call_id": tool['id'],
@@ -39,18 +40,20 @@ class OpenAIToolsCalling(BaseToolCalling):
 
     async def async_handle(self, final_tools_call: str, short_term_memory: Messages, long_term_memory: Messages):
         for index, tool in enumerate(final_tools_call):
-            tools_call_message = [{
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [tool]
-            }]
             if self.tools_to_exec:
-                # 记忆追加
-                short_term_memory.extend(tools_call_message)
-                long_term_memory.extend(tools_call_message)
-
+                tools_call_message = []
                 async for block in self.async_execute_tool(tool):
                     if isinstance(block, EventBlock) and block.block_type == "final_tool_resp":
+                        if not tools_call_message:
+                            # 确保 tool_calls 和 tool_call_id 消息同时出现
+                            tools_call_message = [{
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [tool]
+                            }]
+                            short_term_memory.extend(tools_call_message)
+                            long_term_memory.extend(tools_call_message)
+
                         tool_resp = block.text
                         tool_resp_message = [{
                             "tool_call_id": tool['id'],

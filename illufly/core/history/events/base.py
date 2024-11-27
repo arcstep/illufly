@@ -100,8 +100,8 @@ class BaseEventsHistory():
         def _event_stream(block, verbose: bool=False, **kwargs):
             if isinstance(block, EventBlock):
                 return {
-                    "event": self.get_event_type(block),
                     "id": block.id,
+                    "event": self.get_event_type(block),
                     "data": self.get_event_data(block)
                 }
             else:
