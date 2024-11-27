@@ -81,8 +81,9 @@ class BaseEventsHistory():
 
     def get_event_data(self, block: EventBlock):
         return json.dumps({
-            "content": block.text,
+            "block_id": block.id,
             "block_type": block.block_type,
+            "content": block.text,
             "content_id": block.content_id,
             "created_at": block.created_at.isoformat(),
             "thread_id": block.runnable_info.get("thread_id", None),
@@ -101,11 +102,11 @@ class BaseEventsHistory():
             if isinstance(block, EventBlock):
                 return {
                     "id": block.id,
-                    "event": self.get_event_type(block),
+                    "event": "message",
                     "data": self.get_event_data(block)
                 }
             else:
-                return {"data": ""}
+                return str(block)
 
         return _event_stream
 
