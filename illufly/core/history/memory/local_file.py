@@ -23,7 +23,7 @@ class LocalFileMemoryHistory(BaseMemoryHistory):
 
         def thread_id_key(thread_id):
             ids = thread_id.split("-")
-            return f'{ids[0]}-{ids[-1]}'
+            return f'{ids[0]}-{ids[1]}-{ids[-2]}'
 
         return sorted(thread_ids, key=thread_id_key)
 

@@ -48,6 +48,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
             "name": "Runnable 名称，默认为 {类名}.{id}",
             "handlers": "EventBlock 迭代器处理函数列表，默认为 [log]，当调用 call 方法时，会使用该列表中的函数逐个处理 EventBlock",
             "block_processor": "在 yield 之前将 EventBlock 事件转换为新的格式，在 __call__ 方法的输出生成器时使用",
+            "events_history": "事件管理器，默认为 BaseEventsHistory，当调用 __call__ 方法时，会使用该事件管理器收集事件",
             **ExecutorManager.allowed_params(),
             **BindingManager.allowed_params(),
         }

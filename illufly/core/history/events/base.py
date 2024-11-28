@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 import copy
 import json
 from ....io import EventBlock
@@ -43,7 +43,7 @@ class BaseEventsHistory():
         """根据 events_history_id 保存历史事件"""
         self.store[events_history_id] = copy.deepcopy(events_history)
 
-    def load_events_history(self, events_history_id: str=None):
+    def load_events_history(self, events_history_id: Union[str, int]=None):
         """根据 events_history_id 加载历史事件"""
         _events_history_id = events_history_id or self.last_history_id
         if isinstance(events_history_id, str):

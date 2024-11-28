@@ -4,7 +4,7 @@ from .handlers import log, alog, usage, async_usage
 from .block_process import event_stream
 
 from ..core.history import BaseMemoryHistory, LocalFileMemoryHistory
-from ..core.history import BaseEventsHistory
+from ..core.history import BaseEventsHistory, LocalFileEventsHistory
 
 __all__ = [
     "EventBlock",
@@ -19,4 +19,5 @@ __all__ = [
     "BaseEventsHistory",
     "BaseMemoryHistory",
     "LocalFileMemoryHistory",
+    "LocalFileEventsHistory",
 ]
