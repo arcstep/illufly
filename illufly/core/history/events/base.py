@@ -19,7 +19,9 @@ class BaseEventsHistory():
         self.store = store or {}
         self.chunk_types = chunk_types or ["chunk", "tool_resp_chunk", "text", "tool_resp_text"]
 
-        self.create_new_history()
+        self.events_history_id, _ = self.load_events_history()
+        if self.events_history_id is None:
+            self.events_history_id = self.create_new_history()
 
     def list_events_histories(self):
         """列举所有历史事件"""
@@ -30,25 +32,23 @@ class BaseEventsHistory():
         all_events_history_ids = self.list_events_histories()
         return all_events_history_ids[-1] if all_events_history_ids else None
 
-    def last_events_history_id_count(self):
-        """获取最近一轮对话的历史事件 ID"""
-        all_events_history_ids = self.list_events_histories()
-        if all_events_history_ids:
-            ids = all_events_history_ids[-1].split("-")
-            return int(ids[-1]) + 1
-        else:
-            return 0
-
-    def save_events_history(self, events_history_id: str, events_history: List[dict]):
+    def save_events_history(self):
         """根据 events_history_id 保存历史事件"""
-        self.store[events_history_id] = copy.deepcopy(events_history)
+        pass
 
     def load_events_history(self, events_history_id: Union[str, int]=None):
         """根据 events_history_id 加载历史事件"""
-        _events_history_id = events_history_id or self.last_history_id
-        if isinstance(events_history_id, str):
-            return _events_history_id, self.store.get(events_history_id, {})
-        elif isinstance(events_history_id, int):
+        if events_history_id is None:
+            _events_history_id = self.last_history_id
+            print(f"加载最后一个历史事件：{_events_history_id}")
+        else:
+            _events_history_id = events_history_id
+
+        self.events_history_id = _events_history_id
+
+        if isinstance(_events_history_id, str):
+            return _events_history_id, self.store.get(_events_history_id, {})
+        elif isinstance(_events_history_id, int):
             all_events_history_ids = self.list_events_histories()
             if all_events_history_ids:
                 _events_history_id = all_events_history_ids[events_history_id]
@@ -57,11 +57,14 @@ class BaseEventsHistory():
         return _events_history_id, {}
 
     def create_new_history(self):
-        last_history_id = next(events_history_id_gen)
-        self.store[last_history_id] = {
-            "threads": set({}),
+        history_id = next(events_history_id_gen)
+        self.events_history_id = history_id
+
+        self.store[history_id] = {
+            "threads": [],
             "callings": {}
         }
+        return history_id
 
     def get_event_type(self, block: EventBlock):
         event_type = "log"
@@ -91,7 +94,7 @@ class BaseEventsHistory():
             "agent_name": block.runnable_info.get("name", None),
             "model_name": block.runnable_info.get("model_name", None),
         }, ensure_ascii=False)
-    
+
     @property
     def event_stream(self):
         """
@@ -126,18 +129,19 @@ class BaseEventsHistory():
         - segments 将 chunk 类事件收集到一起，形成完整段落
         """
         def _collect(event, **kwargs):
-            last_history_id = self.last_history_id
+            history_id = self.events_history_id
 
             if event.runnable_info.get("thread_id", None):
                 thread = (
                     event.runnable_info["name"],
                     event.runnable_info["thread_id"],
                 )
-                self.store[last_history_id]["threads"].add(thread)
+                if thread not in self.store[history_id]["threads"]:
+                    self.store[history_id]["threads"].append(thread)
 
             calling_id = event.runnable_info["calling_id"]
-            if calling_id not in self.store[last_history_id]["callings"]:
-                self.store[last_history_id]["callings"][calling_id] = {
+            if calling_id not in self.store[history_id]["callings"]:
+                self.store[history_id]["callings"][calling_id] = {
                     "id": event.id,
                     "event_type": self.get_event_type(event),
                     "data": self.get_event_data(event),

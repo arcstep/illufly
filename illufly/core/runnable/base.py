@@ -256,6 +256,8 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         else:
             raise ValueError("handlers 必须是Callable列表")
 
+        self.events_history.save_events_history()
+
     def handle_sync_call(
         self,
         *args,
@@ -281,6 +283,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         else:
             raise ValueError("handlers 必须是Callable列表")
 
+        self.events_history.save_events_history()
         return self.last_output
 
     async def generate_async_call(
@@ -330,6 +333,8 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         else:
             raise ValueError("handlers 必须是Callable列表")
 
+        self.events_history.save_events_history()
+
     async def handle_async_call(
         self,
         *args,
@@ -360,6 +365,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         else:
             raise ValueError("handlers 必须是Callable列表")
 
+        self.events_history.save_events_history()
         return self.last_output
 
     @property
