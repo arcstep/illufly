@@ -10,14 +10,13 @@ class BaseEventsHistory():
     def __init__(
         self,
         store: dict=None,
-        chunk_types: list=None,
-        other_types: list=None,
+        ignore_types: list=None,
     ):
         # 构建实例后由 Runnable 赋值
         self.agent_name = None
 
         self.store = store or {}
-        self.chunk_types = chunk_types or ["chunk", "tool_resp_chunk", "text", "tool_resp_text"]
+        self.ignore_types = ignore_types or ["final_text", "response", "human", "new_line", "runnable"]
 
         self.events_history_id, _ = self.load_events_history()
         if self.events_history_id is None:
@@ -102,6 +101,8 @@ class BaseEventsHistory():
         """
         def _event_stream(block, verbose: bool=False, **kwargs):
             if isinstance(block, EventBlock):
+                if block.block_type in self.ignore_types:
+                    return None
                 return {
                     "id": block.id,
                     "event": "message",
