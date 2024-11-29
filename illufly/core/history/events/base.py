@@ -59,7 +59,7 @@ class BaseEventsHistory():
         self.events_history_id = history_id
 
         self.store[history_id] = {
-            "threads": {},
+            "agents": {},
             "callings": {}
         }
         return history_id
@@ -115,14 +115,18 @@ class BaseEventsHistory():
         - segments 将 chunk 类事件收集到一起，形成完整段落
         """
         history_id = self.events_history_id
-        event = self._get_event(block)
+
         agent_name = block.runnable_info.get("name", None)
+        if agent_name and not self.store[history_id]["agents"]:
+            self.store[history_id]["agents"][agent_name] = {}
+
         thread_id = block.runnable_info.get("thread_id", None)
+        if thread_id:
+            self.store[history_id]["agents"][agent_name]["thread_id"] = thread_id
+
         calling_id = block.runnable_info["calling_id"]
-
-        if agent_name and thread_id:
-            self.store[history_id]["threads"][agent_name] = thread_id
-
         if calling_id not in self.store[history_id]["callings"]:
             self.store[history_id]["callings"][calling_id] = []
+
+        event = self._get_event(block)
         self.store[history_id]["callings"][calling_id].append(event)
