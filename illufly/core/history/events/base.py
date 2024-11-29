@@ -59,28 +59,12 @@ class BaseEventsHistory():
         self.events_history_id = history_id
 
         self.store[history_id] = {
-            "threads": [],
+            "threads": {},
             "callings": {}
         }
         return history_id
 
-    def get_event_type(self, block: EventBlock):
-        event_type = "log"
-        is_self_generated = self.agent_name == block.runnable_info.get("name", None)
-
-        # input
-        if block.block_type == "user" and is_self_generated:
-            event_type = "input"
-        elif block.block_type == "final_text" and is_self_generated:
-            event_type = "output"
-        elif block.block_type in ["tools_call_final", "tool_resp_chunk", "tool_resp_text", "tool_resp_final_text"]:
-            event_type = "tools"
-        else:
-            event_type = "log"
-
-        return event_type
-
-    def get_event_data(self, block: EventBlock):
+    def _get_event_data(self, block: EventBlock):
         return json.dumps({
             "block_id": block.id,
             "block_type": block.block_type,
@@ -93,6 +77,13 @@ class BaseEventsHistory():
             "model_name": block.runnable_info.get("model_name", None),
         }, ensure_ascii=False)
 
+    def _get_event(self, block: EventBlock):
+        return {
+            "id": block.id,
+            "event": "message",
+            "data": self._get_event_data(block)
+        }
+
     @property
     def event_stream(self):
         """
@@ -103,18 +94,13 @@ class BaseEventsHistory():
             if isinstance(block, EventBlock):
                 if block.block_type in self.ignore_types:
                     return None
-                return {
-                    "id": block.id,
-                    "event": "message",
-                    "data": self.get_event_data(block)
-                }
+                return self._get_event(block)
             else:
                 return str(block)
 
         return _event_stream
 
-    @property
-    def collect_event(self):
+    def collect_event(self, block: EventBlock):
         """
         收集事件到 store 中。
 
@@ -128,23 +114,15 @@ class BaseEventsHistory():
         - thread_id 如果智能体包含连续记忆，则标记连续记忆的 thread_id
         - segments 将 chunk 类事件收集到一起，形成完整段落
         """
-        def _collect(event, **kwargs):
-            history_id = self.events_history_id
+        history_id = self.events_history_id
+        event = self._get_event(block)
+        agent_name = block.runnable_info.get("name", None)
+        thread_id = block.runnable_info.get("thread_id", None)
+        calling_id = block.runnable_info["calling_id"]
 
-            if event.runnable_info.get("thread_id", None):
-                thread = (
-                    event.runnable_info["name"],
-                    event.runnable_info["thread_id"],
-                )
-                if thread not in self.store[history_id]["threads"]:
-                    self.store[history_id]["threads"].append(thread)
+        if agent_name and thread_id:
+            self.store[history_id]["threads"][agent_name] = thread_id
 
-            calling_id = event.runnable_info["calling_id"]
-            if calling_id not in self.store[history_id]["callings"]:
-                self.store[history_id]["callings"][calling_id] = {
-                    "id": event.id,
-                    "event_type": self.get_event_type(event),
-                    "data": self.get_event_data(event),
-                }
-
-        return _collect
+        if calling_id not in self.store[history_id]["callings"]:
+            self.store[history_id]["callings"][calling_id] = []
+        self.store[history_id]["callings"][calling_id].append(event)

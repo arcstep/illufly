@@ -81,7 +81,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self.events_history.agent_name = self.name
 
         self.handlers = handlers or []
-        self.handlers.append(self.events_history.collect_event)
         self.block_processor = self.events_history.event_stream
 
         self.verbose = False
@@ -195,11 +194,15 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         return block
 
     def handle_block(self, block, handlers, verbose, **kwargs):
+        self.events_history.collect_event(block)
+
         for handler in handlers:
             if not inspect.iscoroutinefunction(handler):
                 handler(block, verbose=verbose, **kwargs)
 
     async def async_handle_block(self, block, handlers, verbose, **kwargs):
+        self.events_history.collect_event(block)
+
         tasks = []
         for handler in handlers:
             resp = handler(block, verbose=verbose, **kwargs)
@@ -257,7 +260,8 @@ class Runnable(ABC, ExecutorManager, BindingManager):
 
         if isinstance(self.handlers, list) and all(callable(handler) for handler in self.handlers):
             resp = action_method(*args, **kwargs)
-            _handlers = self.handlers if len(self.handlers) > 1 else [log, *self.handlers]
+            # 如果是同步调用，默认使用 log 处理方法
+            _handlers = self.handlers if len(self.handlers) > 0 else [log, *self.handlers]
             if isinstance(resp, Generator):
                 for block in resp:
                     if not self.continue_running:
