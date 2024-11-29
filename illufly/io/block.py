@@ -67,6 +67,8 @@ class EventBlock():
     @property
     def text_with_print_color(self):
         color_mapping = {
+            # 人类输入
+            'human': "ILLUFLY_COLOR_CHUNK",
             # 过程片段
             'chunk': "ILLUFLY_COLOR_CHUNK",
             'tools_call_chunk': "ILLUFLY_COLOR_CHUNK",

@@ -292,7 +292,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         messages_std = Messages(prompt, style="text")
         self._task = messages_std.to_list()[-1]['content']
-        yield self.create_event_block("user", self._task)
+        yield self.create_event_block("human", self._task)
         yield self.create_event_block("agent", self.name)
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
@@ -391,7 +391,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         messages_std = Messages(prompt, style="text")
         self._task = messages_std.to_list()[-1]['content']
-        yield self.create_event_block("user", self._task)
+        yield self.create_event_block("human", self._task)
         yield self.create_event_block("agent", self.name)
 
         # 根据模板中是否直接使用 tools_desc 来替换 tools 参数
