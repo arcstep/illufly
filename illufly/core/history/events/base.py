@@ -117,11 +117,11 @@ class BaseEventsHistory():
         history_id = self.events_history_id
 
         agent_name = block.runnable_info.get("name", None)
-        if agent_name and not self.store[history_id]["agents"]:
+        if agent_name and not self.store[history_id]["agents"].get(agent_name, None):
             self.store[history_id]["agents"][agent_name] = {}
 
         thread_id = block.runnable_info.get("thread_id", None)
-        if thread_id:
+        if agent_name and thread_id:
             self.store[history_id]["agents"][agent_name]["thread_id"] = thread_id
 
         calling_id = block.runnable_info["calling_id"]

@@ -358,7 +358,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
     @property
     def is_running(self):
         return self.continue_running
-    
+
     @property
     def runnable_info(self):
         return {
