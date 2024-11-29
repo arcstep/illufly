@@ -47,7 +47,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         return {
             "name": "Runnable 名称，默认为 {类名}.{id}",
             "handlers": "EventBlock 迭代器处理函数列表，默认为 [log]，当调用 call 方法时，会使用该列表中的函数逐个处理 EventBlock",
-            "block_processor": "在 yield 之前将 EventBlock 事件转换为新的格式，在 __call__ 方法的输出生成器时使用",
             "events_history": "事件管理器，默认为 BaseEventsHistory，当调用 __call__ 方法时，会使用该事件管理器收集事件",
             **ExecutorManager.allowed_params(),
             **BindingManager.allowed_params(),
@@ -65,7 +64,6 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         *,
         name: str = None,
         handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
-        block_processor: Callable = None,
         events_history: BaseEventsHistory = None,
         **kwargs
     ):
@@ -82,9 +80,9 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self.events_history = events_history or BaseEventsHistory()
         self.events_history.agent_name = self.name
 
-        self.handlers = [log] if handlers is None else handlers
+        self.handlers = handlers or []
         self.handlers.append(self.events_history.collect_event)
-        self.block_processor = block_processor or self.events_history.event_stream
+        self.block_processor = self.events_history.event_stream
 
         self.verbose = False
         self.continue_running = True
@@ -139,11 +137,9 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self,
         *args,
         verbose: bool = False,
-        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
-        block_processor: Callable = None,
-        generator: str = None,
         action: str = None,
         calling_id: str = None,
+        generator: str = None,
         **kwargs
     ):
         if action and not hasattr(self, action):
@@ -152,28 +148,23 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         self._last_output = None
         self.calling_id = calling_id or self.build_calling_id()
 
-        block_processor = block_processor or self.block_processor
         self.continue_running = True
-        _handlers = handlers if handlers is not None else self.handlers
         _verbose = self.verbose or verbose
 
-        if generator == "async" or any(inspect.iscoroutinefunction(handler) for handler in _handlers):
+        if generator == "async" or any(inspect.iscoroutinefunction(handler) for handler in self.handlers):
             method = getattr(self, action) if action else self.async_call
 
             if generator:
                 return self.generate_async_call(
                     *args,
                     verbose=_verbose,
-                    handlers=_handlers,
                     action_method=method,
-                    block_processor=block_processor,
                     **kwargs
                 )
             else:
                 return self.handle_async_call(
                     *args,
                     verbose=_verbose,
-                    handlers=_handlers,
                     action_method=method,
                     **kwargs
                 )
@@ -184,16 +175,13 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                 return self.generate_sync_call(
                     *args,
                     verbose=_verbose,
-                    handlers=_handlers,
                     action_method=method,
-                    block_processor=block_processor,
                     **kwargs
                 )
             else:
                 return self.handle_sync_call(
                     *args,
                     verbose=_verbose,
-                    handlers=_handlers,
                     action_method=method,
                     **kwargs
                 )
@@ -225,32 +213,30 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         *args,
         verbose: bool = False,
         calling_id: str = None,
-        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         action_method: Callable = None,
-        block_processor: Callable = None,
         **kwargs
     ):
         block = self.create_event_block("runnable", self.name)
-        self.handle_block(self._convert_block(block), handlers, verbose, **kwargs)
-        block_text = block_processor(self._convert_block(block), verbose=verbose, **kwargs)
+        self.handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
+        block_text = self.block_processor(self._convert_block(block), verbose=verbose, **kwargs)
         if block_text:
             yield block_text
 
-        if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
+        if isinstance(self.handlers, list) and all(callable(handler) for handler in self.handlers):
             resp = action_method(*args, **kwargs)
             if isinstance(resp, Generator):
                 for block in resp:
                     if not self.continue_running:
                         return
 
-                    self.handle_block(self._convert_block(block), handlers, verbose, **kwargs)
-                    block_text = block_processor(self._convert_block(block), verbose=verbose, **kwargs)
+                    self.handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
+                    block_text = self.block_processor(self._convert_block(block), verbose=verbose, **kwargs)
                     if block_text:
                         yield block_text
             else:
                 block = self.create_event_block("text", str(resp))
-                self.handle_block(self._convert_block(block), handlers, verbose, **kwargs)
-                block_text = block_processor(self._convert_block(block), verbose=verbose, **kwargs)
+                self.handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
+                block_text = self.block_processor(self._convert_block(block), verbose=verbose, **kwargs)
                 if block_text:
                     yield block_text
         else:
@@ -263,23 +249,23 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         *args,
         verbose: bool = False,
         calling_id: str = None,
-        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         action_method: Callable = None,
         **kwargs
     ):
         block = self.create_event_block("runnable", self.name)
-        self.handle_block(self._convert_block(block), handlers, verbose, **kwargs)
+        self.handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
 
-        if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
+        if isinstance(self.handlers, list) and all(callable(handler) for handler in self.handlers):
             resp = action_method(*args, **kwargs)
+            _handlers = self.handlers if len(self.handlers) > 1 else [log, *self.handlers]
             if isinstance(resp, Generator):
                 for block in resp:
                     if not self.continue_running:
                         return
-                    self.handle_block(self._convert_block(block), handlers, verbose, **kwargs)
+                    self.handle_block(self._convert_block(block), _handlers, verbose, **kwargs)
             else:
                 block = self.create_event_block("text", str(resp))
-                self.handle_block(self._convert_block(block), handlers, verbose, **kwargs)
+                self.handle_block(self._convert_block(block), _handlers, verbose, **kwargs)
         else:
             raise ValueError("handlers 必须是Callable列表")
 
@@ -291,26 +277,24 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         *args,
         verbose: bool = False,
         calling_id: str = None,
-        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         action_method: Callable = None,
-        block_processor: Callable = None,
         **kwargs
     ):
         block = self.create_event_block("runnable", self.name)
-        await self.async_handle_block(self._convert_block(block), handlers, verbose, **kwargs)
-        block_text = block_processor(self._convert_block(block), verbose=verbose, **kwargs)
+        await self.async_handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
+        block_text = self.block_processor(self._convert_block(block), verbose=verbose, **kwargs)
         if block_text:
             yield block_text
 
-        if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
+        if isinstance(self.handlers, list) and all(callable(handler) for handler in self.handlers):
             resp = action_method(*args, **kwargs)
 
             if isinstance(resp, AsyncGenerator):
                 async for block in resp:
                     if not self.continue_running:
                         return
-                    await self.async_handle_block(self._convert_block(block), handlers, verbose, **kwargs)
-                    block_text = block_processor(self._convert_block(block), verbose=verbose, **kwargs)
+                    await self.async_handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
+                    block_text = self.block_processor(self._convert_block(block), verbose=verbose, **kwargs)
                     if block_text:
                         yield block_text
                         await asyncio.sleep(0)
@@ -318,15 +302,15 @@ class Runnable(ABC, ExecutorManager, BindingManager):
                 for block in resp:
                     if not self.continue_running:
                         return
-                    await self.async_handle_block(self._convert_block(block), handlers, verbose, **kwargs)
-                    block_text = block_processor(self._convert_block(block), verbose=verbose, **kwargs)
+                    await self.async_handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
+                    block_text = self.block_processor(self._convert_block(block), verbose=verbose, **kwargs)
                     if block_text:
                         yield block_text
                         await asyncio.sleep(0)
             else:
                 block = self.create_event_block("text", str(resp))
-                await self.async_handle_block(self._convert_block(block), handlers, verbose, **kwargs)
-                block_text = block_processor(self._convert_block(block), verbose=verbose, **kwargs)
+                await self.async_handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
+                block_text = self.block_processor(self._convert_block(block), verbose=verbose, **kwargs)
                 if block_text:
                     yield block_text
                     await asyncio.sleep(0)
@@ -340,28 +324,27 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         *args,
         verbose: bool = False,
         calling_id: str = None,
-        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         action_method: Callable = None,
         **kwargs
     ):
         block = self.create_event_block("runnable", self.name)
-        await self.async_handle_block(self._convert_block(block), handlers, verbose, **kwargs)
+        await self.async_handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
 
-        if isinstance(handlers, list) and all(callable(handler) for handler in handlers):
+        if isinstance(self.handlers, list) and all(callable(handler) for handler in self.handlers):
             resp = action_method(*args, **kwargs)
             if isinstance(resp, AsyncGenerator):
                 async for block in resp:
                     if not self.continue_running:
                         return
-                    await self.async_handle_block(self._convert_block(block), handlers, verbose, **kwargs)
+                    await self.async_handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
             elif isinstance(resp, Generator):
                 for block in resp:
                     if not self.continue_running:
                         return
-                    await self.async_handle_block(self._convert_block(block), handlers, verbose, **kwargs)
+                    await self.async_handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
             else:
                 block = self.create_event_block("text", str(resp))
-                await self.async_handle_block(self._convert_block(block), handlers, verbose, **kwargs)
+                await self.async_handle_block(self._convert_block(block), self.handlers, verbose, **kwargs)
         else:
             raise ValueError("handlers 必须是Callable列表")
 

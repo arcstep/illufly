@@ -40,7 +40,6 @@ class BaseEventsHistory():
         """根据 events_history_id 加载历史事件"""
         if events_history_id is None:
             _events_history_id = self.last_history_id
-            print(f"加载最后一个历史事件：{_events_history_id}")
         else:
             _events_history_id = events_history_id
 

@@ -50,7 +50,7 @@ class LocalFileEventsHistory(BaseEventsHistory):
             all_events_histories = self.list_events_histories()
             if all_events_histories:
                 _events_history_id = all_events_histories[_events_history_id]
-                path = self._get_history_file_path(_events_id)
+                path = self._get_history_file_path(_events_history_id)
 
         if path and os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
