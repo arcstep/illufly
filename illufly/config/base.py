@@ -65,6 +65,8 @@ def get_env(key: str=None):
         # Auth
         "FASTAPI_SECRET_KEY": "MY-SECRET-KEY",
         "FASTAPI_ALGORITHM": "HS256",
+        "ACCESS_TOKEN_EXPIRE_DAYS": 30,
+        "ACCESS_TOKEN_EXPIRE_MINUTES": 15,
     }
     if key:
         if key not in default_values:

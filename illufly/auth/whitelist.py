@@ -6,9 +6,6 @@ from fastapi import HTTPException, Depends
 from datetime import datetime, timedelta
 from ..config import get_env
 
-# 假设access_token有效期为1小时
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
 # 内存中的access_token白名单
 access_token_whitelist: Dict[str, Any] = {}
 
@@ -47,7 +44,6 @@ def clear_expired_access_tokens():
         if datetime.utcnow() > access_token_whitelist[token]["expire"]:
             remove_access_token_from_whitelist(token)
 
-
 def load_token_whitelist():
     """
     从文件加载白名单刷新令牌列表;
@@ -81,6 +77,8 @@ def is_refresh_token_in_whitelist(refresh_token):
     whitelist = load_token_whitelist()
     if refresh_token in whitelist:
         # 检查是否过期
+        print("whitelist[refresh_token]", whitelist[refresh_token])
+        print("datetime.utcnow()", datetime.utcnow())
         if datetime.utcnow() > datetime.fromisoformat(whitelist[refresh_token]["expire"]):
             return False
         return True
@@ -103,10 +101,10 @@ def remove_refresh_token_from_whitelist(username: str):
     """从文件白名单中移除用户的所有refresh_token"""
     whitelist = load_token_whitelist()
     tokens_to_remove = [token for token, details in whitelist.items() if details["username"] == username]
-    
+
     # 遍历tokens_to_remove列表，从whitelist中删除这些token
     for token in tokens_to_remove:
         del whitelist[token]
-    
+
     # 保存更新后的whitelist
     save_token_whitelist(whitelist)

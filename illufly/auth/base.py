@@ -18,8 +18,6 @@ from ..config import get_env
 SECRET_KEY = get_env("FASTAPI_SECRET_KEY")
 ALGORITHM = get_env("FASTAPI_ALGORITHM")
 
-TOKEN_BLACKLIST = set()
-
 def default_auth_func(username: str, password: str):
     """
     默认的用户认证方法，需要自定义并传入给 `create_auth_api`
@@ -88,7 +86,7 @@ def create_auth_api(auth_func: callable=None):
     router = APIRouter()
 
     @router.post("/refresh-token")
-    async def refresh_token(request: Request):
+    async def refresh_token(request: Request, response: Response):
         refresh_token = request.cookies.get("refresh_token")
         if not refresh_token or not is_refresh_token_in_whitelist(refresh_token):
             raise HTTPException(status_code=403, detail="Refresh token is not in whitelist")
@@ -96,29 +94,24 @@ def create_auth_api(auth_func: callable=None):
             username: str = verify_jwt(refresh_token)
             if username is None:
                 raise HTTPException(status_code=400, detail="Invalid refresh token")
-            new_access_token = _create_access_token(data={"sub": username})
+            new_access_token = _create_access_token(data={"username": username})            
+            set_auth_cookies(response, access_token=new_access_token)
             
-            response = Response()
-            response.set_cookie(
-                key="access_token",
-                value=new_access_token,
-                httponly=True,
-                secure=True,
-                samesite="Lax"
-            )
-            
-            return {"access_token": new_access_token}
+            return {"message": "Access token refreshed successfully"}
+
         except JWTError:
             raise HTTPException(status_code=403, detail="Token is expired or invalid")
 
     @router.post("/remove-access-token")
     async def remove_access_token(request: Request):
-        remove_access_token_from_whitelist(request.cookies.get("access_token"))
+        username = verify_jwt(request.cookies.get("access_token"))
+        remove_access_token_from_whitelist(username)
         return {"message": "Access token removed successfully"}
 
     @router.post("/remove-refresh-token")
     async def remove_refresh_token(request: Request):
-        remove_refresh_token_from_whitelist(request.cookies.get("refresh_token"))
+        username = verify_jwt(request.cookies.get("refresh_token"))
+        remove_refresh_token_from_whitelist(username)
         return {"message": "Refresh token removed successfully"}
 
     @router.post("/login")
@@ -164,7 +157,7 @@ def verify_jwt(token: str):
         ) from e
 
 def _create_refresh_token(data: dict):
-    expire_days = 15
+    expire_days = get_env("ACCESS_TOKEN_EXPIRE_DAYS")
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=expire_days)
     to_encode.update({"exp": expire})
@@ -173,7 +166,7 @@ def _create_refresh_token(data: dict):
     return encoded_jwt
 
 def _create_access_token(data: dict):
-    expire_minutes = 15
+    expire_minutes = get_env("ACCESS_TOKEN_EXPIRE_MINUTES")
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=expire_minutes)
     to_encode.update({"exp": expire})
@@ -181,19 +174,22 @@ def _create_access_token(data: dict):
     add_access_token_to_whitelist(encoded_jwt, data.get('username') or data.get('sub'), expire_minutes)
     return encoded_jwt
 
-def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="Lax"
-    )
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=True,
-        samesite="Lax"
-    )
+def set_auth_cookies(response: Response, access_token: str=None, refresh_token: str=None):
+    if access_token:
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,
+            samesite="Lax"
+        )
+
+    if refresh_token:
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,
+            samesite="Lax"
+        )
 
