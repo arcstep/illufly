@@ -87,14 +87,13 @@ def create_auth_api(auth_func: callable=None):
 
     router = APIRouter()
 
-    @router.post("/token/refresh")
+    @router.post("/refresh-token")
     async def refresh_token(request: Request):
         refresh_token = request.cookies.get("refresh_token")
         if not refresh_token or not is_refresh_token_in_whitelist(refresh_token):
             raise HTTPException(status_code=403, detail="Refresh token is not in whitelist")
         try:
-            payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-            username: str = payload.get("sub")
+            username: str = verify_jwt(refresh_token)
             if username is None:
                 raise HTTPException(status_code=400, detail="Invalid refresh token")
             new_access_token = _create_access_token(data={"sub": username})
@@ -111,6 +110,16 @@ def create_auth_api(auth_func: callable=None):
             return {"access_token": new_access_token}
         except JWTError:
             raise HTTPException(status_code=403, detail="Token is expired or invalid")
+
+    @router.post("/remove-access-token")
+    async def remove_access_token(request: Request):
+        remove_access_token_from_whitelist(request.cookies.get("access_token"))
+        return {"message": "Access token removed successfully"}
+
+    @router.post("/remove-refresh-token")
+    async def remove_refresh_token(request: Request):
+        remove_refresh_token_from_whitelist(request.cookies.get("refresh_token"))
+        return {"message": "Refresh token removed successfully"}
 
     @router.post("/login")
     async def login_for_access_token(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
@@ -160,7 +169,7 @@ def _create_refresh_token(data: dict):
     expire = datetime.utcnow() + timedelta(days=expire_days)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    add_refresh_token_to_whitelist(encoded_jwt, data['username'], expire_days)
+    add_refresh_token_to_whitelist(encoded_jwt, data.get('username') or data.get('sub'), expire_days)
     return encoded_jwt
 
 def _create_access_token(data: dict):
@@ -169,7 +178,7 @@ def _create_access_token(data: dict):
     expire = datetime.utcnow() + timedelta(minutes=expire_minutes)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    add_access_token_to_whitelist(encoded_jwt, data['username'], expire_minutes)
+    add_access_token_to_whitelist(encoded_jwt, data.get('username') or data.get('sub'), expire_minutes)
     return encoded_jwt
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
