@@ -16,7 +16,7 @@ class BaseEventsHistory():
         self.agent_name = None
 
         self.store = store or {}
-        self.ignore_types = ignore_types or ["final_text", "response", "human", "new_line", "runnable"]
+        self.ignore_types = ignore_types or ["final_text", "response", "new_line", "runnable"]
 
         self.events_history_id, _ = self.load_events_history()
         if self.events_history_id is None:
@@ -146,5 +146,6 @@ class BaseEventsHistory():
         if calling_id not in self.store[history_id]["callings"]:
             self.store[history_id]["callings"][calling_id] = []
 
-        event = self._get_event(block)
-        self.store[history_id]["callings"][calling_id].append(event)
+        if block.block_type not in self.ignore_types:
+            event = self._get_event(block)
+            self.store[history_id]["callings"][calling_id].append(event)
