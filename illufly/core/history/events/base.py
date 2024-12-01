@@ -36,7 +36,12 @@ class BaseEventsHistory():
         pass
 
     def load_events_history(self, events_history_id: Union[str, int]=None):
-        """根据 events_history_id 加载历史事件"""
+        """
+        根据 events_history_id 加载历史事件序列。
+        如果序列中包含 ChatAgent，则需要根据 thread_id 加载连续记忆。
+        """
+        from ...runnable import ChatAgent, FlowAgent
+
         if events_history_id is None:
             _events_history_id = self.last_history_id
         else:
@@ -44,15 +49,28 @@ class BaseEventsHistory():
 
         self.events_history_id = _events_history_id
 
+        history = {}
         if isinstance(_events_history_id, str):
-            return _events_history_id, self.store.get(_events_history_id, {})
+            history = self.store.get(_events_history_id, {})
         elif isinstance(_events_history_id, int):
             all_events_history_ids = self.list_events_histories()
             if all_events_history_ids:
                 _events_history_id = all_events_history_ids[events_history_id]
-                return _events_history_id, self.store.get(_events_history_id, {})
+                history = self.store.get(_events_history_id, {})
 
-        return _events_history_id, {}
+        if history.get("agents"):
+            if isinstance(agent, ChatAgent):
+                agents = {agent.name: agent}
+                names = [agent.name]
+            elif isinstance(agent, FlowAgent):
+                agents = {a.name: a for a in agent.agents}
+                names = [a.name for a in agents]
+
+            for name in names:
+                if name in history["agents"] and history["agents"][name].get("thread_id", None):
+                    agents[name].load_memory(history["agents"][name]["thread_id"])
+
+        return _events_history_id, history
 
     def create_new_history(self):
         history_id = next(events_history_id_gen)

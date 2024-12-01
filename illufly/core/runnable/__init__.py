@@ -1,7 +1,7 @@
 from .base import Runnable
 from .selector import Selector, End
 from .agent import BaseAgent, ChatAgent, ChatPool, Retriever
-from .agent.flow import CoT, ReAct, ReWOO, PlanAndSolve
+from .agent.flow import FlowAgent,CoT, ReAct, ReWOO, PlanAndSolve
 from .agent.flow import ChatLearn
 from .agent.writer import FromOutline
 from .agent.data import PandasAgent, MatplotAgent, PythonAgent
