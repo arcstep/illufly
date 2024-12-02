@@ -52,7 +52,6 @@ class FaissDB(VectorDB):
         self,
         dir: str=None,
         verbose: bool = False,
-        handlers: List[Union[Callable, Generator, AsyncGenerator]] = None,
         call_func: Callable = None,
         **kwargs
     ):
@@ -62,8 +61,8 @@ class FaissDB(VectorDB):
         # 记录文档来源
         self.sources.append(dir)
 
-        mm = MarkMeta(dir=dir, **kwargs)
-        mm(verbose=verbose, handlers=handlers, action="load", **kwargs)
+        mm = MarkMeta(dir=dir, handlers=self.handlers, **kwargs)
+        mm(verbose=verbose, action="load", **kwargs)
 
         vectors = self._process_embeddings(mm.last_output)
         if vectors is not None and len(vectors) > 0:
