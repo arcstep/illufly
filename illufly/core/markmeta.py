@@ -3,14 +3,13 @@ import fnmatch
 import json
 import re
 from typing import Union, List
-from ..runnable import Runnable
-from ..document import Document
-from ...io import EventBlock
-from ...config import get_env
-from ...utils import minify_text, count_tokens, raise_invalid_params, filter_kwargs
+from .document import Document
+from ..io import EventBlock
+from ..config import get_env
+from ..utils import minify_text, count_tokens, raise_invalid_params, filter_kwargs
 import numpy as np
 
-class MarkMeta(Runnable):
+class MarkMeta():
     """
     MarkMeta 持久化时为基于 Markdown 语法的纯文本，但增加了一些扩展标签；
     加载到内存时主要属性为 Document 列表，并将标签转化为 Document 元素的 meta 键值数据。
@@ -48,14 +47,10 @@ class MarkMeta(Runnable):
             "filter": "文件名过滤器，可以直接写文件名，或者使用 * 号等通配符",
             "exts": "文件扩展名列表，默认支持 md, Md, MD, markdown, MARKDOWN 等",
             "chunk_size": "每个块的大小，这可能是各个模型处理中对 token 限制要求的，默认 1024",
-            "chunk_overlap": "每个块的覆盖大小，默认 100",
-            **Runnable.allowed_params()
+            "chunk_overlap": "每个块的覆盖大小，默认 100"
         }
 
-    def __init__(self, dir: str=None, filter: str=None, exts: list = None, chunk_size: int=None, chunk_overlap: int=None, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.allowed_params())
-
-        super().__init__(**kwargs)
+    def __init__(self, dir: str=None, filter: str=None, exts: list = None, chunk_size: int=None, chunk_overlap: int=None):
         self.directory = dir or get_env("ILLUFLY_DOCS")
         self.filename_filter = filter or '*'
         self.extensions = exts or ['*.md', '*.Md', '*.MD', '*.markdown', '*.MARKDOWN']
@@ -63,13 +58,6 @@ class MarkMeta(Runnable):
         self.chunk_overlap = chunk_overlap or 100
         self.documents = []
 
-    def clear(self):
-        self.documents.clear()
-
-    @property
-    def last_output(self):
-        return self.documents
-    
     def save(self) -> List[Document]:
         """
         将文档保存为 MarkMeta 文件。
@@ -94,23 +82,8 @@ class MarkMeta(Runnable):
                     f.write(doc.text + "\n")
                 yield self.create_event_block("info", f"Saved file {source} with {len(docs)} chunks")
 
-    def call(self, *files, **kwargs):
-        yield from self.load(*files, **kwargs)
-
-    def load(self, **kwargs):
-        """
-        load 方法是加载文档时最常用的方法。
-        """
-        self.documents.clear()
-
-        files = self.get_files(self.directory, self.filename_filter, self.extensions)
-        for file_path in files:
-            try:
-                yield from self.load_file(file_path)
-            except Exception as e:
-                yield(self.create_event_block("warn", f"读取文件失败 {file_path}: {e}"))
-
-    def get_files(self, path, filename_filter, extensions):
+    @classmethod
+    def get_files(cls, path, filename_filter, extensions):
         """
         获取目录下所有符合条件的文件。
         """
@@ -123,24 +96,34 @@ class MarkMeta(Runnable):
                     matches.append(os.path.join(root, filename))
         return matches
 
+    def load_dir(self, dir: str=None, filter: str=None, exts: list = None):
+        """
+        加载整个目录中合适的文件。
+        """
+        self.documents.clear()
+
+        files = self.get_files(dir or self.directory, filter or self.filename_filter, exts or self.extensions)
+        for file_path in files:
+            self.load_file(file_path)
+        return self.documents
+
     def load_file(self, abs_path: str) -> List[Document]:
         """
         加载单个文件。
         """
         if not abs_path or not os.path.exists(abs_path):
-            yield(self.create_event_block("warn", f"文件不存在 {abs_path}"))
+            raise FileNotFoundError(f"文件不存在 {abs_path}")
 
         with open(abs_path, 'r', encoding='utf-8') as f:
             txt = f.read()
             if str(txt).strip() == "":
-                yield(self.create_event_block("warn", f"文件内容为空 {abs_path}"))
                 return
             self.load_text(txt, source=abs_path)
-            yield(self.create_event_block("info", f"已成功加载文件 {abs_path} ，其中包含 {len(self.documents)} 个片段。"))
+        return self.documents
 
     def load_text(self, text: str, source: str=None) -> List[Document]:
         """
-        将文本内容加载为 MarkMeta 文档。
+        加载单个文本片段。
         """
         docs = self.split_with_meta(text)
         for doc in docs:

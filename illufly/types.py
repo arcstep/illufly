@@ -4,6 +4,7 @@ from .core.runnable.agent import BaseAgent, ChatAgent
 from .core.runnable.agent.chat.tools_calling import BaseToolCalling, ToolCall, SubTask, Plans
 from .core.runnable.agent.tool_ability import ToolAbility
 from .core.document import Document
+from .core.markmeta import MarkMeta
 from .core.dataset import Dataset
 from .io import EventBlock, EndBlock
 
@@ -22,4 +23,5 @@ __all__ = [
     "EventBlock",
     "EndBlock",
     "Dataset",
+    "MarkMeta",
 ]

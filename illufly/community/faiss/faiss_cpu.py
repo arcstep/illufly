@@ -2,7 +2,7 @@ from typing import List, Union, Callable, Generator, AsyncGenerator
 from ...utils import minify_text
 from ...types import VectorDB, EventBlock, Document
 from ...io import log, alog
-from ...core.runnable import MarkMeta
+from ...core.markmeta import MarkMeta
 from ...utils import raise_invalid_params
 
 import time
@@ -62,7 +62,7 @@ class FaissDB(VectorDB):
         self.sources.append(dir)
 
         mm = MarkMeta(dir=dir, handlers=self.handlers, **kwargs)
-        mm(verbose=verbose, action="load", **kwargs)
+        mm.load()
 
         vectors = self._process_embeddings(mm.last_output)
         if vectors is not None and len(vectors) > 0:

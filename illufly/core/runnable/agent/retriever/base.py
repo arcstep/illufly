@@ -3,10 +3,10 @@ from .....config import get_env
 from .....utils import extract_text, minify_text
 from .....io import EventBlock
 from ....document import Document
+from ....markmeta import MarkMeta
 from ...base import Runnable
 from ...vectordb import VectorDB
 from ...prompt_template import PromptTemplate
-from ...markmeta import MarkMeta
 from ..base import BaseAgent
 
 class Retriever(BaseAgent):
