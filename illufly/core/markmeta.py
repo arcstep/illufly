@@ -82,12 +82,14 @@ class MarkMeta():
                     f.write(doc.text + "\n")
                 yield self.create_event_block("info", f"Saved file {source} with {len(docs)} chunks")
 
-    @classmethod
-    def get_files(cls, path, filename_filter, extensions):
+    def get_files(self, dir: str=None, filter: str=None, exts: list = None):
         """
         获取目录下所有符合条件的文件。
         """
         matches = []
+        path = dir or self.directory
+        filename_filter = filter or self.filename_filter
+        extensions = exts or self.extensions
         for root, dirnames, filenames in os.walk(path):
             dirnames[:] = [d for d in dirnames if not d.startswith('.')]  # 排除隐藏文件夹
             filenames = [f for f in filenames if not f.startswith('.')]  # 排除隐藏文件
@@ -102,7 +104,7 @@ class MarkMeta():
         """
         self.documents.clear()
 
-        files = self.get_files(dir or self.directory, filter or self.filename_filter, exts or self.extensions)
+        files = self.get_files(dir, filter, exts)
         for file_path in files:
             self.load_file(file_path)
         return self.documents

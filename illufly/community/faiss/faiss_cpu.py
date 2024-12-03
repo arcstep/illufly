@@ -35,7 +35,7 @@ class FaissDB(VectorDB):
         self.load_documents(self.documents)
     
     def load_text(self, text: str, source: str=None, **kwargs):
-        mm = MarkMeta(**kwargs)
+        mm = MarkMeta()
         docs = mm.load_text(text, source)
 
         self.load_documents(docs)
@@ -61,15 +61,15 @@ class FaissDB(VectorDB):
         # 记录文档来源
         self.sources.append(dir)
 
-        mm = MarkMeta(dir=dir, handlers=self.handlers, **kwargs)
-        mm.load()
+        mm = MarkMeta(dir)
+        mm.load_dir()
 
-        vectors = self._process_embeddings(mm.last_output)
+        vectors = self._process_embeddings(mm.documents)
         if vectors is not None and len(vectors) > 0:
             if self.train:
                 self.index.train(vectors)
             self.index.add(vectors)
-            self.documents.extend(mm.last_output)
+            self.documents.extend(mm.documents)
 
     def _process_embeddings(self, docs: List[Document]):
         """
