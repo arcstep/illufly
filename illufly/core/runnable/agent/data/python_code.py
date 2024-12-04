@@ -58,6 +58,11 @@ class PythonAgent(BaseAgent):
 
         self.reset_datasets()
 
+    def clear(self):
+        self.agent.clear()
+        self.reset_datasets()
+        self._last_code = None
+
     def _initialize_datasets(self, datasets):
         if datasets:
             if isinstance(datasets, dict):

@@ -50,6 +50,10 @@ class FlowAgent(BaseAgent):
     def __repr__(self):
         return f"FlowAgent({[agent[0] for agent in self.agents]})"
 
+    def clear(self):
+        for agent in self.agents:
+            agent[1].clear()
+
     def convert_base_agent(self, agent):
         if isinstance(agent, (BaseAgent, Selector, End)):
             return agent

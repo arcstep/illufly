@@ -81,6 +81,10 @@ class Selector(Runnable):
         
         self._selected = None
 
+    def clear(self):
+        for runnable in self.runnables:
+            runnable.clear()
+
     def get_condition(self, condition):
         default_selected = {
             "first": select_first,

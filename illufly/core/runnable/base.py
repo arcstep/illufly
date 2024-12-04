@@ -125,6 +125,9 @@ class Runnable(ABC, ExecutorManager, BindingManager):
             **{k:v for k,v in local_dict.items() if v is not None},
         }
 
+    def clear(self):
+        pass
+
     def build_calling_id(self):
         """确保 calling_id 是唯一的且按时间顺序排序的"""
         return next(calling_id_gen)
