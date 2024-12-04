@@ -92,8 +92,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         MemoryManager.__init__(self, **filter_kwargs(kwargs, MemoryManager.allowed_params()))
 
+        self.default_vdb = None
         self.chat_learn_folder = chat_learn_folder or get_env("ILLUFLY_CHAT_LEARN")
-        self.default_docs = default_docs or set({get_env("ILLUFLY_DOCS"), self.chat_learn_folder})
         self.load_default_knowledge()
 
     def clear(self):
@@ -113,13 +113,9 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             if isinstance(item, VectorDB):
                 if not self.default_vdb:
                     self.default_vdb = item
-                if item in item.sources:
-                    # 如果已经在向量库中指定了文档目录，则不再从默认文档目录中加载
-                    self.default_docs.remove(item)
 
         if self.default_vdb:
-            for doc_folder in self.default_docs:
-                self.default_vdb.load(dir=doc_folder)
+            self.default_vdb.load_dir(dir=self.chat_learn_folder)
 
     def clone_chat_learn(self, dest: str, src: str=None):
         """
@@ -316,6 +312,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             new_chat=new_chat,
             remember_rounds=remember_rounds
         )
+
+        # 补充知识检索结果
         chat_memory = self._patch_knowledge(chat_memory)
         if self.recalled_knowledge:
             kg_source = {}
@@ -415,7 +413,21 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             new_chat=new_chat,
             remember_rounds=remember_rounds
         )
+
+        # 补充知识检索结果
         chat_memory = self._patch_knowledge(chat_memory)
+        if self.recalled_knowledge:
+            kg_source = {}
+            for item in self.recalled_knowledge:
+                if isinstance(item, Document):
+                    src = item.meta.get("source", "无来源文档")
+                else:
+                    src = "直接资料"
+                if src not in kg_source:
+                    kg_source[src] = []
+                kg_source[src].append(item)
+            for k, v in kg_source.items():
+                yield self.create_event_block("RAG", f"{k}：发现 {len(v)} 条资料")
 
         to_continue_call_llm = True
         while to_continue_call_llm:

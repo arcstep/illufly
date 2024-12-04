@@ -101,7 +101,7 @@ from illufly.chat import ChatQwen
 
 # 声明向量数据库并加载指定位置的文档
 db = FaissDB(embeddings=TextEmbeddings(), top_k=3)
-db.load("./docs")
+db.load_dir("./docs")
 
 # 声明大模型实例
 qwen = ChatQwen(knowledge=[db])

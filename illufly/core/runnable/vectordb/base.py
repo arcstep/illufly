@@ -47,5 +47,5 @@ class VectorDB(Runnable):
     def load_text(self, text: str):
         pass
 
-    def load(self, dir: str):
+    def load_dir(self, dir: str):
         pass

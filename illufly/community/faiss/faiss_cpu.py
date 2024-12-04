@@ -48,7 +48,7 @@ class FaissDB(VectorDB):
             self.index.add(vectors)
             self.documents.extend(docs)
 
-    def load(
+    def load_dir(
         self,
         dir: str=None,
         verbose: bool = False,
@@ -56,7 +56,7 @@ class FaissDB(VectorDB):
         **kwargs
     ):
         """
-        使用 MarkMeta 的 load 方法从指定目录加载文件。
+        使用 MarkMeta 的 load_dir 方法从指定目录加载文件。
         """
         # 记录文档来源
         self.sources.append(dir)

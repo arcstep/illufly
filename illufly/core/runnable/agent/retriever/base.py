@@ -61,14 +61,14 @@ class Retriever(BaseAgent):
                 if not item.top_k:
                     item.top_k = question_count
                 if not item.documents:
-                    item.load(dir=get_env("ILLUFLY_IDENT"))
+                    item.load_dir(dir=get_env("ILLUFLY_IDENT"))
 
         for item in self.searchers:
             if isinstance(item, VectorDB):
                 if not item.top_k:
                     item.top_k = search_count
                 if not item.documents:
-                    item.load(dir=get_env("ILLUFLY_DOCS"))
+                    item.load_dir(dir=get_env("ILLUFLY_DOCS"))
 
     def call(self, query: str, **kwargs) -> List[dict]:
         """

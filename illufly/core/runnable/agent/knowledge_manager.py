@@ -19,7 +19,7 @@ class KnowledgeManager:
 
     def __init__(
         self,
-        knowledge: Union[Set[Any], List[Any]] = None,
+        knowledge: Union[Set[Any], List[Any], VectorDB, Retriever] = None,
     ):
         """
         知识库在内存中以集合的方式保存，确保唯一性。
@@ -28,14 +28,14 @@ class KnowledgeManager:
         除非在其他向量库中已经指定了如何加载这两个目录。
         """
         self.knowledge = knowledge
+        if isinstance(knowledge, (VectorDB, Retriever)):
+            self.knowledge = set({knowledge})
 
         if isinstance(knowledge, list):
             self.knowledge = set(knowledge)
 
         if not isinstance(self.knowledge, set):
             self.knowledge = set({self.knowledge}) if self.knowledge else set()
-
-        self.default_vdb = None
 
         self._recalled_knowledge = []
 
