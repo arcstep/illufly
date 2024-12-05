@@ -5,6 +5,7 @@ import copy
 import uuid
 from datetime import datetime
 
+from ..core.document import Document
 from ..config import get_env, get_ascii_color_code
 from ..utils import create_id_generator
 
@@ -59,8 +60,13 @@ class EventBlock():
                 if isinstance(item, dict) and "text" in item:
                     items.append(item["text"])
                 else:
-                    items.append(json.dumps(item, ensure_ascii=False))
-            return ",".join(items)
+                    if isinstance(item, Document):
+                        items.append(item.to_dict())
+                    else:
+                        items.append(str(item))
+            return json.dumps(items, ensure_ascii=False)
+        elif isinstance(self.content, dict):
+            return json.dumps(self.content, ensure_ascii=False)
         else:
             return str(self.content)
     

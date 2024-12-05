@@ -37,16 +37,7 @@ class KnowledgeManager:
         if not isinstance(self.knowledge, set):
             self.knowledge = set({self.knowledge}) if self.knowledge else set()
 
-        self._recalled_knowledge = []
-
         # self.load_resource_knowledge()
-
-    @property
-    def recalled_knowledge(self):
-        """
-        返回最近一次调用 get_knowledge 方法时返回的资料列表。
-        """
-        return self._recalled_knowledge
 
     def _get_resource_type(self, ext: str):
         return {
@@ -96,18 +87,14 @@ class KnowledgeManager:
         根据知识清单召回知识，并返回知识文本列表。
         """
         knowledge = []
-        self._recalled_knowledge.clear()
         for kg in self.knowledge:
             if isinstance(kg, Document):
-                knowledge.append(kg.text)
-                self._recalled_knowledge.append(kg)
-            elif isinstance(kg, str):
                 knowledge.append(kg)
-                self._recalled_knowledge.append(kg)
+            elif isinstance(kg, str):
+                knowledge.append(Document(text=kg, meta={"source": "直接资料"}))
             elif isinstance(kg, (VectorDB, Retriever)):
-                docs = kg(query, verbose=verbose)
-                self._recalled_knowledge.extend(docs)
-                knowledge.append("\n\n".join([doc.text for doc in docs]))
+                docs = kg.query(query, verbose=verbose)
+                knowledge.extend(docs)
             else:
                 raise ValueError("Knowledge MUST be a string, Document or VectorDB")
         return knowledge

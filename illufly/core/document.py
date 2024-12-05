@@ -23,6 +23,12 @@ class Document():
     def __len__(self):
         return len(self.text)
 
+    def to_dict(self):
+        return {
+            "text": self.text,
+            "meta": self.meta
+        }
+
 def convert_to_documents_list(docs: Union[str, List[str], List[Document]]):
     if isinstance(docs, str):
         docs = [docs]

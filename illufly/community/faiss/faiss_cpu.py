@@ -109,8 +109,17 @@ class FaissDB(VectorDB):
 
             # 按距离排序
             results.sort(key=lambda x: x[0])
+            _docs = []
             for distance, doc in results:
-                doc.meta["distance"] = distance
+                new_meta = {
+                    "id": doc.meta.get("id"),
+                    "source": doc.meta.get("source"),
+                    "distance": float(distance)
+                }
+                _docs.append(Document(
+                    text=doc.text,
+                    meta=new_meta
+                ))
 
             # 返回的结果是 Document 列表
-            return [doc for _, doc in results]
+            return _docs

@@ -185,7 +185,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "tools_name": ",".join([a.name for a in self._tools_to_exec]),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
             "knowledge": self.get_knowledge(self.task),
-            "recalled_knowledge": self.recalled_knowledge,
             "chat_memory": self.chat_memory
         }
         return {
@@ -238,7 +237,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     ):
                         yield block
 
-    def _patch_knowledge(self, messages: Messages):
+    def _patch_knowledge(self, messages: Messages, kg: str=""):
         """
         根据当前的记忆和知识，对提示语进行补充。
 
@@ -247,12 +246,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         - 默认保存在临时目录中的经验信息
         - 已经添加的资源信息
         """
-        kg = ""
-        existing_text = "\n".join([m['content'] for m in Messages(messages).to_list(style="text")])
-        if self.knowledge:
-            for item in self.get_knowledge(self.task):
-                if item not in existing_text:
-                    kg += item
         patch_info = ""
         if kg:
             patch_info += f"回答时请参考已有知识：\n@knowledge\n{kg}\n"
@@ -314,19 +307,17 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         )
 
         # 补充知识检索结果
-        chat_memory = self._patch_knowledge(chat_memory)
-        if self.recalled_knowledge:
-            kg_source = {}
-            for item in self.recalled_knowledge:
-                if isinstance(item, Document):
-                    src = item.meta.get("source", "无来源文档")
-                else:
-                    src = "直接资料"
-                if src not in kg_source:
-                    kg_source[src] = []
-                kg_source[src].append(item)
-            for k, v in kg_source.items():
-                yield self.create_event_block("RAG", f"{k}：发现 {len(v)} 条资料")
+        kg = ""
+        existing_text = "\n".join([m['content'] for m in Messages(chat_memory).to_list(style="text")])
+        if self.knowledge:
+            recalled = self.get_knowledge(self.task)
+            for doc in recalled:
+                if doc.text not in existing_text:
+                    kg += f"{doc.text}\n\n"
+            if recalled:
+                yield self.create_event_block("RAG", recalled)
+
+        chat_memory = self._patch_knowledge(chat_memory, kg)
 
         to_continue_call_llm = True
         while to_continue_call_llm:
@@ -415,19 +406,17 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         )
 
         # 补充知识检索结果
-        chat_memory = self._patch_knowledge(chat_memory)
-        if self.recalled_knowledge:
-            kg_source = {}
-            for item in self.recalled_knowledge:
-                if isinstance(item, Document):
-                    src = item.meta.get("source", "无来源文档")
-                else:
-                    src = "直接资料"
-                if src not in kg_source:
-                    kg_source[src] = []
-                kg_source[src].append(item)
-            for k, v in kg_source.items():
-                yield self.create_event_block("RAG", f"{k}：发现 {len(v)} 条资料")
+        kg = ""
+        existing_text = "\n".join([m['content'] for m in Messages(chat_memory).to_list(style="text")])
+        if self.knowledge:
+            recalled = self.get_knowledge(self.task)
+            for doc in recalled:
+                if doc.text not in existing_text:
+                    kg += f"{doc.text}\n\n"
+            if recalled:
+                yield self.create_event_block("RAG", recalled)
+
+        chat_memory = self._patch_knowledge(chat_memory, kg)
 
         to_continue_call_llm = True
         while to_continue_call_llm:
