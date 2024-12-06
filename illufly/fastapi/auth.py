@@ -71,21 +71,21 @@ async def get_current_user(request: Request):
 
     return {"username": username}
 
-def create_auth_api(auth_func: callable=None):
+def create_auth_endpoints(app, auth_func: callable=None, prefix: str="/api"):
     """
     用户验证。
 
     Example:
     ```
     app = FastAPI()
-    app.include_router(AuthAPI().router)
+    create_auth_endpoints(app)
     ```
     """
     auth_func = auth_func or default_auth_func
 
     router = APIRouter()
 
-    @router.post("/refresh-token")
+    @app.post(f"{prefix}/auth/refresh-token")
     async def refresh_token(request: Request, response: Response):
         refresh_token = request.cookies.get("refresh_token")
         if not refresh_token or not is_refresh_token_in_whitelist(refresh_token):
@@ -102,19 +102,19 @@ def create_auth_api(auth_func: callable=None):
         except JWTError:
             raise HTTPException(status_code=403, detail="Token is expired or invalid")
 
-    @router.post("/remove-access-token")
+    @app.post(f"{prefix}/auth/remove-access-token")
     async def remove_access_token(request: Request):
         username = verify_jwt(request.cookies.get("access_token"))
         remove_access_token_from_whitelist(username)
         return {"message": "Access token removed successfully"}
 
-    @router.post("/remove-refresh-token")
+    @app.post(f"{prefix}/auth/remove-refresh-token")
     async def remove_refresh_token(request: Request):
         username = verify_jwt(request.cookies.get("refresh_token"))
         remove_refresh_token_from_whitelist(username)
         return {"message": "Refresh token removed successfully"}
 
-    @router.post("/login")
+    @app.post(f"{prefix}/auth/login")
     async def login_for_access_token(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
         user_info = auth_func(form_data.username, form_data.password)
         if not user_info:
@@ -129,7 +129,7 @@ def create_auth_api(auth_func: callable=None):
 
         return user_info
 
-    @router.post("/logout")
+    @app.post(f"{prefix}/auth/logout")
     async def logout(response: Response, current_user: dict = Depends(get_current_user)):
         remove_access_token_from_whitelist(current_user)
         remove_refresh_token_from_whitelist(current_user)
@@ -139,7 +139,7 @@ def create_auth_api(auth_func: callable=None):
         
         return {"message": "User logged out successfully"}
 
-    @router.get("/profile")
+    @app.get(f"{prefix}/auth/profile")
     async def read_user_me(user: dict = Depends(get_current_user)):
         print("user", user)
         return user

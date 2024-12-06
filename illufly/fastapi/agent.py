@@ -3,7 +3,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from .auth import get_current_user
 
-def create_agent_endpoints(app, agent, prefix):
+def create_agent_endpoints(app, agent, prefix: str="/api"):
     @app.get(f"{prefix}")
     async def agent_endpoint(prompt: str = Query(...), user: dict = Depends(get_current_user)):
         return EventSourceResponse(agent(prompt, generator="async"))
