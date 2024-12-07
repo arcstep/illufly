@@ -49,3 +49,6 @@ class VectorDB(Runnable):
 
     def load_dir(self, dir: str):
         pass
+
+    def load_knowledge(self, knowledge: BaseKnowledge):
+        pass

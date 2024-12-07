@@ -58,11 +58,28 @@ class FaissDB(VectorDB):
         """
         使用 MarkMeta 的 load_dir 方法从指定目录加载文件。
         """
-        # 记录文档来源
-        self.sources.append(dir)
-
         mm = MarkMeta(dir)
         mm.load_dir()
+
+        vectors = self._process_embeddings(mm.documents)
+        if vectors is not None and len(vectors) > 0:
+            if self.train:
+                self.index.train(vectors)
+            self.index.add(vectors)
+            self.documents.extend(mm.documents)
+
+    def load_knowledge(
+        self,
+        knowledge: BaseKnowledge,
+        verbose: bool = False,
+        call_func: Callable = None,
+        **kwargs
+    ):
+        """
+        使用 MarkMeta 的 load_knowledge 方法从指定知识库加载知识。
+        """
+        mm = MarkMeta()
+        mm.load_knowledge(knowledge)
 
         vectors = self._process_embeddings(mm.documents)
         if vectors is not None and len(vectors) > 0:

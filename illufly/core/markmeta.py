@@ -3,6 +3,7 @@ import fnmatch
 import json
 import re
 from typing import Union, List
+from .knowledge import BaseKnowledge
 from .document import Document
 from ..io import EventBlock
 from ..config import get_env
@@ -28,7 +29,7 @@ class MarkMeta():
         - 优先使用 @meta 所在行的键值描述来初始化 Document 的 meta 数据
         - 片段单元的内容都作为 Document 的 text 属性
     - @TODO: 处理 @index 标签
-        - Document 的 index 属性是一个列表，额外存储了专门指定的文本嵌入内容，建立索引时应当替代 text 内容
+        - Document 的 index 属性是��个列表，额外存储了专门指定的文本嵌入内容，建立索引时应当替代 text 内容
         - 可以在文档中使用 @index 指定开始位置，遇到@end结束
         - @index 支持多段落
     - 处理导出时
@@ -217,3 +218,31 @@ class MarkMeta():
             chunks.append(create_chunk(docs, chunk_index))
 
         return chunks
+
+    def load_knowledge(self, knowledge: BaseKnowledge) -> List[Document]:
+        """从 BaseKnowledge 加载知识条目
+        
+        Args:
+            knowledge: BaseKnowledge 实例
+            
+        Returns:
+            加载的 Document 列表
+        """
+        self.documents.clear()
+        
+        for item in knowledge.all():
+            doc = item['data']
+            if count_tokens(doc.text) > self.chunk_size:
+                # 对大文本进行分块
+                chunks = self.split_text_recursive(doc.text, f"knowledge_{item['id']}")
+                # 为每个分块添加原始知识的标签和来源信息
+                for chunk in chunks:
+                    chunk.meta['tags'] = doc.meta.get('tags', [])
+                    chunk.meta['source'] = doc.meta.get('source')
+                self.documents.extend(chunks)
+            else:
+                # 设置文档来源为知识ID
+                doc.meta['source'] = f"knowledge_{item['id']}"
+                self.documents.append(doc)
+                
+        return self.documents
