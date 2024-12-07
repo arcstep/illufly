@@ -284,21 +284,23 @@ class BaseKnowledge():
             }
         }
 
-    def import_files(self, dir_path: str, filter: str = "*", exts: List[str] = None) -> List[str]:
+    def import_files(self, dir_path: str, filter: str = "*", exts: List[str] = None, tags: List[str] = None) -> List[str]:
         """从目录导入知识
         
         Args:
             dir_path: 目录路径
             filter: 文件名过滤器
             exts: 文件扩展名列表，默认为 ['.md', '.Md', '.MD', '.markdown', '.MARKDOWN']
+            tags: 要添加的标签列表，默认为 ['imported_files']
             
         Returns:
-            List[str]: 导入的知识条目ID列表
-        """
-        from ...core.markmeta import MarkMeta
-        
+            List[str]: 导入的知识条目ID列表（已去重）
+        """        
         exts = exts or ['.md', '.Md', '.MD', '.markdown', '.MARKDOWN']
-        imported_ids = []
+        imported_ids = set()  # 使用集合来自动去重
+        
+        # 设置默认标签
+        default_tags = tags if tags is not None else ['imported_files']
         
         # 遍历目录获取文件
         for root, _, files in os.walk(dir_path):
@@ -311,38 +313,55 @@ class BaseKnowledge():
                     continue
                     
                 file_path = os.path.join(root, file)
-                imported_ids.extend(self.import_file(file_path))
+                imported_ids.update(self.import_file(file_path, tags=default_tags))
                 
-        return imported_ids
+        return list(imported_ids)
 
-    def import_file(self, file_path: str, default_tags: List[str] = None) -> List[str]:
+    def import_file(self, file_path: str, tags: List[str] = None) -> List[str]:
         """导入单个文件
         
         Args:
             file_path: 文件路径
-            default_tags: 默认标签列表
+            tags: 默认标签列表，如果未指定则使用 ['imported_files']
             
         Returns:
-            List[str]: 导入的知识条目ID列表
+            List[str]: 导入的知识条目ID列表（已去重）
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"文件不存在: {file_path}")
-            
+        
+        # 设置默认标签
+        default_tags = tags if tags is not None else ['imported_files']
+        
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
             if not content.strip():
                 return []
-            
+        
         # 使用 MarkMeta 解析文档
         docs = self._parser.parse_text(content, source=file_path)
         
         # 导入解析后的文档
-        imported_ids = []
+        imported_ids = set()
         for doc in docs:
-            # 合并默认标签
-            tags = list(set(doc.meta.get('tags', []) + (default_tags or [])))
+            # 合并文档自带的标签和默认标签
+            tags = list(set(doc.meta.get('tags', []) + default_tags))
             
-            # 添加到知识库
+            # 检查是否存在重复内容
+            duplicate_id = self._find_duplicate(doc.text, tags)
+            if duplicate_id:
+                # 更新已存在的条目
+                self.update(
+                    knowledge_id=duplicate_id,
+                    text=doc.text,
+                    tags=tags,
+                    summary=doc.meta.get('summary', ''),
+                    source=doc.meta.get('source', file_path)
+                )
+                imported_ids.add(duplicate_id)
+                continue
+            
+            # 添加新条目
             knowledge_id = self.add(
                 text=doc.text,
                 tags=tags,
@@ -350,9 +369,9 @@ class BaseKnowledge():
                 source=doc.meta.get('source', file_path)
             )
             if isinstance(knowledge_id, list):
-                imported_ids.extend(knowledge_id)
+                imported_ids.update(knowledge_id)
             else:
-                imported_ids.append(knowledge_id)
+                imported_ids.add(knowledge_id)
                 
-        return imported_ids
+        return list(imported_ids)
 

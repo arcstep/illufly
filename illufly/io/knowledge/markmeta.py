@@ -13,11 +13,12 @@ class MarkMeta():
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
-    def parse_text(self, text: str) -> List[Document]:
+    def parse_text(self, text: str, **meta) -> List[Document]:
         """解析文本内容
         
         Args:
             text: 要解析的文本内容
+            **meta: 元数据字典
             
         Returns:
             List[Document]: 解析后的文档列表
@@ -26,8 +27,12 @@ class MarkMeta():
         result = []
         
         for doc in docs:
+            # 合并传入的meta和文档自带的meta，优先使用文档自带的meta
+            combined_meta = {**meta, **doc.meta}
+            doc.meta = combined_meta
+            
             if count_tokens(doc.text) > self.chunk_size:
-                chunks = self.split_text_recursive(doc.text, doc.meta.get('source', 'unknown'))
+                chunks = self.split_text_recursive(doc.text, combined_meta)
                 result.extend(chunks)
             else:
                 result.append(doc)
@@ -57,17 +62,26 @@ class MarkMeta():
             documents.append(doc)
         return documents
 
-    def split_text_recursive(self, text: str, source: str) -> List[Document]:
+    def split_text_recursive(self, text: str, meta: dict) -> List[Document]:
         """
         按照指定规则分割Markdown文档。
-
-        :return: 分割后Document对象列表
+        
+        Args:
+            text: 要分割的文本
+            meta: 元数据字典
+        
+        Returns:
+            List[Document]: 分割后Document对象列表
         """
         def split_text(text: str) -> List[str]:
             return text.split('\n')
 
         def create_chunk(lines: List[str], chunk_index: int) -> Document:
-            return Document(text='\n'.join(lines), meta={"source": f"{source}#{chunk_index}"})
+            chunk_meta = meta.copy()
+            # 如果meta中已有source，使用#chunk_index作为后缀
+            source = chunk_meta.get('source', 'unknown')
+            chunk_meta['source'] = f"{source}#{chunk_index}"
+            return Document(text='\n'.join(lines), meta=chunk_meta)
 
         chunks = []
 
