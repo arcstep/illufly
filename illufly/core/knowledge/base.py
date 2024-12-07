@@ -170,17 +170,21 @@ class BaseKnowledge():
     def get_meta_list(
         self,
         page: int = 1,
-        page_size: int = 8,
+        page_size: int = 10,
         sort_by: str = "id",
-        reverse: bool = False
+        reverse: bool = False,
+        tags: List[str] = None,
+        match_all_tags: bool = True
     ) -> Dict[str, Union[List[Dict], int]]:
-        """获取所有知识条目的元数据，支持分页
+        """获取所有知识条目的元数据，支持分页和标签筛选
         
         Args:
             page: 页码（从1开始）
             page_size: 每页条数
             sort_by: 排序字段（'id', 'summary', 'source'）
             reverse: 是否倒序
+            tags: 标签筛选列表
+            match_all_tags: True表示必须匹配所有标签，False表示匹配任意标签
         
         Returns:
             Dict: {
@@ -198,7 +202,14 @@ class BaseKnowledge():
                 ]
             }
         """
-        # 获取所有知识条目的元数据
+        # 如果指定了标签，先通过标签索引筛选知识条目ID
+        if tags:
+            knowledge_ids = set(self.find_by_tags(tags, match_all_tags))
+            items = {k: v for k, v in self.store.items() if k in knowledge_ids}
+        else:
+            items = self.store
+        
+        # 获取符合条件的知识条目的元数据
         meta_list = [
             {
                 'id': k,
@@ -206,7 +217,7 @@ class BaseKnowledge():
                 'tags': v['meta']['tags'],
                 'source': v['meta']['source']
             }
-            for k, v in self.store.items()
+            for k, v in items.items()
         ]
         
         # 排序
@@ -214,21 +225,29 @@ class BaseKnowledge():
             meta_list.sort(key=lambda x: x['id'], reverse=reverse)
         elif sort_by in ['summary', 'source']:
             meta_list.sort(key=lambda x: (x[sort_by] or '').lower(), reverse=reverse)
+        elif sort_by == 'tags':
+            # 按标签数量和第一个标签的字母顺序排序
+            meta_list.sort(key=lambda x: (len(x['tags']), x['tags'][0] if x['tags'] else ''), 
+                          reverse=reverse)
         
         # 计算分页信息
         total = len(meta_list)
-        total_pages = (total + page_size - 1) // page_size
-        page = min(max(1, page), total_pages) if total_pages > 0 else 1
+        total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+        page = min(max(1, page), total_pages)
         
         # 切片获取当前页的数据
         start = (page - 1) * page_size
         end = start + page_size
-        items = meta_list[start:end]
+        page_items = meta_list[start:end]
         
         return {
             'total': total,
             'total_pages': total_pages,
             'current_page': page,
-            'items': items
+            'items': page_items,
+            'filters': {
+                'tags': tags or [],
+                'match_all_tags': match_all_tags
+            }
         }
 

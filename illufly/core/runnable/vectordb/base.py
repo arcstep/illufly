@@ -1,5 +1,5 @@
 from typing import List
-from ....io import EventBlock
+from ....io import EventBlock, BaseKnowledge
 from ....utils import raise_invalid_params
 from ..base import Runnable
 from ..embeddings import BaseEmbeddings
