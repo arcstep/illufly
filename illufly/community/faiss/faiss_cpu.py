@@ -34,13 +34,13 @@ class FaissDB(VectorDB):
         self.documents = self.embeddings.last_output[:]
         self.load_documents(self.documents)
     
-    def load_text(self, text: str, source: str=None, **kwargs):
+    def load_text(self, text: str):
         mm = MarkMeta()
-        docs = mm.load_text(text, source)
+        docs = mm.load_text(text)
 
         self.load_documents(docs)
 
-    def load_documents(self, docs: List[Document], **kwargs):
+    def load_documents(self, docs: List[Document]):
         vectors = self._process_embeddings(docs)
         if vectors is not None and len(vectors) > 0:
             if self.train:

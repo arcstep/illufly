@@ -10,22 +10,7 @@ from ...message import Messages
 from ..base import BaseAgent
 from ..chat import ChatAgent
 from .base import FlowAgent
-
-def save_faq(thread_id: str, chat_learn_folder: str, knowledge: str, question: str="", metadata: dict={}):
-    if not thread_id or not knowledge:
-        return
-
-    if not os.path.exists(chat_learn_folder):
-        os.makedirs(chat_learn_folder)
-
-    metadata = f'<!-- @meta {str(metadata) if metadata else ""} -->\n'
-    q = f"**Question**\n{question}\n\n"
-    k = f"**Knowledge**\n{knowledge}"
-    text = (metadata + q + k) or ""
-
-    with open(os.path.join(chat_learn_folder, f"{thread_id}.md"), "w", encoding="utf-8") as f:
-        f.write(text)
-    return text
+from ....knowledge import BaseKnowledge
 
 class ChatLearn(FlowAgent):
     """
@@ -36,6 +21,7 @@ class ChatLearn(FlowAgent):
         return {
             "scribe": "负责笔记的ChatAgent",
             "scribe_template": "scribe 所使用的 PromptTemplate, 默认为 PromptTemplate('FLOW/Scribe')",
+            "knowledge": "知识库实例，用于存储提取的知识，默认创建新的 BaseKnowledge 实例",
             **FlowAgent.allowed_params(),
         }
 
@@ -43,6 +29,7 @@ class ChatLearn(FlowAgent):
         self,
         scribe: ChatAgent,
         scribe_template: str=None,
+        knowledge: BaseKnowledge=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.allowed_params())
@@ -52,6 +39,7 @@ class ChatLearn(FlowAgent):
 
         scribe_template = scribe_template or PromptTemplate("FLOW/Scribe")
         self.scribe_template = scribe_template
+        self.knowledge = knowledge or BaseKnowledge()
 
         scribe.reset_init_memory(scribe_template)
         self.scribe = scribe
@@ -60,16 +48,27 @@ class ChatLearn(FlowAgent):
             final_output_text = agent.last_output
             questions = extract_segments(final_output_text, ('<question>', '</question>'))
             knowledges = extract_segments(final_output_text, ('<knowledge>', '</knowledge>'))
-            metadata = {"class": scribe.__class__.__name__, "name": scribe.name, "thread_id": scribe.thread_id}
-
-            # 保存 Q/K 语料
+            
+            # 保存知识到知识库
             for i, knowledge in enumerate(knowledges):
                 q = questions[i] if i < len(questions) else ""
-                text = save_faq(scribe.thread_id, scribe.chat_learn_folder, knowledge, q, metadata)
-                yield self.create_event_block("faq", f"保存知识到[{scribe.thread_id}]：{minify_text(q)} -> {minify_text(knowledge)}")
+                summary = q if q else knowledge[:100] + "..." if len(knowledge) > 100 else knowledge
+                metadata = f'<!-- @meta {str(metadata) if metadata else ""} -->\n'
+                q = f"**Question**\n{question}\n\n"
+                k = f"**Knowledge**\n{knowledge}"
+                text = (metadata + q + k) or ""                
+                knowledge_id = self.knowledge.add(
+                    text=text,
+                    summary=summary,
+                    source=scribe.thread_id,
+                    tags=["chat_learn", scribe.__class__.__name__]
+                )
+                yield self.create_event_block("faq", f"保存知识[{knowledge_id}]：{minify_text(q)} -> {minify_text(knowledge)}")
                 scribe.clear()
                 if scribe.default_vdb:
-                    scribe.default_vdb.load_text(text, source=scribe.thread_id)
+                    doc = self.knowledge.get(knowledge_id)
+                    if doc:
+                        scribe.default_vdb.load_text(doc['text'], source=knowledge_id)
 
         def should_fetch():
             if '<knowledge>' in scribe.last_output:
