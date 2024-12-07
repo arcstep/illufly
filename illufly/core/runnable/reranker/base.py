@@ -1,9 +1,8 @@
 from typing import List, Union, Optional
 from ..base import Runnable
-from ....core.document import Document, convert_to_documents_list
 from ....utils import hash_text, clean_filename, raise_invalid_params
 from ....config import get_env
-from ....io import EventBlock
+from ....io import EventBlock, Document
 
 import os
 import pickle

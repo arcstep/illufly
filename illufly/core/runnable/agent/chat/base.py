@@ -8,8 +8,7 @@ from typing import Union, List, Tuple, Set, Any
 
 from .....config import get_env
 from .....utils import merge_tool_calls, extract_text, raise_invalid_params, filter_kwargs
-from .....io import EventBlock, EndBlock, NewLineBlock
-from ....document import Document
+from .....io import EventBlock, EndBlock, NewLineBlock, Document
 from ...base import Runnable
 from ...message import Messages
 from ...prompt_template import PromptTemplate

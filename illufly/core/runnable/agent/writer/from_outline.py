@@ -1,8 +1,7 @@
 from typing import List, Union
 
 from .....utils import raise_invalid_params, minify_text
-from .....io import EventBlock
-from ....document import Document
+from .....io import EventBlock, Document
 from ...selector import Selector
 from ...prompt_template import PromptTemplate
 from ..base import BaseAgent

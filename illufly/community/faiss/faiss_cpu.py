@@ -1,8 +1,7 @@
 from typing import List, Union, Callable, Generator, AsyncGenerator
 from ...utils import minify_text
-from ...types import VectorDB, EventBlock, Document
-from ...io import log, alog, BaseKnowledge
-from ...core.markmeta import MarkMeta
+from ...types import VectorDB
+from ...io import log, alog, BaseKnowledge, Document, MarkMeta, EventBlock
 from ...utils import raise_invalid_params
 
 import time

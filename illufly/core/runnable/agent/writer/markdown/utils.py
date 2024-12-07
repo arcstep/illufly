@@ -7,7 +7,7 @@ import copy
 from mistune import markdown
 from mistune.renderers.markdown import MarkdownRenderer
 from mistune.core import BlockState
-from .....document import Document
+from ......io import Document
 from ......config import get_env
 
 class SegmentsRenderer(MarkdownRenderer):

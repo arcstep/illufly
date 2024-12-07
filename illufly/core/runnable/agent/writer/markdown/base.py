@@ -6,7 +6,7 @@ from typing import Iterator, List, Union, Optional
 
 from ......config import get_env
 from ......utils import extract_text
-from .....document import Document
+from ......io import Document
 from .utils import parse_markdown, create_front_matter
 
 class Markdown():

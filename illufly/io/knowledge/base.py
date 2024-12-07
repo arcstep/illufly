@@ -4,14 +4,23 @@ from pathlib import Path
 import copy
 import json
 from ...utils import create_id_generator
+import os
+import fnmatch
+from .markmeta import MarkMeta
+from ..document import Document
 
 knowledge_id_gen = create_id_generator()
 
 class BaseKnowledge():
-    def __init__(self, store: dict=None):
+    def __init__(self, store: dict=None, chunk_size: int=1024, chunk_overlap: int=100):
         self.store = store if store is not None else {}
         self.id_gen = knowledge_id_gen
         self.tag_index: Dict[str, Set[str]] = {}  # 标签索引: {tag: set(knowledge_ids)}
+        
+        # 文本分块参数
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self._parser = MarkMeta(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     @property
     def tags(self) -> List[str]:
@@ -33,7 +42,7 @@ class BaseKnowledge():
         return None
 
     def add(self, text: str, tags: List[str]=None, summary: str="", source: str=None) -> str:
-        """添加新知识条目
+        """添加新知识条目，自动处理大文本分块
         
         Args:
             text: 知识内容
@@ -42,33 +51,55 @@ class BaseKnowledge():
             source: 知识来源
         
         Returns:
-            str: 如果是新增则返回新的knowledge_id，如果是重复则返回已存在的knowledge_id
+            str: 如果是新增则返回新的knowledge_id列表，如果是重复则返回已存在的knowledge_id
         """
-        from ...core.document import Document
         # 检查重复
         duplicate_id = self._find_duplicate(text, tags)
         if duplicate_id:
             return duplicate_id
-        
+
         if not summary:
             summary = text[:100] + "..." if len(text) > 100 else text
+            
+        # 使用 MarkMeta 解析和分块
+        docs = self._parser.parse_text(text, source=source)
         
-        knowledge_id = next(self.id_gen)
-        doc = Document(
-            text=text,
-            meta={
+        # 如果只有一个文档，直接添加
+        if len(docs) == 1:
+            doc = docs[0]
+            doc.meta.update({
                 'tags': tags or [],
                 'summary': summary,
+                'source': source
+            })
+            knowledge_id = next(self.id_gen)
+            doc.meta['id'] = knowledge_id
+            
+            self.store[knowledge_id] = copy.deepcopy(doc.to_dict())
+            self._update_tag_index(knowledge_id, doc.meta['tags'])
+            return knowledge_id
+            
+        # 如果有多个分块，为每个分块创建条目
+        knowledge_ids = []
+        for i, doc in enumerate(docs):
+            chunk_id = next(self.id_gen)
+            doc.meta.update({
+                'tags': tags or [],
+                'summary': f"{summary} (分块 {i+1}/{len(docs)})",
                 'source': source,
-                'id': knowledge_id
-            }
-        )
-        
-        self.store[knowledge_id] = copy.deepcopy(doc.to_dict())
-        self._update_tag_index(knowledge_id, doc.meta['tags'])
-        return knowledge_id
+                'id': chunk_id,
+                'is_chunk': True,
+                'chunk_index': i,
+                'total_chunks': len(docs)
+            })
+            
+            self.store[chunk_id] = copy.deepcopy(doc.to_dict())
+            self._update_tag_index(chunk_id, doc.meta['tags'])
+            knowledge_ids.append(chunk_id)
+            
+        return knowledge_ids[0] if knowledge_ids else None
 
-    def get(self, knowledge_id: str) -> Union["Document", None]:
+    def get(self, knowledge_id: str) -> Union[Document, None]:
         """获取指定知识条目"""
         return self.store.get(knowledge_id, None)
 
@@ -140,9 +171,8 @@ class BaseKnowledge():
             return True
         return False
 
-    def all(self) -> List["Document"]:
+    def all(self) -> List[Document]:
         """列出所有知识条目"""
-        from ...core.document import Document
         return [
             Document(text=v['text'], meta=v['meta'])
             for v in self.store.values()
@@ -228,8 +258,10 @@ class BaseKnowledge():
             meta_list.sort(key=lambda x: (x[sort_by] or '').lower(), reverse=reverse)
         elif sort_by == 'tags':
             # 按标签数量和第一个标签的字母顺序排序
-            meta_list.sort(key=lambda x: (len(x['tags']), x['tags'][0] if x['tags'] else ''), 
-                          reverse=reverse)
+            meta_list.sort(
+                key=lambda x: (len(x['tags']), x['tags'][0] if x['tags'] else ''), 
+                reverse=reverse
+            )
         
         # 计算分页信息
         total = len(meta_list)
@@ -251,4 +283,76 @@ class BaseKnowledge():
                 'match_all_tags': match_all_tags
             }
         }
+
+    def import_files(self, dir_path: str, filter: str = "*", exts: List[str] = None) -> List[str]:
+        """从目录导入知识
+        
+        Args:
+            dir_path: 目录路径
+            filter: 文件名过滤器
+            exts: 文件扩展名列表，默认为 ['.md', '.Md', '.MD', '.markdown', '.MARKDOWN']
+            
+        Returns:
+            List[str]: 导入的知识条目ID列表
+        """
+        from ...core.markmeta import MarkMeta
+        
+        exts = exts or ['.md', '.Md', '.MD', '.markdown', '.MARKDOWN']
+        imported_ids = []
+        
+        # 遍历目录获取文件
+        for root, _, files in os.walk(dir_path):
+            for file in files:
+                if file.startswith('.'):  # 跳过隐藏文件
+                    continue
+                if not any(file.endswith(ext) for ext in exts):
+                    continue
+                if not fnmatch.fnmatch(file, filter):
+                    continue
+                    
+                file_path = os.path.join(root, file)
+                imported_ids.extend(self.import_file(file_path))
+                
+        return imported_ids
+
+    def import_file(self, file_path: str, default_tags: List[str] = None) -> List[str]:
+        """导入单个文件
+        
+        Args:
+            file_path: 文件路径
+            default_tags: 默认标签列表
+            
+        Returns:
+            List[str]: 导入的知识条目ID列表
+        """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"文件不存在: {file_path}")
+            
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            if not content.strip():
+                return []
+            
+        # 使用 MarkMeta 解析文档
+        docs = self._parser.parse_text(content, source=file_path)
+        
+        # 导入解析后的文档
+        imported_ids = []
+        for doc in docs:
+            # 合并默认标签
+            tags = list(set(doc.meta.get('tags', []) + (default_tags or [])))
+            
+            # 添加到知识库
+            knowledge_id = self.add(
+                text=doc.text,
+                tags=tags,
+                summary=doc.meta.get('summary', ''),
+                source=doc.meta.get('source', file_path)
+            )
+            if isinstance(knowledge_id, list):
+                imported_ids.extend(knowledge_id)
+            else:
+                imported_ids.append(knowledge_id)
+                
+        return imported_ids
 

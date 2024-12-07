@@ -3,7 +3,7 @@ import shutil
 from typing import Any, Set, Union, List
 
 from ....config import get_env
-from ...document import Document
+from ....io import Document
 from ..vectordb import VectorDB
 from .retriever import Retriever
 
