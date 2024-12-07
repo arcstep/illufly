@@ -4,7 +4,6 @@ from pathlib import Path
 import copy
 import json
 from ...utils import create_id_generator
-from ..document import Document
 
 knowledge_id_gen = create_id_generator()
 
@@ -45,6 +44,7 @@ class BaseKnowledge():
         Returns:
             str: 如果是新增则返回新的knowledge_id，如果是重复则返回已存在的knowledge_id
         """
+        from ...core.document import Document
         # 检查重复
         duplicate_id = self._find_duplicate(text, tags)
         if duplicate_id:
@@ -68,7 +68,7 @@ class BaseKnowledge():
         self._update_tag_index(knowledge_id, doc.meta['tags'])
         return knowledge_id
 
-    def get(self, knowledge_id: str) -> Union[Document, None]:
+    def get(self, knowledge_id: str) -> Union["Document", None]:
         """获取指定知识条目"""
         return self.store.get(knowledge_id, None)
 
@@ -140,8 +140,9 @@ class BaseKnowledge():
             return True
         return False
 
-    def all(self) -> List[Document]:
+    def all(self) -> List["Document"]:
         """列出所有知识条目"""
+        from ...core.document import Document
         return [
             Document(text=v['text'], meta=v['meta'])
             for v in self.store.values()

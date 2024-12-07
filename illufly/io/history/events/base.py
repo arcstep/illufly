@@ -1,7 +1,7 @@
 from typing import List, Union
 import copy
 import json
-from ....io import EventBlock
+from ...block import EventBlock
 from ....utils import create_id_generator
 
 events_history_id_gen = create_id_generator()
@@ -40,7 +40,7 @@ class BaseEventsHistory():
         根据 events_history_id 加载历史事件序列。
         如果序列中包含 ChatAgent，则需要根据 thread_id 加载连续记忆。
         """
-        from ...runnable import ChatAgent, FlowAgent
+        from ....core.runnable import ChatAgent, FlowAgent
 
         if events_history_id is None:
             _events_history_id = self.last_history_id

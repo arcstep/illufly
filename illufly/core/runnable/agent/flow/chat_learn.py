@@ -3,14 +3,13 @@ from typing import Union
 
 from .....config import get_env
 from .....utils import extract_segments, minify_text, filter_kwargs, raise_invalid_params
-from .....io import EventBlock
+from .....io import EventBlock, BaseKnowledge
 from ...selector import Selector, End
 from ...prompt_template import PromptTemplate
 from ...message import Messages
 from ..base import BaseAgent
 from ..chat import ChatAgent
 from .base import FlowAgent
-from ....knowledge import BaseKnowledge
 
 class ChatLearn(FlowAgent):
     """

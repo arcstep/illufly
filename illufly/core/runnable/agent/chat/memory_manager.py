@@ -5,7 +5,7 @@ import random
 
 from typing import Union, List, Dict, Any, Callable
 from .....utils import filter_kwargs, raise_invalid_params, create_id_generator
-from ....history import BaseMemoryHistory, LocalFileMemoryHistory
+from .....io import BaseMemoryHistory, LocalFileMemoryHistory
 from ...message import Messages, Message
 from ...prompt_template import PromptTemplate
 from ...binding_manager import BindingManager

@@ -6,9 +6,8 @@ from typing import Union, List, Dict, Any, Callable, Generator, AsyncGenerator
 from abc import ABC, abstractmethod
 from functools import partial
 
-from ...io import log, EventBlock
+from ...io import log, EventBlock, BaseEventsHistory
 from ...utils import filter_kwargs, raise_invalid_params, create_id_generator
-from ..history import BaseEventsHistory
 from .executor_manager import ExecutorManager
 from .binding_manager import BindingManager
 

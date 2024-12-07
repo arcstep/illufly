@@ -6,7 +6,7 @@ from .core.runnable.agent.tool_ability import ToolAbility
 from .core.document import Document
 from .core.markmeta import MarkMeta
 from .core.dataset import Dataset
-from .io import EventBlock, EndBlock
+from .io import EventBlock, EndBlock, BaseKnowledge, BaseMemoryHistory, BaseEventsHistory
 
 __all__ = [
     "Runnable",
@@ -24,4 +24,7 @@ __all__ = [
     "EndBlock",
     "Dataset",
     "MarkMeta",
+    "BaseKnowledge",
+    "BaseMemoryHistory",
+    "BaseEventsHistory",
 ]

@@ -2,7 +2,6 @@ from pathlib import Path
 import json
 from typing import Dict, List, Union
 from .base import BaseKnowledge
-from ..document import Document
 from ...config import get_env
 
 class LocalFileKnowledge(BaseKnowledge):

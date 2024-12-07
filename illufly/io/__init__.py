@@ -1,10 +1,9 @@
 from .block import EventBlock, EndBlock, NewLineBlock, ResponseBlock
 
 from .handlers import log, alog, usage, async_usage
-
-from ..core.history import BaseMemoryHistory, LocalFileMemoryHistory
-from ..core.history import BaseEventsHistory, LocalFileEventsHistory
-from ..core.knowledge import BaseKnowledge, LocalFileKnowledge
+from .history import BaseMemoryHistory, LocalFileMemoryHistory
+from .history import BaseEventsHistory, LocalFileEventsHistory
+from .knowledge import BaseKnowledge, LocalFileKnowledge
 
 __all__ = [
     "EventBlock",

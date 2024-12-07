@@ -3,9 +3,8 @@ import fnmatch
 import json
 import re
 from typing import Union, List
-from .knowledge import BaseKnowledge
 from .document import Document
-from ..io import EventBlock
+from ..io import EventBlock, BaseKnowledge
 from ..config import get_env
 from ..utils import minify_text, count_tokens, raise_invalid_params, filter_kwargs
 import numpy as np
