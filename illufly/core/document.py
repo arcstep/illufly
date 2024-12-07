@@ -6,9 +6,8 @@ import time
 doc_id_generator = create_id_generator()
 
 class Document():
-    def __init__(self, text: str=None, index: str=None, meta: Dict[str, Any] = None):
+    def __init__(self, text: str=None, meta: Dict[str, Any] = None):
         self.text = text or ""
-        self.index = index or ""
         self.meta = {**(meta or {})}
         if 'id' not in self.meta:
             self.meta['id'] = next(doc_id_generator)

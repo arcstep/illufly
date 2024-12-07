@@ -14,6 +14,25 @@ class BaseKnowledge():
         self.id_gen = knowledge_id_gen
         self.tag_index: Dict[str, Set[str]] = {}  # 标签索引: {tag: set(knowledge_ids)}
 
+    @property
+    def tags(self) -> List[str]:
+        return list(self.tag_index.keys())
+
+    def _find_duplicate(self, text: str, tags: List[str] = None) -> Union[str, None]:
+        """查找重复的知识条目
+        
+        Args:
+            text: 知识内容
+            tags: 标签列表
+        
+        Returns:
+            重复条目的ID，如果没有重复则返回None
+        """
+        for k, v in self.store.items():
+            if v['text'] == text and set(v['meta']['tags']) == set(tags or []):
+                return k
+        return None
+
     def add(self, text: str, tags: List[str]=None, summary: str="", source: str=None) -> str:
         """添加新知识条目
         
@@ -22,7 +41,15 @@ class BaseKnowledge():
             tags: 标签列表
             summary: 知识摘要（默认为 text 的前100字）
             source: 知识来源
+        
+        Returns:
+            str: 如果是新增则返回新的knowledge_id，如果是重复则返回已存在的knowledge_id
         """
+        # 检查重复
+        duplicate_id = self._find_duplicate(text, tags)
+        if duplicate_id:
+            return duplicate_id
+        
         if not summary:
             summary = text[:100] + "..." if len(text) > 100 else text
         
@@ -56,6 +83,22 @@ class BaseKnowledge():
         """更新指定知识条目"""
         if knowledge_id not in self.store:
             return False
+        
+        # 如果要更新文本和标签，检查是否与其他条目重复
+        if text is not None and tags is not None:
+            duplicate_id = self._find_duplicate(text, tags)
+            if duplicate_id and duplicate_id != knowledge_id:
+                return False
+        # 如果只更新文本，检查文本和现有标签是否与其他条目重复
+        elif text is not None:
+            duplicate_id = self._find_duplicate(text, self.store[knowledge_id]['meta']['tags'])
+            if duplicate_id and duplicate_id != knowledge_id:
+                return False
+        # 如果只更新标签，检查现有文本和新标签是否与其他条目重复
+        elif tags is not None:
+            duplicate_id = self._find_duplicate(self.store[knowledge_id]['text'], tags)
+            if duplicate_id and duplicate_id != knowledge_id:
+                return False
 
         doc_dict = self.store[knowledge_id]
 
@@ -66,9 +109,10 @@ class BaseKnowledge():
             doc_dict['meta']['tags'] = tags
             self._update_tag_index(knowledge_id, tags)
 
-        if not summary:
+        if not summary and text is not None:
             summary = text[:100] + "..." if len(text) > 100 else text
-        doc_dict['meta']['summary'] = summary
+        if summary:
+            doc_dict['meta']['summary'] = summary
 
         if source is not None:
             doc_dict['meta']['source'] = source
@@ -96,14 +140,11 @@ class BaseKnowledge():
             return True
         return False
 
-    def all(self) -> List[Dict[str, Union[str, Document]]]:
+    def all(self) -> List[Document]:
         """列出所有知识条目"""
         return [
-            {
-                "id": k,
-                "data": Document(**copy.deepcopy(v))
-            } 
-            for k, v in self.store.items()
+            Document(text=v['text'], meta=v['meta'])
+            for v in self.store.values()
         ]
 
     def find_by_tags(self, tags: List[str], match_all: bool=True) -> List[str]:
@@ -125,4 +166,69 @@ class BaseKnowledge():
                 result |= self.tag_index.get(tag, set())
                 
         return list(result)
+
+    def get_meta_list(
+        self,
+        page: int = 1,
+        page_size: int = 8,
+        sort_by: str = "id",
+        reverse: bool = False
+    ) -> Dict[str, Union[List[Dict], int]]:
+        """获取所有知识条目的元数据，支持分页
+        
+        Args:
+            page: 页码（从1开始）
+            page_size: 每页条数
+            sort_by: 排序字段（'id', 'summary', 'source'）
+            reverse: 是否倒序
+        
+        Returns:
+            Dict: {
+                'total': 总条数,
+                'total_pages': 总页数,
+                'current_page': 当前页码,
+                'items': [
+                    {
+                        'id': 知识条目ID,
+                        'summary': 摘要,
+                        'tags': 标签列表,
+                        'source': 来源
+                    },
+                    ...
+                ]
+            }
+        """
+        # 获取所有知识条目的元数据
+        meta_list = [
+            {
+                'id': k,
+                'summary': v['meta']['summary'],
+                'tags': v['meta']['tags'],
+                'source': v['meta']['source']
+            }
+            for k, v in self.store.items()
+        ]
+        
+        # 排序
+        if sort_by == 'id':
+            meta_list.sort(key=lambda x: x['id'], reverse=reverse)
+        elif sort_by in ['summary', 'source']:
+            meta_list.sort(key=lambda x: (x[sort_by] or '').lower(), reverse=reverse)
+        
+        # 计算分页信息
+        total = len(meta_list)
+        total_pages = (total + page_size - 1) // page_size
+        page = min(max(1, page), total_pages) if total_pages > 0 else 1
+        
+        # 切片获取当前页的数据
+        start = (page - 1) * page_size
+        end = start + page_size
+        items = meta_list[start:end]
+        
+        return {
+            'total': total,
+            'total_pages': total_pages,
+            'current_page': page,
+            'items': items
+        }
 
