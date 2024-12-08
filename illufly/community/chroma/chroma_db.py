@@ -15,10 +15,10 @@ class ChromaDB(VectorDB):
     
     使用示例：
     ```python
-    from illufly.embeddings import SomeEmbeddings
+    from illufly.rag import ChromaDB, TextEmbeddings
     
     # 初始化
-    embeddings = SomeEmbeddings(dim=768)
+    embeddings = TextEmbeddings(dim=768)
     db = ChromaDB(
         embeddings=embeddings,
         persist_directory="./chroma_db",  # 持久化目录
@@ -51,42 +51,34 @@ class ChromaDB(VectorDB):
 
     def __init__(
         self,
-        persist_directory: Optional[str] = None,
+        persist_directory: str,
         collection_name: str = None,
         distance_func: str = None,
         **kwargs
     ):
-        """初始化ChromaDB实例
-        
-        Args:
-            persist_directory: 持久化目录路径，如果不指定则使用内存存储
-            collection_name: 集合名称，默认为'default'
-            distance_func: 距离计算方式，默认为'cosine'
-            **kwargs: 其他基类参数
-        """
+        """初始化ChromaDB实例"""
+        # 1. 参数验证
         raise_invalid_params(kwargs, self.__class__.allowed_params())
         
+        # 2. 依赖检查
         try:
             import chromadb
-            from chromadb.config import Settings
         except ImportError:
-            raise ImportError(
-                "未找到chromadb包。请通过以下命令安装：\n"
-                "pip install chromadb"
-            )
+            raise ImportError("请安装chromadb")
         
+        # 3. 调用父类初始化，获取embeddings和dim
+        super().__init__(**kwargs)
+        
+        # 4. 设置基本属性
+        self.persist_directory = persist_directory
         self.collection_name = collection_name or "default"
         self.distance_func = distance_func or "cosine"
         
-        # 初始化ChromaDB客户端
-        settings = Settings()
-        if persist_directory:
-            settings.persist_directory = persist_directory
-            self.client = chromadb.PersistentClient(settings)
-        else:
-            self.client = chromadb.Client(settings)
-            
-        super().__init__(**kwargs)
+        # 5. 初始化客户端
+        self.client = chromadb.PersistentClient(path=persist_directory)
+        
+        # 6. 初始化集合
+        self._init_index()
 
     def _init_index(self):
         """初始化ChromaDB集合"""
@@ -235,3 +227,27 @@ class ChromaDB(VectorDB):
             if self.verbose:
                 print(f"查询过程中发生错误: {str(e)}")
             return []
+
+    def rebuild_index(self):
+        """重建ChromaDB集合
+        
+        删除并重新创建集合，然后重新加载所有文档。
+        """
+        try:
+            # 删除现有集合
+            if self.collection_name in self.client.list_collections():
+                self.client.delete_collection(self.collection_name)
+            
+            # 重新初始化集合
+            self._init_index()
+            
+            # 重新加载所有文档
+            self.load_all_documents()
+            
+            if self.verbose:
+                print(f"成功重建集合 {self.collection_name}")
+                
+        except Exception as e:
+            if self.verbose:
+                print(f"重建索引时出错: {str(e)}")
+            raise

@@ -12,8 +12,10 @@ class FaissServer(VectorDB):
     
     使用示例:
     ```python
+    from illufly.rag import FaissServer, TextEmbeddings
+
     db = FaissServer(
-        embeddings=embeddings,
+        embeddings=TextEmbeddings(),
         server_url="http://faiss-server:8080",
         api_key="your-api-key"
     )
@@ -36,19 +38,33 @@ class FaissServer(VectorDB):
         timeout: int = 30,
         **kwargs
     ):
+        """初始化FaissServer实例"""
+        # 1. 参数验证
+        raise_invalid_params(kwargs, self.__class__.allowed_params())
+        
+        # 2. 依赖检查
+        try:
+            import httpx
+        except ImportError:
+            raise ImportError("请安装httpx")
+        
+        # 3. 调用父类初始化，获取embeddings和dim
+        super().__init__(**kwargs)
+        
+        # 4. 设置基本属性
         self.server_url = server_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
         
-        # 初始化HTTP客户端
-        import httpx
+        # 5. 初始化HTTP客户端
         self.client = httpx.Client(
             base_url=self.server_url,
             timeout=timeout,
             headers={"Authorization": f"Bearer {api_key}"} if api_key else None
         )
         
-        super().__init__(**kwargs)
+        # 6. 初始化连接
+        self._init_index()
 
     def _init_index(self):
         """验证服务器连接"""
@@ -103,3 +119,21 @@ class FaissServer(VectorDB):
             if self.verbose:
                 print(f"查询时出错: {e}")
             return [] 
+
+    def rebuild_index(self):
+        """重建远程Faiss服务器索引
+        
+        通过API请求服务器重建索引。
+        """
+        try:
+            # 调用服务器的重建接口
+            resp = self.client.post("/rebuild")
+            resp.raise_for_status()
+            
+            if self.verbose:
+                print("成功请求服务器重建索引")
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"请求重建索引时出错: {str(e)}")
+            raise

@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, Query, Form, Response
 from typing import List, Optional
 
 from .auth import get_current_user
-from ..io import BaseKnowledge, LocalFileKnowledge
+from ..rag import FaissDB
 from ..config import get_env
+from ..types import VectorDB
 
-def create_knowledge_endpoints(app, knowledge: BaseKnowledge=None, prefix: str="/api"):
-    knowledge = knowledge or BaseKnowledge()
+def create_knowledge_endpoints(app, db: VectorDB=None, prefix: str="/api"):
+    knowledge = db.knowledge
 
     @app.get(f"{prefix}/knowledge")
     async def list_knowledge_endpoint(
@@ -50,7 +51,7 @@ def create_knowledge_endpoints(app, knowledge: BaseKnowledge=None, prefix: str="
     ):
         """创建新知识"""
         try:
-            knowledge_id = knowledge.add(
+            knowledge_id = db.add(
                 text=content,
                 tags=tags,
                 summary=summary,

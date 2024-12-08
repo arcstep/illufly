@@ -59,6 +59,13 @@ class VectorDB(Runnable):
         }
 
     def __init__(self, knowledge: BaseKnowledge=None, embeddings: BaseEmbeddings=None, top_k: int=None, **kwargs):
+        """初始化向量数据库
+        
+        Args:
+            knowledge: 知识库实例
+            embeddings: 文本向量化模型
+            top_k: 默认返回结果数量
+        """
         raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         if not isinstance(embeddings, BaseEmbeddings):
@@ -70,8 +77,8 @@ class VectorDB(Runnable):
 
         self.knowledge = knowledge or BaseKnowledge()
         self.embeddings = embeddings
-        self.dim = embeddings.dim
         self.top_k = top_k
+        self.dim = embeddings.dim  # 确保设置维度属性
         
         # 初始化向量索引
         self._init_index()
@@ -217,4 +224,35 @@ class VectorDB(Runnable):
         
         return results
 
-    # ... 其他通用方法 ...
+    def call(self, text: str, top_k: int=None, **kwargs):
+        self._last_output = self.query(text, top_k or self.top_k or 5, **kwargs)
+        yield EventBlock("info", f"查询到{len(self._last_output)}条结果")
+
+    def load_all_documents(self):
+        """初始化时加载知识库中的所有文档到向量索引
+        
+        从知识库加载所有文档，并更新向量索引。
+        子类需要实现 _load_documents_to_index 方法来处理具体的索引更新。
+        """
+        docs = self.knowledge.all()
+        if not docs:
+            return
+        
+        # 确保所有文档的source字段存在且为字符串
+        for doc in docs:
+            if 'source' not in doc.meta:
+                doc.meta['source'] = 'unknown'
+            else:
+                doc.meta['source'] = str(doc.meta['source'])
+        
+        # 更新向量索引
+        self.update_documents(docs)
+
+    def rebuild_index(self):
+        """重建向量索引
+        
+        清空当前索引并重新加载所有文档。
+        子类可以重写此方法来实现更高效的重建策略。
+        """
+        self._init_index()  # 重新初始化索引
+        self.load_all_documents()  # 重新加载所有文档

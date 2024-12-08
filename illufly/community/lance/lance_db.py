@@ -16,12 +16,11 @@ class LanceDB(VectorDB):
     
     使用示例：
     ```python
-    from illufly.embeddings import SomeEmbeddings
+    from illufly.rag import TextEmbeddings, LanceDB
     
     # 初始化
-    embeddings = SomeEmbeddings(dim=768)
     db = LanceDB(
-        embeddings=embeddings,
+        embeddings=TextEmbeddings(),
         uri="./lance_data",           # 数据存储路径
         table_name="my_docs",         # 表名
         distance_metric="cosine"      # 距离计算方式
@@ -55,6 +54,10 @@ class LanceDB(VectorDB):
             "uri": "LanceDB数据存储路径",
             "table_name": "表名，默认为'default'",
             "distance_metric": "距离计算方式(cosine/l2/dot)，默认为'cosine'",
+            "num_partitions": "IVF分区数量，默认256",
+            "num_sub_vectors": "PQ子向量数量，默认96",
+            "accelerator": "加速器类型，支持'cuda'",
+            "index_cache_size": "索引缓存大小",
             **VectorDB.allowed_params()
         }
 
@@ -63,6 +66,10 @@ class LanceDB(VectorDB):
         uri: str,
         table_name: str = None,
         distance_metric: str = None,
+        num_partitions: int = None,
+        num_sub_vectors: int = None,
+        accelerator: str = None,
+        index_cache_size: int = None,
         **kwargs
     ):
         """初始化LanceDB实例
@@ -71,10 +78,16 @@ class LanceDB(VectorDB):
             uri: 数据存储路径
             table_name: 表名，默认为'default'
             distance_metric: 距离计算方式，默认为'cosine'
+            num_partitions: IVF分区数量，默认256
+            num_sub_vectors: PQ子向量数量，默认96
+            accelerator: 加速器类型，支持'cuda'
+            index_cache_size: 索引缓存大小
             **kwargs: 其他基类参数
         """
+        # 1. 参数验证
         raise_invalid_params(kwargs, self.__class__.allowed_params())
         
+        # 2. 依赖检查
         try:
             import lancedb
             import pyarrow as pa
@@ -84,17 +97,45 @@ class LanceDB(VectorDB):
                 "pip install lancedb pyarrow"
             )
         
+        # 3. 调用父类初始化，获取embeddings和dim
+        super().__init__(**kwargs)
+        
+        # 4. 设置基本属性
         self.uri = uri
         self.table_name = table_name or "default"
         self.distance_metric = distance_metric or "cosine"
         
-        # 确保存储目录存在
-        os.makedirs(uri, exist_ok=True)
+        # 5. 计算num_sub_vectors
+        if num_sub_vectors is None:
+            factors = [i for i in range(1, min(97, self.dim + 1)) 
+                      if self.dim % i == 0]
+            num_sub_vectors = max(factors) if factors else 1
+        else:
+            if self.dim % num_sub_vectors != 0:
+                raise ValueError(
+                    f"num_sub_vectors ({num_sub_vectors}) 必须是维度 ({self.dim}) 的因子"
+                )
         
-        # 初始化LanceDB连接
+        # 6. 设置索引配置
+        self.index_config = {
+            "metric": self.distance_metric.upper(),
+            "num_partitions": num_partitions or 256,
+            "num_sub_vectors": num_sub_vectors,
+            "vector_column_name": "vector",
+            "replace": True
+        }
+        
+        if accelerator:
+            self.index_config["accelerator"] = accelerator
+        if index_cache_size:
+            self.index_config["index_cache_size"] = index_cache_size
+        
+        # 7. 初始化数据库连接
+        os.makedirs(uri, exist_ok=True)
         self.connection = lancedb.connect(uri)
         
-        super().__init__(**kwargs)
+        # 8. 初始化表和索引
+        self._init_index()
 
     def _init_index(self):
         """初始化LanceDB表"""
@@ -119,11 +160,8 @@ class LanceDB(VectorDB):
                 mode="overwrite"
             )
             
-        # 创建向量索引
-        self.table.create_index(
-            vector_column="vector",
-            metric=self.distance_metric
-        )
+        # 使用配置创建索引
+        self.table.create_index(**self.index_config)
 
     def update_documents(self, docs: List[Document]) -> int:
         """更新LanceDB表
@@ -283,3 +321,27 @@ class LanceDB(VectorDB):
             if self.verbose:
                 print(f"查询过程中发生错误: {str(e)}")
             return []
+
+    def rebuild_index(self):
+        """重建LanceDB表和索引
+        
+        删除并重新创建表，然后重新加载所有文档。
+        """
+        try:
+            # 删除现有表
+            if self.table_name in self.connection.table_names():
+                self.connection.drop_table(self.table_name)
+            
+            # 重新初始化表和索引
+            self._init_index()
+            
+            # 重新加载所有文档
+            self.load_all_documents()
+            
+            if self.verbose:
+                print(f"成功重建表 {self.table_name} 及其索引")
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"重建索引时出错: {str(e)}")
+            raise
