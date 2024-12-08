@@ -1,7 +1,7 @@
 from typing import List, Union, Optional
 from .....config import get_env
 from .....utils import extract_text, minify_text
-from .....io import EventBlock, Document, MarkMeta
+from .....io import EventBlock, Document, MarkMeta, BaseKnowledge
 from ...base import Runnable
 from ...vectordb import VectorDB
 from ...prompt_template import PromptTemplate
@@ -95,8 +95,7 @@ class Retriever(BaseAgent):
                 mm = MarkMeta()
                 output_text = translator(query, new_chat=True)
                 valid_text = extract_text(output_text, ("```markdown", "```"))
-                docs = mm.load_text(valid_text)
-                # mm.save()
+                docs = mm.parse_text(valid_text)
                 for doc in docs:
                     translated_queries.add(doc.text)
 
