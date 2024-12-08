@@ -46,10 +46,10 @@ class ChatLearn(FlowAgent):
         if db is None:
             if not scribe.vectordbs:
                 raise ValueError("scribe必须配置vectordb才能进行知识学习")
-            self.db = next(iter(scribe.vectordbs.values()))
+            self.db = next(iter(scribe.vectordbs))
         else:
             # 确保db在scribe的vectordbs中
-            if not any(vdb is db for vdb in scribe.vectordbs.values()):
+            if db not in scribe.vectordbs:
                 raise ValueError("指定的db必须存在于scribe的vectordbs中，以确保知识检索的一致性")
             self.db = db
 
@@ -67,10 +67,18 @@ class ChatLearn(FlowAgent):
             for i, knowledge in enumerate(knowledges):
                 q = questions[i] if i < len(questions) else ""
                 summary = q if q else knowledge[:100] + "..." if len(knowledge) > 100 else knowledge
-                metadata = f'<!-- @meta {str(metadata) if metadata else ""} -->\n'
-                q = f"**Question**\n{question}\n\n"
-                k = f"**Knowledge**\n{knowledge}"
-                text = (metadata + q + k) or ""
+                
+                # 构建元数据
+                meta = {
+                    "source": scribe.thread_id,
+                    "tags": ["chat_learn", scribe.__class__.__name__]
+                }
+                
+                # 构建文档内容
+                meta_text = f'<!-- @meta {str(meta)} -->\n'
+                q_text = f"**Question**\n{q}\n\n" if q else ""
+                k_text = f"**Knowledge**\n{knowledge}"
+                text = meta_text + q_text + k_text
                 
                 # 直接使用db.add添加文档
                 doc_id = self.db.add(
@@ -109,7 +117,7 @@ class ChatLearn(FlowAgent):
         if isinstance(args[0], ChatAgent):
             self.task = args[0].task
             memory = Messages(args[0].memory)
-            return [f'请帮我从这段对话过程中提取知识：\n\n{str(memory.to_list(style="text"))}']
+            return [f'请帮我从这对话过程中提取知识：\n\n{str(memory.to_list(style="text"))}']
         else:
             self.task = args[0] if args else None
             return args

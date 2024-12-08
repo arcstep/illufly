@@ -132,6 +132,13 @@ class FaissDB(VectorDB):
         if not docs:
             return
             
+        # 确保所有文档的source字段存在且为字符串
+        for doc in docs:
+            if 'source' not in doc.meta:
+                doc.meta['source'] = 'unknown'
+            else:
+                doc.meta['source'] = str(doc.meta['source'])
+        
         vectors = self._process_embeddings(docs)
         if vectors is not None and len(vectors) > 0:
             if self.train:
@@ -205,7 +212,7 @@ class FaissDB(VectorDB):
     def add(self, text: str, **meta) -> str:
         """添加新文档的快捷方法
         
-        自动处理知识库添加和向量索引更新
+        自动处理知识库添加和向量索引��新
         
         Args:
             text: 文档文本

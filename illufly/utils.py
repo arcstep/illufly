@@ -126,11 +126,23 @@ def hash_text(text):
     hash_object = hashlib.md5(text_bytes)
     return hash_object.hexdigest()
 
-def clean_filename(filename: str):
+def clean_filename(filename):
     """
-    先将除字母、数字、中文、下划线和短横线之外的字符替换为下划线;
-    再将多个连续的下划线或短横线替换为单个下划线。
+    清理文件名，将其转换为安全的格式。
+    
+    Args:
+        filename: 需要清理的文件名，可以是字符串或其他类型
+        
+    Returns:
+        str: 清理后的文件名
     """
+    if filename is None:
+        return "none"
+    
+    # 确保转换为字符串
+    filename = str(filename)
+    
+    # 清理文件名
     cleaned_filename = re.sub(r'[^\w\s-]', '_', filename)
     cleaned_filename = re.sub(r'[-_ ]+', '_', cleaned_filename)
     return cleaned_filename
