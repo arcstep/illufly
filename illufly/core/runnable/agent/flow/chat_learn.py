@@ -3,7 +3,7 @@ from typing import Union
 
 from .....config import get_env
 from .....utils import extract_segments, minify_text, filter_kwargs, raise_invalid_params
-from .....io import EventBlock, BaseKnowledge
+from .....io import EventBlock, LocalFileKnowledge
 from ...selector import Selector, End
 from ...prompt_template import PromptTemplate
 from ...message import Messages
@@ -14,13 +14,19 @@ from .base import FlowAgent
 class ChatLearn(FlowAgent):
     """
     ChatLearn，用于从对话中学习知识。
+    
+    属性:
+        scribe (ChatAgent): 负责记录和提取知识的智能体
+        scribe_template (PromptTemplate): scribe 使用的提示模板
+        db (VectorDB): 向量数据库实例，用于存储和检索知识。
+            必须与 scribe.vectordbs 中的某个实例相同，以确保知识检索的一致性
     """
     @classmethod
     def allowed_params(cls):
         return {
-            "scribe": "负责笔记的ChatAgent",
+            "scribe": "负责笔记的ChatAgent，其vectordbs中必须包含与db相同的向量库实例",
             "scribe_template": "scribe 所使用的 PromptTemplate, 默认为 PromptTemplate('FLOW/Scribe')",
-            "knowledge": "知识库实例，用于存储提取的知识，默认创建新的 BaseKnowledge 实例",
+            "db": "向量数据库实例，用于存储提取的知识。若不指定则使用scribe中的第一个vectordb",
             **FlowAgent.allowed_params(),
         }
 
@@ -28,7 +34,7 @@ class ChatLearn(FlowAgent):
         self,
         scribe: ChatAgent,
         scribe_template: str=None,
-        knowledge: BaseKnowledge=None,
+        db=None,
         **kwargs
     ):
         raise_invalid_params(kwargs, self.allowed_params())
@@ -36,10 +42,19 @@ class ChatLearn(FlowAgent):
         if not isinstance(scribe, ChatAgent):
             raise ValueError("scribe 必须是 ChatAgent 的子类")
 
+        # 验证或获取向量库实例
+        if db is None:
+            if not scribe.vectordbs:
+                raise ValueError("scribe必须配置vectordb才能进行知识学习")
+            self.db = next(iter(scribe.vectordbs.values()))
+        else:
+            # 确保db在scribe的vectordbs中
+            if not any(vdb is db for vdb in scribe.vectordbs.values()):
+                raise ValueError("指定的db必须存在于scribe的vectordbs中，以确保知识检索的一致性")
+            self.db = db
+
         scribe_template = scribe_template or PromptTemplate("FLOW/Scribe")
         self.scribe_template = scribe_template
-        self.knowledge = knowledge or BaseKnowledge()
-
         scribe.reset_init_memory(scribe_template)
         self.scribe = scribe
 
@@ -48,26 +63,24 @@ class ChatLearn(FlowAgent):
             questions = extract_segments(final_output_text, ('<question>', '</question>'))
             knowledges = extract_segments(final_output_text, ('<knowledge>', '</knowledge>'))
             
-            # 保存知识到知识库
+            # 保存知识到向量库
             for i, knowledge in enumerate(knowledges):
                 q = questions[i] if i < len(questions) else ""
                 summary = q if q else knowledge[:100] + "..." if len(knowledge) > 100 else knowledge
                 metadata = f'<!-- @meta {str(metadata) if metadata else ""} -->\n'
                 q = f"**Question**\n{question}\n\n"
                 k = f"**Knowledge**\n{knowledge}"
-                text = (metadata + q + k) or ""                
-                knowledge_id = self.knowledge.add(
+                text = (metadata + q + k) or ""
+                
+                # 直接使用db.add添加文档
+                doc_id = self.db.add(
                     text=text,
                     summary=summary,
                     source=scribe.thread_id,
                     tags=["chat_learn", scribe.__class__.__name__]
                 )
-                yield self.create_event_block("faq", f"保存知识[{knowledge_id}]：{minify_text(q)} -> {minify_text(knowledge)}")
+                yield self.create_event_block("faq", f"保存知识[{doc_id}]：{minify_text(q)} -> {minify_text(knowledge)}")
                 scribe.clear()
-                if scribe.default_vdb:
-                    doc = self.knowledge.get(knowledge_id)
-                    if doc:
-                        scribe.default_vdb.load_text(doc['text'], source=knowledge_id)
 
         def should_fetch():
             if '<knowledge>' in scribe.last_output:
