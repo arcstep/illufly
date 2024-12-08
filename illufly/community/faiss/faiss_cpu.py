@@ -315,3 +315,95 @@ class FaissDB(VectorDB):
             return True
         return False
 
+    def query(
+        self, 
+        text: str, 
+        top_k: int = None, 
+        min_score: float = None,
+        include_metadata: bool = True,
+        **kwargs
+    ) -> List[Document]:
+        """查询与输入文本最相似的文档
+        
+        Args:
+            text: 查询文本
+            top_k: 返回结果数量，默认使用实例的 top_k 参数
+            min_score: 最小相似度阈值，小于该值的结果将被过滤
+            include_metadata: 是否在结果中包含完整的元数据
+            **kwargs: 额外的查询参数
+        
+        Returns:
+            List[Document]: 相似文档列表，按相似度降序排序
+            每个文档的meta中会添加:
+            - distance: 向量距离（越小表示越相似）
+            - score: 相似度得分（1 - normalized_distance，越大表示越相似）
+        """
+        # 参数检查
+        if len(self.id_to_index) == 0:
+            return []
+        if not text or len(text.strip()) == 0:
+            return []
+        
+        actual_top_k = top_k or self.top_k or 5
+        
+        try:
+            # 对输入文本进行向量编码
+            query_vector = self.embeddings.query(text)
+            if not isinstance(query_vector, np.ndarray):
+                query_vector = np.array([query_vector], dtype='float32')
+            
+            # 执行向量检索
+            distances, indices = self.index.search(query_vector, actual_top_k)
+            
+            # 处理检索结果
+            results = []
+            max_distance = float(distances.max()) if len(distances) > 0 else 1.0
+            
+            for i, idx in enumerate(indices[0]):
+                if idx < 0:  # 跳过无效索引
+                    continue
+                    
+                knowledge_id = self.index_to_id.get(idx)
+                if not knowledge_id:
+                    continue
+                    
+                doc = self.knowledge.get(knowledge_id)
+                if not doc:
+                    continue
+                
+                # 计算归一化的距离和相似度得分
+                distance = float(distances[0][i])
+                score = 1 - (distance / max_distance) if max_distance > 0 else 0
+                
+                # 如果设置了最小得分阈值，进行过滤
+                if min_score is not None and score < min_score:
+                    continue
+                
+                # 构建结果文档
+                meta = {
+                    'id': knowledge_id,
+                    'distance': distance,
+                    'score': score
+                }
+                
+                # 根据需要包含原始元数据
+                if include_metadata:
+                    meta.update({
+                        k: v for k, v in doc.meta.items()
+                        if k not in ['embeddings', 'id', 'distance', 'score']
+                    })
+                
+                results.append(Document(
+                    text=doc.text,
+                    meta=meta
+                ))
+            
+            # 按相似度得分降序排序
+            results.sort(key=lambda x: x.meta['score'], reverse=True)
+            return results
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"查询过程中发生错误: {str(e)}")
+            return []
+

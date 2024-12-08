@@ -53,6 +53,9 @@ class BaseKnowledge():
         Returns:
             str: 如果是新增则返回新的knowledge_id列表，如果是重复则返回已存在的knowledge_id
         """
+        # 确保 source 是字符串
+        source = str(source) if source is not None else ""
+        
         # 检查重复
         duplicate_id = self._find_duplicate(text, tags)
         if duplicate_id:
@@ -70,14 +73,13 @@ class BaseKnowledge():
             doc.meta.update({
                 'tags': tags or [],
                 'summary': summary,
-                'source': source
+                'source': source,
+                'id': next(self.id_gen)
             })
-            knowledge_id = next(self.id_gen)
-            doc.meta['id'] = knowledge_id
             
-            self.store[knowledge_id] = copy.deepcopy(doc.to_dict())
-            self._update_tag_index(knowledge_id, doc.meta['tags'])
-            return knowledge_id
+            self.store[doc.meta['id']] = copy.deepcopy(doc.to_dict())
+            self._update_tag_index(doc.meta['id'], doc.meta['tags'])
+            return doc.meta['id']
             
         # 如果有多个分块，为每个分块创建条目
         knowledge_ids = []
@@ -100,8 +102,20 @@ class BaseKnowledge():
         return knowledge_ids[0] if knowledge_ids else None
 
     def get(self, knowledge_id: str) -> Union[Document, None]:
-        """获取指定知识条目"""
-        return self.store.get(knowledge_id, None)
+        """获取指定知识条目
+        
+        Args:
+            knowledge_id: 知识条目ID
+        Returns:
+            Document: 文档对象，如果不存在则返回None
+        """
+        doc_dict = self.store.get(knowledge_id)
+        if doc_dict is None:
+            return None
+        return Document(
+            text=doc_dict['text'],
+            meta=doc_dict['meta']
+        )
 
     def update(
         self, 
@@ -110,8 +124,18 @@ class BaseKnowledge():
         tags: List[str]=None, 
         summary: str=None, 
         source: str=None
-    ) -> bool:
-        """更新指定知识条目"""
+    ) -> Union[Document, bool]:
+        """更新指定知识条目
+        
+        Args:
+            knowledge_id: 知识条目ID
+            text: 新的文档文本
+            tags: 新的标签列表
+            summary: 新的摘要
+            source: 新的来源
+        Returns:
+            Union[Document, bool]: 更新成功返回更新后的Document对象，失败返回False
+        """
         if knowledge_id not in self.store:
             return False
         
@@ -148,7 +172,7 @@ class BaseKnowledge():
         if source is not None:
             doc_dict['meta']['source'] = source
 
-        return True
+        return Document(text=doc_dict['text'], meta=doc_dict['meta'])
 
     def _update_tag_index(self, knowledge_id: str, tags: List[str]) -> None:
         """更新标签索引"""
@@ -163,16 +187,28 @@ class BaseKnowledge():
             self.tag_index[tag].add(knowledge_id)
 
     def delete(self, knowledge_id: str) -> bool:
-        """删除指定知识条目"""
+        """删除指定知识条目
+        
+        Args:
+            knowledge_id: 要删除的知识条目ID
+        Returns:
+            bool: 删除是否成功
+        """
         if knowledge_id in self.store:
+            # 先获取文档以便清理标签
             doc = self.get(knowledge_id)
-            self._update_tag_index(knowledge_id, [])
+            if doc and doc.meta.get('tags'):
+                self._update_tag_index(knowledge_id, [])
             del self.store[knowledge_id]
             return True
         return False
 
     def all(self) -> List[Document]:
-        """列出所有知识条目"""
+        """列出所有知识条目
+        
+        Returns:
+            List[Document]: 所有文档对象列表
+        """
         return [
             Document(text=v['text'], meta=v['meta'])
             for v in self.store.values()

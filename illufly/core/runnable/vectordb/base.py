@@ -1,5 +1,5 @@
 from typing import List
-from ....io import EventBlock, BaseKnowledge
+from ....io import EventBlock, BaseKnowledge, Document
 from ....utils import raise_invalid_params
 from ..base import Runnable
 from ..embeddings import BaseEmbeddings
@@ -37,7 +37,14 @@ class VectorDB(Runnable):
         # 向量数据库中备查的文档，包括了原始文档、元数据，以及由向量模型转换的向量索引
         self.documents = []
 
-    def query(self, vector: List[List[float]], top_k: int=None, **kwargs):
+    def query(
+        self, 
+        text: str, 
+        top_k: int = None, 
+        min_score: float = None,
+        include_metadata: bool = True,
+        **kwargs
+    ) -> List[Document]:
         pass
 
     def call(self, text: str, top_k: int=None, **kwargs):

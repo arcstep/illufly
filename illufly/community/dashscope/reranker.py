@@ -1,6 +1,5 @@
 from typing import List, Union
 from ...core.runnable.reranker.base import BaseReranker
-from ...core.document import Document, convert_to_documents_list
 from ...config import get_env
 from ...io import EventBlock, NewLineBlock, Document, convert_to_documents_list
 from ...utils import raise_invalid_params
