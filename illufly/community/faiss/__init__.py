@@ -1,1 +1,2 @@
-from .faiss_cpu import FaissDB
+from .faiss_db import FaissDB
+from .faiss_server import FaissServer
