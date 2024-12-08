@@ -15,12 +15,12 @@ from ...prompt_template import PromptTemplate
 from ...vectordb import VectorDB
 from ..retriever import Retriever
 from ..base import BaseAgent
-from ..knowledge_manager import KnowledgeManager
+from ..context_manager import ContextManager
 from .tools_calling import BaseToolCalling, OpenAIToolsCalling
 from .tools_manager import ToolsManager
 from .memory_manager import MemoryManager
 
-class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
+class ChatAgent(BaseAgent, ContextManager, MemoryManager, ToolsManager):
     """
     对话智能体是基于大模型实现的智能体，可以用于对话生成、对话理解等场景。
     """
@@ -42,10 +42,8 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "fetching_context": "上下文提取标记，可通过修改环境变量 ILLUFLY_CONTEXT_START 和 ILLUFLY_CONTEXT_END 修改默认值",
             "fetching_final_answer": "最终答案提取标记，可通过修改环境变量 ILLUFLY_FINAL_ANSWER_START 和 ILLUFLY_FINAL_ANSWER_END 修改默认值",
             "fetching_output": "输出内容提取标记",
-            "chat_learn_folder": "知识库目录，可通过修改环境变量 ILLUFLY_CHAT_LEARN 修改默认值",
-            "default_docs": "默认文档目录，可通过修改环境变量 ILLUFLY_DOCS 修改默认值",
             **BaseAgent.allowed_params(),
-            **KnowledgeManager.allowed_params(),
+            **ContextManager.allowed_params(),
             **ToolsManager.allowed_params(),
             **MemoryManager.allowed_params(),
         }
@@ -56,21 +54,19 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         fetching_context: Tuple[str, str]=None,
         fetching_final_answer: Tuple[str, str]=None,
         fetching_output: Tuple[str, str]=None,
-        chat_learn_folder: str=None,
-        default_docs: Set[str]=None,
         **kwargs
     ):
         """
         对话智能体支持的核心能力包括：
         - tools：工具调用
         - memory：记忆管理
-        - knowledge：知识管理
+        - context：上下文管理
         """
         raise_invalid_params(kwargs, self.__class__.allowed_params())
 
         kwargs["tool_params"] = kwargs.get("tool_params", {"prompt": "详细描述用户问题"})
         BaseAgent.__init__(self, **filter_kwargs(kwargs, BaseAgent.allowed_params()))
-        KnowledgeManager.__init__(self, **filter_kwargs(kwargs, KnowledgeManager.allowed_params()))
+        ContextManager.__init__(self, **filter_kwargs(kwargs, ContextManager.allowed_params()))
         ToolsManager.__init__(self, **filter_kwargs(kwargs, ToolsManager.allowed_params()))
 
         self.end_chk = end_chk
@@ -91,61 +87,11 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
 
         MemoryManager.__init__(self, **filter_kwargs(kwargs, MemoryManager.allowed_params()))
 
-        self.default_vdb = None
-        self.chat_learn_folder = chat_learn_folder or get_env("ILLUFLY_CHAT_LEARN")
-        self.load_default_knowledge()
-
     def clear(self):
         self.memory.clear()
         self._task = ""
         self._final_answer = ""
         self._last_output = ""
-
-    def load_default_knowledge(self):
-        """
-        加载默认知识库。
-        """
-        for item in self.knowledge:
-            if not isinstance(item, (str, Document, VectorDB, Retriever)):
-                raise ValueError("Knowledge list items MUST be str, Document or VectorDB")
-
-            if isinstance(item, VectorDB):
-                if not self.default_vdb:
-                    self.default_vdb = item
-
-        if self.default_vdb:
-            self.default_vdb.load_dir(dir=self.chat_learn_folder)
-
-    def clone_chat_learn(self, dest: str, src: str=None):
-        """
-        克隆 illufly 自身的聊天问答经验。
-        """
-        if not os.path.exists(dest):
-            os.makedirs(dest)
-
-        files_count = 0
-        src = self.chat_learn_folder
-        for item in os.listdir(src):
-            if item.startswith('.'):
-                continue
-            src_path = os.path.join(src, item)
-            dst_path = os.path.join(dest, item)
-            if os.path.isdir(src_path):
-                # 如果是目录，递归拷贝
-                self.clone_chat_learn(dst_path, src_path)
-            else:
-                # 如果是文件，直接拷贝
-                shutil.copy2(src_path, dst_path)
-                files_count += 1
-        return f"从 {src} 拷贝到 {dest} 完成，共克隆了 {files_count} 个文件。"
-
-    def clear_chat_learn(self):
-        """
-        清空聊天问答经验。
-        """
-        src = self.chat_learn_folder
-        if os.path.exists(src):
-            shutil.rmtree(src)
 
     @property
     def task(self):
@@ -183,7 +129,6 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
             "tools_calling_steps": self.tools_calling_steps,
             "tools_name": ",".join([a.name for a in self._tools_to_exec]),
             "tools_desc": "\n".join(json.dumps(t.tool_desc, ensure_ascii=False) for t in self._tools_to_exec),
-            "knowledge": self.get_knowledge(self.task),
             "chat_memory": self.chat_memory
         }
         return {
@@ -236,7 +181,7 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
                     ):
                         yield block
 
-    def _patch_knowledge(self, messages: Messages, kg: str=""):
+    def _patch_context(self, messages: Messages, kg: str=""):
         """
         根据当前的记忆和知识，对提示语进行补充。
 
@@ -306,17 +251,16 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         )
 
         # 补充知识检索结果
-        kg = ""
+        rag_results = ""
         existing_text = "\n".join([m['content'] for m in Messages(chat_memory).to_list(style="text")])
-        if self.knowledge:
-            recalled = self.get_knowledge(self.task)
-            for doc in recalled:
-                if doc.text not in existing_text:
-                    kg += f"{doc.text}\n\n"
-            if recalled:
-                yield self.create_event_block("RAG", recalled)
+        recalled = self.query(self.task)
+        for doc in recalled:
+            if doc.text not in existing_text:
+                rag_results += f"{doc.text}\n\n"
+        if recalled:
+            yield self.create_event_block("RAG", recalled)
 
-        chat_memory = self._patch_knowledge(chat_memory, kg)
+        chat_memory = self._patch_context(chat_memory, rag_results)
 
         to_continue_call_llm = True
         while to_continue_call_llm:
@@ -405,17 +349,16 @@ class ChatAgent(BaseAgent, KnowledgeManager, MemoryManager, ToolsManager):
         )
 
         # 补充知识检索结果
-        kg = ""
+        rag_results = ""
         existing_text = "\n".join([m['content'] for m in Messages(chat_memory).to_list(style="text")])
-        if self.knowledge:
-            recalled = self.get_knowledge(self.task)
-            for doc in recalled:
-                if doc.text not in existing_text:
-                    kg += f"{doc.text}\n\n"
-            if recalled:
-                yield self.create_event_block("RAG", recalled)
+        recalled = self.query(self.task)
+        for doc in recalled:
+            if doc.text not in existing_text:
+                rag_results += f"{doc.text}\n\n"
+        if recalled:
+            yield self.create_event_block("RAG", recalled)
 
-        chat_memory = self._patch_knowledge(chat_memory, kg)
+        chat_memory = self._patch_context(chat_memory, rag_results)
 
         to_continue_call_llm = True
         while to_continue_call_llm:
