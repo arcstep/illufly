@@ -63,21 +63,22 @@ class FaissDB(VectorDB):
             pkg = "faiss-gpu" if device.startswith("cuda") else "faiss-cpu"
             raise ImportError(f"请安装{pkg}")
         
-        # 3. 调用父类初始化，获取embeddings和dim
-        super().__init__(**kwargs)
-        
-        # 4. 设置基本属性
+        # 3. 设置基本属性
         self.train = train
         self.device = device
         self.batch_size = batch_size
         self.gpu_devices = gpu_devices or []
         
-        # 5. 初始化ID映射
+        # 4. 初始化ID映射
         self.id_to_index = {}
         self.index_to_id = {}
         
-        # 6. 初始化索引
+        # 5. 调用父类初始化，获取embeddings和dim
+        super().__init__(**kwargs)
+        
+        # 6. 初始化索引和加载文档
         self._init_index()
+        self.load_all_documents()
 
     def _init_index(self):
         """初始化Faiss索引"""
@@ -218,9 +219,7 @@ class FaissDB(VectorDB):
             )
             
         except Exception as e:
-            if self.verbose:
-                print(f"查询过程中发生错误: {str(e)}")
-            return []
+            raise e
 
     def rebuild_index(self):
         """重建Faiss索引
@@ -244,10 +243,5 @@ class FaissDB(VectorDB):
             # 重新加载所有文档
             self.load_all_documents()
             
-            if self.verbose:
-                print("成功重建Faiss索引")
-                
         except Exception as e:
-            if self.verbose:
-                print(f"重建索引时出错: {str(e)}")
-            raise
+            raise e

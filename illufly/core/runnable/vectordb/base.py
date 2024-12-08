@@ -53,6 +53,7 @@ class VectorDB(Runnable):
     @classmethod
     def allowed_params(cls):
         return {
+            "knowledge": "知识库实例",
             "embeddings": "用于相似度计算的 embeddings 对象",
             "top_k": "返回结果的条数，默认 5",
             **Runnable.allowed_params()
@@ -80,9 +81,7 @@ class VectorDB(Runnable):
         self.top_k = top_k
         self.dim = embeddings.dim  # 确保设置维度属性
         
-        # 初始化向量索引
-        self._init_index()
-        self.load_all_documents()
+        # 子类需要实现_init_index和load_all_documents
 
     def _init_index(self):
         """初始化向量索引

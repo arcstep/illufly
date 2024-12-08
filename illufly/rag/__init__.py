@@ -6,7 +6,6 @@ from ..community.hugging_face import HuggingFaceEmbeddings
 from ..community.faiss import FaissDB
 from ..community.faiss import FaissServer
 from ..community.chroma import ChromaDB
-from ..community.lance import LanceDB
 from ..community.dashscope.reranker import DashScopeReranker
 
 __all__ = [
@@ -17,6 +16,5 @@ __all__ = [
     "FaissDB",
     "FaissServer",
     "ChromaDB",
-    "LanceDB",
     "DashScopeReranker",
 ]
