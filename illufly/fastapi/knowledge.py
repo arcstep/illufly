@@ -29,13 +29,16 @@ def create_knowledge_endpoints(app, db: VectorDB=None, prefix: str="/api"):
             match_all_tags=match_all_tags
         )
     
-    @app.get(f"{prefix}/knowledge/{id}")
-    async def get_knowledge_endpoint(id: str, user: dict = Depends(get_current_user)):
+    @app.get(f"{prefix}/knowledge/{{knowledge_id}}")
+    async def get_knowledge_endpoint(
+        knowledge_id: str,
+        user: dict = Depends(get_current_user)
+    ):
         """获取知识详情"""
         try:
-            content = knowledge.get(id)
+            content = knowledge.get(knowledge_id)
             return {
-                "id": id,
+                "id": knowledge_id,
                 "content": content
             }
         except FileNotFoundError:
@@ -64,9 +67,9 @@ def create_knowledge_endpoints(app, db: VectorDB=None, prefix: str="/api"):
         except Exception as e:
             return Response(status_code=500, content=str(e))
     
-    @app.put(f"{prefix}/knowledge/{id}")
+    @app.put(f"{prefix}/knowledge/{{knowledge_id}}")
     async def update_knowledge_endpoint(
-        id: str,
+        knowledge_id: str,
         content: Optional[str] = Form(None),
         tags: Optional[List[str]] = Form(None),
         summary: Optional[str] = Form(None),
@@ -76,7 +79,7 @@ def create_knowledge_endpoints(app, db: VectorDB=None, prefix: str="/api"):
         """更新知识"""
         try:
             success = knowledge.update(
-                knowledge_id=id,
+                knowledge_id=knowledge_id,
                 text=content,
                 tags=tags,
                 summary=summary,
@@ -88,14 +91,14 @@ def create_knowledge_endpoints(app, db: VectorDB=None, prefix: str="/api"):
         except FileNotFoundError:
             return Response(status_code=404, content="知识不存在")
     
-    @app.delete(f"{prefix}/knowledge/{id}")
+    @app.delete(f"{prefix}/knowledge/{{knowledge_id}}")
     async def delete_knowledge_endpoint(
-        id: str,
+        knowledge_id: str,
         user: dict = Depends(get_current_user)
     ):
         """删除知识"""
         try:
-            knowledge.delete(id)
+            knowledge.delete(knowledge_id)
             return {"message": "知识删除成功"}
         except FileNotFoundError:
             return Response(status_code=404, content="知识不存在")
