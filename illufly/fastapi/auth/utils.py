@@ -67,7 +67,6 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证密码"""
     return pwd_context.verify(plain_password, hashed_password)
-
 def validate_password(password: str) -> tuple[bool, Optional[str]]:
     """
     验证密码强度
