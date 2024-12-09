@@ -71,17 +71,19 @@ def create_knowledge_endpoints(app, db: VectorDB=None, prefix: str="/api"):
     async def update_knowledge_endpoint(
         knowledge_id: str,
         content: Optional[str] = Form(None),
-        tags: Optional[List[str]] = Form(None),
+        tags: Optional[str] = Form(None),
         summary: Optional[str] = Form(None),
         source: Optional[str] = Form(None),
         user: dict = Depends(get_current_user)
     ):
         """更新知识"""
         try:
+            tags_list = tags.split(',') if tags else None
+            
             success = knowledge.update(
                 knowledge_id=knowledge_id,
                 text=content,
-                tags=tags,
+                tags=tags_list,
                 summary=summary,
                 source=source
             )
