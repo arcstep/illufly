@@ -1,12 +1,13 @@
 from fastapi import Request, HTTPException, status, Depends
 from jose import JWTError
+from typing import List, Union
+from functools import wraps
 from .utils import verify_jwt
 from .whitelist import is_access_token_in_whitelist
-from typing import List, Union
-from ..user.models import UserRole
-from functools import wraps
 
 async def get_current_user(request: Request):
+    from ..user import UserRole
+
     token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(
@@ -35,7 +36,7 @@ async def get_current_user(request: Request):
 
     return {"username": username}
 
-def require_roles(roles: Union[UserRole, List[UserRole]], require_all: bool = False):
+def require_roles(roles: Union["UserRole", List["UserRole"]], require_all: bool = False):
     """
     角色验证装饰器
     
@@ -43,6 +44,8 @@ def require_roles(roles: Union[UserRole, List[UserRole]], require_all: bool = Fa
         roles: 单个角色或角色列表
         require_all: True 表示需要具有所有指定角色，False 表示具有任意一个角色即可
     """
+    from ..user import UserRole
+
     if isinstance(roles, UserRole):
         roles = [roles]
 

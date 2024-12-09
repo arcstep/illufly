@@ -11,5 +11,6 @@ app.include_router(create_auth_api())
 """
 
 from .auth import create_auth_endpoints, get_current_user
-from .agent import create_agent_endpoints
-from .knowledge import create_knowledge_endpoints
+from .user import create_user_endpoints, UserManager
+from .agent import create_agent_endpoints, AgentFactory
+from .knowledge import create_knowledge_endpoints, KnowledgeManager

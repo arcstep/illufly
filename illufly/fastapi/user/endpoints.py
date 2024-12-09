@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List
-from .manager import UserManager
 from ..auth import get_current_user, require_roles
 from .models import UserRole
 
-def create_user_endpoints(app, user_manager: UserManager, prefix: str="/api"):
+def create_user_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
     """用户相关的端点，主要处理用户信息和设置"""
-    
+
     @app.get(f"{prefix}/users")
     async def list_users(
         current_user: dict = Depends(require_roles([UserRole.ADMIN, UserRole.OPERATOR]))

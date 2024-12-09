@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from ...types import VectorDB
 from ...rag import FaissDB  # 或其他具体的 VectorDB 实现
-from .models import KnowledgeBase
+from .models import Knowledge
 
 class KnowledgeManager:
     """知识库管理器"""
@@ -17,7 +17,7 @@ class KnowledgeManager:
     def __init__(self, base_path: str = "./__data__/knowledge"):
         self._base_path = Path(base_path)
         self._dbs: Dict[str, VectorDB] = {}  # name -> VectorDB 实例
-        self._knowledge_bases: Dict[str, KnowledgeBase] = {}  # name -> KnowledgeBase 信息
+        self._knowledge_bases: Dict[str, Knowledge] = {}  # name -> Knowledge 信息
 
     def create_db(
         self,
@@ -43,7 +43,7 @@ class KnowledgeManager:
 
         # 记录实例和元数据
         self._dbs[name] = db
-        self._knowledge_bases[name] = KnowledgeBase(
+        self._knowledge_bases[name] = Knowledge(
             name=name,
             owner_id=owner,
             description=description,
@@ -62,7 +62,7 @@ class KnowledgeManager:
         full_name = f"{owner}/{name}"
         return self.get_db(full_name)
 
-    def list_dbs(self, owner: Optional[str] = None) -> List[KnowledgeBase]:
+    def list_dbs(self, owner: Optional[str] = None) -> List[Knowledge]:
         """列出所有（或指定所有者的）知识库"""
         if owner:
             return [
@@ -72,7 +72,7 @@ class KnowledgeManager:
         return list(self._knowledge_bases.values())
 
     def delete_db(self, name: str) -> bool:
-        """删除向量数据库���例"""
+        """删除向量数据库实例"""
         if name in self._dbs:
             # 清理资源
             del self._dbs[name]

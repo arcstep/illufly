@@ -91,3 +91,26 @@ def validate_email(email: str) -> tuple[bool, Optional[str]]:
     if not re.match(pattern, email):
         return False, "Invalid email format"
     return True, None
+
+def validate_username(username: str) -> tuple[bool, Optional[str]]:
+    """
+    验证用户名格式
+    - 长度在3-32个字符之间
+    - 只能包含字母、数字、下划线
+    - 必须以字母开头
+    
+    返回: (是否有效, 错误信息)
+    """
+    if not username:
+        return False, "Username is required"
+        
+    if len(username) < 3 or len(username) > 32:
+        return False, "Username must be between 3 and 32 characters"
+        
+    if not username[0].isalpha():
+        return False, "Username must start with a letter"
+        
+    if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', username):
+        return False, "Username can only contain letters, numbers, and underscores"
+        
+    return True, None

@@ -2,9 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Dict, Any
 from sse_starlette.sse import EventSourceResponse
 from ..auth import get_current_user
-from ..user.manager import UserManager
 
-def create_agent_endpoints(app, user_manager: UserManager, prefix: str="/api"):
+def create_agent_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
     """Agent 相关的端点，处理 Agent 的创建、管理和调用"""
 
     @app.get(f"{prefix}/agents")

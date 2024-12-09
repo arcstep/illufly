@@ -1,3 +1,5 @@
-from .endpoints import create_user_endpoints
+from .models import User, UserRole
 from .manager import UserManager
-from .models import User
+from .endpoints import create_user_endpoints
+
+__all__ = ['User', 'UserRole', 'UserManager', 'create_user_endpoints']

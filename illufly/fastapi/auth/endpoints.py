@@ -7,7 +7,6 @@ This module defines the authentication-related API endpoints.
 from fastapi import Depends, HTTPException, status, Request, Response
 from typing import Dict, Any
 from datetime import datetime
-from ..user.models import User, UserRole
 from .utils import (
     hash_password,
     validate_password,
@@ -20,6 +19,8 @@ from .utils import (
 
 def create_auth_endpoints(app, user_manager, prefix: str="/api"):
     """创建认证相关的端点"""
+
+    from ..user import User, UserRole
 
     @app.post(f"{prefix}/auth/register")
     async def register(request: Request, response: Response):
