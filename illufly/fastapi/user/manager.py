@@ -249,3 +249,87 @@ class UserManager:
             # 保存到磁盘
             self._save_user_to_disk(username)
             return True
+
+    def list_user_agents(self, username: str) -> List[str]:
+        """列出用户的所有代理
+        Args:
+            username: 用户名
+        Returns:
+            List[str]: 代理名称列表
+        """
+        context = self._contexts.get(username)
+        if not context:
+            return []
+        return context.list_agents()
+
+    def remove_agent(self, username: str, agent_name: str) -> bool:
+        """移除用户的代理
+        Args:
+            username: 用户名
+            agent_name: 代理名称
+        Returns:
+            bool: 是否成功移除
+        """
+        context = self._contexts.get(username)
+        if not context:
+            return False
+            
+        success = context.remove_agent(agent_name)
+        if success:
+            self._save_user_agents(username)
+        return success
+
+    def get_agent_info(self, username: str, agent_name: str) -> Optional[Any]:
+        """获取代理详细信息
+        Args:
+            username: 用户名
+            agent_name: 代理名称
+        Returns:
+            Optional[Any]: 代理信息
+        """
+        context = self._contexts.get(username)
+        if context:
+            return context.get_agent_info(agent_name)
+        return None
+
+    def update_agent_config(
+        self, 
+        username: str, 
+        agent_name: str, 
+        config_updates: Dict[str, Any]
+    ) -> bool:
+        """更新用户代理的配置
+        Args:
+            username: 用户名
+            agent_name: 代理名称
+            config_updates: 需要更新的配置项
+        Returns:
+            bool: 是否更新成功
+        """
+        context = self._contexts.get(username)
+        if not context:
+            return False
+            
+        success = context.update_agent_config(agent_name, config_updates)
+        if success:
+            # 保存更新后的代理配置到磁盘
+            self._save_user_agents(username)
+        return success
+
+    def get_agent_config(self, username: str, agent_name: str) -> Optional[Dict[str, Any]]:
+        """获取代理当前配置
+        Args:
+            username: 用户名
+            agent_name: 代理名称
+        Returns:
+            Optional[Dict[str, Any]]: 代理配置信息
+        """
+        context = self._contexts.get(username)
+        if not context:
+            return None
+            
+        agent_info = context.get_agent_info(agent_name)
+        if not agent_info:
+            return None
+            
+        return getattr(agent_info, 'config', None)
