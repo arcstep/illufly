@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import List, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, Query, Form
+from typing import List, Dict, Any, Optional
 from sse_starlette.sse import EventSourceResponse
 from ..auth import get_current_user
+from .manager import AgentManager
 
-def create_agent_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
+def create_agent_endpoints(
+    app, 
+    agent_manager: AgentManager,
+    prefix: str = "/api"
+):
     """Agent 相关的端点，处理 Agent 的创建、管理和调用"""
 
     @app.get(f"{prefix}/agents")
@@ -12,21 +17,7 @@ def create_agent_endpoints(app, user_manager: "UserManager", prefix: str="/api")
     ) -> List[Dict[str, Any]]:
         """列出用户的所有 Agent"""
         username = current_user["username"]
-        context = user_manager.get_user_context(username)
-        if not context:
-            raise HTTPException(status_code=404, detail="User context not found")
-            
-        return [
-            {
-                "name": agent.name,
-                "type": agent.type,
-                "description": agent.description,
-                "created_at": agent.created_at.isoformat(),
-                "last_used": agent.last_used.isoformat(),
-                "is_active": agent.is_active
-            }
-            for agent in context.list_agents()
-        ]
+        return agent_manager.list_agents(username, requester=username)
 
     @app.post(f"{prefix}/agents")
     async def create_agent(
@@ -35,11 +26,12 @@ def create_agent_endpoints(app, user_manager: "UserManager", prefix: str="/api")
     ):
         """创建新的 Agent"""
         username = current_user["username"]
-        success = user_manager.create_agent(
+        success = agent_manager.create_agent(
             username=username,
             agent_type=agent_data["type"],
             agent_name=agent_data["name"],
-            vectordbs=agent_data.get("vectordbs", []),
+            vectordb_names=agent_data.get("vectordbs", []),
+            requester=username,
             description=agent_data.get("description", "")
         )
         
@@ -54,21 +46,16 @@ def create_agent_endpoints(app, user_manager: "UserManager", prefix: str="/api")
     ):
         """获取 Agent 详细信息"""
         username = current_user["username"]
-        agent_info = user_manager.get_agent_info(username, agent_name)
+        agents = agent_manager.list_agents(username, requester=username)
+        agent_info = next(
+            (agent for agent in agents if agent["name"] == agent_name),
+            None
+        )
+        
         if not agent_info:
             raise HTTPException(status_code=404, detail="Agent not found")
             
-        return {
-            "name": agent_info.name,
-            "type": agent_info.type,
-            "description": agent_info.description,
-            "created_at": agent_info.created_at.isoformat(),
-            "last_used": agent_info.last_used.isoformat(),
-            "is_active": agent_info.is_active,
-            "events_history_path": agent_info.events_history_path,
-            "memory_history_path": agent_info.memory_history_path,
-            "vectordbs": [str(db) for db in agent_info.vectordbs]
-        }
+        return agent_info
 
     @app.post(f"{prefix}/agents/{{agent_name}}/chat")
     async def chat_with_agent(
@@ -78,7 +65,7 @@ def create_agent_endpoints(app, user_manager: "UserManager", prefix: str="/api")
     ):
         """与指定 Agent 对话"""
         username = current_user["username"]
-        agent = user_manager.get_agent(username, agent_name)
+        agent = agent_manager.get_agent(username, agent_name, requester=username)
         if not agent:
             raise HTTPException(status_code=404, detail="Agent not found")
             
@@ -92,7 +79,12 @@ def create_agent_endpoints(app, user_manager: "UserManager", prefix: str="/api")
     ):
         """更新 Agent 配置"""
         username = current_user["username"]
-        if user_manager.update_agent(username, agent_name, updates):
+        if agent_manager.update_agent_config(
+            username, 
+            agent_name, 
+            updates,
+            requester=username
+        ):
             return {"message": f"Agent {agent_name} updated successfully"}
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -103,6 +95,181 @@ def create_agent_endpoints(app, user_manager: "UserManager", prefix: str="/api")
     ):
         """删除 Agent"""
         username = current_user["username"]
-        if user_manager.delete_agent(username, agent_name):
+        if agent_manager.remove_agent(username, agent_name, requester=username):
             return {"message": f"Agent {agent_name} deleted successfully"}
         raise HTTPException(status_code=404, detail="Agent not found")
+
+    # 新增知识库相关端点
+    @app.get(f"{prefix}/vectordbs")
+    async def list_vectordbs(
+        current_user: dict = Depends(get_current_user)
+    ) -> List[str]:
+        """列出用户的所有知识库"""
+        username = current_user["username"]
+        return agent_manager.list_dbs(username, requester=username)
+
+    @app.post(f"{prefix}/vectordbs")
+    async def create_vectordb(
+        db_data: dict,
+        current_user: dict = Depends(get_current_user)
+    ):
+        """创建新的知识库"""
+        username = current_user["username"]
+        success = agent_manager.create_db(
+            username=username,
+            db_name=db_data["name"],
+            requester=username
+        )
+        
+        if success:
+            return {"message": f"VectorDB {db_data['name']} created successfully"}
+        raise HTTPException(status_code=400, detail="Failed to create vectordb")
+
+    # 知识库管理端点
+    @app.get(f"{prefix}/knowledge")
+    async def list_knowledge(
+        db_name: str = Query(..., description="知识库名称"),
+        page: int = Query(1, ge=1),
+        page_size: int = Query(10, ge=1, le=100),
+        sort_by: str = Query("id", regex="^(id|summary|source|tags)$"),
+        reverse: bool = Query(False),
+        tags: Optional[List[str]] = Query(None),
+        match_all_tags: bool = Query(True),
+        current_user: dict = Depends(get_current_user)
+    ):
+        """获取知识列表"""
+        username = current_user["username"]
+        db = agent_manager.get_db(username, db_name, requester=username)
+        if not db:
+            raise HTTPException(status_code=404, detail="Knowledge base not found")
+            
+        return db.knowledge.get_meta_list(
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            reverse=reverse,
+            tags=tags,
+            match_all_tags=match_all_tags
+        )
+
+    @app.get(f"{prefix}/knowledge/{{knowledge_id}}")
+    async def get_knowledge(
+        knowledge_id: str,
+        db_name: str = Query(..., description="知识库名称"),
+        current_user: dict = Depends(get_current_user)
+    ):
+        """获取知识详情"""
+        username = current_user["username"]
+        db = agent_manager.get_db(username, db_name, requester=username)
+        if not db:
+            raise HTTPException(status_code=404, detail="Knowledge base not found")
+            
+        try:
+            content = db.knowledge.get(knowledge_id)
+            return {
+                "id": knowledge_id,
+                "content": content
+            }
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Knowledge not found")
+
+    @app.post(f"{prefix}/knowledge")
+    async def create_knowledge(
+        db_name: str = Query(..., description="知识库名称"),
+        content: str = Form(...),
+        tags: Optional[List[str]] = Form(None),
+        summary: Optional[str] = Form(""),
+        source: Optional[str] = Form(None),
+        current_user: dict = Depends(get_current_user)
+    ):
+        """创建新知识"""
+        username = current_user["username"]
+        db = agent_manager.get_db(username, db_name, requester=username)
+        if not db:
+            raise HTTPException(status_code=404, detail="Knowledge base not found")
+            
+        try:
+            knowledge_id = db.add(
+                text=content,
+                tags=tags,
+                summary=summary,
+                source=source
+            )
+            return {
+                "message": "知识创建成功",
+                "id": knowledge_id
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.put(f"{prefix}/knowledge/{{knowledge_id}}")
+    async def update_knowledge(
+        knowledge_id: str,
+        db_name: str = Query(..., description="知识库名称"),
+        content: Optional[str] = Form(None),
+        tags: Optional[str] = Form(None),
+        summary: Optional[str] = Form(None),
+        source: Optional[str] = Form(None),
+        current_user: dict = Depends(get_current_user)
+    ):
+        """更新知识"""
+        username = current_user["username"]
+        db = agent_manager.get_db(username, db_name, requester=username)
+        if not db:
+            raise HTTPException(status_code=404, detail="Knowledge base not found")
+            
+        try:
+            tags_list = tags.split(',') if tags else None
+            success = db.knowledge.update(
+                knowledge_id=knowledge_id,
+                text=content,
+                tags=tags_list,
+                summary=summary,
+                source=source
+            )
+            if success:
+                return {"message": "知识更新成功"}
+            raise HTTPException(status_code=400, detail="更新失败，可能存在重复内容")
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="知识不存在")
+
+    @app.delete(f"{prefix}/knowledge/{{knowledge_id}}")
+    async def delete_knowledge(
+        knowledge_id: str,
+        db_name: str = Query(..., description="知识库名称"),
+        current_user: dict = Depends(get_current_user)
+    ):
+        """删除知识"""
+        username = current_user["username"]
+        db = agent_manager.get_db(username, db_name, requester=username)
+        if not db:
+            raise HTTPException(status_code=404, detail="Knowledge base not found")
+            
+        try:
+            db.knowledge.delete(knowledge_id)
+            return {"message": "知识删除成功"}
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="知识不存在")
+
+    # 知识库搜索端点
+    @app.get(f"{prefix}/knowledge/search")
+    async def search_knowledge(
+        query: str = Query(..., description="搜索查询"),
+        db_name: str = Query(..., description="知识库名称"),
+        limit: int = Query(10, ge=1, le=100),
+        current_user: dict = Depends(get_current_user)
+    ):
+        """搜索知识"""
+        username = current_user["username"]
+        db = agent_manager.get_db(username, db_name, requester=username)
+        if not db:
+            raise HTTPException(status_code=404, detail="Knowledge base not found")
+            
+        try:
+            results = db.search(query, limit=limit)
+            return {
+                "query": query,
+                "results": results
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
