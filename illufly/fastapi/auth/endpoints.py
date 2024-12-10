@@ -4,9 +4,10 @@ Auth Module Endpoints
 This module defines the authentication-related API endpoints.
 """
 
-from fastapi import Depends, HTTPException, status, Request, Response
+from fastapi import Depends, HTTPException, status, Request, Response, Form
 from typing import Dict, Any
 from datetime import datetime
+from .dependencies import get_current_user
 from .utils import (
     hash_password,
     validate_password,
@@ -14,39 +15,58 @@ from .utils import (
     validate_username,
     create_access_token,
     create_refresh_token,
-    set_auth_cookies
+    set_auth_cookies,
+    verify_password,
+    verify_jwt
 )
 
 def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
-    """创建认证相关的端点"""
+    """创建认证相关的端点
+    
+    Args:
+        app: FastAPI应用实例
+        user_manager: 用户管理器实例
+        prefix: API路由前缀
+    """
 
     from ..user import User, UserRole, UserManager
 
     @app.post(f"{prefix}/auth/register")
-    async def register(request: Request, response: Response):
-        """
-        用户注册
+    async def register(
+        username: str = Form(...),
+        password: str = Form(...),
+        email: str = Form(...),
+        invite_code: str = Form(None),
+        response: Response = None
+    ):
+        """用户注册接口
         
-        请求体格式:
-        {
-            "username": str,
-            "password": str,
-            "email": str,
-            "invite_code": str (optional)
-        }
+        Args:
+            username: 用户名
+            password: 密码
+            email: 电子邮箱
+            invite_code: 邀请码(可选)
+            response: FastAPI响应对象
+            
+        Returns:
+            JSONResponse: 包含用户信息的响应
+            
+        Raises:
+            HTTPException: 
+                - 400: 参数验证失败
+                - 500: 服务器内部错误
         """
+        if not response:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Response is required"
+            )
         try:
-            data = await request.json()
-            username = data.get("username")
-            password = data.get("password")
-            email = data.get("email")
-            invite_code = data.get("invite_code")
-
             # 验证必填字段
             if not all([username, password, email]):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Missing required fields"
+                    detail="缺少必填字段"
                 )
 
             # 验证用户名格式
@@ -129,40 +149,192 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
             )
 
     @app.post(f"{prefix}/auth/login")
-    async def login(request: Request, response: Response):
-        """用户登录"""
-        try:
-            data = await request.json()
-            username = data.get("username")
-            password = data.get("password")
+    async def login(
+        username: str = Form(...),
+        password: str = Form(...),
+        response: Response = None
+    ):
+        """用户登录接口
+        
+        Args:
+            username: 用户名
+            password: 密码
+            response: FastAPI响应对象
+            
+        Returns:
+            JSONResponse: 包含用户信息和认证令牌的响���
+            
+        Raises:
+            HTTPException:
+                - 400: 缺少用户名或密码
+                - 401: 用户名或密码错误
+                - 500: 服务器内部错误
+        """
+        if not response:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Response is required"
+            )
+            
+        # 验证密码
+        is_valid, need_change = user_manager.verify_user_password(username, password)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username or password"
+            )
 
-            if not all([username, password]):
+        # 获取用户信息
+        user_info = user_manager.get_user_info(username)
+        if not user_info:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found"
+            )
+
+        # 检查账户状态
+        if user_info.get("is_locked"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is locked"
+            )
+            
+        if not user_info.get("is_active"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is inactive"
+            )
+
+        # 提取JWT所需的关键信息
+        token_data = {
+            "username": user_info["username"],
+            "email": user_info["email"],
+            "roles": user_info["roles"],
+            "need_change": need_change
+        }
+
+        # 创建令牌
+        access_token = create_access_token(data=token_data)
+        refresh_token = create_refresh_token(data=token_data)
+        set_auth_cookies(response, access_token, refresh_token)
+
+        # 返回必要的用户信息
+        return {
+            "username": user_info["username"],
+            "email": user_info["email"],
+            "roles": user_info["roles"],
+            "is_locked": user_info["is_locked"],
+            "is_active": user_info["is_active"],
+            "need_password_change": need_change
+        }
+
+    @app.post(f"{prefix}/auth/change-password")
+    async def change_password(
+        current_password: str = Form(...),
+        new_password: str = Form(...),
+        current_user: dict = Depends(get_current_user)
+    ):
+        """修改密码接口
+        
+        Args:
+            current_password: 当前密码
+            new_password: 新密码
+            current_user: 当前用户信息
+            
+        Returns:
+            dict: 成功消息
+            
+        Raises:
+            HTTPException:
+                - 400: 密码验证失败
+                - 500: 服务器内部错误
+        """
+        try:
+            if not verify_password(current_password, current_user["password_hash"]):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Missing username or password"
+                    detail="Current password is incorrect"
                 )
 
-            user = user_manager.verify_user_password(username, password)
-            if not user:
+            password_valid, password_error = validate_password(new_password)
+            if not password_valid:
                 raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid username or password"
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=password_error
                 )
 
-            user_info = {
-                "username": user.username,
-                "email": user.email
-            }
-            access_token = create_access_token(data=user_info)
-            refresh_token = create_refresh_token(data=user_info)
-            set_auth_cookies(response, access_token, refresh_token)
+            user_manager.update_user_password(current_user["username"], hash_password(new_password))
+            return {"message": "Password changed successfully"}
 
-            return user.to_dict()
-
-        except HTTPException:
-            raise
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(e)
             )
+
+    @app.post(f"{prefix}/auth/refresh-token")
+    async def refresh_token(
+        refresh_token: str = Form(...),
+        response: Response = None
+    ):
+        """刷新Token接口
+        
+        Args:
+            refresh_token: 刷新令牌
+            response: FastAPI响应对象
+            
+        Returns:
+            dict: 新的访问令牌
+            
+        Raises:
+            HTTPException:
+                - 401: 刷新令牌无效
+                - 500: 服务器内部错误
+        """
+        if not response:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Response is required"
+            )
+        try:
+            username = verify_jwt(refresh_token)
+            if not username:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid refresh token"
+                )
+
+            user_info = user_manager.get_user_context(username)
+            access_token = create_access_token(data=user_info)
+            set_auth_cookies(response, access_token=access_token)
+
+            return {"access_token": access_token}
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e)
+            )
+
+    @app.post(f"{prefix}/auth/logout")
+    async def logout(
+        response: Response = None,
+        current_user: dict = Depends(get_current_user)
+    ):
+        """注销接口
+        
+        Args:
+            response: FastAPI响应对象
+            current_user: 当前用户信息
+            
+        Returns:
+            dict: 成功消息
+        """
+        if not response:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Response is required"
+            )
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
+        return {"message": "Logged out successfully"}
