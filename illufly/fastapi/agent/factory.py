@@ -1,6 +1,7 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
-from .models import AgentInfo
+from datetime import datetime
+from .models import AgentConfig
 from ...chat import ChatQwen
 from ...flow import ChatLearn
 from ...io import LocalFileEventsHistory, LocalFileMemoryHistory, LocalFileKnowledgeDB
@@ -30,7 +31,72 @@ class AgentFactory:
         return paths
 
     @staticmethod
-    def create_db(username: str, db_name: str, base_path: str) -> bool:
+    def create_agent(
+        username: str,
+        agent_type: str,
+        agent_name: str,
+        base_path: str,
+        vectordb_names: List[str] = None,
+        **kwargs
+    ) -> Tuple[AgentConfig, Any]:
+        """创建代理实例和配置
+        
+        Returns:
+            Tuple[AgentConfig, Any]: (配置信息, 实例对象)
+        """
+        paths = AgentFactory.get_agent_paths(base_path, username, agent_name)
+
+        # 获取所有可用的向量数据库
+        all_vectordbs = AgentFactory.list_dbs(username, base_path)
+        
+        # 根据 vectordb_names 筛选或使用第一个可用的向量数据库
+        if vectordb_names:
+            vectordbs = [
+                db for db in all_vectordbs 
+                if db.name in vectordb_names
+            ]
+        else:
+            vectordbs = all_vectordbs[:1] if all_vectordbs else []
+
+        # 创建实例
+        if agent_type == "chat":
+            instance = ChatQwen(
+                name=agent_name,
+                vectordbs=vectordbs,
+                events_history=LocalFileEventsHistory(paths['events']),
+                memory_history=LocalFileMemoryHistory(paths['memory'])
+            )
+        elif agent_type == "learn":
+            chat_agent = ChatQwen(
+                name=f"{agent_name}_qwen",
+                vectordbs=vectordbs,
+                memory_history=LocalFileMemoryHistory(paths['memory'])
+            )
+            instance = ChatLearn(
+                chat_agent,
+                name=agent_name,
+                events_history=LocalFileEventsHistory(paths['events'])
+            )
+        else:
+            raise ValueError(f"Unknown agent type: {agent_type}")
+
+        # 创建配置
+        config = AgentConfig(
+            name=agent_name,
+            agent_type=agent_type,
+            description=kwargs.get("description", ""),
+            config=kwargs.get("config", {}),
+            vectordb_names=[db.name for db in vectordbs],
+            events_history_path=paths['events'],
+            memory_history_path=paths['memory'],
+            created_at=datetime.now(),
+            last_used=datetime.now()
+        )
+        
+        return config, instance
+
+    @staticmethod
+    def create_db(username: str, db_name: str, base_path: str) -> FaissDB:
         """创建知识库"""
         paths = AgentFactory.get_agent_paths(base_path, username, "")
         db_path = Path(paths['knowledge']) / db_name
@@ -54,66 +120,6 @@ class AgentFactory:
             for db_path in knowledge_path.iterdir()
             if db_path.is_dir() and not db_path.name.startswith('.')
         ]
-
-    @staticmethod
-    def create_agent(
-        username: str,
-        agent_type: str,
-        agent_name: str,
-        base_path: str,
-        vectordb_names: List[str] = None,
-        **kwargs
-    ) -> AgentInfo:
-        """创建代理实例"""
-        paths = AgentFactory.get_agent_paths(base_path, username, agent_name)
-        
-        # 确保所有必要的目录存在
-        for path in paths.values():
-            Path(path).mkdir(parents=True, exist_ok=True)
-
-        # 获取所有可用的向量数据库
-        all_vectordbs = AgentFactory.list_dbs(username, base_path)
-        
-        # 根据 vectordb_names 筛选或使用第一个可用的向量数据库
-        if vectordb_names:
-            vectordbs = [
-                db for db in all_vectordbs 
-                if db.name in vectordb_names
-            ]
-        else:
-            vectordbs = all_vectordbs[:1] if all_vectordbs else []
-
-        if agent_type == "chat":
-            instance = ChatQwen(
-                name=agent_name,
-                vectordbs=vectordbs,
-                events_history=LocalFileEventsHistory(paths['events']),
-                memory_history=LocalFileMemoryHistory(paths['memory'])
-            )
-        elif agent_type == "learn":
-            chat_agent = ChatQwen(
-                name=f"{agent_name}_qwen",
-                vectordbs=vectordbs,
-                memory_history=LocalFileMemoryHistory(paths['memory'])
-            )
-            instance = ChatLearn(
-                chat_agent,
-                name=agent_name,
-                events_history=LocalFileEventsHistory(paths['events'])
-            )
-        else:
-            raise ValueError(f"Unknown agent type: {agent_type}")
-
-        return AgentInfo(
-            name=agent_name,
-            agent_type=agent_type,
-            instance=instance,
-            vectordbs=vectordbs,
-            events_history_path=paths['events'],
-            memory_history_path=paths['memory'],
-            description=kwargs.get("description", ""),
-            config=kwargs.get("config", {})  # 保存初始配置
-        )
 
     @staticmethod
     def cleanup_agent(username: str, agent_name: str, base_path: str):

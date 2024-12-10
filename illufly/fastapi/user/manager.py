@@ -4,6 +4,7 @@ from .models import User, UserRole
 import secrets
 import string
 from ..common import StorageProtocol, FileStorage
+from pathlib import Path
 
 class UserManager:
     def __init__(self, storage: Optional[StorageProtocol[User]] = None):
@@ -13,16 +14,24 @@ class UserManager:
         """
         if storage is None:
             storage = FileStorage[User](
-                data_dir="__users__",  # 修改基础目录
-                filename="profile.json",  # 添加固定的文件名
+                data_dir="__users__",
+                filename="profile.json",
                 serializer=lambda user: user.to_dict(include_sensitive=True),
-                deserializer=User.from_dict
+                deserializer=User.from_dict,
+                use_owner_subdirs=True  # 使用子目录模式
             )
         self._storage = storage
-        self._admin_usernames = {"admin"}  # 管理员用户列表
+        self._admin_usernames = {"admin"}
 
-        if not self.get_user("admin@illufly.com", "admin"):
-            self.create_user("admin@illufly.com", "admin", roles=[UserRole.ADMIN], password="admin")
+        # 检查并创建管理员账户
+        admin_email = "admin@illufly.com"
+        if not self.get_user("admin", "admin"):
+            self.create_user(
+                email=admin_email, 
+                username="admin", 
+                roles=[UserRole.ADMIN], 
+                password="admin"
+            )
 
     def get_user(self, username: str, requester: str) -> Optional[User]:
         """获取用户对象"""
@@ -110,11 +119,15 @@ class UserManager:
         """列出所有用户（不包含敏感信息）"""
         if requester not in self._admin_usernames:
             return []
-        return [
-            user.to_dict(include_sensitive=False)
-            for username in self._storage.list_owners()  # 使用新的 list_owners 方法
-            if (user := self._storage.get(username, owner=username))
-        ]
+        
+        users = []
+        # 遍历用户目录
+        for user_dir in Path("__users__").iterdir():
+            if user_dir.is_dir():
+                username = user_dir.name
+                if user := self._storage.get(username, owner=username):
+                    users.append(user.to_dict(include_sensitive=False))
+        return users
 
     def update_user(self, username: str, **kwargs) -> bool:
         """更新用户信息"""
