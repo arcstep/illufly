@@ -14,12 +14,13 @@ class AgentManager:
         """初始化代理管理器
         Args:
             storage: 存储实现，用于保存代理配置信息
-            base_path: 代理文件存储的基础路径（用于实际的历史记录、内存等文件）
+            base_path: 用户数据根目录
         """
         self.base_path = base_path
         if storage is None:
             storage = FileStorage[Dict[str, AgentInfo]](
-                data_dir="__users__/agents",
+                # 将 agents 存储到用户目录下
+                data_dir=None,  # 动态设置路径
                 serializer=lambda agents: {
                     name: {
                         **agent_info.to_dict(),
@@ -34,6 +35,16 @@ class AgentManager:
             )
         self._storage = storage
 
+    def _get_user_path(self, username: str) -> str:
+        """获取用户数据目录路径"""
+        return str(Path(self.base_path) / username)
+
+    def _get_user_storage(self, username: str) -> StorageProtocol:
+        """获取用户特定的存储实例"""
+        user_storage = self._storage.clone()
+        user_storage.data_dir = str(Path(self._get_user_path(username)) / "agents")
+        return user_storage
+
     def init_agents(self, username: str):
         """初始化代理"""
         default_db = "default_knowledge"
@@ -45,14 +56,18 @@ class AgentManager:
         if requester != username:  # 权限检查
             return False
         
-        return AgentFactory.create_db(username, db_name, self.base_path)
+        return AgentFactory.create_db(
+            username, 
+            db_name, 
+            self._get_user_path(username)  # 使用用户特定路径
+        )
     
     def list_dbs(self, username: str, requester: str) -> List[str]:
         """列出知识库"""
         if requester != username:  # 权限检查
             return []
         
-        return AgentFactory.list_dbs(username, self.base_path)
+        return AgentFactory.list_dbs(username, self._get_user_path(username))
 
     def create_agent(
         self, 
@@ -67,7 +82,8 @@ class AgentManager:
         if requester != username:  # 权限检查
             return False
             
-        user_agents = self._storage.get(agent_name, owner=username) or {}
+        storage = self._get_user_storage(username)
+        user_agents = storage.get("agents") or {}
         if agent_name in user_agents:
             return False
 
@@ -76,12 +92,12 @@ class AgentManager:
                 username=username,
                 agent_type=agent_type,
                 agent_name=agent_name,
-                base_path=self.base_path,
+                base_path=self._get_user_path(username),  # 使用用户特定路径
                 vectordb_names=vectordb_names,
                 **kwargs
             )
             user_agents[agent_name] = agent_info
-            self._storage.set(agent_name, user_agents, owner=username)
+            storage.set("agents", user_agents)
             return True
         except ValueError:
             return False
@@ -91,20 +107,21 @@ class AgentManager:
         if requester != username:  # 权限检查
             return None
             
-        user_agents = self._storage.get(agent_name, owner=username)
+        storage = self._get_user_storage(username)
+        user_agents = storage.get("agents")
         if not user_agents:
             return None
             
         agent_info = user_agents.get(agent_name)
         if agent_info:
             # 重新加载向量数据库实例
-            all_dbs = AgentFactory.list_dbs(username, self.base_path)
+            all_dbs = AgentFactory.list_dbs(username, self._get_user_path(username))
             agent_info.vectordbs = [
                 db for db in all_dbs 
                 if db.name in [vdb.name for vdb in agent_info.vectordbs]
             ]
             agent_info.last_used = datetime.now()
-            self._storage.set(agent_name, user_agents, owner=username)
+            storage.set("agents", user_agents)
             return agent_info.instance
         return None
 
@@ -114,17 +131,17 @@ class AgentManager:
             return []
             
         agents = []
-        for key in self._storage.list_keys(owner=username):
-            if user_agents := self._storage.get(key, owner=username):
-                for name, info in user_agents.items():
-                    agents.append({
-                        'name': name,
-                        'type': info.agent_type,
-                        'description': info.description,
-                        'config': info.config,
-                        'vectordb_names': [db.name for db in info.vectordbs],
-                        'last_used': info.last_used.isoformat() if info.last_used else None
-                    })
+        storage = self._get_user_storage(username)
+        user_agents = storage.get("agents") or {}
+        for name, info in user_agents.items():
+            agents.append({
+                'name': name,
+                'type': info.agent_type,
+                'description': info.description,
+                'config': info.config,
+                'vectordb_names': [db.name for db in info.vectordbs],
+                'last_used': info.last_used.isoformat() if info.last_used else None
+            })
         return agents
 
     def remove_agent(self, username: str, agent_name: str, requester: str) -> bool:
@@ -132,7 +149,8 @@ class AgentManager:
         if requester != username:  # 权限检查
             return False
             
-        user_agents = self._storage.get(agent_name, owner=username)
+        storage = self._get_user_storage(username)
+        user_agents = storage.get("agents")
         if not user_agents or agent_name not in user_agents:
             return False
         
@@ -141,12 +159,12 @@ class AgentManager:
             agent_info.instance.cleanup()
         
         # 清理文件系统中的代理数据
-        AgentFactory.cleanup_agent(username, agent_name, self.base_path)
+        AgentFactory.cleanup_agent(username, agent_name, self._get_user_path(username))
         
         if user_agents:
-            self._storage.set(agent_name, user_agents, owner=username)
+            storage.set("agents", user_agents)
         else:
-            self._storage.delete(agent_name, owner=username)
+            storage.delete("agents")
         return True
 
     def update_agent_config(
@@ -160,7 +178,8 @@ class AgentManager:
         if requester != username:  # 权限检查
             return False
             
-        user_agents = self._storage.get(agent_name, owner=username)
+        storage = self._get_user_storage(username)
+        user_agents = storage.get("agents")
         if not user_agents or agent_name not in user_agents:
             return False
         
@@ -176,5 +195,5 @@ class AgentManager:
             except Exception:
                 return False
         
-        self._storage.set(agent_name, user_agents, owner=username)
+        storage.set("agents", user_agents)
         return True 

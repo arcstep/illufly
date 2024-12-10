@@ -13,7 +13,8 @@ class UserManager:
         """
         if storage is None:
             storage = FileStorage[User](
-                data_dir="__users__/profiles",
+                data_dir="__users__",  # 修改基础目录
+                filename="profile.json",  # 添加固定的文件名
                 serializer=lambda user: user.to_dict(include_sensitive=True),
                 deserializer=User.from_dict
             )
@@ -51,9 +52,15 @@ class UserManager:
     ) -> Tuple[bool, Optional[str]]:
         """创建新用户"""
         username = username or email
-        # 检查用户是否已存在时需要传入 owner
-        if self._storage.get(username, owner=username):
+        
+        # 同时检查 username 是否存在
+        if self.user_exists(username):
             return False, None
+        
+        # 同时检查 email 是否已被其他用户使用（如果需要的话）
+        for existing_user in self.list_users("admin"):
+            if existing_user.get("email") == email and existing_user.get("username") != username:
+                return False, None
 
         generated_password = None
         if not password:
@@ -70,6 +77,8 @@ class UserManager:
             last_password_change=datetime.now() if not require_password_change else None,
             password_expires_days=password_expires_days
         )
+        
+        # 只使用 username 作为存储标识符
         self._storage.set(username, user, owner=username)
         return True, generated_password
 
