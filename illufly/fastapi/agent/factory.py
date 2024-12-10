@@ -13,11 +13,10 @@ class AgentFactory:
     @staticmethod
     def get_agent_paths(base_path: str, username: str, agent_name: str) -> Dict[str, str]:
         """获取代理相关的所有路径"""
-        # 确保基础路径存在
-        base_store_path = Path(f"{base_path}/store/{username}")
-        base_store_path.mkdir(parents=True, exist_ok=True)
+        # base_path 已经包含了用户路径，直接使用 store 子目录
+        base_store_path = Path(base_path) / "store"
         
-        # 构建并确保各子目录存在
+        # 构建路径字典
         paths = {
             'events': str(base_store_path / "hist" / agent_name),
             'memory': str(base_store_path / "memory" / agent_name),

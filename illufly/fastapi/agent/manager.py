@@ -19,8 +19,8 @@ class AgentManager:
         self.base_path = base_path
         if storage is None:
             storage = FileStorage[Dict[str, AgentInfo]](
-                # 将 agents 存储到用户目录下
-                data_dir=None,  # 动态设置路径
+                data_dir=base_path,
+                filename="agent.json",
                 serializer=lambda agents: {
                     name: {
                         **agent_info.to_dict(),
@@ -42,7 +42,7 @@ class AgentManager:
     def _get_user_storage(self, username: str) -> StorageProtocol:
         """获取用户特定的存储实例"""
         user_storage = self._storage.clone()
-        user_storage.data_dir = str(Path(self._get_user_path(username)) / "agents")
+        user_storage.data_dir = self._get_user_path(username)  # 直接使用用户目录
         return user_storage
 
     def init_agents(self, username: str):
@@ -92,7 +92,7 @@ class AgentManager:
                 username=username,
                 agent_type=agent_type,
                 agent_name=agent_name,
-                base_path=self._get_user_path(username),  # 使用用户特定路径
+                base_path=self._get_user_path(username),
                 vectordb_names=vectordb_names,
                 **kwargs
             )

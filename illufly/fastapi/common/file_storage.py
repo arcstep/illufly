@@ -39,7 +39,8 @@ class FileStorage(Generic[T]):
         new_storage = FileStorage(
             data_dir=None,
             serializer=self._serializer,
-            deserializer=self._deserializer
+            deserializer=self._deserializer,
+            filename=self._filename
         )
         return new_storage
 
@@ -52,7 +53,7 @@ class FileStorage(Generic[T]):
         file_path = self._get_owner_file_path(owner)
         if not file_path.exists():
             return None
-        
+            
         self._ensure_owner_data_loaded(owner)
         return self._data.get(owner, {}).get(key)
 
@@ -62,9 +63,9 @@ class FileStorage(Generic[T]):
             raise RuntimeError("数据目录未设置")
         
         with self._lock:
-            # 只在写入操作时创建目录
-            owner_dir = self._data_dir / (owner if owner else "default")
-            owner_dir.mkdir(parents=True, exist_ok=True)
+            # 确保目录存在
+            file_path = self._get_owner_file_path(owner)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
             
             if owner not in self._data:
                 self._data[owner] = {}
@@ -75,6 +76,11 @@ class FileStorage(Generic[T]):
         """删除数据，确保只能删除自己的数据"""
         if not self._data_dir:
             raise RuntimeError("数据目录未设置")
+            
+        file_path = self._get_owner_file_path(owner)
+        if not file_path.exists():
+            return False
+            
         with self._lock:
             if owner not in self._data or key not in self._data[owner]:
                 return False
@@ -86,13 +92,22 @@ class FileStorage(Generic[T]):
         """列出指定所有者的所有键"""
         if not self._data_dir:
             raise RuntimeError("数据目录未设置")
+            
+        file_path = self._get_owner_file_path(owner)
+        if not file_path.exists():
+            return []
+            
         self._ensure_owner_data_loaded(owner)
         return list(self._data.get(owner, {}).keys())
 
-    def _get_owner_file_path(self, owner: str) -> Path:
+    def _get_owner_file_path(self, owner: str = "") -> Path:
         """获取所有者数据文件路径"""
-        owner_dir = self._data_dir / (owner if owner else "default")
-        return owner_dir / self._filename
+        if not owner:
+            # 如果没有指定 owner，直接使用配置的文件名
+            return self._data_dir / self._filename
+        else:
+            # 如果指定了 owner，使用 owner 目录下的文件
+            return self._data_dir / owner / self._filename
 
     def _ensure_owner_data_loaded(self, owner: str) -> None:
         """确保所有者的数据已加载"""
@@ -124,12 +139,15 @@ class FileStorage(Generic[T]):
             for key, value in self._data[owner].items()
         }
         with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False) 
+            json.dump(data, f, indent=2, ensure_ascii=False)
 
     def list_owners(self) -> List[str]:
         """列出所有的所有者"""
+        if not self._data_dir:
+            return []
+            
         return [
             dir.name
-            for dir in self.data_dir.iterdir()
+            for dir in self._data_dir.iterdir()
             if dir.is_dir() and (dir / self._filename).exists()
         ] 
