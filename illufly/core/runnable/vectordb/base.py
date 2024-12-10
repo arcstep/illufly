@@ -1,6 +1,6 @@
 from typing import List, Dict
 import numpy as np
-from ....io import EventBlock, BaseKnowledge, Document
+from ....io import EventBlock, BaseKnowledgeDB, Document
 from ....utils import raise_invalid_params
 from ..base import Runnable
 from ..embeddings import BaseEmbeddings
@@ -44,7 +44,7 @@ class VectorDB(Runnable):
     - query(): 向量检索
     
     Attributes:
-        knowledge (BaseKnowledge): 文档管理器
+        knowledge (BaseKnowledgeDB): 文档管理器
         embeddings (BaseEmbeddings): 向量编码模型
         dim (int): 向量维度
         top_k (int): 默认返回结果数量
@@ -59,7 +59,7 @@ class VectorDB(Runnable):
             **Runnable.allowed_params()
         }
 
-    def __init__(self, knowledge: BaseKnowledge=None, embeddings: BaseEmbeddings=None, top_k: int=None, **kwargs):
+    def __init__(self, knowledge: BaseKnowledgeDB=None, embeddings: BaseEmbeddings=None, top_k: int=None, **kwargs):
         """初始化向量数据库
         
         Args:
@@ -76,7 +76,7 @@ class VectorDB(Runnable):
 
         super().__init__(**kwargs)
 
-        self.knowledge = knowledge or BaseKnowledge()
+        self.knowledge = knowledge or BaseKnowledgeDB()
         self.embeddings = embeddings
         self.top_k = top_k
         self.dim = embeddings.dim  # 确保设置维度属性

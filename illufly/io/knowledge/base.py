@@ -11,7 +11,7 @@ from ..document import Document
 
 knowledge_id_gen = create_id_generator()
 
-class BaseKnowledge():
+class BaseKnowledgeDB():
     def __init__(self, store: dict=None, chunk_size: int=1024, chunk_overlap: int=100):
         self.store = store if store is not None else {}
         self.id_gen = knowledge_id_gen

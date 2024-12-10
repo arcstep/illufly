@@ -1,7 +1,7 @@
 from typing import List, Union, Optional
 from .....config import get_env
 from .....utils import extract_text, minify_text
-from .....io import EventBlock, Document, MarkMeta, BaseKnowledge
+from .....io import EventBlock, Document, MarkMeta, BaseKnowledgeDB
 from ...base import Runnable
 from ...vectordb import VectorDB
 from ...prompt_template import PromptTemplate

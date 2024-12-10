@@ -17,10 +17,10 @@ from .utils import (
     set_auth_cookies
 )
 
-def create_auth_endpoints(app, user_manager, prefix: str="/api"):
+def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
     """创建认证相关的端点"""
 
-    from ..user import User, UserRole
+    from ..user import User, UserRole, UserManager
 
     @app.post(f"{prefix}/auth/register")
     async def register(request: Request, response: Response):
@@ -142,7 +142,7 @@ def create_auth_endpoints(app, user_manager, prefix: str="/api"):
                     detail="Missing username or password"
                 )
 
-            user = user_manager.authenticate(username, password)
+            user = user_manager.verify_user_password(username, password)
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,

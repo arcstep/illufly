@@ -4,7 +4,7 @@ from .document import Document, convert_to_documents_list
 from .handlers import log, alog, usage, async_usage
 from .history import BaseMemoryHistory, LocalFileMemoryHistory
 from .history import BaseEventsHistory, LocalFileEventsHistory
-from .knowledge import BaseKnowledge, LocalFileKnowledge, MarkMeta
+from .knowledge import BaseKnowledgeDB, LocalFileKnowledgeDB, MarkMeta
 
 __all__ = [
     "EventBlock",
@@ -19,6 +19,6 @@ __all__ = [
     "BaseMemoryHistory",
     "LocalFileMemoryHistory",
     "LocalFileEventsHistory",
-    "BaseKnowledge",
-    "LocalFileKnowledge",
+    "BaseKnowledgeDB",
+    "LocalFileKnowledgeDB",
 ]

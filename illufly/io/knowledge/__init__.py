@@ -1,3 +1,3 @@
-from .base import BaseKnowledge
-from .local_file import LocalFileKnowledge
+from .base import BaseKnowledgeDB
+from .local_file import LocalFileKnowledgeDB
 from .markmeta import MarkMeta

@@ -6,7 +6,7 @@ from .utils import verify_jwt
 from .whitelist import is_access_token_in_whitelist
 
 async def get_current_user(request: Request):
-    from ..user import UserRole
+    from ..user import UserManager
 
     token = request.cookies.get("access_token")
     if not token:

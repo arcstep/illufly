@@ -1,10 +1,10 @@
 from pathlib import Path
 import json
 from typing import Dict, List, Union
-from .base import BaseKnowledge
+from .base import BaseKnowledgeDB
 from ...config import get_env
 
-class LocalFileKnowledge(BaseKnowledge):
+class LocalFileKnowledgeDB(BaseKnowledgeDB):
     def __init__(self, directory: Union[str, Path]=None):
         """初始化本地文件知识库
         
