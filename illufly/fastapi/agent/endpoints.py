@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from sse_starlette.sse import EventSourceResponse
 from ..auth import get_current_user
 from .manager import AgentManager
+from .models import AgentConfig
 
 def create_agent_endpoints(
     app, 
@@ -21,22 +22,25 @@ def create_agent_endpoints(
 
     @app.post(f"{prefix}/agents")
     async def create_agent(
-        agent_data: dict,
+        name: str = Form(...),
+        agent_type: str = Form(...),
+        description: str = Form(""),
+        vectordb_names: List[str] = Form([]),
         current_user: dict = Depends(get_current_user)
     ):
-        """创建新的 Agent"""
+        """创建新的Agent"""
         username = current_user["username"]
         success = agent_manager.create_agent(
             username=username,
-            agent_type=agent_data["type"],
-            agent_name=agent_data["name"],
-            vectordb_names=agent_data.get("vectordbs", []),
+            agent_type=agent_type,
+            agent_name=name,
+            vectordb_names=vectordb_names,
             requester=username,
-            description=agent_data.get("description", "")
+            description=description
         )
         
         if success:
-            return {"message": f"Agent {agent_data['name']} created successfully"}
+            return {"message": f"Agent {name} created successfully"}
         raise HTTPException(status_code=400, detail="Failed to create agent")
 
     @app.get(f"{prefix}/agents/{{agent_name}}")
@@ -74,11 +78,26 @@ def create_agent_endpoints(
     @app.patch(f"{prefix}/agents/{{agent_name}}")
     async def update_agent(
         agent_name: str,
-        updates: Dict[str, Any],
+        description: Optional[str] = Form(None),
+        vectordb_names: Optional[List[str]] = Form(None),
+        config: Optional[Dict[str, Any]] = Form(None),
+        is_active: Optional[bool] = Form(None),
         current_user: dict = Depends(get_current_user)
     ):
         """更新 Agent 配置"""
         username = current_user["username"]
+        
+        # 构建更新字典,只包含非None值
+        updates = {}
+        if description is not None:
+            updates["description"] = description
+        if vectordb_names is not None:
+            updates["vectordb_names"] = vectordb_names
+        if config is not None:
+            updates["config"] = config
+        if is_active is not None:
+            updates["is_active"] = is_active
+        
         if agent_manager.update_agent_config(
             username, 
             agent_name, 
@@ -110,19 +129,19 @@ def create_agent_endpoints(
 
     @app.post(f"{prefix}/vectordbs")
     async def create_vectordb(
-        db_data: dict,
+        name: str = Form(...),
         current_user: dict = Depends(get_current_user)
     ):
         """创建新的知识库"""
         username = current_user["username"]
         success = agent_manager.create_db(
             username=username,
-            db_name=db_data["name"],
+            db_name=name,
             requester=username
         )
         
         if success:
-            return {"message": f"VectorDB {db_data['name']} created successfully"}
+            return {"message": f"VectorDB {name} created successfully"}
         raise HTTPException(status_code=400, detail="Failed to create vectordb")
 
     # 知识库管理端点
@@ -251,7 +270,7 @@ def create_agent_endpoints(
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="知识不存在")
 
-    # 知识库搜索端点
+    # 知识库搜索���点
     @app.get(f"{prefix}/knowledge/search")
     async def search_knowledge(
         query: str = Query(..., description="搜索查询"),

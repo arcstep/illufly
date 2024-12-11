@@ -35,6 +35,17 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
 
     from ..user import User, UserRole, UserManager
 
+    def _create_token_data(user_info: dict) -> dict:
+        return {
+            "user_id": user_info["user_id"],
+            "username": user_info["username"],
+            "email": user_info["email"],
+            "roles": user_info["roles"],
+            "is_locked": user_info["is_locked"],
+            "is_active": user_info["is_active"],
+            "need_password_change": user_info["need_password_change"],
+        }
+
     @app.post(f"{prefix}/auth/register")
     async def register(
         username: str = Form(...),
@@ -105,7 +116,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
                 )
 
             # 创建用户
-            success, _ = user_manager.create_user(
+            success, _, user = user_manager.create_user(
                 username=username,
                 password=password,
                 email=email,
@@ -120,7 +131,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
                 )
 
             # 获取用户信息用于生成令牌
-            user_info = user_manager.get_user_info(username)
+            user_info = user_manager.get_user_info(user.user_id)
             if not user_info:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -128,11 +139,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
                 )
 
             # 自动登录
-            token_data = {
-                "username": username,
-                "email": email,
-                "roles": user_info["roles"]
-            }
+            token_data = _create_token_data(user_info)
             access_token = create_access_token(data=token_data)
             refresh_token = create_refresh_token(data=token_data)
             set_auth_cookies(response, access_token, refresh_token)
@@ -184,7 +191,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
             )
 
         # 获取用户信息
-        user_info = user_manager.get_user_info(username)
+        user_info = user_manager.get_user_info(user_id)
         if not user_info:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -205,12 +212,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
             )
 
         # 提取JWT所需的关键信息
-        token_data = {
-            "username": user_info["username"],
-            "email": user_info["email"],
-            "roles": user_info["roles"],
-            "need_password_change": need_change
-        }
+        token_data = _create_token_data(user_info)
 
         # 创建令牌
         access_token = create_access_token(data=token_data)
@@ -219,6 +221,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
 
         # 返回必要的用户信息
         return {
+            "user_id": user_info["user_id"],
             "username": user_info["username"],
             "email": user_info["email"],
             "roles": user_info["roles"],
@@ -269,7 +272,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
                     detail=password_error
                 )
 
-            result = user_manager.change_password(current_user["username"], current_password, new_password)
+            result = user_manager.change_password(current_user["user_id"], current_password, new_password)
             if not result:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -316,7 +319,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
                     detail="Invalid refresh token"
                 )
 
-            user_info = user_manager.get_user_context(username)
+            user_info = user_manager.get_user_info(user_id, include_sensitive=False)
             access_token = create_access_token(data=user_info)
             set_auth_cookies(response, access_token=access_token)
 
@@ -373,7 +376,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
         """
         try:
             # 检查目标用户是否存在
-            if not user_manager.get_user_info(username):
+            if not user_manager.get_user_info(user_id):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="User not found"

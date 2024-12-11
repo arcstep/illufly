@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Set, Union
 from enum import Enum
+from ...utils import create_id_generator
+
+user_id_gen = create_id_generator()
 
 class UserRole(str, Enum):
     """用户角色枚举"""
@@ -21,10 +24,11 @@ class User:
     """用户基础信息"""
     username: str
     roles: Set[UserRole]
+    user_id: str = None  # 新增：用户唯一ID
     email: str = None
     password_hash: str = None
     created_at: datetime = None
-    require_password_change: bool = True
+    require_password_change: bool = False
     last_password_change: Optional[datetime] = None  # 新增：最后修改密码时间
     password_expires_days: int = 90  # 新增：密码有效期（天数）
     last_login: Optional[datetime] = None
@@ -58,6 +62,7 @@ class User:
     def to_dict(self, include_sensitive: bool = False) -> Dict[str, Any]:
         """转换为字典格式"""
         data = {
+            "user_id": self.user_id,  # 新增：添加 user_id 到输出字典
             "username": self.username,
             "email": self.email,
             "roles": [role.value for role in self.roles],
@@ -81,6 +86,7 @@ class User:
     def from_dict(cls, data: dict) -> 'User':
         """从字典创建用户对象"""
         return cls(
+            user_id=data.get("user_id"),  # 新增：从字典中获取 user_id
             username=data["username"],
             email=data.get("email", None),
             password_hash=data.get("password_hash", None),
@@ -97,7 +103,11 @@ class User:
         )
 
     def __post_init__(self):
-        # 确保 roles 是 set 类型且元素是 UserRole
+        # 如果没有 user_id，则使用 IDGenerator 生成一个
+        if not self.user_id:
+            self.user_id = next(user_id_gen)
+            
+        # 原有的 roles 处理逻辑
         if isinstance(self.roles, (list, str)):
             self.roles = {UserRole(r) for r in self.roles}
         elif isinstance(self.roles, set):

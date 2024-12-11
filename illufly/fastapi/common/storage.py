@@ -43,3 +43,15 @@ class StorageProtocol(Protocol[T]):
             owner: 数据所有者
         """
         pass
+
+    @abstractmethod
+    def exists(self, key_values: Dict[str, Any], owner: str = "") -> List[T]:
+        """根据键值对查找匹配的数据
+        Args:
+            key_values: 键值对字典，用于匹配查找
+            owner: 数据所有者，默认为空字符串
+            
+        Returns:
+            List[T]: 返回所有匹配的数据列表
+        """
+        pass

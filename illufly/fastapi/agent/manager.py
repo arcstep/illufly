@@ -5,18 +5,16 @@ from .models import AgentConfig
 from .factory import AgentFactory
 from ..common import StorageProtocol, FileStorage
 from ...types import VectorDB
+from ..vectordb import VectorDBManager
 
 class AgentManager:
     def __init__(
-        self, 
+        self,
         storage: Optional[StorageProtocol[Dict[str, AgentConfig]]] = None,
+        vectordb_manager: Optional[VectorDBManager] = None,
         base_path: str = "./__users__"
     ):
-        """初始化代理管理器
-        Args:
-            storage: 存储实现，用于保存代理配置信息
-            base_path: 用户数据根目录
-        """
+        """初始化代理管理器"""
         self.base_path = base_path
         if storage is None:
             storage = FileStorage[Dict[str, AgentConfig]](
@@ -33,8 +31,9 @@ class AgentManager:
                 use_owner_subdirs=True
             )
         self._storage = storage
-        # 添加向量数据库实例缓存
-        self._db_instances: Dict[str, Dict[str, VectorDB]] = {}  # username -> {db_name -> instance}
+        
+        # 使用向量库管理器
+        self.vectordb_manager = vectordb_manager or VectorDBManager(base_path=base_path)
 
     def _get_user_path(self, username: str) -> str:
         """获取用户数据目录路径"""
@@ -46,12 +45,6 @@ class AgentManager:
         user_storage.data_dir = self._get_user_path(username)
         user_storage.filename = "agent.json"
         return user_storage
-
-    def init_agents(self, username: str):
-        """初始化代理"""
-        default_db = "default_knowledge"
-        if default_db not in self.list_dbs(username, username):
-            self.create_db(username, default_db, username)
 
     def create_db(self, username: str, db_name: str, requester: str) -> bool:
         """创建新的知识库
@@ -91,6 +84,9 @@ class AgentManager:
         if requester != username:  # 权限检查
             return []
 
+        if username not in self._db_instances:
+            self.create_db(username, default_db, username)
+
         # 如果已经有缓存的实例，直接返回缓存的键
         if username in self._db_instances:
             return list(self._db_instances[username].keys())
@@ -103,10 +99,10 @@ class AgentManager:
             return []
 
     def create_agent(
-        self, 
-        username: str, 
-        agent_type: str, 
-        agent_name: str, 
+        self,
+        username: str,
+        agent_type: str,
+        agent_name: str,
         vectordb_names: List[str],
         requester: str,
         **kwargs
@@ -114,20 +110,24 @@ class AgentManager:
         """创建代理"""
         if requester != username:
             return False
-            
+
+        # 验证向量库是否存在
+        for db_name in vectordb_names:
+            if not self.vectordb_manager.get_db(username, db_name, username):
+                return False
+
+        # 创建代理...
         storage = self._get_user_storage(username)
         user_agents = storage.get("agents", owner=username) or {}
-        if agent_name in user_agents:
-            return False
-
+        
         try:
-            # 创建代理实例和配置
             config, _ = AgentFactory.create_agent(
                 username=username,
                 agent_type=agent_type,
                 agent_name=agent_name,
                 base_path=self._get_user_path(username),
                 vectordb_names=vectordb_names,
+                vectordb_manager=self.vectordb_manager,  # 传入向量库管理器
                 **kwargs
             )
             user_agents[agent_name] = config
@@ -169,7 +169,7 @@ class AgentManager:
         """列出用户的所有代理"""
         if requester != username:  # 权限检查
             return []
-            
+
         storage = self._get_user_storage(username)
         data = storage.get("agents", owner=username)
         
