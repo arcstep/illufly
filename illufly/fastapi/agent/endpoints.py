@@ -1,20 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Form
 from typing import List, Dict, Any, Optional
 from sse_starlette.sse import EventSourceResponse
-from ..auth import get_current_user
+from ..auth import AuthManager
 from .manager import AgentManager
 from .models import AgentConfig
 
 def create_agent_endpoints(
     app, 
     agent_manager: AgentManager,
+    auth_manager: AuthManager,
     prefix: str = "/api"
 ):
     """Agent 相关的端点，处理 Agent 的创建、管理和调用"""
 
     @app.get(f"{prefix}/agents")
     async def list_agents(
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ) -> List[Dict[str, Any]]:
         """列出用户的所有 Agent"""
         username = current_user["username"]
@@ -26,7 +27,7 @@ def create_agent_endpoints(
         agent_type: str = Form(...),
         description: str = Form(""),
         vectordb_names: List[str] = Form([]),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """创建新的Agent"""
         username = current_user["username"]
@@ -46,7 +47,7 @@ def create_agent_endpoints(
     @app.get(f"{prefix}/agents/{{agent_name}}")
     async def get_agent_info(
         agent_name: str,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """获取 Agent 详细信息"""
         username = current_user["username"]
@@ -65,7 +66,7 @@ def create_agent_endpoints(
     async def chat_with_agent(
         agent_name: str,
         prompt: str = Query(...),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """与指定 Agent 对话"""
         username = current_user["username"]
@@ -82,7 +83,7 @@ def create_agent_endpoints(
         vectordb_names: Optional[List[str]] = Form(None),
         config: Optional[Dict[str, Any]] = Form(None),
         is_active: Optional[bool] = Form(None),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """更新 Agent 配置"""
         username = current_user["username"]
@@ -110,7 +111,7 @@ def create_agent_endpoints(
     @app.delete(f"{prefix}/agents/{{agent_name}}")
     async def delete_agent(
         agent_name: str,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """删除 Agent"""
         username = current_user["username"]
@@ -121,7 +122,7 @@ def create_agent_endpoints(
     # 新增知识库相关端点
     @app.get(f"{prefix}/vectordbs")
     async def list_vectordbs(
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ) -> List[str]:
         """列出用户的所有知识库"""
         username = current_user["username"]
@@ -130,7 +131,7 @@ def create_agent_endpoints(
     @app.post(f"{prefix}/vectordbs")
     async def create_vectordb(
         name: str = Form(...),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """创建新的知识库"""
         username = current_user["username"]
@@ -154,7 +155,7 @@ def create_agent_endpoints(
         reverse: bool = Query(False),
         tags: Optional[List[str]] = Query(None),
         match_all_tags: bool = Query(True),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """获取知识列表"""
         username = current_user["username"]
@@ -175,7 +176,7 @@ def create_agent_endpoints(
     async def get_knowledge(
         knowledge_id: str,
         db_name: str = Query(..., description="知识库名称"),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """获取知识详情"""
         username = current_user["username"]
@@ -199,7 +200,7 @@ def create_agent_endpoints(
         tags: Optional[List[str]] = Form(None),
         summary: Optional[str] = Form(""),
         source: Optional[str] = Form(None),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """创建新知识"""
         username = current_user["username"]
@@ -229,7 +230,7 @@ def create_agent_endpoints(
         tags: Optional[str] = Form(None),
         summary: Optional[str] = Form(None),
         source: Optional[str] = Form(None),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """更新知识"""
         username = current_user["username"]
@@ -256,7 +257,7 @@ def create_agent_endpoints(
     async def delete_knowledge(
         knowledge_id: str,
         db_name: str = Query(..., description="知识库名称"),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """删除知识"""
         username = current_user["username"]
@@ -276,7 +277,7 @@ def create_agent_endpoints(
         query: str = Query(..., description="搜索查询"),
         db_name: str = Query(..., description="知识库名称"),
         limit: int = Query(10, ge=1, le=100),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """搜索知识"""
         username = current_user["username"]

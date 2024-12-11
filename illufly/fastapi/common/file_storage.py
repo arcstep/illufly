@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, TypeVar, Generic, Protocol, List, Callable
+from typing import Dict, Any, Optional, TypeVar, Generic, Protocol, List, Callable, Tuple
 from pathlib import Path
 import json
 import threading
@@ -154,48 +154,50 @@ class FileStorage(StorageProtocol[T]):
         """列出所有的所有者 ID"""
         if not self._data_dir or not self._use_id_subdirs:
             return []
+        
+        try:
+            # 确保目录存在
+            if not self._data_dir.exists():
+                return []
             
-        owners = []
-        # 遍历两级目录结构
-        for prefix_dir in self._data_dir.iterdir():
-            if prefix_dir.is_dir():
-                for owner_dir in prefix_dir.iterdir():
-                    if owner_dir.is_dir() and (owner_dir / self._filename).exists():
-                        owners.append(owner_dir.name)
-        return owners 
+            # 直接遍历一级目录
+            owners = []
+            for owner_dir in self._data_dir.iterdir():
+                if owner_dir.is_dir() and (owner_dir / self._filename).exists():
+                    owners.append(owner_dir.name)
+            return owners
+        except Exception as e:
+            print(f"Error listing owners: {e}")
+            return []
 
-    def exists(self, key_values: Dict[str, Any], owner_id: str = "") -> List[T]:
+    def exists(self, key_values: Dict[str, Any], owner_id: str = "") -> Tuple[bool, Optional[str], Optional[T]]:
         """
-        根据键值对查找匹配的数据
+        检查是否存在匹配的数据，任意键值对匹配即返回
         
         Args:
             key_values: 键值对字典，用于匹配查找
             owner_id: 所有者ID，默认为空字符串
             
         Returns:
-            List[T]: 返回所有匹配的数据列表
+            Tuple[bool, Optional[str], Optional[T]]: 
+            - bool: 是否存在匹配
+            - str: 如果存在匹配，返回匹配的键名，否则为 None
+            - T: 如果存在匹配，返回匹配的对象，否则为 None
         """
         if not self._data_dir:
             raise RuntimeError("数据目录未设置")
-            
-        if owner_id not in self._data:
-            self._load_owner_data(owner_id)
-            
-        results = []
         
-        if self._use_id_subdirs:
-            # 子目录模式：检查单个对象是否匹配所有键值对
-            data = self._data.get(owner_id)
+        owners = [owner_id] if owner_id else self.list_owners()
+        
+        for current_owner_id in owners:
+            if current_owner_id not in self._data:
+                self._load_owner_data(current_owner_id)
+            
+            data = self._data.get(current_owner_id)
             if data is not None:
-                # 检查数据对象是否包含所有指定的键值对
-                if all(hasattr(data, k) and getattr(data, k) == v for k, v in key_values.items()):
-                    results.append(data)
-        else:
-            # 直接文件模式：检查每个存储的对象
-            owner_data = self._data.get(owner_id, {})
-            for stored_data in owner_data.values():
-                # 检查数据对象是否包含所有指定的键值对
-                if all(hasattr(stored_data, k) and getattr(stored_data, k) == v for k, v in key_values.items()):
-                    results.append(stored_data)
+                # 检查每个键值对
+                for k, v in key_values.items():
+                    if hasattr(data, k) and getattr(data, k) == v:
+                        return True, k, data  # 立即返回第一个匹配的结果
         
-        return results
+        return False, None, None
