@@ -17,8 +17,15 @@ def add_access_token_to_whitelist(access_token, username, expire_minutes):
         "username": username,
         "expire": expire_time
     }
+    print("added access token:", access_token)
 
-def remove_access_token_from_whitelist(username: str):
+def remove_access_token_from_whitelist(access_token: str):
+    """从内存白名单中移除特定的access_token"""
+    if access_token in access_token_whitelist:
+        access_token_whitelist.pop(access_token)
+        print("removed access token:", access_token)
+
+def remove_user_access_tokens(username: str):
     """从内存白名单中移除用户的所有access_token"""
     tokens_to_remove = [
         token for token, details in access_token_whitelist.items()
@@ -26,6 +33,7 @@ def remove_access_token_from_whitelist(username: str):
     ]
     for token in tokens_to_remove:
         access_token_whitelist.pop(token)
+        print("removed access token:", token)
 
 def is_access_token_in_whitelist(access_token):
     """检查access_token是否在内存白名单中"""
@@ -97,7 +105,7 @@ def add_refresh_token_to_whitelist(refresh_token, username, expire_days):
     }
     save_token_whitelist(whitelist)
 
-def remove_refresh_token_from_whitelist(username: str):
+def remove_user_refresh_tokens(username: str):
     """从文件白名单中移除用户的所有refresh_token"""
     whitelist = load_token_whitelist()
     tokens_to_remove = [token for token, details in whitelist.items() if details["username"] == username]
@@ -105,6 +113,11 @@ def remove_refresh_token_from_whitelist(username: str):
     # 遍历tokens_to_remove列表，从whitelist中删除这些token
     for token in tokens_to_remove:
         del whitelist[token]
+        print("removed refresh token:", token)
 
     # 保存更新后的whitelist
     save_token_whitelist(whitelist)
+
+def is_refresh_token_valid(refresh_token: str) -> bool:
+    """检查刷新令牌是否有效（包括白名单检查和过期检查）"""
+    return is_refresh_token_in_whitelist(refresh_token)

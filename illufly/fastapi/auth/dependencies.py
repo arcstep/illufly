@@ -1,39 +1,55 @@
-from fastapi import Request, HTTPException, status, Depends
+from fastapi import Request, Response, HTTPException, status, Depends
+from fastapi.responses import Response
 from jose import JWTError
 from typing import List, Union
-from functools import wraps
-from .utils import verify_jwt
-from .whitelist import is_access_token_in_whitelist
+from .utils import verify_jwt, create_access_token, set_auth_cookies
+from .whitelist import (
+    is_access_token_in_whitelist,
+    is_refresh_token_valid,
+    remove_access_token_from_whitelist
+)
 
-async def get_current_user(request: Request):
-    token = request.cookies.get("access_token")
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated"
-        )
+async def get_current_user(request: Request, response: Response) -> dict:
+    """
+    获取当前用户信息，包含令牌刷新逻辑
+    """
+    access_token = request.cookies.get("access_token")
+    refresh_token = request.cookies.get("refresh_token")
 
-    try:
-        if not is_access_token_in_whitelist(token):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Access-Token not in whitelist"
-            )
+    # 1. 验证访问令牌
+    if access_token:
+        if is_access_token_in_whitelist(access_token):
+            try:
+                payload = verify_jwt(access_token)
+                if payload:
+                    return payload
+            except JWTError:
+                remove_access_token_from_whitelist(access_token)
 
-        token_data = verify_jwt(token)
-        if not token_data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Access-Token"
-            )
-        print("token_data", token_data)
-        return token_data
+    # 2. 尝试使用刷新令牌
+    if refresh_token:
+        if is_refresh_token_valid(refresh_token):
+            try:
+                refresh_payload = verify_jwt(refresh_token)
+                if refresh_payload:
+                    # 创建新的访问令牌
+                    new_access_token = create_access_token(refresh_payload)
+                    
+                    # 如果旧的访问令牌存在，从白名单中移除
+                    if access_token:
+                        remove_access_token_from_whitelist(access_token)
+                    
+                    # 直接在传入的 response 对象上设置 cookie
+                    set_auth_cookies(response, access_token=new_access_token)
+                    
+                    return refresh_payload
+            except JWTError:
+                pass
 
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials"
-        )
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="认证已过期，请重新登录"
+    )
 
 def require_roles(roles: Union["UserRole", List["UserRole"]], require_all: bool = False):
     """
@@ -49,7 +65,6 @@ def require_roles(roles: Union["UserRole", List["UserRole"]], require_all: bool 
         roles = [roles]
 
     async def role_checker(current_user: dict = Depends(get_current_user)):
-        print("current_user", current_user)
         user = User.from_dict(current_user)
         
         if require_all and not user.has_all_roles(roles):
@@ -66,4 +81,4 @@ def require_roles(roles: Union["UserRole", List["UserRole"]], require_all: bool 
         
         return current_user
 
-    return Depends(role_checker)
+    return role_checker

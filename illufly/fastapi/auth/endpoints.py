@@ -8,7 +8,10 @@ from fastapi import Depends, HTTPException, status, Request, Response, Form
 from typing import Dict, Any
 from datetime import datetime
 from .dependencies import get_current_user, require_roles
-
+from .whitelist import (
+    remove_user_access_tokens,
+    remove_user_refresh_tokens
+)
 from .utils import (
     hash_password,
     validate_password,
@@ -18,9 +21,7 @@ from .utils import (
     create_refresh_token,
     set_auth_cookies,
     verify_password,
-    verify_jwt,
-    remove_access_token_from_whitelist,
-    remove_refresh_token_from_whitelist
+    verify_jwt
 )
 
 def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
@@ -278,7 +279,8 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
     @app.post(f"{prefix}/auth/refresh-token")
     async def refresh_token(
         refresh_token: str = Form(...),
-        response: Response = None
+        response: Response = None,
+        current_user: dict = Depends(get_current_user)
     ):
         """刷新Token接口
         
@@ -345,7 +347,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
     @app.post(f"{prefix}/auth/revoke-token")
     async def revoke_token(
         username: str = Form(...),
-        role_checker = require_roles([UserRole.ADMIN])
+        current_user = Depends(require_roles([UserRole.ADMIN]))
     ):
         """撤销用户令牌接口
         
@@ -371,11 +373,48 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
                 )
 
             # 移除所有访问令牌和刷新令牌
-            remove_access_token_from_whitelist(username)
-            remove_refresh_token_from_whitelist(username)
+            remove_user_access_tokens(username)
+            remove_user_refresh_tokens(username)
             
             return {
                 "message": f"Successfully revoked all tokens for user {username}",
+                "username": username
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e)
+            )
+
+    @app.post(f"{prefix}/auth/revoke-access-token")
+    async def revoke_access_token(
+        username: str = Form(...),
+        current_user = Depends(require_roles([UserRole.ADMIN]))
+    ):
+        """撤销用户访问令牌接口
+        
+        Args:
+            username: 要撤销令牌的用户名
+            role_checker: 当前管理员角色（通过依赖注入）
+            
+        Returns:
+            dict: 成功消息
+            
+        Raises:
+            HTTPException:
+                - 400: 用户不存在
+                - 403: 权限不足
+                - 500: 服务器内部错误
+        """
+        try:
+            # 移除所有访问令牌
+            remove_user_access_tokens(username)
+            
+            return {
+                "message": f"Successfully revoked access tokens for user {username}",
                 "username": username
             }
 

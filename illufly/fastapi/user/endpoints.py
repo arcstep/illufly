@@ -8,8 +8,7 @@ def create_user_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
 
     @app.get(f"{prefix}/users")
     async def list_users(
-        current_user = Depends(get_current_user),
-        role_checker = require_roles([UserRole.ADMIN, UserRole.OPERATOR])
+        current_user = Depends(require_roles([UserRole.ADMIN, UserRole.OPERATOR]))
     ):
         """列出所有用户（需要管理员或运营角色）"""
         return user_manager.list_users()
@@ -18,7 +17,7 @@ def create_user_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
     async def update_user_roles(
         username: str,
         roles: List[str],
-        role_checker: dict = require_roles(UserRole.ADMIN)
+        current_user: dict = Depends(require_roles(UserRole.ADMIN))
     ):
         """更新用户角色（仅管理员）"""
         return user_manager.update_user_roles(username, roles)

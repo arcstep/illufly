@@ -5,8 +5,6 @@ from ...config import get_env
 from .whitelist import (
     add_refresh_token_to_whitelist,
     add_access_token_to_whitelist,
-    remove_access_token_from_whitelist,
-    remove_refresh_token_from_whitelist
 )
 from passlib.context import CryptContext
 import re
