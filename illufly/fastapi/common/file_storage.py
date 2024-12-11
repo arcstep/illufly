@@ -156,7 +156,7 @@ class FileStorage(StorageProtocol[T]):
         self._load_owner_data(owner)
 
     def list_owners(self) -> List[str]:
-        """列出��有的所有者"""
+        """列出所有的所有者"""
         if not self._data_dir:
             return []
             

@@ -13,7 +13,6 @@ from .whitelist import (
     remove_user_refresh_tokens
 )
 from .utils import (
-    hash_password,
     validate_password,
     validate_email,
     validate_username,
@@ -21,7 +20,8 @@ from .utils import (
     create_refresh_token,
     set_auth_cookies,
     verify_password,
-    verify_jwt
+    verify_jwt,
+    hash_password
 )
 
 def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
@@ -249,10 +249,17 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
                 - 500: 服务器内部错误
         """
         try:
-            if not verify_password(current_password, current_user["password_hash"]):
+            try:
+                valid_pass, _ = user_manager.verify_user_password(current_user["username"], current_password)
+                if not valid_pass:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Current password is incorrect"
+                    )
+            except Exception as e:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Current password is incorrect"
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=str(e)
                 )
 
             password_valid, password_error = validate_password(new_password)
@@ -262,7 +269,12 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
                     detail=password_error
                 )
 
-            user_manager.update_user_password(current_user["username"], hash_password(new_password))
+            result = user_manager.change_password(current_user["username"], current_password, new_password)
+            if not result:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to change password"
+                )
             return {"message": "Password changed successfully"}
 
         except Exception as e:

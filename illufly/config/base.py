@@ -63,6 +63,7 @@ def get_env(key: str=None):
         "ZHIPUAI_API_TOOLS_BASE_URL": "https://open.bigmodel.cn/api/paas/v4/tools",
 
         # Auth
+        "HASH_METHOD": "pbkdf2_sha256",
         "FASTAPI_SECRET_KEY": "MY-SECRET-KEY",
         "FASTAPI_ALGORITHM": "HS256",
         "ACCESS_TOKEN_EXPIRE_DAYS": 30,

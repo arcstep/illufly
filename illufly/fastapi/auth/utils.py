@@ -12,9 +12,29 @@ from typing import Optional
 
 SECRET_KEY = get_env("FASTAPI_SECRET_KEY")
 ALGORITHM = get_env("FASTAPI_ALGORITHM")
+HASH_METHOD = get_env("HASH_METHOD")
 
 # 密码加密上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    # 按优先级排序的哈希方案
+    schemes=["argon2", "bcrypt", "pbkdf2_sha256"],
+    
+    # 使用环境变量指定的算法
+    default=HASH_METHOD,
+    
+    # argon2 的具体配置
+    argon2__memory_cost=65536,  # 64MB
+    argon2__time_cost=3,        # 3 次迭代
+    argon2__parallelism=4,      # 4 个并行线程
+    
+    # bcrypt 配置
+    bcrypt__rounds=12,          # 工作因子
+    
+    # pbkdf2_sha256 配置
+    pbkdf2_sha256__rounds=100000,  # 迭代次数
+    
+    truncate_error=True  # 密码长度检查
+)
 
 def verify_jwt(token: str):
     try:
@@ -61,11 +81,16 @@ def set_auth_cookies(response: Response, access_token: str=None, refresh_token: 
         )
 
 def hash_password(password: str) -> str:
-    """对密码进行哈希处理"""
+    """
+    对密码进行哈希处理，使用当前最强的可用算法
+    """
     return pwd_context.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码"""
+    """
+    验证密码
+    返回: 验证是否通过
+    """
     return pwd_context.verify(plain_password, hashed_password)
 
 def validate_password(password: str) -> tuple[bool, Optional[str]]:

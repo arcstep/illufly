@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Set, Union
 from enum import Enum
-from passlib.hash import pbkdf2_sha256  # 用于密码加密
 
 class UserRole(str, Enum):
     """用户角色枚举"""
@@ -33,15 +32,6 @@ class User:
     last_failed_login: Optional[datetime] = None  # 新增：最后一次登录失败时间
     is_locked: bool = False  # 新增：账户是否锁定
     is_active: bool = True
-
-    @staticmethod
-    def hash_password(password: str) -> str:
-        """对密码进行加密"""
-        return pbkdf2_sha256.hash(password)
-
-    def verify_password(self, password: str) -> bool:
-        """验证密码"""
-        return pbkdf2_sha256.verify(password, self.password_hash)
 
     def is_password_expired(self) -> bool:
         """检查密码是否过期"""
@@ -94,7 +84,7 @@ class User:
             username=data["username"],
             email=data.get("email", None),
             password_hash=data.get("password_hash", None),
-            roles=set(data.get("roles", ["user"])),
+            roles=set(UserRole(role) for role in data.get("roles", ["user"])),
             created_at=datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", None),
             require_password_change=data.get("require_password_change", True),
             last_password_change=datetime.fromisoformat(data["last_password_change"]) if data.get("last_password_change") else None,

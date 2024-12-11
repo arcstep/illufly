@@ -1,10 +1,11 @@
 from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime
-from .models import User, UserRole
 import secrets
 import string
-from ..common import StorageProtocol, FileStorage
 from pathlib import Path
+from ..common import StorageProtocol, FileStorage
+from ..auth.utils import verify_password, hash_password
+from .models import User, UserRole
 
 class UserManager:
     def __init__(self, storage: Optional[StorageProtocol[User]] = None):
@@ -80,8 +81,8 @@ class UserManager:
         user = User(
             username=username,
             email=email,
-            password_hash=User.hash_password(password),
-            roles=set(roles or [UserRole.USER]),
+            password_hash=hash_password(password),
+            roles=set(roles or [UserRole.USER, UserRole.GUEST]),
             created_at=datetime.now(),
             require_password_change=require_password_change,
             last_password_change=datetime.now() if not require_password_change else None,
@@ -98,7 +99,12 @@ class UserManager:
         if not user:
             return False, False
         
-        password_correct = user.verify_password(password)
+        try:
+            password_correct = verify_password(password, user.password_hash)
+        except Exception as e:
+            print(f"Password verification failed: {e}")
+            return False, False
+        
         need_change = (
             user.require_password_change or 
             user.is_password_expired()
@@ -127,52 +133,68 @@ class UserManager:
         if requester not in self._admin_usernames:
             return []
         
-        users = []
-        # 遍历用户目录
-        for user_dir in Path("__users__").iterdir():
-            if user_dir.is_dir():
-                username = user_dir.name
-                if user := self._storage.get(username, owner=username):
-                    users.append(user.to_dict(include_sensitive=False))
-        return users
+        try:
+            users = []
+            # 遍历用户目录
+            for user_dir in Path("__users__").iterdir():
+                if user_dir.is_dir():
+                    username = user_dir.name
+                    if user := self._storage.get(username, owner=username):
+                        users.append(user.to_dict(include_sensitive=False))
+            return users
+        except Exception as e:
+            print(f"Error listing users: {e}")
+            return []
 
     def update_user(self, username: str, **kwargs) -> bool:
         """更新用户信息"""
-        user = self._storage.get(username, owner=username)
-        if not user:
-            return False
+        try:    
+            user = self._storage.get(username, owner=username)
+            if not user:
+                return False
 
-        for key, value in kwargs.items():
-            if hasattr(user, key):
-                setattr(user, key, value)
-        self._storage.set(username, user, owner=username)
-        return True
+            for key, value in kwargs.items():
+                if hasattr(user, key):
+                    setattr(user, key, value)
+            self._storage.set(username, user, owner=username)
+            return True
+        except Exception as e:
+            print(f"Error updating user: {e}")
+            return False
 
     def change_password(self, username: str, old_password: str, new_password: str) -> bool:
         """修改用户密码"""
-        user = self._storage.get(username, owner=username)
-        if not user or not user.verify_password(old_password):
+        try:
+            user = self._storage.get(username, owner=username)        
+            if not user:
+                return False
+
+            user.password_hash = hash_password(new_password)
+            user.last_password_change = datetime.now()
+            user.require_password_change = False
+            
+            self._storage.set(username, user, owner=username)
+            return True
+        except Exception as e:
+            print(f"Error changing password: {e}")
             return False
-        
-        user.password_hash = User.hash_password(new_password)
-        user.last_password_change = datetime.now()
-        user.require_password_change = False
-        
-        self._storage.set(username, user, owner=username)
-        return True
 
     def reset_password(self, username: str, new_password: str, admin_required: bool = True) -> bool:
         """重置用户密码（管理员功能）"""
-        user = self._storage.get(username, owner=username)
-        if not user:
+        try:
+            user = self._storage.get(username, owner=username)
+            if not user:
+                return False
+        
+            user.password_hash = hash_password(new_password)
+            user.last_password_change = datetime.now()
+            user.require_password_change = True
+            
+            self._storage.set(username, user, owner=username)
+            return True
+        except Exception as e:
+            print(f"Error resetting password: {e}")
             return False
-        
-        user.password_hash = User.hash_password(new_password)
-        user.last_password_change = datetime.now()
-        user.require_password_change = True
-        
-        self._storage.set(username, user, owner=username)
-        return True
 
     def delete_user(self, username: str) -> bool:
         """删除用户"""
