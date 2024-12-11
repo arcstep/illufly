@@ -21,10 +21,10 @@ class UserRole(str, Enum):
 class User:
     """用户基础信息"""
     username: str
-    email: str
-    password_hash: str
     roles: Set[UserRole]
-    created_at: datetime
+    email: str = None
+    password_hash: str = None
+    created_at: datetime = None
     require_password_change: bool = True
     last_password_change: Optional[datetime] = None  # 新增：最后修改密码时间
     password_expires_days: int = 90  # 新增：密码有效期（天数）
@@ -92,10 +92,10 @@ class User:
         """从字典创建用户对象"""
         return cls(
             username=data["username"],
-            email=data["email"],
-            password_hash=data["password_hash"],
+            email=data.get("email", None),
+            password_hash=data.get("password_hash", None),
             roles=set(data.get("roles", ["user"])),
-            created_at=datetime.fromisoformat(data["created_at"]) if isinstance(data["created_at"], str) else data["created_at"],
+            created_at=datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", None),
             require_password_change=data.get("require_password_change", True),
             last_password_change=datetime.fromisoformat(data["last_password_change"]) if data.get("last_password_change") else None,
             password_expires_days=data.get("password_expires_days", 90),

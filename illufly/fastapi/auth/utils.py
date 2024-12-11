@@ -4,7 +4,9 @@ from fastapi import Response
 from ...config import get_env
 from .whitelist import (
     add_refresh_token_to_whitelist,
-    add_access_token_to_whitelist
+    add_access_token_to_whitelist,
+    remove_access_token_from_whitelist,
+    remove_refresh_token_from_whitelist
 )
 from passlib.context import CryptContext
 import re
@@ -19,7 +21,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 def verify_jwt(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload.get("username")
+        return payload
     except JWTError:
         return None
 
@@ -67,6 +69,7 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证密码"""
     return pwd_context.verify(plain_password, hashed_password)
+
 def validate_password(password: str) -> tuple[bool, Optional[str]]:
     """
     验证密码强度

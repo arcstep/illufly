@@ -7,7 +7,8 @@ This module defines the authentication-related API endpoints.
 from fastapi import Depends, HTTPException, status, Request, Response, Form
 from typing import Dict, Any
 from datetime import datetime
-from .dependencies import get_current_user
+from .dependencies import get_current_user, require_roles
+
 from .utils import (
     hash_password,
     validate_password,
@@ -17,7 +18,9 @@ from .utils import (
     create_refresh_token,
     set_auth_cookies,
     verify_password,
-    verify_jwt
+    verify_jwt,
+    remove_access_token_from_whitelist,
+    remove_refresh_token_from_whitelist
 )
 
 def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
@@ -162,7 +165,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
             response: FastAPI响应对象
             
         Returns:
-            JSONResponse: 包含用户信息和认证令牌的响���
+            JSONResponse: 包含用户信息和认证令牌的响应
             
         Raises:
             HTTPException:
@@ -210,7 +213,7 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
             "username": user_info["username"],
             "email": user_info["email"],
             "roles": user_info["roles"],
-            "need_change": need_change
+            "need_password_change": need_change
         }
 
         # 创建令牌
@@ -338,3 +341,48 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
         return {"message": "Logged out successfully"}
+
+    @app.post(f"{prefix}/auth/revoke-token")
+    async def revoke_token(
+        username: str = Form(...),
+        role_checker = require_roles([UserRole.ADMIN])
+    ):
+        """撤销用户令牌接口
+        
+        Args:
+            username: 要撤销令牌的用户名
+            role_checker: 当前管理员角色（通过依赖注入）
+            
+        Returns:
+            dict: 成功消息
+            
+        Raises:
+            HTTPException:
+                - 400: 用户不存在
+                - 403: 权限不足
+                - 500: 服务器内部错误
+        """
+        try:
+            # 检查目标用户是否存在
+            if not user_manager.get_user_info(username):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="User not found"
+                )
+
+            # 移除所有访问令牌和刷新令牌
+            remove_access_token_from_whitelist(username)
+            remove_refresh_token_from_whitelist(username)
+            
+            return {
+                "message": f"Successfully revoked all tokens for user {username}",
+                "username": username
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e)
+            )

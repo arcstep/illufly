@@ -6,8 +6,6 @@ from .utils import verify_jwt
 from .whitelist import is_access_token_in_whitelist
 
 async def get_current_user(request: Request):
-    from ..user import UserManager
-
     token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(
@@ -19,22 +17,23 @@ async def get_current_user(request: Request):
         if not is_access_token_in_whitelist(token):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token not in whitelist"
+                detail="Access-Token not in whitelist"
             )
 
-        username: str = verify_jwt(token)
-        if username is None:
+        token_data = verify_jwt(token)
+        if not token_data:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
+                detail="Invalid Access-Token"
             )
+        print("token_data", token_data)
+        return token_data
+
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials"
         )
-
-    return {"username": username}
 
 def require_roles(roles: Union["UserRole", List["UserRole"]], require_all: bool = False):
     """
@@ -44,12 +43,13 @@ def require_roles(roles: Union["UserRole", List["UserRole"]], require_all: bool 
         roles: 单个角色或角色列表
         require_all: True 表示需要具有所有指定角色，False 表示具有任意一个角色即可
     """
-    from ..user import UserRole
+    from ..user import User, UserRole
 
     if isinstance(roles, UserRole):
         roles = [roles]
 
     async def role_checker(current_user: dict = Depends(get_current_user)):
+        print("current_user", current_user)
         user = User.from_dict(current_user)
         
         if require_all and not user.has_all_roles(roles):
