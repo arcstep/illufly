@@ -8,10 +8,10 @@ def create_user_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
 
     @app.get(f"{prefix}/users")
     async def list_users(
-        current_user = Depends(require_roles([UserRole.ADMIN, UserRole.OPERATOR]))
+        current_user: dict = Depends(require_roles([UserRole.ADMIN, UserRole.OPERATOR]))
     ):
         """列出所有用户（需要管理员或运营角色）"""
-        return user_manager.list_users()
+        return user_manager.list_users(requester=current_user["username"])
 
     @app.post(f"{prefix}/users/{{username}}/roles")
     async def update_user_roles(
@@ -24,10 +24,17 @@ def create_user_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
 
     @app.get(f"{prefix}/users/me")
     async def get_current_user_info(
-        current_user: dict = Depends(get_current_user)  # 所有已认证用户
+        current_user: dict = Depends(get_current_user)
     ):
         """获取当前用户信息"""
-        return current_user
+        username = current_user["username"]
+        user_info = user_manager.get_user_info(username)
+        if not user_info:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+        return user_info
 
     @app.patch(f"{prefix}/users/me/settings")
     async def update_user_settings(
@@ -36,6 +43,6 @@ def create_user_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
     ):
         """更新用户设置"""
         username = current_user["username"]
-        if user_manager.update_user_settings(username, settings):
+        if user_manager.update_user(username, settings=settings):
             return {"message": "Settings updated successfully"}
         raise HTTPException(status_code=400, detail="Failed to update settings")

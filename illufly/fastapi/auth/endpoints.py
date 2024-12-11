@@ -81,13 +81,6 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
                     detail=username_error
                 )
 
-            # 验证用户名是否已存在
-            if user_manager.get_user_context(username):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Username already registered"
-                )
-
             # 验证邮箱
             email_valid, email_error = validate_email(email)
             if not email_valid:
@@ -111,38 +104,40 @@ def create_auth_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
                     detail="Invalid invite code"
                 )
 
-            # 创建用户（默认为普通用户角色）
-            now = datetime.now()
-            user = User(
+            # 创建用户
+            success, _ = user_manager.create_user(
                 username=username,
+                password=password,
                 email=email,
-                roles={UserRole.USER},  # 默认角色
-                created_at=now,
-                last_login=now
-            )
-
-            # 保存用户
-            success = user_manager.create_user(
-                user=user,
-                password_hash=hash_password(password)
+                roles=[UserRole.USER, UserRole.GUEST],
+                require_password_change=False
             )
 
             if not success:
                 raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="用户名或邮箱已存在"
+                )
+
+            # 获取用户信息用于生成令牌
+            user_info = user_manager.get_user_info(username)
+            if not user_info:
+                raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create user"
+                    detail="Failed to retrieve user info"
                 )
 
             # 自动登录
-            user_info = {
+            token_data = {
                 "username": username,
-                "email": email
+                "email": email,
+                "roles": user_info["roles"]
             }
-            access_token = create_access_token(data=user_info)
-            refresh_token = create_refresh_token(data=user_info)
+            access_token = create_access_token(data=token_data)
+            refresh_token = create_refresh_token(data=token_data)
             set_auth_cookies(response, access_token, refresh_token)
 
-            return user.to_dict()
+            return user_info
 
         except HTTPException:
             raise

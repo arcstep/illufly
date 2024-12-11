@@ -27,10 +27,11 @@ class UserManager:
         admin_email = "admin@illufly.com"
         if not self.get_user("admin", "admin"):
             self.create_user(
-                email=admin_email, 
                 username="admin", 
-                roles=[UserRole.ADMIN], 
-                password="admin"
+                password="admin",
+                email=admin_email, 
+                roles=[UserRole.ADMIN, UserRole.OPERATOR, UserRole.USER, UserRole.GUEST],
+                require_password_change=False
             )
 
     def get_user(self, username: str, requester: str) -> Optional[User]:
