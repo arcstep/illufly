@@ -112,9 +112,15 @@ class UserManager:
         if not user:
             return False
 
-        user.roles = set(roles)
-        self._storage.set(username, user, owner=username)
-        return True
+        try:
+            # 将字符串角色转换为 UserRole 枚举类型
+            user_roles = {UserRole(role) for role in roles}
+            user.roles = user_roles
+            self._storage.set(username, user, owner=username)
+            return True
+        except ValueError:
+            # 如果传入的角色值无效，返回 False
+            return False
 
     def list_users(self, requester: str) -> List[Dict[str, Any]]:
         """列出所有用户（不包含敏感信息）"""

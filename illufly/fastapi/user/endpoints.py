@@ -20,7 +20,23 @@ def create_user_endpoints(app, user_manager: "UserManager", prefix: str="/api"):
         current_user: dict = Depends(require_roles(UserRole.ADMIN))
     ):
         """更新用户角色（仅管理员）"""
-        return user_manager.update_user_roles(username, roles)
+        # 检查用户是否存在
+        user_info = user_manager.get_user_info(username)
+        if not user_info:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+        
+        # 更新用户角色
+        if user_manager.update_user_roles(username, roles):
+            return {"message": "User roles updated successfully"}
+        
+        # 如果更新失败，返回错误信息
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to update user roles"
+        )
 
     @app.get(f"{prefix}/users/me")
     async def get_current_user_info(
