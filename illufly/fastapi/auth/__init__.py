@@ -1,2 +1,2 @@
 from .dependencies import AuthDependencies
-from .manager import AuthManager, Token
+from .manager import AuthManager, Token, TokenStorage

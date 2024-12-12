@@ -27,6 +27,7 @@ matplotlib = "^3.9.2"
 passlib = {version = "^1.7.4", extras = ["bcrypt"]}
 argon2-cffi = "^23.1.0"
 python-multipart = "^0.0.9"
+freezegun = "^1.2.0"
 
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "^1.0.1"
