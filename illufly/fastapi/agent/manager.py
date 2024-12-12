@@ -5,6 +5,7 @@ from ...config import get_env
 from ...types import VectorDB
 from ..vectordb import VectorDBManager
 from ..common import StorageProtocol, FileStorage
+from ..user import UserManager
 from .models import AgentConfig
 from .factory import AgentFactory
 
@@ -13,11 +14,15 @@ __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 class AgentManager:
     def __init__(
         self,
-        storage: Optional[StorageProtocol[Dict[str, AgentConfig]]] = None,
-        vectordb_manager: Optional[VectorDBManager] = None,
+        user_manager: UserManager,
+        vectordb_manager: VectorDBManager,
         agent_factory: Optional[AgentFactory] = None,
+        storage: Optional[StorageProtocol[Dict[str, AgentConfig]]] = None,
     ):
         """初始化代理管理器"""
+        self.user_manager = user_manager
+        self.vectordb_manager = vectordb_manager
+
         if storage is None:
             storage = FileStorage[Dict[str, AgentConfig]](
                 data_dir=__USERS_PATH__,
@@ -32,15 +37,11 @@ class AgentManager:
                 },
                 use_id_subdirs=True
             )
-        self._storage = storage
 
-        # 使用向量库管理器
-        self.vectordb_manager = vectordb_manager or VectorDBManager()
-
-        if agent_factory is None:
-            agent_factory = AgentFactory()
-        self._agent_factory = agent_factory        
+        self._agent_factory = agent_factory or AgentFactory()   
         self._agent_instances = {}
+
+        self._storage = storage
 
     def _get_user_storage(self, user_id: str) -> StorageProtocol:
         """获取用户特定的存储实例"""
@@ -59,7 +60,7 @@ class AgentManager:
         **kwargs
     ) -> bool:
         """创建代理"""
-        if requester_id != user_id:
+        if not self.user_manager.can_access_user(user_id, requester_id):
             return {
                 "success": False,
                 "message": "You are not allowed to create agents for other users."
@@ -73,10 +74,16 @@ class AgentManager:
                     "message": f"Vector database '{db_name}' does not exist."
                 }
 
-        # 获取用户的代理配置
-        user_agents = self._storage.get("agents", owner_id=user_id) or {}
-        
         try:
+            # 获取用户的代理配置
+            user_agents = self._storage.get("agents", owner_id=user_id) or {}
+            
+            if agent_name in user_agents:
+                return {
+                    "success": False,
+                    "message": "Agent already exists"
+                }
+
             config = AgentFactory.create_agent(
                 user_id=user_id,
                 agent_type=agent_type,
@@ -91,7 +98,7 @@ class AgentManager:
                 "message": "Agent created successfully."
             }
 
-        except ValueError as e:
+        except Exception as e:
             return {
                 "success": False,
                 "message": str(e)
@@ -99,27 +106,44 @@ class AgentManager:
 
     def get_agent(self, user_id: str, agent_name: str, requester_id: str) -> Optional[Any]:
         """获取代理实例"""
-        if requester_id != user_id:
-            return None
+        if not self.user_manager.can_access_user(user_id, requester_id):
+            return {
+                "success": False,
+                "message": "You cannot access this agent"
+            }
 
         user_agents = self._storage.get("agents", owner_id=user_id)
         if not user_agents or agent_name not in user_agents:
-            return None
+            return {
+                "success": False,
+                "message": "Agent not found"
+            }
             
         if user_id not in self._agent_instances:
             self._agent_instances[user_id] = {}
         
         instance = self._agent_instances[user_id].get(agent_name)
         if instance:
-            return instance
+            return {
+                "success": True,
+                "message": "Agent retrieved successfully",
+                "instance": instance
+            }
 
         agent_config = user_agents[agent_name]
         
         # 创建实例
+        vectordb_instances=[]
+        for db_name in agent_config.vectordbs:
+            resp = self.vectordb_manager.get_db(user_id, db_name, requester_id)
+            if resp['success']:
+                vectordb_instances.append(resp['instance'])
+            else:
+                return resp
         instance = self._agent_factory.create_agent_instance(
             user_id=user_id,
-            agent_name=agent_name,
             agent_config=agent_config,
+            vectordb_instances=vectordb_instances
         )
 
         self._agent_instances[user_id][agent_name] = instance
@@ -128,16 +152,27 @@ class AgentManager:
         agent_config.last_used = datetime.now()
         self._storage.set("agents", user_agents, owner_id=user_id)
         
-        return instance
+        return {
+            "success": True,
+            "message": "Agent retrieved successfully",
+            "instance": instance
+        }
 
     def list_agents(self, user_id: str, requester_id: str) -> List[Dict[str, Any]]:
         """列出用户的所有代理"""
-        if requester_id != user_id:
-            return []
+        if not self.user_manager.can_access_user(user_id, requester_id):
+            return {
+                "success": False,
+                "message": "You cannot access this agent"
+            }
 
         data = self._storage.get("agents", owner_id=user_id)
         if not data:
-            return []
+            return {
+                "success": True,
+                "message": "No agents found",
+                "data": []
+            }
         
         return [
             agent_config.to_dict()
@@ -146,12 +181,18 @@ class AgentManager:
 
     def remove_agent(self, user_id: str, agent_name: str, requester_id: str) -> bool:
         """移除代理"""
-        if requester_id != user_id:
-            return False
+        if not self.user_manager.can_access_user(user_id, requester_id):
+            return {
+                "success": False,
+                "message": "You cannot access this agent"
+            }
             
         user_agents = self._storage.get("agents", owner_id=user_id)
         if not user_agents or agent_name not in user_agents:
-            return False
+            return {
+                "success": False,
+                "message": "Agent not found"
+            }
         
         agent_info = user_agents.pop(agent_name)
         
@@ -162,7 +203,10 @@ class AgentManager:
             storage.set("agents", user_agents, owner_id=user_id)
         else:
             storage.delete("agents", owner_id=user_id)
-        return True
+        return {
+            "success": True,
+            "message": "Agent removed successfully"
+        }
 
     def update_agent_config(
         self, 
@@ -172,13 +216,19 @@ class AgentManager:
         requester_id: str
     ) -> bool:
         """更新代理配置"""
-        if requester_id != user_id:  # 权限检查
-            return False
+        if not self.user_manager.can_access_user(user_id, requester_id):
+            return {
+                "success": False,
+                "message": "You cannot access this agent"
+            }
             
         storage = self._get_user_storage(user_id)
         user_agents = storage.get("agents", owner_id=user_id)
         if not user_agents or agent_name not in user_agents:
-            return False
+            return {
+                "success": False,
+                "message": "Agent not found"
+            }
         
         agent_info = user_agents[agent_name]
         if hasattr(agent_info, 'config'):
@@ -190,9 +240,15 @@ class AgentManager:
             try:
                 agent_info.instance.reconfigure(config_updates)
             except Exception:
-                return False
+                return {
+                    "success": False,
+                    "message": "Failed to reconfigure agent"
+                }
         
         storage.set("agents", user_agents, owner_id=user_id)
-        return True 
+        return {
+            "success": True,
+            "message": "Agent configuration updated successfully"
+        }
 
 

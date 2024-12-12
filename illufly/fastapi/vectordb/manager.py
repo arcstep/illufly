@@ -119,7 +119,7 @@ class VectorDBManager:
         if not self.user_manager.can_access_user(user_id, requester_id):
             return {
                 "success": False,
-                "message": "You are not allowed to access database"
+                "message": "You cannot access this database"
             }
 
         # 检查缓存
