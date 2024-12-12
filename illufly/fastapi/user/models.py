@@ -36,6 +36,7 @@ class User:
     last_failed_login: Optional[datetime] = None  # 新增：最后一次登录失败时间
     is_locked: bool = False  # 新增：账户是否锁定
     is_active: bool = True
+    verify_invite_code: str = None  # 新增：邀请码字段
 
     def is_password_expired(self) -> bool:
         """检查密码是否过期"""
@@ -74,7 +75,8 @@ class User:
             "failed_login_attempts": self.failed_login_attempts,
             "last_failed_login": self.last_failed_login.isoformat() if self.last_failed_login else None,
             "is_locked": self.is_locked,
-            "is_active": self.is_active
+            "is_active": self.is_active,
+            "verify_invite_code": self.verify_invite_code  # 新增：添加邀请码到输出字典
         }
         
         if include_sensitive:
@@ -99,7 +101,8 @@ class User:
             failed_login_attempts=data.get("failed_login_attempts", 0),
             last_failed_login=datetime.fromisoformat(data["last_failed_login"]) if data.get("last_failed_login") else None,
             is_locked=data.get("is_locked", False),
-            is_active=data.get("is_active", True)
+            is_active=data.get("is_active", True),
+            verify_invite_code=data.get("verify_invite_code", None)  # 新增：从字典中获取邀请码
         )
 
     def __post_init__(self):

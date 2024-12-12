@@ -1,2 +1,2 @@
-from .storage import StorageProtocol
-from .file_storage import FileStorage
+from .storage import ConfigStoreProtocol
+from .file_storage import FileConfigStore

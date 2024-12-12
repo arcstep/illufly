@@ -146,9 +146,9 @@ def create_agent_endpoints(
         raise HTTPException(status_code=400, detail="Failed to create vectordb")
 
     # 知识库管理端点
-    @app.get(f"{prefix}/knowledge")
+    @app.get(f"{prefix}/vectordbs/{{db_name}}/knowledge")
     async def list_knowledge(
-        db_name: str = Query(..., description="知识库名称"),
+        db_name: str,
         page: int = Query(1, ge=1),
         page_size: int = Query(10, ge=1, le=100),
         sort_by: str = Query("id", regex="^(id|summary|source|tags)$"),
@@ -172,10 +172,10 @@ def create_agent_endpoints(
             match_all_tags=match_all_tags
         )
 
-    @app.get(f"{prefix}/knowledge/{{knowledge_id}}")
+    @app.get(f"{prefix}/vectordbs/{{db_name}}/knowledge/{{knowledge_id}}")
     async def get_knowledge(
         knowledge_id: str,
-        db_name: str = Query(..., description="知识库名称"),
+        db_name: str,
         current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """获取知识详情"""
@@ -193,9 +193,9 @@ def create_agent_endpoints(
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Knowledge not found")
 
-    @app.post(f"{prefix}/knowledge")
+    @app.post(f"{prefix}/vectordbs/{{db_name}}/knowledge")
     async def create_knowledge(
-        db_name: str = Query(..., description="知识库名称"),
+        db_name: str,
         content: str = Form(...),
         tags: Optional[List[str]] = Form(None),
         summary: Optional[str] = Form(""),
@@ -222,10 +222,10 @@ def create_agent_endpoints(
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    @app.put(f"{prefix}/knowledge/{{knowledge_id}}")
+    @app.put(f"{prefix}/vectordbs/{{db_name}}/knowledge/{{knowledge_id}}")
     async def update_knowledge(
         knowledge_id: str,
-        db_name: str = Query(..., description="知识库名称"),
+        db_name: str,
         content: Optional[str] = Form(None),
         tags: Optional[str] = Form(None),
         summary: Optional[str] = Form(None),
@@ -253,10 +253,10 @@ def create_agent_endpoints(
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="知识不存在")
 
-    @app.delete(f"{prefix}/knowledge/{{knowledge_id}}")
+    @app.delete(f"{prefix}/vectordbs/{{db_name}}/knowledge/{{knowledge_id}}")
     async def delete_knowledge(
         knowledge_id: str,
-        db_name: str = Query(..., description="知识库名称"),
+        db_name: str,
         current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """删除知识"""
@@ -271,11 +271,11 @@ def create_agent_endpoints(
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="知识不存在")
 
-    # 知识库搜索���点
-    @app.get(f"{prefix}/knowledge/search")
+    # 知识库搜索
+    @app.get(f"{prefix}/vectordbs/{{db_name}}/knowledge/search")
     async def search_knowledge(
+        db_name: str,
         query: str = Query(..., description="搜索查询"),
-        db_name: str = Query(..., description="知识库名称"),
         limit: int = Query(10, ge=1, le=100),
         current_user: dict = Depends(auth_manager.get_current_user)
     ):
@@ -293,3 +293,12 @@ def create_agent_endpoints(
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+    
+    return {
+        "list_agents": list_agents,
+        "create_agent": create_agent,
+        "get_agent_info": get_agent_info,
+        "chat_with_agent": chat_with_agent,
+        "update_agent": update_agent,
+        "delete_agent": delete_agent
+    }

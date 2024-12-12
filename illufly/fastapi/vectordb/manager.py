@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime
 from ...config import get_env
 from ...core.runnable.vectordb import VectorDB
-from ..common import StorageProtocol, FileStorage
+from ..common import ConfigStoreProtocol, FileConfigStore
 from ..user import UserManager
 from .models import VectorDBConfig
 
@@ -14,7 +14,7 @@ class VectorDBManager:
     def __init__(
         self,
         user_manager: UserManager,
-        storage: Optional[StorageProtocol[Dict[str, VectorDBConfig]]] = None
+        storage: Optional[ConfigStoreProtocol[Dict[str, VectorDBConfig]]] = None
     ):
         """初始化向量库管理器
         Args:
@@ -23,7 +23,7 @@ class VectorDBManager:
         self.user_manager = user_manager
 
         if storage is None:
-            storage = FileStorage[Dict[str, VectorDBConfig]](
+            storage = FileConfigStore[Dict[str, VectorDBConfig]](
                 data_dir=Path(__USERS_PATH__),
                 filename="vectordb.json",
                 serializer=lambda dbs: {

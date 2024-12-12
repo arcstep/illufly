@@ -4,7 +4,7 @@ from datetime import datetime
 from ...config import get_env
 from ...types import VectorDB
 from ..vectordb import VectorDBManager
-from ..common import StorageProtocol, FileStorage
+from ..common import ConfigStoreProtocol, FileConfigStore
 from ..user import UserManager
 from .models import AgentConfig
 from .factory import AgentFactory
@@ -17,14 +17,14 @@ class AgentManager:
         user_manager: UserManager,
         vectordb_manager: VectorDBManager,
         agent_factory: Optional[AgentFactory] = None,
-        storage: Optional[StorageProtocol[Dict[str, AgentConfig]]] = None,
+        storage: Optional[ConfigStoreProtocol[Dict[str, AgentConfig]]] = None,
     ):
         """初始化代理管理器"""
         self.user_manager = user_manager
         self.vectordb_manager = vectordb_manager
 
         if storage is None:
-            storage = FileStorage[Dict[str, AgentConfig]](
+            storage = FileConfigStore[Dict[str, AgentConfig]](
                 data_dir=__USERS_PATH__,
                 filename="agent.json",
                 serializer=lambda agents: {
@@ -43,7 +43,7 @@ class AgentManager:
 
         self._storage = storage
 
-    def _get_user_storage(self, user_id: str) -> StorageProtocol:
+    def _get_user_storage(self, user_id: str) -> ConfigStoreProtocol:
         """获取用户特定的存储实例"""
         user_storage = self._storage.clone()
         user_storage.data_dir = Path(__USERS_PATH__) / user_id

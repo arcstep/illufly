@@ -14,33 +14,36 @@ class AuthDependencies:
 
         # 1. 验证访问令牌
         if access_token:
-            if self.auth_manager.is_token_valid(access_token, "access"):
+            token_valid = self.auth_manager.is_token_valid(access_token, "access")
+            if token_valid["success"]:
                 try:
-                    payload = self.auth_manager.verify_jwt(access_token)
-                    if payload:
-                        return payload
+                    verify_result = self.auth_manager.verify_jwt(access_token)
+                    if verify_result["success"]:
+                        return verify_result["payload"]
                 except JWTError:
-                    self.auth_manager.remove_user_tokens(access_token)
+                    # 移除无效的访问令牌
+                    self.auth_manager.invalidate_token(access_token)
 
         # 2. 尝试使用刷新令牌
         if refresh_token:
-            if self.auth_manager.is_token_valid(refresh_token, "refresh"):
+            refresh_valid = self.auth_manager.is_token_valid(refresh_token, "refresh")
+            if refresh_valid["success"]:
                 try:
-                    refresh_payload = self.auth_manager.verify_jwt(refresh_token)
-                    if refresh_payload:
+                    refresh_result = self.auth_manager.verify_jwt(refresh_token)
+                    if refresh_result["success"]:
                         # 创建新的访问令牌
-                        new_access_token = self.auth_manager.create_access_token(refresh_payload)
-                        
-                        # 如果旧的访问令牌存在，移除它
-                        if access_token:
-                            self.auth_manager.remove_user_tokens(access_token)
-                        
-                        # 设置新的访问令牌
-                        self.auth_manager.set_auth_cookies(response, access_token=new_access_token)
-                        
-                        return refresh_payload
+                        new_token_result = self.auth_manager.create_access_token(refresh_result["payload"])
+                        if new_token_result["success"]:
+                            # 如果旧的访问令牌存在，使其失效
+                            if access_token:
+                                self.auth_manager.invalidate_token(access_token)
+                            
+                            # 设置新的访问令牌
+                            self.auth_manager.set_auth_cookies(response, access_token=new_token_result["token"])
+                            
+                            return refresh_result["payload"]
                 except JWTError:
-                    pass
+                    self.auth_manager.invalidate_token(refresh_token)
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

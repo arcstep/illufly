@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Response, HTTPException, status
+from fastapi import APIRouter, Form, Depends, Response, HTTPException, status
 from typing import Dict, Any, List
 from ..auth import AuthManager
 from .manager import UserManager
 from .models import User, UserRole
+from jose import JWTError
 
 def create_user_endpoints(
         app, 
@@ -10,17 +11,42 @@ def create_user_endpoints(
         auth_manager: AuthManager,
         prefix: str="/api"
     ):
-    """用户相关的端点，主要处理用户信息和设置"""
+    """创建用户相关的API端点
+
+    Args:
+        app: FastAPI应用实例
+        user_manager (UserManager): 用户管理器实例
+        auth_manager (AuthManager): 认证管理器实例
+        prefix (str, optional): API路由前缀. 默认为 "/api"
+
+    Returns:
+        dict: 包含所有注册的端点函数的字典
+    """
 
     def _create_token_data(user_info: dict) -> dict:
+        """从用户信息中提取JWT令牌所需的数据
+
+        Args:
+            user_info (dict): 用户信息字典
+
+        Returns:
+            dict: 包含令牌所需字段的字典，包括:
+                - user_id: 用户ID
+                - username: 用户名
+                - email: 电子邮箱
+                - roles: 用户角色列表
+                - is_locked: 账户是否锁定
+                - is_active: 账户是否激活
+                - require_password_change: 是否需要修改密码
+        """
         return {
             "user_id": user_info["user_id"],
             "username": user_info["username"],
             "email": user_info["email"],
             "roles": user_info["roles"],
-            "is_locked": user_info["is_locked"],
-            "is_active": user_info["is_active"],
-            "need_password_change": user_info["need_password_change"],
+            "is_locked": user_info.get("is_locked", False),
+            "is_active": user_info.get("is_active", True),
+            "require_password_change": user_info.get("require_password_change", False)
         }
 
     @app.post(f"{prefix}/auth/register")
@@ -62,27 +88,27 @@ def create_user_endpoints(
                 )
 
             # 验证用户名格式
-            username_valid, username_error = auth_manager.validate_username(username)
-            if not username_valid:
+            result = auth_manager.validate_username(username)
+            if not result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=username_error
+                    detail=result["error"]
                 )
 
             # 验证邮箱
-            email_valid, email_error = auth_manager.validate_email(email)
-            if not email_valid:
+            result = auth_manager.validate_email(email)
+            if not result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=email_error
+                    detail=result["error"]
                 )
 
             # 验证密码强度
-            password_valid, password_error = auth_manager.validate_password(password)
-            if not password_valid:
+            result = auth_manager.validate_password(password)
+            if not result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=password_error
+                    detail=result["error"]
                 )
 
             # 验证邀请码（如果需要）
@@ -93,7 +119,8 @@ def create_user_endpoints(
                 )
 
             # 创建用户
-            success, _, user = user_manager.create_user(
+            print(">>> username", username)
+            result = user_manager.create_user(
                 username=username,
                 password=password,
                 email=email,
@@ -101,13 +128,15 @@ def create_user_endpoints(
                 require_password_change=False
             )
 
-            if not success:
+            if not result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="用户名或邮箱已存在"
+                    detail=result["error"]
                 )
 
+            user = result["user"]
             # 获取用户信息用于生成令牌
+            print(">>> user", user)
             user_info = user_manager.get_user_info(user.user_id)
             if not user_info:
                 raise HTTPException(
@@ -116,12 +145,17 @@ def create_user_endpoints(
                 )
 
             # 自动登录
+            print(">>> user_info", user_info)
             token_data = _create_token_data(user_info)
+            print(">>> token_data", token_data)
             access_token = auth_manager.create_access_token(data=token_data)
             refresh_token = auth_manager.create_refresh_token(data=token_data)
-            auth_manager.set_auth_cookies(response, access_token, refresh_token)
+            auth_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
 
-            return user_info
+            return {
+                "success": True,
+                "user_info": user_info
+            }
 
         except HTTPException:
             raise
@@ -160,20 +194,15 @@ def create_user_endpoints(
             )
             
         # 验证密码
-        is_valid, need_change = user_manager.verify_user_password(username, password)
-        if not is_valid:
+        verify_result = user_manager.verify_user_password(username, password)
+        if not verify_result["success"]:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid username or password"
+                detail=verify_result["error"]
             )
 
-        # 获取用户信息
-        user_info = user_manager.get_user_info(user_id)
-        if not user_info:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found"
-            )
+        user_info = verify_result["user"]
+        require_password_change = verify_result["require_password_change"]
 
         # 检查账户状态
         if user_info.get("is_locked"):
@@ -188,23 +217,15 @@ def create_user_endpoints(
                 detail="Account is inactive"
             )
 
-        # 提取JWT所需的关键信息
         token_data = _create_token_data(user_info)
-
-        # 创建令牌
         access_token = auth_manager.create_access_token(data=token_data)
         refresh_token = auth_manager.create_refresh_token(data=token_data)
-        auth_manager.set_auth_cookies(response, access_token, refresh_token)
+        auth_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
 
-        # 返回必要的用户信息
         return {
-            "user_id": user_info["user_id"],
-            "username": user_info["username"],
-            "email": user_info["email"],
-            "roles": user_info["roles"],
-            "is_locked": user_info["is_locked"],
-            "is_active": user_info["is_active"],
-            "need_password_change": need_change
+            "success": True,
+            "token_data": token_data,
+            "require_password_change": require_password_change
         }
 
     @app.post(f"{prefix}/auth/change-password")
@@ -230,33 +251,49 @@ def create_user_endpoints(
         """
         try:
             try:
-                valid_pass, _ = user_manager.verify_user_password(current_user["username"], current_password)
-                if not valid_pass:
+                verify_old_result = user_manager.verify_user_password(
+                    username=current_user["username"],
+                    password=current_password
+                )
+                if not verify_old_result["success"]:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Current password is incorrect"
+                        detail=verify_old_result["error"]
                     )
+                print(">>> verify_old_result", verify_old_result)
             except Exception as e:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=str(e)
                 )
 
-            password_valid, password_error = auth_manager.validate_password(new_password)
-            if not password_valid:
+            validate_result = auth_manager.validate_password(new_password)
+            if not validate_result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=password_error
+                    detail=validate_result["error"]
                 )
+            print(">>> validate_result", validate_result)
 
-            result = user_manager.change_password(current_user["user_id"], current_password, new_password)
-            if not result:
+            change_result = user_manager.change_password(
+                user_id=current_user["user_id"],
+                old_password=current_password,
+                new_password=new_password
+            )
+            if not change_result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Failed to change password"
+                    detail=change_result["error"]
                 )
-            return {"message": "Password changed successfully"}
+            print(">>> change_result", change_result)
 
+            return {
+                "success": True,
+                "message": "Password changed successfully"
+            }
+
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -289,23 +326,85 @@ def create_user_endpoints(
                 detail="Response is required"
             )
         try:
-            username = auth_manager.verify_jwt(refresh_token)
-            if not username:
+            # 验证令牌格式
+            if not refresh_token or len(refresh_token.split(".")) != 3:
                 raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid refresh token"
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="无效的刷新令牌格式"
                 )
 
-            user_info = user_manager.get_user_info(user_id, include_sensitive=False)
-            access_token = auth_manager.create_access_token(data=user_info)
-            auth_manager.set_auth_cookies(response, access_token=access_token)
+            # 首先验证刷新令牌是否有效
+            valid_result = auth_manager.is_token_valid(refresh_token, "refresh")
+            if not valid_result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=valid_result.get("error", "刷新令牌无效")
+                )
 
-            return {"access_token": access_token}
+            # 验证并解码刷新令牌
+            verify_result = auth_manager.verify_jwt(refresh_token)
+            if not verify_result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=verify_result.get("error", "刷新令牌验证失败")
+                )
 
+            # 获取最新的用户信息
+            user_info = user_manager.get_user_info(current_user["user_id"])
+            if not user_info:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="获取用户信息失败"
+                )
+
+            # 使旧的刷新令牌失效
+            invalidate_result = auth_manager.invalidate_token(refresh_token)
+            if not invalidate_result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=invalidate_result.get("error", "使令牌失效失败")
+                )
+
+            # 创建新的令牌
+            token_data = _create_token_data(user_info)
+            access_token_result = auth_manager.create_access_token(data=token_data)
+            if not access_token_result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=access_token_result.get("error", "创建新访问令牌失败")
+                )
+
+            refresh_token_result = auth_manager.create_refresh_token(data=token_data)
+            if not refresh_token_result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=refresh_token_result.get("error", "创建新刷新令牌失败")
+                )
+
+            # 设置新的令牌cookie
+            auth_manager.set_auth_cookies(
+                response, 
+                access_token_result["token"],
+                refresh_token_result["token"]
+            )
+
+            return {
+                "success": True,
+                "access_token": access_token_result["token"],
+                "refresh_token": refresh_token_result["token"]
+            }
+
+        except HTTPException:
+            raise
+        except JWTError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"令牌验证失败: {str(e)}"
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=str(e)
+                detail=f"刷新令牌时发生错误: {str(e)}"
             )
 
     @app.post(f"{prefix}/auth/logout")
@@ -327,29 +426,37 @@ def create_user_endpoints(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Response is required"
             )
+
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
         auth_manager.remove_user_tokens(current_user["username"])
-        return {"message": "Logged out successfully"}
+
+        return {
+            "success": True,
+            "message": "Logged out successfully"
+        }
 
     @app.post(f"{prefix}/auth/revoke-token")
     async def revoke_token(
         username: str = Form(...),
         current_user = Depends(auth_manager.require_roles([UserRole.ADMIN]))
     ):
-        """撤销用户令牌接口
-        
+        """撤销指定用户的所有令牌（访问令牌和刷新令牌）
+
         Args:
-            username: 要撤销令牌的用户名
-            role_checker: 当前管理员角色（通过依赖注入）
-            
+            username (str): 要撤销令牌的用户名
+            current_user (dict): 当前管理员用户信息（通过依赖注入）
+
         Returns:
-            dict: 成功消息
-            
+            dict: 包含操作结果的字典:
+                - success (bool): 操作是否成功
+                - message (str): 操作结果消息
+                - username (str): 被操作的用户名
+
         Raises:
             HTTPException:
                 - 400: 用户不存在
-                - 403: 权限不足
+                - 403: 当前用户权限不足
                 - 500: 服务器内部错误
         """
         try:
@@ -363,6 +470,7 @@ def create_user_endpoints(
             auth_manager.remove_user_tokens(username)
             
             return {
+                "success": True,
                 "message": f"Successfully revoked all tokens for user {username}",
                 "username": username
             }
@@ -400,6 +508,7 @@ def create_user_endpoints(
             auth_manager.remove_user_tokens(username)
             
             return {
+                "success": True,
                 "message": f"Successfully revoked access tokens for user {username}",
                 "username": username
             }
@@ -412,27 +521,29 @@ def create_user_endpoints(
                 detail=str(e)
             )
 
-    return {
-        "register": register,
-        "login": login,
-        "logout": logout,
-        "refresh_token": refresh_token,
-        "change_password": change_password,
-        "revoke_token": revoke_token,
-        "revoke_access_token": revoke_access_token
-    }
-
     @app.get(f"{prefix}/users")
     async def list_users(
         current_user: dict = Depends(auth_manager.require_roles([UserRole.ADMIN, UserRole.OPERATOR]))
     ):
-        """列出所有用户（需要管理员或运营角色）"""
+        """获取系统中所用户的列表
+
+        Args:
+            current_user (dict): 当前用户信息（必须是管理员或运营角色）
+
+        Returns:
+            List[dict]: 用户信息列表，每个用户包含基本信息
+
+        Raises:
+            HTTPException:
+                - 403: 权限不足
+                - 500: 服务器内部错误
+        """
         return user_manager.list_users(requester=current_user["user_id"])
 
     @app.post(f"{prefix}/users/roles")
     async def update_user_roles(
-        user_id: str,
-        roles: List[str],
+        user_id: str = Form(...),
+        roles: List[str] = Form(...),
         current_user: dict = Depends(auth_manager.require_roles(UserRole.ADMIN))
     ):
         """更新用户角色（仅管理员）"""
@@ -446,7 +557,10 @@ def create_user_endpoints(
         
         # 更新用户角色
         if user_manager.update_user_roles(user_id, roles):
-            return {"message": "User roles updated successfully"}
+            return {
+                "success": True,
+                "message": "User roles updated successfully"
+            }
         
         # 如果更新失败，返回错误信息
         raise HTTPException(
@@ -473,10 +587,28 @@ def create_user_endpoints(
         settings: Dict[str, Any],
         current_user: dict = Depends(auth_manager.get_current_user)
     ):
-        """更新用户设置"""
+        """更新当前用户的个人设置
+
+        Args:
+            settings (Dict[str, Any]): 要更新的设置键值对
+            current_user (dict): 当前用户信息
+
+        Returns:
+            dict: 包含操作结果的字典:
+                - success (bool): 操作是否成功
+                - message (str): 操作结果消息
+
+        Raises:
+            HTTPException:
+                - 400: 设置更新失败
+                - 500: 服务器内部错误
+        """
         user_id = current_user["user_id"]
         if user_manager.update_user(user_id, settings=settings):
-            return {"message": "Settings updated successfully"}
+            return {
+                "success": True,
+                "message": "Settings updated successfully"
+            }
         raise HTTPException(status_code=400, detail="Failed to update settings")
 
     @app.patch(f"{prefix}/users/me/password")
@@ -490,16 +622,103 @@ def create_user_endpoints(
             old_password=password_data["old_password"],
             new_password=password_data["new_password"]
         ):
-            return {"message": "Password changed successfully"}
+            return {
+                "success": True,
+                "message": "Password changed successfully"
+            }
         raise HTTPException(status_code=400, detail="Failed to change password")
 
-    @app.post(f"{prefix}/users/{user_id}/reset-password")
+    @app.post(f"{prefix}/users/{{user_id}}/reset-password")
     async def reset_user_password(
         user_id: str,
-        password_data: dict,
-        current_user: dict = Depends(auth_manager.require_roles(UserRole.ADMIN))
+        new_password: str = Form(...),
+        current_user: dict = Depends(auth_manager.require_roles([UserRole.ADMIN]))
     ):
-        """重置用户密码（管理员功能）"""
-        if user_manager.reset_password(user_id, password_data["new_password"]):
-            return {"message": "Password reset successfully"}
-        raise HTTPException(status_code=400, detail="Failed to reset password")
+        """管理员重置指定用户的密码
+
+        Args:
+            user_id (str): 目标用户ID
+            new_password: 新的密码
+            current_user (dict): 当前管理员用户信息
+
+        Returns:
+            dict: 包含操作结果的字典:
+                - success (bool): 操作是否成功
+                - message (str): 操作结果消息
+
+        Raises:
+            HTTPException:
+                - 400: 密码重置失败
+                - 403: 权限不足
+                - 500: 服务器内部错误
+        """
+        # 验证新密码强度
+        result = auth_manager.validate_password(new_password)
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"]
+            )
+
+        # 重置密码
+        result = user_manager.reset_password(user_id, new_password)
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"]
+            )
+
+        return {
+            "success": True,
+            "message": "Password reset successfully"
+        }
+
+    @app.patch(f"{prefix}/users/{{user_id}}/roles")
+    async def update_user_roles(
+        user_id: str,
+        roles: List[str],
+        current_user: dict = Depends(auth_manager.require_roles([UserRole.ADMIN]))
+    ):
+        result = user_manager.update_user_roles(user_id, roles)
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"]
+            )
+
+        return {
+            "success": True,
+            "message": "User roles updated successfully"
+        }
+
+    @app.patch(f"{prefix}/users/me/settings")
+    async def update_user_settings(
+        settings: Dict[str, Any],
+        current_user: dict = Depends(auth_manager.get_current_user)
+    ):
+        result = user_manager.update_user(current_user["user_id"], **settings)
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"]
+            )
+
+        return {
+            "success": True,
+            "message": "Settings updated successfully"
+        }
+
+    return {
+        "register": register,
+        "login": login,
+        "logout": logout,
+        "refresh_token": refresh_token,
+        "change_password": change_password,
+        "revoke_token": revoke_token,
+        "revoke_access_token": revoke_access_token,
+        "list_users": list_users,
+        "update_user_roles": update_user_roles,
+        "get_current_user_info": get_current_user_info,
+        "update_user_settings": update_user_settings,
+        "reset_user_password": reset_user_password
+    }

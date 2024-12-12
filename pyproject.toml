@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "illufly"
-version = "0.6.3"
+version = "0.6.4"
 description = "A simple Agent framework based on GPT with auto-evolution ability."
 authors = ["arcstep <xuehongwei@illufly.com>"]
 homepage = "https://github.com/arcstep/illufly"
@@ -26,7 +26,7 @@ scipy = "^1.14.1"
 matplotlib = "^3.9.2"
 passlib = {version = "^1.7.4", extras = ["bcrypt"]}
 argon2-cffi = "^23.1.0"
-python-multipart = "^0.0.19"
+python-multipart = "^0.0.9"
 
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "^1.0.1"
@@ -50,7 +50,7 @@ pytest = "^7.0.0"
 pytest-cov = "^4.0.0"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [[tool.poetry.packages]]
@@ -60,3 +60,6 @@ include = "illufly/**/*"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=illufly"
+pythonpath = [
+    "."
+]
