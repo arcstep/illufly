@@ -165,3 +165,4 @@ demo*
 .vscode/settings.json
 
 notes/*/images
+__*
