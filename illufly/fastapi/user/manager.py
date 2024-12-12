@@ -3,9 +3,12 @@ from datetime import datetime
 import secrets
 import string
 from pathlib import Path
+from ...config import get_env
 from ..common import StorageProtocol, FileStorage
 from ..auth import AuthManager
 from .models import User, UserRole
+
+__USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
 class UserManager:
     def __init__(self, auth_manager: AuthManager, storage: Optional[StorageProtocol[User]] = None):
@@ -16,7 +19,7 @@ class UserManager:
         self.auth_manager = auth_manager
         if storage is None:
             storage = FileStorage[User](
-                data_dir=Path("__users__"),
+                data_dir=Path(__USERS_PATH__),
                 filename="profile.json",
                 serializer=lambda user: user.to_dict(include_sensitive=True),
                 deserializer=User.from_dict,
