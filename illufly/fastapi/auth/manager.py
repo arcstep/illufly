@@ -94,8 +94,68 @@ class TokenStorage:
         return f"TokenStorage(tokens_count={len(self.tokens)})"
 
 class AuthManager:
+    """认证管理器，用于处理用户认证、令牌管理和多设备登录等功能。
+    
+    该类提供了完整的用户认证和令牌管理解决方案，包括：
+    - JWT令牌的创建和验证
+    - 多设备登录支持
+    - 令牌撤销和过期管理
+    - 密码加密和验证
+    - 用户输入验证
+    
+    主要特性：
+    - 支持访问令牌和刷新令牌
+    - 支持多设备同时登录
+    - 支持单个设备登出
+    - 支持令牌自动过期
+    - 支持密码强度验证
+    - 支持用户名和邮箱格式验证
+    
+    使用示例:
+    ```python
+    # 初始化认证管理器
+    auth_manager = AuthManager()
+    
+    # 创建访问令牌
+    token_data = {
+        "user_id": "user123",
+        "username": "johndoe",
+        "roles": ["user"]
+    }
+    access_token = auth_manager.create_access_token(token_data)
+    
+    # 验证令牌
+    is_valid = auth_manager.is_token_valid(access_token["token"], "access")
+    
+    # 设备登出
+    auth_manager.logout_device(access_token["token"])
+    ```
+    
+    配置要求：
+    必须在环境变量中设置以下配置：
+    - FASTAPI_SECRET_KEY: JWT签名密钥
+    - FASTAPI_ALGORITHM: JWT算法 (HS256, HS384, HS512)
+    - HASH_METHOD: 密码哈希方法 (argon2, bcrypt, pbkdf2_sha256)
+    - ACCESS_TOKEN_EXPIRE_MINUTES: 访问令牌过期时间（分钟）
+    - REFRESH_TOKEN_EXPIRE_DAYS: 刷新令牌过期时间（天）
+    - ILLUFLY_FASTAPI_USERS_PATH: 用户数据存储路径
+    
+    安全注意事项：
+    1. 访问令牌应该设置较短的过期时间（如30分钟）
+    2. 刷新令牌可以设置较长的过期时间（如7天）
+    3. 密码必须经过哈希处理后再存储
+    4. 敏感操作应该验证用户角色权限
+    """
+    
     def __init__(self, storage: Optional[ConfigStoreProtocol[TokenStorage]] = None):
-        """初始化令牌管理器"""
+        """初始化认证管理器
+        
+        Args:
+            storage: 可选的令牌存储实现，默认使用文件存储
+            
+        Raises:
+            ValueError: 如果必要的环境变量未正确配置
+        """
         # 验证必要的环境变量
         self.secret_key = get_env("FASTAPI_SECRET_KEY")
         if not self.secret_key or self.secret_key == "MY-SECRET-KEY":
@@ -187,12 +247,19 @@ class AuthManager:
     def is_token_valid(self, token: str, token_type: str = "access") -> Dict[str, Any]:
         """检查令牌是否有效
         
+        验证流程：
+        1. 检查令牌是否存在于存储中
+        2. 检查令牌是否过期
+        3. 返回验证结果
+        
         Args:
-            token: 要检查的令牌
-            token_type: 令牌类型 ("access" 或 "refresh")
+            token: 要验证的令牌
+            token_type: 令牌类型，"access" 或 "refresh"
             
         Returns:
-            Dict[str, Any]: 包含验证结果的字典
+            dict: 包含验证结果的字典
+                - success: 是否有效
+                - error: 无效时的错误信息
         """
         print(f"\n=== 检查令牌有效性 ===")
         print(f">>> 令牌类型: {token_type}")
@@ -298,7 +365,17 @@ class AuthManager:
             }
 
     def create_refresh_token(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """创建刷新令牌"""
+        """创建刷新令牌
+        
+        Args:
+            data: 同 create_access_token
+                
+        Returns:
+            dict: 包含创建结果的字典
+                - success: 是否成功
+                - token: 成功时返回的令牌
+                - error: 失败时的错误信息
+        """
         try:
             expire = datetime.utcnow() + timedelta(days=self.refresh_token_expire_days)
             token_data = {
@@ -335,7 +412,23 @@ class AuthManager:
             }
 
     def create_access_token(self, data: dict) -> dict:
-        """创建访问令牌"""
+        """创建访问令牌
+        
+        Args:
+            data: 令牌数据，必须包含：
+                - user_id: 用户ID
+                - username: 用户名
+                - roles: 用户角色列表
+                可选包含：
+                - device_id: 设备ID
+                - device_name: 设备名称
+                
+        Returns:
+            dict: 包含创建结果的字典
+                - success: 是否成功
+                - token: 成功时返回的令牌
+                - error: 失败时的错误信息
+        """
         try:
             device_id = data.get("device_id", "default")
             device_name = data.get("device_name", "Default Device")
@@ -358,7 +451,7 @@ class AuthManager:
             # 创建JWT
             encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
             
-            # 添加令牌��管理器
+            # 添加令牌管理器
             token = Token(
                 token=encoded_jwt,
                 username=data["username"],
@@ -417,7 +510,22 @@ class AuthManager:
         }
 
     def validate_password(self, password: str) -> Dict[str, Any]:
-        """验证密码强度"""
+        """验证密码强度
+        
+        要求：
+        - 长度至少8个字符
+        - 至少包含一个大写字母
+        - 至少包含一个小写字母
+        - 至少包含一个数字
+        
+        Args:
+            password: 要验证的密码
+            
+        Returns:
+            dict: 包含验证结果的字典
+                - success: 是否通过验证
+                - error: 未通过时的错误信息
+        """
         if len(password) < 8:
             return {
                 "success": False,
@@ -590,7 +698,7 @@ class AuthManager:
             user_id: 用户ID
         """
         try:
-            # 直接获取用户的��牌存储
+            # 直接获取用户的令牌存储
             storage = self._storage.get(owner_id=user_id)
             if not storage:
                 return {
@@ -790,7 +898,19 @@ class AuthManager:
         }
 
     def logout_device(self, token: str) -> Dict[str, Any]:
-        """退出指定设备"""
+        """退出指定设备的登录状态
+        
+        会同时撤销该设备的访问令牌和刷新令牌
+        
+        Args:
+            token: 设备的访问令牌
+            
+        Returns:
+            dict: 包含操作结果的字典
+                - success: 是否成功
+                - message: 成功时的消息
+                - error: 失败时的错误信息
+        """
         print("\n=== 处理设备登出请求 ===")
         try:
             # 1. 验证令牌（允许过期的令牌）

@@ -1,4 +1,4 @@
-from fastapi import Request, Response, HTTPException, status, Depends
+from fastapi import Request, Response, HTTPException, status
 from typing import List, Union
 from jose import JWTError
 
@@ -57,7 +57,8 @@ class AuthDependencies:
         if isinstance(roles, UserRole):
             roles = [roles]
 
-        async def role_checker(current_user: dict = Depends(self.get_current_user)):
+        async def role_checker(request: Request, response: Response):
+            current_user = await self.get_current_user(request, response)
             user = User.from_dict(current_user)
             
             if require_all and not user.has_all_roles(roles):
