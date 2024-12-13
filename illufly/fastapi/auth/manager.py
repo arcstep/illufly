@@ -85,7 +85,6 @@ class TokenStorage:
                         )
                         tokens.append(token)
                 except Exception as e:
-                    print(f"Error deserializing token: {e}")
                     continue
                     
         return cls(tokens=tokens)
@@ -241,7 +240,6 @@ class AuthManager:
                 self._storage.set(value=storage, owner_id=user_id)
                 
         except Exception as e:
-            print(f"Error adding token: {e}")
             raise
 
     def is_token_valid(self, token: str, token_type: str = "access") -> Dict[str, Any]:
@@ -261,20 +259,15 @@ class AuthManager:
                 - success: 是否有效
                 - error: 无效时的错误信息
         """
-        print(f"\n=== 检查令牌有效性 ===")
-        print(f">>> 令牌类型: {token_type}")
-        
         try:
             # 1. 验证JWT格式和签名
             verify_result = self.verify_jwt(token)
             if not verify_result["success"]:
-                print(f">>> JWT验证失败: {verify_result['error']}")
                 return verify_result
             
             # 2. 检查令牌是否被撤销
             if token_type == "access":
                 is_valid = token in self._access_tokens
-                print(f">>> 访问令牌是否在内存中: {is_valid}")
                 return {
                     "success": is_valid,
                     "error": None if is_valid else "Token has been invalidated"
@@ -296,9 +289,10 @@ class AuthManager:
                         "error": "No valid tokens found"
                     }
                 
-                is_valid = any(t.token == token and not t.is_expired() 
-                              for t in storage.tokens)
-                print(f">>> 刷新令牌是否有效: {is_valid}")
+                is_valid = any(
+                    t.token == token and not t.is_expired() 
+                    for t in storage.tokens
+                )
                 return {
                     "success": is_valid,
                     "error": None if is_valid else "Token has been invalidated"
@@ -306,7 +300,6 @@ class AuthManager:
                 
         except Exception as e:
             error_msg = f"Failed to check token validity: {str(e)}"
-            print(f">>> 错误: {error_msg}")
             return {
                 "success": False,
                 "error": error_msg
@@ -468,7 +461,6 @@ class AuthManager:
                 "token": encoded_jwt
             }
         except Exception as e:
-            print(f">>> 创建访问令牌失败: {e}")
             return {
                 "success": False,
                 "error": f"Failed to create access token: {str(e)}"
@@ -661,7 +653,6 @@ class AuthManager:
             }
             
         except Exception as e:
-            print(f"Error invalidating refresh token: {e}")
             return {
                 "success": False,
                 "error": f"Failed to invalidate refresh token: {str(e)}"
@@ -722,7 +713,6 @@ class AuthManager:
             }
             
         except Exception as e:
-            print(f"Error invalidating user refresh tokens: {e}")
             return {
                 "success": False,
                 "error": f"Failed to invalidate user refresh tokens: {str(e)}"
@@ -758,12 +748,9 @@ class AuthManager:
 
     def list_user_devices(self, token: str) -> Dict[str, Any]:
         """列出用户的所有已登录设备"""
-        print("\n=== 处理列出设备请求 ===")
         try:
             # 1. 验证令牌
-            print(f">>> 验证令牌: {token[:30]}...")
             verify_result = self.verify_jwt(token)
-            print(f">>> 验证结果: {verify_result}")
             if not verify_result["success"]:
                 return verify_result
             
@@ -772,20 +759,16 @@ class AuthManager:
             user_id = payload.get("user_id")
             if not user_id:
                 error_msg = "Invalid token: missing user_id"
-                print(f">>> 错误: {error_msg}")
                 return {
                     "success": False,
                     "error": error_msg
                 }
             
             current_device = payload.get("device_id", "default")
-            print(f">>> 当前设备: {current_device}")
             
             # 3. 获取存储的令牌
             storage = self._storage.get(owner_id=user_id)
-            print(f">>> 获取到的存储: {storage}")
             if not storage or not isinstance(storage, TokenStorage):
-                print(">>> 未找到令牌存储，返回空列表")
                 return {
                     "success": True,
                     "devices": []
@@ -793,7 +776,6 @@ class AuthManager:
             
             # 4. 处理设备列表
             valid_tokens = [t for t in storage.tokens if not t.is_expired()]
-            print(f">>> 有效令牌数量: {len(valid_tokens)}")
             
             # 5. 构建设备信息
             device_map = {}
@@ -805,37 +787,33 @@ class AuthManager:
                     "is_current": token.device_id == current_device
                 }
                 device_map[token.device_id] = device_info
-                print(f">>> 添加设备信息: {device_info}")
             
             result = {
                 "success": True,
                 "devices": list(device_map.values())
             }
-            print(f">>> 返回结果: {result}")
             return result
             
         except Exception as e:
             error_msg = f"Failed to list devices: {str(e)}"
-            print(f">>> 错误: {error_msg}")
-            print(f">>> 异常详情: {e}")
             return {
                 "success": False,
                 "error": error_msg
             }
 
-    def login(self, user_dict: Dict[str, Any], password: str, password_hash: str, 
-             device_id: str, device_name: str) -> Dict[str, Any]:
+    def login(
+        self,
+        user_dict: Dict[str, Any],
+        password: str,
+        password_hash: str, 
+        device_id: str,
+        device_name: str
+    ) -> Dict[str, Any]:
         """用户登录"""
-        print("\n=== 处理登录请求 ===")
-        print(f">>> 输入参数:")
-        print(f"  - user_dict: {user_dict}")
-        print(f"  - device_id: {device_id}")
-        print(f"  - device_name: {device_name}")
         
         # 1. 类型检查
         if not isinstance(user_dict, dict):
             error_msg = f"Invalid user_dict type: expected dict, got {type(user_dict)}"
-            print(f">>> 错误: {error_msg}")
             return {
                 "success": False,
                 "error": error_msg
@@ -853,21 +831,15 @@ class AuthManager:
         
         if missing_fields:
             error_msg = f"Missing required fields: {', '.join(missing_fields)}"
-            print(f">>> 错误: {error_msg}")
             return {
                 "success": False,
                 "error": error_msg
             }
         
-        print(">>> 字段验证通过")
-        
         # 3. 密码验证
         verify_result = self.verify_password(password, password_hash)
         if not verify_result["success"]:
-            print(f">>> 密码验证失败: {verify_result['error']}")
             return verify_result
-        
-        print(">>> 密码验证通过")
         
         # 4. 准备令牌数据
         token_data = {
@@ -877,19 +849,16 @@ class AuthManager:
         }
         
         # 5. 创建令牌
-        print(">>> 开始创建令牌")
         access_token_result = self.create_access_token(token_data)
         refresh_token_result = self.create_refresh_token(token_data)
         
         if not access_token_result["success"] or not refresh_token_result["success"]:
             error = access_token_result.get("error") or refresh_token_result.get("error")
-            print(f">>> 令牌创建失败: {error}")
             return {
                 "success": False,
                 "error": error
             }
         
-        print(">>> 登录成功")
         return {
             "success": True,
             "access_token": access_token_result["token"],
@@ -911,12 +880,9 @@ class AuthManager:
                 - message: 成功时的消息
                 - error: 失败时的错误信息
         """
-        print("\n=== 处理设备登出请求 ===")
         try:
             # 1. 验证令牌（允许过期的令牌）
-            print(f">>> 验证令牌: {token[:30]}...")
             verify_result = self.verify_jwt(token, verify_exp=False)  # 不验证过期时间
-            print(f">>> 验证结果: {verify_result}")
             if not verify_result["success"]:
                 return verify_result
             
@@ -927,16 +893,12 @@ class AuthManager:
             
             if not user_id or not device_id:
                 error_msg = "Invalid token: missing user_id or device_id"
-                print(f">>> 错误: {error_msg}")
                 return {
                     "success": False,
                     "error": error_msg
                 }
             
-            print(f">>> 用户ID: {user_id}, 设备ID: {device_id}")
-            
             # 3. 移除访问令牌
-            print(">>> 移除访问令牌")
             access_tokens_to_remove = []
             for t, token_obj in self._access_tokens.items():
                 if (token_obj.user_id == user_id and 
@@ -946,10 +908,7 @@ class AuthManager:
             for t in access_tokens_to_remove:
                 self._access_tokens.pop(t, None)
             
-            print(f">>> 移除了 {len(access_tokens_to_remove)} 个访问令牌")
-            
             # 4. 移除刷新令牌
-            print(">>> 移除刷新令牌")
             storage = self._storage.get(owner_id=user_id)
             if storage and isinstance(storage, TokenStorage):
                 original_count = len(storage.tokens)
@@ -958,7 +917,6 @@ class AuthManager:
                     if t.device_id != device_id
                 ]
                 removed_count = original_count - len(storage.tokens)
-                print(f">>> 移除了 {removed_count} 个刷新令牌")
                 
                 # 更新存储
                 self._storage.set(value=storage, owner_id=user_id)
@@ -970,8 +928,6 @@ class AuthManager:
             
         except Exception as e:
             error_msg = f"Logout failed: {str(e)}"
-            print(f">>> 错误: {error_msg}")
-            print(f">>> 异常详情: {e}")
             return {
                 "success": False,
                 "error": error_msg
@@ -1016,5 +972,4 @@ class AuthManager:
                 )
                 
         except Exception as e:
-            print(f"Error checking token revocation: {e}")
             return True  # 如有任何误，视为已撤销
