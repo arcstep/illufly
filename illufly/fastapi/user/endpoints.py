@@ -74,11 +74,6 @@ def create_user_endpoints(
                 - 400: 参数验证失败
                 - 500: 服务器内部错误
         """
-        if not response:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Response is required"
-            )
         try:
             # 验证必填字段
             if not all([username, password, email]):
