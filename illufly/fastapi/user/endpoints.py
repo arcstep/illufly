@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Form, Depends, Response, HTTPException, status
+from fastapi import APIRouter, Form, Depends, Response, HTTPException, status, Request
 from typing import Dict, Any, List
 from ..auth import AuthManager
 from .manager import UserManager
@@ -179,43 +179,52 @@ def create_user_endpoints(
         Raises:
             HTTPException:
                 - 400: 缺少用户名或密码
-                - 401: 用户名或密码错误
+                - 401: 认证失败
+                - 403: 账户被锁定或未激活
                 - 500: 服务器内部错误
         """
-        # 验证密码
-        verify_result = user_manager.verify_user_password(username, password)
-        if not verify_result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=verify_result["error"]
-            )
-
-        user_info = verify_result["user"]
-        require_password_change = verify_result["require_password_change"]
-
-        # 检查账户状态
-        if user_info.get("is_locked"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account is locked"
-            )
+        try:
+            # 验证密码
+            verify_result = user_manager.verify_user_password(username, password)
             
-        if not user_info.get("is_active"):
+            if not verify_result["success"]:
+                if verify_result.get("is_locked"):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="账户已锁定"
+                    )
+                elif not verify_result.get("is_active", True):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN, 
+                        detail="账户未激活"
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="认证失败"
+                    )
+
+            user_info = verify_result["user"]
+            require_password_change = verify_result["require_password_change"]
+            
+            token_data = _create_token_data(user_info)
+            access_token = auth_manager.create_access_token(data=token_data)
+            refresh_token = auth_manager.create_refresh_token(data=token_data)
+            auth_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
+
+            return {
+                "success": True,
+                "token_data": token_data,
+                "require_password_change": require_password_change
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account is inactive"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="登录过程发生错误"  # 模糊化具体错误
             )
-
-        token_data = _create_token_data(user_info)
-        access_token = auth_manager.create_access_token(data=token_data)
-        refresh_token = auth_manager.create_refresh_token(data=token_data)
-        auth_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
-
-        return {
-            "success": True,
-            "token_data": token_data,
-            "require_password_change": require_password_change
-        }
 
     @app.post(f"{prefix}/auth/change-password")
     async def change_password(
@@ -231,7 +240,7 @@ def create_user_endpoints(
             current_user: 当前用户信息
             
         Returns:
-            dict: 成功消息
+            dict: 成功消���
             
         Raises:
             HTTPException:
@@ -393,21 +402,40 @@ def create_user_endpoints(
 
     @app.post(f"{prefix}/auth/logout")
     async def logout(
+        request: Request,
         response: Response,
         current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """注销接口
         
+        实现按设备退出的功能：
+        1. 获取当前设备的访问令牌
+        2. 使该令牌失效
+        3. 清除当前设备的 Cookie
+        
         Args:
+            request: FastAPI请求对象
             response: FastAPI响应对象
             current_user: 当前用户信息
             
         Returns:
             dict: 成功消息
         """
+        # 获取当前设备的访问令牌
+        access_token = request.cookies.get("access_token")
+        refresh_token = request.cookies.get("refresh_token")
+        
+        if access_token:
+            # 使当前设备的访问令牌失效
+            auth_manager.invalidate_access_token(access_token)
+        
+        if refresh_token:
+            # 同时使刷新令牌失效
+            auth_manager.invalidate_refresh_token(refresh_token)
+        
+        # 清除当前设备的 Cookie
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
-        auth_manager.remove_user_tokens(current_user["username"])
 
         return {
             "success": True,

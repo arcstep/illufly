@@ -93,6 +93,7 @@ Feature: 用户多设备登录管理
       | require_password_change | boolean |
     And 设置设备A的认证Cookie
 
+  @core
   Scenario: 成功在多个设备上登录
     Given 用户已在设备A登录
     When 用户在设备B提供正确的登录信息:
@@ -141,14 +142,15 @@ Feature: 用户多设备登录管理
     Given 用户账户已被锁定
     When 用户在设备A尝试登录
     Then 系统应返回403禁止访问错误
-    And 错误信息应说明账户已锁定
+    And 错误信息应说明"账户已锁定"
 
   @error
   Scenario: 登录失败 - 账户未激活
+    Given 系统已有注册用户
     Given 用户账户未激活
     When 用户在设备A尝试登录
     Then 系统应返回403禁止访问错误
-    And 错误信息应说明账户未激活
+    And 错误信息应说明"账户未激活"
 
   @error
   Scenario: 登录失败 - 缺少必填字段

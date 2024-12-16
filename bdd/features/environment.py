@@ -90,3 +90,7 @@ def before_scenario(context, scenario):
         auth_manager=context.auth_manager
     )
     context.client = TestClient(app)
+    
+    # 初始化设备令牌
+    context.device_a_tokens = {}
+    context.device_b_tokens = {}

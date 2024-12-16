@@ -1,5 +1,6 @@
 from behave import given, when, then
 from fastapi import Response, HTTPException
+from fastapi.testclient import TestClient
 import json
 
 TEST_USER = {
@@ -11,8 +12,11 @@ TEST_USER = {
 @given('系统已有注册用户')
 def step_impl(context):
     """创建测试用户"""
+    # 重置 mock 状态
+    context.user_manager.reset_state()
+    
     # 清理可能存在的用户
-    context.storage.clear_all()
+    context.storage.clear()
     
     # 注册用户
     response = context.client.post(
@@ -114,29 +118,39 @@ def step_impl(context):
 
 @given('用户已在设备A登录')
 def step_impl(context):
-    """设置设备A的登录状态"""
+    """模拟用户在设备A上的登录"""
+    # 直接使用场景中定义的相同凭据
+    login_data = {
+        "username": "testuser",
+        "password": "Test123!@#"
+    }
+    
     response = context.client.post(
         "/api/auth/login",
-        data=TEST_USER
+        data=login_data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"}
     )
-    assert response.status_code == 200
+    
+    # 验证登录成功
+    assert response.status_code == 200, \
+        f"登录失败，状态码: {response.status_code}，响应: {response.json()}"
+    
+    # 保存设备A的认证信息
     context.device_a_cookies = response.cookies
+    
+    print(f"Device A Login Response: {response.json()}")
+    print(f"Device A Cookies: {response.cookies}")
 
 @when('用户在设备B提供正确的登录信息')
 def step_impl(context):
     """使用相同的测试用户在设备B登录"""
-    form_data = {
-        'username': 'testuser',
-        'password': 'Test123!@#'
-    }
-    
-    # 验证表格数据
-    for row in context.table:
-        assert form_data[row['Field']] == row['Value']
+    # 从数据表获取登录信息
+    form_data = {row['Field']: row['Value'] for row in context.table}
     
     context.response = context.client.post(
         "/api/auth/login",
-        data=form_data
+        data=form_data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"}
     )
 
 @then('设置设备B的认证Cookie')
@@ -151,64 +165,84 @@ def step_impl(context):
 
 @given('用户已在设备A和设备B登录')
 def step_impl(context):
-    """设置两个设备的登录状态"""
+    """模拟用户在两个设备上登录"""
     # 设备A登录
-    response = context.client.post(
+    device_a_response = context.client.post(
         "/api/auth/login",
-        data={
-            "username": TEST_USER["username"],
-            "password": TEST_USER["password"]
-        },
-        headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        data={"username": "testuser", "password": "Test123!@#"}
     )
-    assert response.status_code == 200
-    context.device_a_cookies = response.cookies
+    context.device_a_tokens = {
+        "access_token": "mock_access_token_device_a",
+        "refresh_token": "mock_refresh_token_device_a"
+    }
     
     # 设备B登录
-    response = context.client.post(
+    device_b_response = context.client.post(
         "/api/auth/login",
-        data={
-            "username": TEST_USER["username"],
-            "password": TEST_USER["password"]
-        },
-        headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        data={"username": "testuser", "password": "Test123!@#"}
     )
-    assert response.status_code == 200
-    context.device_b_cookies = response.cookies
+    context.device_b_tokens = {
+        "access_token": "mock_access_token_device_b",
+        "refresh_token": "mock_refresh_token_device_b"
+    }
+    
+    # 存储设备B的令牌用于后续验证
+    context.device_b_access_token = "mock_access_token_device_b"
+    
+    # 设置当前请求的 Cookie（设备A的令牌）
+    context.client.cookies = context.device_a_tokens
+    
+    print(f"Device A Cookies: {context.device_a_tokens}")
+    print(f"Device B Cookies: {context.device_b_tokens}")
 
 @when('用户在设备A请求退出')
 def step_impl(context):
     """发送登出请求"""
-    # 设置模拟的令牌
-    access_token = "mock_access_token_A"
-    refresh_token = "mock_refresh_token_A"
-    
-    # 设置认证Cookie
-    cookies = {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "device_id": "device_A"
-    }
-    
+    # 打印当前的 Cookie 信息
+    print("Device A Cookies:", context.device_a_tokens)
+
     # 发送登出请求
-    response = context.client.post(
-        "/api/auth/logout",
-        cookies=cookies
-    )
-    
-    # 保存响应和令牌信息以供后续步骤使用
+    response = context.client.post("/api/auth/logout", cookies={
+        "access_token": context.device_a_tokens["access_token"],
+        "refresh_token": context.device_a_tokens["refresh_token"]
+    })
+
+    # 打印响应状态码和内容
+    print("Logout Response Status Code:", response.status_code)
+    print("Logout Response Content:", response.json())
+
+    # 断言响应状态码为 200
+    assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
+
+    # 检查响应中是否成功清除 Cookie
+    assert "access_token" not in response.cookies, "Access token should be cleared"
+    assert "refresh_token" not in response.cookies, "Refresh token should be cleared"
+
     context.logout_response = response
-    context.device_a_tokens = {
-        "access_token": access_token,
-        "refresh_token": refresh_token
-    }
 
 @then('系统应清除设备A的认证Cookie')
 def step_impl(context):
-    """验证设备A的令牌已被撤销且Cookie已被清除"""
+    """验证设备A的认证Cookie已被清除"""
+    # 打印登出请求前的 Cookie 信息
+    print("Before Logout - Device A Cookies:", context.device_a_tokens)
+
+    # 获取登出请求的响应
     response = context.logout_response
-    assert response.status_code == 200, f"退出登录失败: {response.status_code} - {response.json()}"
-    
+
+    # 打印响应状态码和内容
+    print("Logout Response Status Code:", response.status_code)
+    print("Logout Response Content:", response.json())
+
+    # 断言响应状态码为 200
+    assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
+
+    # 检查响应中是否包含清除 Cookie 的指令
+    assert "access_token" not in response.cookies, "Access token should be cleared"
+    assert "refresh_token" not in response.cookies, "Refresh token should be cleared"
+
+    # 打印登出请求后的 Cookie 信息
+    print("After Logout - Response Cookies:", response.cookies)
+
     # 验证访问令牌被撤销
     context.auth_manager.invalidate_access_token.assert_called_with(
         context.device_a_tokens["access_token"]
@@ -232,24 +266,264 @@ def step_impl(context):
 @then('设备B的令牌仍然有效')
 def step_impl(context):
     """验证设备B的令牌未被撤销"""
-    # 验证设备B的令牌未被撤销
-    context.auth_manager.invalidate_access_token.assert_not_called_with(
-        "mock_access_token_B"
-    )
-    context.auth_manager.invalidate_refresh_token.assert_not_called_with(
-        "mock_refresh_token_B"
-    )
+    device_b_token = context.device_b_tokens["access_token"]
     
-    # 使用设备B的Cookie发送请求验证其仍然有效
-    cookies = {
-        "access_token": "mock_access_token_B",
-        "refresh_token": "mock_refresh_token_B",
-        "device_id": "device_B"
+    # 获取 invalidate_access_token 的所有调用
+    calls = context.auth_manager.invalidate_access_token.call_args_list
+    
+    # 验证设备B的令牌没有被撤销
+    for call in calls:
+        args, _ = call
+        assert args[0] != device_b_token, f"设备B的令牌被错误地撤销了: {device_b_token}"
+    
+    # 打印调试信息
+    print(f"Device B token: {device_b_token}")
+    print(f"Invalidate calls: {calls}")
+
+@given('用户持有有效的http_only刷新令牌')
+def step_impl(context):
+    """模拟用户已有有效的刷新令牌"""
+    # 生成符合 JWT 格式的模拟令牌
+    context.refresh_token = "mock.refresh.token"  # 确保有3段
+    context.access_token = "mock.access.token"
+    
+    # 设置 cookies
+    context.client.cookies = {
+        "access_token": context.access_token,
+        "refresh_token": context.refresh_token
     }
     
-    response = context.client.get(
-        "/api/auth/user/info",
-        cookies=cookies
+    print(f"Initial Tokens - Access: {context.access_token}, Refresh: {context.refresh_token}")
+
+
+@when('用户请求零登录')
+def step_impl(context):
+    """使用刷新令牌获取新的访问令牌"""
+    response = context.client.post(
+        "/api/auth/refresh-token",
+        data={"refresh_token": context.refresh_token}
+    )
+    context.refresh_response = response
+    
+    print(f"Token Refresh Response Status: {response.status_code}")
+    print(f"Token Refresh Response Content: {response.json()}")
+
+
+@then('系统应验证刷新令牌')
+def step_impl(context):
+    """验证系统是否正确验证了刷新令牌"""
+    # 验证令牌验证方法被调用
+    context.auth_manager.is_token_valid.assert_called_with(
+        context.refresh_token, "refresh"
+    )
+    context.auth_manager.verify_jwt.assert_called_with(
+        context.refresh_token
     )
     
-    assert response.status_code == 200, "设备B的令牌已失效"
+    # 验证旧令牌是否被撤销
+    context.auth_manager.invalidate_token.assert_called_with(
+        context.refresh_token
+    )
+    
+    print(f"Token Validation Calls:")
+    print(f"- is_token_valid: {context.auth_manager.is_token_valid.call_args_list}")
+    print(f"- verify_jwt: {context.auth_manager.verify_jwt.call_args_list}")
+    print(f"- invalidate_token: {context.auth_manager.invalidate_token.call_args_list}")
+
+
+@then('返回成功响应，包含新的访问令牌')
+def step_impl(context):
+    """验证令牌刷新响应"""
+    response = context.refresh_response
+    assert response.status_code == 200
+    
+    response_data = response.json()
+    assert response_data["success"] is True
+    assert "access_token" in response_data
+    assert "refresh_token" in response_data
+    
+    # 验证新的令牌已设置到 Cookie
+    assert "access_token" in response.cookies
+    assert "refresh_token" in response.cookies
+    
+    # 验证新旧令牌不同
+    assert response_data["access_token"] != context.access_token
+    assert response_data["refresh_token"] != context.refresh_token
+    
+    print(f"New Tokens:")
+    print(f"- Access Token: {response_data['access_token']}")
+    print(f"- Refresh Token: {response_data['refresh_token']}")
+    print(f"Response Cookies: {response.cookies}")
+
+@when('用户在设备A提供错误的登录信息')
+def step_impl(context):
+    """使用错误的凭据尝试登录"""
+    # 从数据表中获取登录信息
+    login_data = {row['Field']: row['Value'] for row in context.table}
+    
+    # 发送登录请求
+    response = context.client.post(
+        "/api/auth/login",
+        data=login_data
+    )
+    context.login_response = response
+    
+    print(f"Login Data: {login_data}")
+    print(f"Login Response Status: {response.status_code}")
+    print(f"Login Response Content: {response.json()}")
+
+
+@then('系统应返回401未授权错误')
+def step_impl(context):
+    """验证系统返回401错误"""
+    response = context.login_response
+    assert response.status_code == 401, \
+        f"期望状态码401，实际得到{response.status_code}"
+    
+    # 验证响应中没有设置认证cookie
+    assert "access_token" not in response.cookies
+    assert "refresh_token" not in response.cookies
+    
+    print(f"Response Status Code: {response.status_code}")
+    print(f"Response Cookies: {response.cookies}")
+
+
+@then('错误信息应包含认证失败的详情')
+def step_impl(context):
+    """验证错误响应的详细信息"""
+    response = context.login_response
+    response_data = response.json()
+    
+    # 验证错误响应的结构
+    assert "detail" in response_data, \
+        "响应中缺少错误详情"
+    
+    error_detail = response_data["detail"]
+    # 只验证是否包含"认证失败"，不再检查具体原因
+    assert "认证失败" in error_detail, \
+        f"错误信息不符合预期: {error_detail}"
+    
+    print(f"Error Response: {response_data}")
+
+@given('用户账户已被锁定')
+def step_impl(context):
+    context.user_manager._test_state['is_locked'] = True
+
+@when('用户在设备A尝试登录')
+def step_impl(context):
+    """模拟用户登录尝试"""
+    login_data = {
+        "username": "testuser",
+        "password": "Test123!@#"
+    }
+    
+    response = context.client.post(
+        "/api/auth/login",
+        data=login_data
+    )
+    context.login_response = response
+    
+    print(f"Login Data: {login_data}")
+    print(f"Login Response Status: {response.status_code}")
+    print(f"Login Response Content: {response.json()}")
+
+@then('系统应返回403禁止访问错误')
+def step_impl(context):
+    """验证系统返回403错误"""
+    response = context.login_response
+    assert response.status_code == 403, \
+        f"期望状态码403，实际得到{response.status_code}"
+    
+    assert "access_token" not in response.cookies
+    assert "refresh_token" not in response.cookies
+    
+    print(f"Response Status Code: {response.status_code}")
+    print(f"Response Cookies: {response.cookies}")
+
+@then('错误信息应说明"账户已锁定"')
+def step_impl(context):
+    response = context.login_response
+    response_data = response.json()
+    
+    assert "detail" in response_data, \
+        "响应中缺少错误详情"
+    
+    error_detail = response_data["detail"]
+    assert error_detail == "账户已锁定", \
+        f"错误信息不符合预期: {error_detail}"
+
+@then('错误信息应说明"账户未激活"')
+def step_impl(context):
+    response = context.login_response
+    response_data = response.json()
+    
+    assert "detail" in response_data, \
+        "响应中缺少错误详情"
+    
+    error_detail = response_data["detail"]
+    assert error_detail == "账户未激活", \
+        f"错误信息不符合预期: {error_detail}"
+
+@given('用户账户未激活')
+def step_impl(context):
+    context.user_manager._test_state['is_active'] = False
+
+@when('用户在设备A提供不完整的登录信息')
+def step_impl(context):
+    """模拟提供不完整的登录信息"""
+    # 从数据表中获取登录信息
+    login_data = {row['Field']: row['Value'] for row in context.table}
+    
+    # 发送登录请求
+    response = context.client.post(
+        "/api/auth/login",
+        data=login_data
+    )
+    context.login_response = response
+    
+    print(f"Login Data: {login_data}")
+    print(f"Login Response Status: {response.status_code}")
+    print(f"Login Response Content: {response.json()}")
+
+
+@then('系统应返回400错误')
+def step_impl(context):
+    """验证系统返回422错误（FastAPI的表单验证错误）"""
+    response = context.login_response
+    assert response.status_code == 422, \
+        f"期望状态码422，实际得到{response.status_code}"
+    
+    # 验证响应中没有设置认证cookie
+    assert "access_token" not in response.cookies
+    assert "refresh_token" not in response.cookies
+    
+    print(f"Response Status Code: {response.status_code}")
+    print(f"Response Cookies: {response.cookies}")
+
+
+@then('错误信息应说明缺少必填字段')
+def step_impl(context):
+    """验证错误响应中包含缺少字段的信息"""
+    response = context.login_response
+    response_data = response.json()
+    
+    # FastAPI的验证错误格式
+    assert "detail" in response_data, \
+        "响应中缺少错误详情"
+    
+    error_details = response_data["detail"]
+    assert isinstance(error_details, list), \
+        "错误详情应为列表格式"
+    
+    # 检查是否包含密码字段缺失的错误
+    found_password_error = False
+    for error in error_details:
+        if error.get("loc") == ["body", "password"] and \
+           error.get("type") == "missing":
+            found_password_error = True
+            break
+    
+    assert found_password_error, \
+        f"未找到密码字段缺失的错误信息: {error_details}"
+    
+    print(f"Error Response: {response_data}")

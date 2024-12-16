@@ -128,7 +128,7 @@ Feature: 用户认证系统 - 注册模块
     Then 系统返回状态码 200
     And 返回成功响应
 
-  @invite-code @error @wip
+  @invite-code @error
   Scenario: 使用无效邀请码
     When 提交用户注册请求
       | 字段        | 值                |
