@@ -1,4 +1,4 @@
-@auth @api-doc
+@auth @register @api-doc
 Feature: 用户认证系统 - 注册模块
   """
   用户认证系统 - 注册模块 API 文档
@@ -59,7 +59,7 @@ Feature: 用户认证系统 - 注册模块
     And 用户管理模块正常运行
     And 清理测试数据
 
-  @register @core @happy-path @wip
+  @core @happy-path @wip
   Scenario: [POST /auth/register] 基本用户注册
     When 提交用户注册请求
       | 字段     | 值                | 说明     |
@@ -78,7 +78,7 @@ Feature: 用户认证系统 - 注册模块
     And 系统应设置认证Cookie
     And 记录注册审计日志
 
-  @register @validation @error
+  @validation @error
   Scenario Outline: 注册参数验证
     When 提交用户注册请求
       | 字段     | 值     |
@@ -103,7 +103,7 @@ Feature: 用户认证系统 - 注册模块
       | testuser | Test123!@# | invalid    | 邮箱格式无效 |
       | testuser | Test123!@# | @test.com  | 邮箱格式无效 |
 
-  @register @duplicate @error
+  @duplicate @error
   Scenario: 注册重复用户名
     Given 存在用户名 "mockuser"
     When 提交用户注册请求
@@ -114,7 +114,7 @@ Feature: 用户认证系统 - 注册模块
     Then 系统返回状态码 400
     And 返回错误信息包含 "用户名已存在"
 
-  @register @invite-code
+  @invite-code
   Scenario: 使用邀请码注册
     When 提交用户注册请求
       | 字段        | 值                |
@@ -125,7 +125,7 @@ Feature: 用户认证系统 - 注册模块
     Then 系统返回状态码 200
     And 返回成功响应
 
-  @register @invite-code @error
+  @invite-code @error
   Scenario: 使用无效邀请码
     When 提交用户注册请求
       | 字段        | 值                |

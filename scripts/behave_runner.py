@@ -23,7 +23,7 @@ def run_bdd(feature=None, tags=None):
     
     features_dir = "bdd/features"
     
-    cmd_parts = ["behave", "-v", "--format=pretty"]
+    cmd_parts = ["behave", "-v", "-k", "--format=pretty"]
     
     # 构建标签表达式
     tag_expr = []

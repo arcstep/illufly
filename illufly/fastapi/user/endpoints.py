@@ -182,12 +182,6 @@ def create_user_endpoints(
                 - 401: 用户名或密码错误
                 - 500: 服务器内部错误
         """
-        if not response:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Response is required"
-            )
-            
         # 验证密码
         verify_result = user_manager.verify_user_password(username, password)
         if not verify_result["success"]:
@@ -315,11 +309,6 @@ def create_user_endpoints(
                 - 401: 刷新令牌无效
                 - 500: 服务器内部错误
         """
-        if not response:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Response is required"
-            )
         try:
             # 验证令牌格式
             if not refresh_token or len(refresh_token.split(".")) != 3:
@@ -404,7 +393,7 @@ def create_user_endpoints(
 
     @app.post(f"{prefix}/auth/logout")
     async def logout(
-        response: Response = None,
+        response: Response,
         current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """注销接口
@@ -416,12 +405,6 @@ def create_user_endpoints(
         Returns:
             dict: 成功消息
         """
-        if not response:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Response is required"
-            )
-
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
         auth_manager.remove_user_tokens(current_user["username"])
