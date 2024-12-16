@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 import re
+from typing import Dict, Any
 
 class AuthManagerMockFactory:
     """认证管理器Mock工厂类"""
@@ -151,38 +152,89 @@ class AuthManagerMockFactory:
     @staticmethod
     def _setup_validation_methods(mock: Mock) -> None:
         """设置验证相关的mock方法"""
-        def mock_validate_password(password: str):
-            if len(password) < 8:
+        # 添加用户名验证方法
+        def mock_validate_username(username: str) -> Dict[str, Any]:
+            if not username:
                 return {
                     "success": False,
-                    "error": "密码长度必须至少为8个字符"
+                    "error": "用户名不能为空"
                 }
-            if not re.search(r"[A-Z]", password):
+            
+            if len(username) < 3 or len(username) > 32:
                 return {
                     "success": False,
-                    "error": "密码必须包含至少一个大写字母"
+                    "error": "用户名长度必须在3到32个字符之间"
                 }
-            return {"success": True, "error": None}
-        mock.validate_password.side_effect = mock_validate_password
-        
-        def mock_validate_email(email: str):
+            
+            if not username[0].isalpha():
+                return {
+                    "success": False,
+                    "error": "用户名必须以字母开头"
+                }
+            
+            if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', username):
+                return {
+                    "success": False,
+                    "error": "用户名只能包含字母、数字和下划线"
+                }
+            
+            return {
+                "success": True,
+                "error": None
+            }
+        mock.validate_username = mock_validate_username
+
+        # 添加邮箱验证方法
+        def mock_validate_email(email: str) -> Dict[str, Any]:
             pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
             if not re.match(pattern, email):
                 return {
                     "success": False,
                     "error": "邮箱格式无效"
                 }
-            return {"success": True, "error": None}
-        mock.validate_email.side_effect = mock_validate_email
-        
-        def mock_validate_username(username: str):
-            if len(username) < 3:
+            return {
+                "success": True,
+                "error": None
+            }
+        mock.validate_email = mock_validate_email
+
+        # 添加密码验证方法
+        def mock_validate_password(password: str) -> Dict[str, Any]:
+            if len(password) < 8:
                 return {
                     "success": False,
-                    "error": "用户名长度必须至少为3个字符"
+                    "error": "密码长度必须至少为8个字符"
                 }
-            return {"success": True, "error": None}
-        mock.validate_username.side_effect = mock_validate_username
+            
+            if not re.search(r"[A-Z]", password):
+                return {
+                    "success": False,
+                    "error": "密码必须包含至少一个大写字母"
+                }
+            
+            if not re.search(r"[a-z]", password):
+                return {
+                    "success": False,
+                    "error": "密码必须包含至少一个小写字母"
+                }
+            
+            if not re.search(r"\d", password):
+                return {
+                    "success": False,
+                    "error": "密码必须包含至少一个数字"
+                }
+            
+            if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+                return {
+                    "success": False,
+                    "error": "密码必须包含至少一个特殊字符"
+                }
+            
+            return {
+                "success": True,
+                "error": None
+            }
+        mock.validate_password = mock_validate_password
     
     @staticmethod
     def _setup_session_methods(mock: Mock) -> None:

@@ -173,5 +173,12 @@ def step_impl(context):
 
 @then('返回错误信息包含 "{error_message}"')
 def step_impl(context, error_message):
-    data = context.response.json()
-    assert error_message in data["detail"]
+    """验证响应中包含指定的错误信息"""
+    response = context.response
+    data = response.json()
+    detail = data.get("detail", "")
+    
+    # 直接比较错误消息
+    assert detail == error_message, f"错误消息不匹配。期望: '{error_message}', 实际: '{detail}'"
+    
+    print(f"错误消息验证成功: {detail}")

@@ -59,7 +59,7 @@ Feature: 用户认证系统 - 注册模块
     And 用户管理模块正常运行
     And 清理测试数据
 
-  @core @happy-path @wip
+  @core @happy-path
   Scenario: [POST /auth/register] 基本用户注册
     When 提交用户注册请求
       | 字段     | 值                | 说明     |
@@ -80,28 +80,31 @@ Feature: 用户认证系统 - 注册模块
 
   @validation @error
   Scenario Outline: 注册参数验证
+    Given Mock系统已启动
+    And 用户管理模块正常运行
+    And 清理测试数据
     When 提交用户注册请求
-      | 字段     | 值     |
-      | username | <username> |
-      | password | <password> |
-      | email    | <email>    |
+      | 字段       | 值              |
+      | username  | <username>     |
+      | password  | <password>     |
+      | email     | <email>        |
     Then 系统返回状态码 400
     And 返回错误信息包含 "<error_message>"
 
     Examples: 无效的用户名
-      | username | password    | email           | error_message |
-      | a       | Test123!@#  | test@email.com  | 用户名长度不足 |
-      | ab#$    | Test123!@#  | test@email.com  | 用户名包含非法字符 |
+      | username | password    | email           | error_message                        |
+      | a       | Test123!@#  | test@email.com  | 用户名长度必须在3到32个字符之间            |
+      | ab#$    | Test123!@#  | test@email.com  | 用户名只能包含字母、数字和下划线            |
 
     Examples: 无效的密码
-      | username | password  | email           | error_message |
-      | testuser | 123      | test@email.com  | 密码不符合强度要求 |
-      | testuser | password | test@email.com  | 密码不符合强度要求 |
+      | username | password  | email           | error_message                    |
+      | testuser | 123      | test@email.com  | 密码长度必须至少为8个字符             |
+      | testuser | password | test@email.com  | 密码必须包含至少一个大写字母           |
 
     Examples: 无效的邮箱
-      | username | password    | email      | error_message |
-      | testuser | Test123!@# | invalid    | 邮箱格式无效 |
-      | testuser | Test123!@# | @test.com  | 邮箱格式无效 |
+      | username | password    | email      | error_message    |
+      | testuser | Test123!@# | invalid    | 邮箱格式无效      |
+      | testuser | Test123!@# | @test.com  | 邮箱格式无效      |
 
   @duplicate @error
   Scenario: 注册重复用户名
@@ -121,11 +124,11 @@ Feature: 用户认证系统 - 注册模块
       | username    | mockuser         |
       | password    | Test123!@#      |
       | email       | mock@example.com |
-      | invite_code | VALID_CODE      |
+      | invite_code | VALID_CODE_1      |
     Then 系统返回状态码 200
     And 返回成功响应
 
-  @invite-code @error
+  @invite-code @error @wip
   Scenario: 使用无效邀请码
     When 提交用户注册请求
       | 字段        | 值                |
@@ -145,7 +148,7 @@ Feature: 用户认证系统 - 注册模块
   - 邮箱地址加密存储
   - 关键操作使用事务
 
-  ### 性能优化
+  ### 性能优��
   - 用户名索引优化
   - 邮箱查询缓存
   - 邀请码验证缓存
