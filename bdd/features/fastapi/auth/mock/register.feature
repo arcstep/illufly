@@ -108,10 +108,10 @@ Feature: 用户认证系统 - 注册模块
 
   @duplicate @error
   Scenario: 注册重复用户名
-    Given 存在用户名 "mockuser"
+    Given 存在用户名 "duplicate_user"
     When 提交用户注册请求
       | 字段     | 值                |
-      | username | mockuser         |
+      | username | duplicate_user   |
       | password | Test123!@#      |
       | email    | new@example.com |
     Then 系统返回状态码 400
@@ -137,7 +137,7 @@ Feature: 用户认证系统 - 注册模块
       | email       | mock@example.com |
       | invite_code | INVALID_CODE    |
     Then 系统返回状态码 400
-    And 返回错误信息包含 "Invalid invite code"
+    And 返回错误信息包含 "邀请码无效"
 
   """
   ## 实现注意事项

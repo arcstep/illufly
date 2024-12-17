@@ -4,6 +4,7 @@ from unittest.mock import Mock
 from illufly.fastapi.user.models import UserRole, User
 from illufly.fastapi.user.endpoints import UserManager
 from .auth_manager import AuthManagerMockFactory
+import re
 
 class UserManagerMockFactory:
     """用户管理器Mock工厂类"""
@@ -89,20 +90,70 @@ class UserManagerMockFactory:
     @staticmethod
     def _setup_validation_methods(mock: Mock) -> None:
         """设置验证相关的mock方法"""
-        def mock_verify_invite_code(invite_code: str):
-            if not invite_code:
+        def mock_validate_username(username: str):
+            """验证用户名
+            - 长度在3-32个字符之间
+            - 只能包含字母、数字和下划线
+            """
+            if len(username) < 3 or len(username) > 32:
                 return {
-                    "success": True,
-                    "error": None
+                    "success": False,
+                    "error": "用户名长度必须在3到32个字符之间"
                 }
             
-            valid_codes = {"VALID_CODE_1", "VALID_CODE_2"}
-            if invite_code not in valid_codes:
+            if not re.match(r'^[a-zA-Z0-9_]+$', username):
+                return {
+                    "success": False,
+                    "error": "用户名只能包含字母、数字和下划线"
+                }
+
+            if username.startswith("duplicate_"):
+                return {
+                    "success": False,
+                    "error": "用户名已存在"
+                }
+            
+            return {"success": True, "error": None}
+        mock.validate_username.side_effect = mock_validate_username
+        
+        def mock_validate_password(password: str):
+            """验证密码
+            - 长度至少8个字符
+            - 必须包含至少一个大写字母
+            """
+            if len(password) < 8:
+                return {
+                    "success": False,
+                    "error": "密码长度必须至少为8个字符"
+                }
+            if not re.search(r"[A-Z]", password):
+                return {
+                    "success": False,
+                    "error": "密码必须包含至少一个大写字母"
+                }
+            return {"success": True, "error": None}
+        mock.validate_password.side_effect = mock_validate_password
+        
+        def mock_validate_email(email: str):
+            """验证邮箱格式
+            - 必须符合标准邮箱格式
+            """
+            pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(pattern, email):
+                return {
+                    "success": False,
+                    "error": "邮箱格式无效"
+                }
+            return {"success": True, "error": None}
+        mock.validate_email.side_effect = mock_validate_email
+        
+        def mock_verify_invite_code(invite_code: str):
+            """验证邀请码"""
+            if invite_code.startswith("INVALID_"):
                 return {
                     "success": False,
                     "error": "邀请码无效"
-                }
-                
+                }            
             return {
                 "success": True,
                 "error": None
@@ -163,9 +214,9 @@ class UserManagerMockFactory:
             }
         mock.create_user.side_effect = mock_create_user
 
-        def mock_get_user_info(user_id: str):
+        def mock_get_user_info(user_id: str, include_sensitive: bool = False):
             """模拟获取用户信息"""
-            return {
+            user_dict = {
                 "user_id": "mock-user-001",
                 "username": "mockuser",
                 "email": "mock@example.com",
@@ -175,6 +226,9 @@ class UserManagerMockFactory:
                 "require_password_change": False,
                 "created_at": datetime.now().isoformat()
             }
+            if include_sensitive:
+                user_dict["password_hash"] = "hashed_password"
+            return user_dict
         mock.get_user_info.side_effect = mock_get_user_info
 
     @staticmethod

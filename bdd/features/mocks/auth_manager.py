@@ -20,7 +20,6 @@ class AuthManagerMockFactory:
         AuthManagerMockFactory._setup_jwt_methods(auth_manager)
         AuthManagerMockFactory._setup_token_methods(auth_manager)
         AuthManagerMockFactory._setup_password_methods(auth_manager)
-        AuthManagerMockFactory._setup_validation_methods(auth_manager)
         AuthManagerMockFactory._setup_session_methods(auth_manager)
         AuthManagerMockFactory._setup_device_methods(auth_manager)
         AuthManagerMockFactory._setup_cookie_methods(auth_manager)
@@ -92,7 +91,7 @@ class AuthManagerMockFactory:
                 }
             return {
                 "success": True,
-                "payload": {
+                "data": {
                     "user_id": "test-user-001",
                     "username": "testuser",
                     "roles": ["user"],
@@ -152,26 +151,6 @@ class AuthManagerMockFactory:
             "message": "刷新令牌已成功撤销"
         }
         
-        def mock_zero_login(refresh_token: str):
-            """模拟零登录逻辑"""
-            # 验证刷新令牌
-            verify_result = mock.verify_jwt(refresh_token)
-            if not verify_result["success"]:
-                return {
-                    "success": False,
-                    "error": "Invalid refresh token"
-                }
-            
-            # 生成新的访问令牌
-            new_access_token = "mock_new_access_token"
-            return {
-                "success": True,
-                "access_token": new_access_token,
-                "expires_in": 3600
-            }
-        
-        mock.zero_login = Mock(side_effect=mock_zero_login)
-        
         def mock_is_token_valid(token: str, token_type: str = "access"):
             """模拟令牌有效性验证"""
             # 验证令牌格式
@@ -207,6 +186,14 @@ class AuthManagerMockFactory:
             }
         
         mock.invalidate_token = Mock(side_effect=mock_invalidate_token)
+        
+        def mock_is_token_in_other_device(token: str, token_type: str = "refresh"):
+            """模拟令牌设备验证"""
+            return {
+                "success": True  # 表示令牌未在其他设备使用
+            }
+        
+        mock.is_token_in_other_device = Mock(side_effect=mock_is_token_in_other_device)
     
     @staticmethod
     def _setup_password_methods(mock: Mock) -> None:
@@ -225,42 +212,6 @@ class AuthManagerMockFactory:
                 "error": None if expected_hash == hashed_password else "密码错误"
             }
         mock.verify_password.side_effect = mock_verify_password
-    
-    @staticmethod
-    def _setup_validation_methods(mock: Mock) -> None:
-        """设置验证相关的mock方法"""
-        def mock_validate_password(password: str):
-            if len(password) < 8:
-                return {
-                    "success": False,
-                    "error": "密码长度必须至少为8个字符"
-                }
-            if not re.search(r"[A-Z]", password):
-                return {
-                    "success": False,
-                    "error": "密码必须包含至少一��大写字母"
-                }
-            return {"success": True, "error": None}
-        mock.validate_password.side_effect = mock_validate_password
-        
-        def mock_validate_email(email: str):
-            pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            if not re.match(pattern, email):
-                return {
-                    "success": False,
-                    "error": "邮箱格式无效"
-                }
-            return {"success": True, "error": None}
-        mock.validate_email.side_effect = mock_validate_email
-        
-        def mock_validate_username(username: str):
-            if len(username) < 3:
-                return {
-                    "success": False,
-                    "error": "用户名长度必须至少为3个字符"
-                }
-            return {"success": True, "error": None}
-        mock.validate_username.side_effect = mock_validate_username
     
     @staticmethod
     def _setup_session_methods(mock: Mock) -> None:
@@ -396,3 +347,81 @@ class AuthManagerMockFactory:
             }
         
         mock.get_current_user = mock_get_current_user
+        
+        def mock_require_roles(required_roles):
+            """模拟角色要求检查"""
+            def check_user(request: Request = None):
+                return {
+                    "user_id": "test-user-001",
+                    "username": "testuser",
+                    "roles": ["admin"],
+                    "device_id": "test-device"
+                }
+            return check_user
+
+    @staticmethod
+    def _setup_validation_methods(mock: Mock) -> None:
+        """设置验证相关的mock方法"""
+        def mock_validate_username(username: str):
+            """验证用户名
+            - 长度在3-32个字符之间
+            - 只能包含字母、数字和下划线
+            """
+            if len(username) < 3 or len(username) > 32:
+                return {
+                    "success": False,
+                    "error": "用户名长度必须在3到32个字符之间"
+                }
+            
+            if not re.match(r'^[a-zA-Z0-9_]+$', username):
+                return {
+                    "success": False,
+                    "error": "用户名只能包含字母、数字和下划线"
+                }
+            
+            return {"success": True, "error": None}
+        mock.validate_username.side_effect = mock_validate_username
+        
+        def mock_validate_password(password: str):
+            """验证密码
+            - 长度至少8个字符
+            - 必须包含至少一个大写字母
+            """
+            if len(password) < 8:
+                return {
+                    "success": False,
+                    "error": "密码长度必须至少为8个字符"
+                }
+            if not re.search(r"[A-Z]", password):
+                return {
+                    "success": False,
+                    "error": "密码必须包含至少一个大写字母"
+                }
+            return {"success": True, "error": None}
+        mock.validate_password.side_effect = mock_validate_password
+        
+        def mock_validate_email(email: str):
+            """验证邮箱格式
+            - 必须符合标准邮箱格式
+            """
+            pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(pattern, email):
+                return {
+                    "success": False,
+                    "error": "邮箱格式无效"
+                }
+            return {"success": True, "error": None}
+        mock.validate_email.side_effect = mock_validate_email
+        
+        def mock_verify_invite_code(invite_code: str):
+            """验证邀请码"""
+            if invite_code.startswith("VALID_CODE_"):
+                return {
+                    "success": True,
+                    "error": None
+                }            
+            return {
+                "success": False,
+                "error": "邀请码无效"
+            }
+        mock.verify_invite_code.side_effect = mock_verify_invite_code

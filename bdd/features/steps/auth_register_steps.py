@@ -45,7 +45,8 @@ def step_impl(context):
     
     response = context.client.post(
         "/api/auth/register",
-        data=form_data
+        data=form_data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"}
     )
     context.response = response
     
