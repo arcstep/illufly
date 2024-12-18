@@ -10,7 +10,7 @@ class UserManagerMockFactory:
     """用户管理器Mock工厂类"""
     
     @staticmethod
-    def create() -> Mock:
+    def create(storage: dict) -> Mock:
         """创建UserManager的Mock实例"""
         user_manager = Mock()
         
@@ -19,7 +19,7 @@ class UserManagerMockFactory:
         
         # 设置所有mock方法
         UserManagerMockFactory._setup_auth_methods(user_manager)
-        UserManagerMockFactory._setup_user_methods(user_manager)
+        UserManagerMockFactory._setup_user_methods(user_manager, storage)
         UserManagerMockFactory._setup_validation_methods(user_manager)
         
         return user_manager
@@ -161,7 +161,7 @@ class UserManagerMockFactory:
         mock.verify_invite_code.side_effect = mock_verify_invite_code
 
     @staticmethod
-    def _setup_user_methods(mock: Mock) -> None:
+    def _setup_user_methods(mock: Mock, storage: dict) -> None:
         """设置用户相关的mock方法"""
         def mock_create_user(
             email: str,
@@ -173,25 +173,9 @@ class UserManagerMockFactory:
             password_expires_days: int = 90
         ):
             """模拟创建用户"""
-            if mock._storage.has_duplicate({"username": username}):
-                return {
-                    "success": False,
-                    "error": "用户名已存在",
-                    "user": None,
-                    "generated_password": None
-                }
-
-            if mock._storage.has_duplicate({"email": email}):
-                return {
-                    "success": False,
-                    "error": "邮箱已存在",
-                    "user": None,
-                    "generated_password": None
-                }
-
             # 生成随机密码（如果没提供）
             generated_password = None
-            if not password:
+            if password:
                 generated_password = "generated_password"
                 password = generated_password
 
@@ -205,6 +189,7 @@ class UserManagerMockFactory:
                 require_password_change=require_password_change,
                 password_expires_days=password_expires_days
             )
+            storage['users'].append(user)
 
             return {
                 "success": True,
@@ -216,19 +201,11 @@ class UserManagerMockFactory:
 
         def mock_get_user_info(user_id: str, include_sensitive: bool = False):
             """模拟获取用户信息"""
-            user_dict = {
-                "user_id": "mock-user-001",
-                "username": "mockuser",
-                "email": "mock@example.com",
-                "roles": ["user", "guest"],
-                "is_locked": False,
-                "is_active": True,
-                "require_password_change": False,
-                "created_at": datetime.now().isoformat()
-            }
-            if include_sensitive:
-                user_dict["password_hash"] = "hashed_password"
-            return user_dict
+            print(">>> storage", storage)
+            for user in storage['users']:
+                if user.user_id == user_id:
+                    return user.to_dict(include_sensitive=include_sensitive)
+            return None
         mock.get_user_info.side_effect = mock_get_user_info
 
     @staticmethod

@@ -7,6 +7,9 @@ from illufly.fastapi.user.endpoints import create_user_endpoints
 import json
 from bdd.features.mocks.auth_manager import AuthManagerMockFactory
 from bdd.features.mocks.user_manager import UserManagerMockFactory
+from behave.model import Feature
+from behave.runner import Context
+from typing import Optional
 
 class JSONEncoder(json.JSONEncoder):
     """自定义 JSON 编码器"""
@@ -58,49 +61,37 @@ def find_audit_log(context, action: str, user_id: str, status: str = 'success') 
             return log
     return None
 
-def before_all(context):
+def before_all(context: Context) -> None:
     """在所有测试开始前运行"""
+    print("\n=== before_all ===")
     print("启动测试环境...")
+    context.config.setup_logging()
+    
+    print(f"步骤文件路径: {context.config.paths}")
 
-def before_scenario(context, scenario):
+def before_feature(context: Context, feature: Feature) -> None:
+    """每个功能开始前运行"""
+    print("\n=== before_feature ===")
+    print(f"Feature 文件: {feature.filename}")
+    print(f"Feature 名称: {feature.name}")
+    print(f"Feature 标签: {feature.tags}")
+
+def before_scenario(context: Context, scenario) -> None:
     """每个场景开始前运行"""
-    # 初始化测试用户数据
-    context.test_users = {
-        "admin": {
-            "user_id": "admin-001",
-            "username": "admin",
-            "password": "Admin123",  # 管理员密码
-            "password_hash": "hashed_Admin123",  # 对应的密码哈希
-            "roles": [UserRole.ADMIN],  # 使用枚举
-            "email": "admin@example.com",
-            "is_active": True
-        },
-        "user1": {
-            "user_id": "user-001",
-            "username": "user1",
-            "password": "User123",  # 普通用户密码
-            "password_hash": "hashed_User123",  # 对应的密码哈希
-            "roles": [UserRole.USER],  # 使用枚举
-            "email": "user1@example.com",
-            "is_active": True
-        }
-    }
-    
-    # 使用工厂创建mock对象
-    context.auth_manager = AuthManagerMockFactory.create()
-    context.user_manager = UserManagerMockFactory.create()
-    
-    # 保持对existing_users的引用以保证兼容性
-    context.existing_users = context.user_manager._existing_users
     
     # 添加存储管理器
     context.storage = {
+        'register_data': [],
         'users': [],
         'tokens': [],
         'audit_logs': [],
-        'refresh_tokens': {},  # 存储刷新令牌
-        'access_tokens': {},   # 存储访问令牌
+        'refresh_tokens': {},
+        'access_tokens': {},
     }
+
+    # 使用工厂创建mock对象
+    context.auth_manager = AuthManagerMockFactory.create()
+    context.user_manager = UserManagerMockFactory.create(context.storage)
     
     # 添加辅助方法到context
     context.add_audit_log = lambda *args, **kwargs: add_audit_log(context, *args, **kwargs)
@@ -136,7 +127,7 @@ def create_test_token(context, token_type: str, user_data: dict) -> str:
     """
     if token_type == 'refresh':
         token = context.auth_manager.create_refresh_token({
-            'sub': user_data['user_id'],
+            'user_id': user_data['user_id'],
             'username': user_data['username'],
             'roles': user_data['roles']
         })
@@ -147,7 +138,7 @@ def create_test_token(context, token_type: str, user_data: dict) -> str:
         return token['token']
     else:
         token = context.auth_manager.create_access_token({
-            'sub': user_data['user_id'],
+            'user_id': user_data['user_id'],
             'username': user_data['username'],
             'roles': user_data['roles']
         })

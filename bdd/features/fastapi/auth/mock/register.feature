@@ -55,17 +55,19 @@ Feature: 用户认证系统 - 注册模块
   """
 
   Background: 测试环境准备
-    Given Mock系统已启动
-    And 用户管理模块正常运行
+    Given FastAPI 已经准备好
+    And 用户模块已经准备好
+    And 认证模块已经准备好
     And 清理测试数据
 
-  @core @happy-path
+  @core @happy-path @wip
   Scenario: [POST /auth/register] 基本用户注册
-    When 提交用户注册请求
-      | 字段     | 值                | 说明     |
-      | username | mockuser         | 用户名    |
+    Given 准备好用户表单
+      | 字段     | 值                | 说明    |
+      | username | mockuser         | 用户名  |
       | password | Test123!@#      | 密码     |
-      | email    | mock@example.com | 邮箱     |
+      | email    | mock@example.com | 邮箱    |
+    When 提交用户注册请求
     Then 系统返回状态码 200
     And 返回成功响应
     And 返回的用户信息包含
@@ -80,14 +82,12 @@ Feature: 用户认证系统 - 注册模块
 
   @validation @error
   Scenario Outline: 注册参数验证
-    Given Mock系统已启动
-    And 用户管理模块正常运行
-    And 清理测试数据
-    When 提交用户注册请求
+    Given 准备好用户表单
       | 字段       | 值              |
       | username  | <username>     |
       | password  | <password>     |
       | email     | <email>        |
+    When 提交用户注册请求
     Then 系统返回状态码 400
     And 返回错误信息包含 "<error_message>"
 
@@ -108,34 +108,36 @@ Feature: 用户认证系统 - 注册模块
 
   @duplicate @error
   Scenario: 注册重复用户名
-    Given 存在用户名 "duplicate_user"
-    When 提交用户注册请求
+    Given 准备好用户表单
       | 字段     | 值                |
       | username | duplicate_user   |
       | password | Test123!@#      |
       | email    | new@example.com |
+    When 提交用户注册请求
     Then 系统返回状态码 400
     And 返回错误信息包含 "用户名已存在"
 
   @invite-code
   Scenario: 使用邀请码注册
-    When 提交用户注册请求
+    Given 准备好用户表单
       | 字段        | 值                |
       | username    | mockuser         |
       | password    | Test123!@#      |
       | email       | mock@example.com |
       | invite_code | VALID_CODE_1      |
+    When 提交用户注册请求
     Then 系统返回状态码 200
     And 返回成功响应
 
   @invite-code @error
   Scenario: 使用无效邀请码
-    When 提交用户注册请求
+    Given 准备好用户表单
       | 字段        | 值                |
       | username    | mockuser         |
       | password    | Test123!@#      |
       | email       | mock@example.com |
       | invite_code | INVALID_CODE    |
+    When 提交用户注册请求
     Then 系统返回状态码 400
     And 返回错误信息包含 "邀请码无效"
 

@@ -1,47 +1,44 @@
 # features/steps/auth_register_steps.py
 from behave import given, when, then
 from fastapi import Response
-import json
 from datetime import datetime
+import json
 
-@given('Mock系统已启动')
+@given('FastAPI 已经准备好')
 def step_impl(context):
     assert context.client is not None
-    print("Mock系统已启动")
+    print("FastAPI 已经准备好")
 
-@given('用户管理模块正常运行')
+@given('用户模块已经准备好')
 def step_impl(context):
     assert context.user_manager is not None
-    print("用户管理模块正常运行")
+    print("用户模块已经准备好")
+
+@given('认证模块已经准备好')
+def step_impl(context):
+    assert context.user_manager is not None
+    print("认证模块已经准备好")
 
 @given('清理测试数据')
 def step_impl(context):
-    # 清理用户数据
-    if hasattr(context, 'existing_users'):
-        context.existing_users.clear()
-    
-    # 清理令牌数据
-    if hasattr(context, 'auth_manager'):
-        context.auth_manager.clear_tokens()
-    
-    # 清理存储数据
-    if hasattr(context, 'storage'):
-        for key in context.storage:
-            context.storage[key].clear()
+    context.storage = {
+        'register_data': [],
+        'users': [],
+        'tokens': [],
+        'audit_logs': [],
+        'refresh_tokens': {},
+        'access_tokens': {},
+    }
 
-@given('存在用户名 "{username}"')
-def step_impl(context, username):
-    print(f"模拟已存在用户: {username}")
-    context.existing_users.add(username)
+@given('准备好用户表单')
+def step_impl(context):
+    context.registration_table = context.table
+    print(f"准备注册表单数据: {context.registration_table}")
 
 @when('提交用户注册请求')
-def step_impl(context):
-    # 保存注册表格数据供后续步骤使用
-    context.registration_table = context.table  # 直接保存 Behave 的 table 对象
-    
+def step_impl(context):    
     # 将表格数据转换为表单数据
-    form_data = {row['字段']: row['值'] for row in context.table}
-    print(f"提交注册表单数据: {form_data}")
+    form_data = {row['字段']: row['值'] for row in context.registration_table}
     
     response = context.client.post(
         "/api/auth/register",
@@ -53,9 +50,12 @@ def step_impl(context):
     # 从响应中提取 user_id
     if response.status_code == 200:
         response_data = response.json()
-        if response_data.get('user_info'):
-            context.user_id = response_data['user_info'].get('user_id')
-            print(f"获取到用户ID: {context.user_id}")
+        print(">>> response_data", response_data)
+        user_info = response_data.get('user_info')
+        if user_info:
+            context.storage['register_data'].append(user_info)
+            context.storage['users'].append(user_info)
+            print(f"获取到用户ID: {user_info.get('user_id')}")
     else:
         print(f"请求失败，状态码: {response.status_code}")
         if response.content:
@@ -98,7 +98,7 @@ def step_impl(context):
 @then('密码应当被安全存储')
 def step_impl(context):
     # 获取刚注册的用户
-    user_id = context.user_id
+    user_id = context.storage['register_data'][0].get('user_id')
     assert user_id, "用户ID不应为空"
     print(f"验证用户ID: {user_id} 的密码存储")
     
@@ -150,18 +150,14 @@ def step_impl(context):
 @then('记录注册审计日志')
 def step_impl(context):
     """验证是否正确记录了注册审计日志"""
-    user_id = context.user_id
+    user_id = context.storage['register_data'][0].get('user_id')
     assert user_id, "用户ID不应为空"
     
     # 添加审计日志
     audit_log = context.add_audit_log(
         action='user_register',
         user_id=user_id,
-        details={
-            'username': 'mockuser',
-            'email': 'mock@example.com',
-            'roles': ['user', 'guest']
-        }
+        details=context.storage['register_data'][0]
     )
     
     # 验证日志是否被正确记录

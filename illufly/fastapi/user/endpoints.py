@@ -116,7 +116,6 @@ def create_user_endpoints(
                     )
 
             # 创建用户
-            print(">>> username", username)
             result = user_manager.create_user(
                 username=username,
                 password=password,
@@ -124,7 +123,6 @@ def create_user_endpoints(
                 roles=[UserRole.USER, UserRole.GUEST],
                 require_password_change=False
             )
-
             if not result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -133,7 +131,6 @@ def create_user_endpoints(
 
             user = result["user"]
             # 获取用户信息用于生成令牌
-            print(">>> user", user)
             user_info = user_manager.get_user_info(user.user_id)
             if not user_info:
                 raise HTTPException(
@@ -142,9 +139,7 @@ def create_user_endpoints(
                 )
 
             # 自动登录
-            print(">>> user_info", user_info)
             token_data = _create_token_data(user_info)
-            print(">>> token_data", token_data)
             access_token = auth_manager.create_access_token(data=token_data)
             refresh_token = auth_manager.create_refresh_token(data=token_data)
             auth_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
@@ -260,7 +255,6 @@ def create_user_endpoints(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=verify_old_result["error"]
                     )
-                print(">>> verify_old_result", verify_old_result)
             except Exception as e:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -273,7 +267,6 @@ def create_user_endpoints(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=validate_result["error"]
                 )
-            print(">>> validate_result", validate_result)
 
             change_result = user_manager.change_password(
                 user_id=current_user["user_id"],
@@ -285,7 +278,6 @@ def create_user_endpoints(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=change_result["error"]
                 )
-            print(">>> change_result", change_result)
 
             return {
                 "success": True,
