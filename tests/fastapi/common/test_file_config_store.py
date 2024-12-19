@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import List, Optional
 from dataclasses import dataclass, field
 from typing import Dict, Any
+import logging
 
 @dataclass(frozen=True)
 class StorageData:
@@ -14,114 +15,221 @@ class StorageData:
     name: str = "张三"
     age: int = 25
     email: str = "test@example.com"
-
-@pytest.fixture
-def test_data_factory():
-    def create_test_data(**kwargs):
-        defaults = {
-            "id": "1",
-            "name": "张三",
-            "age": 25,
-            "email": "test@example.com"
+    
+    def to_dict(self) -> dict:
+        """序列化方法"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "age": self.age,
+            "email": self.email
         }
-        defaults.update(kwargs)
-        return StorageData(**defaults)
-    return create_test_data
-
-@pytest.fixture
-def storage_factory(tmp_path):
-    """创建文件存储实例的工厂函数"""
-    def create_storage():
-        return FileConfigStore(
-            data_dir=str(tmp_path),
-            filename="test.json",
-            data_class=StorageData,
-            serializer=lambda x: x.__dict__,
-            deserializer=lambda x: StorageData(**x)
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'StorageData':
+        """反序列化方法"""
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            age=data["age"],
+            email=data["email"]
         )
-    return create_storage
 
-def test_set_and_get(storage_factory: Callable, test_data_factory: Callable):
-    """测试设置和获取功能"""
-    storage = storage_factory()
-    test_data = test_data_factory(name="李四", age=30)
-    
-    storage.set(test_data, "owner1")
-    result = storage.get("owner1")
-    
-    assert result is not None
-    assert result.name == "李四"
-    assert result.age == 30
+class TestSimpleStorageData:
 
-def test_list_owners(storage_factory: Callable, test_data_factory: Callable):
-    """测试list_owners方法"""
-    storage = storage_factory()
-    
-    # 准备测试数据
-    test_data1 = test_data_factory(id="1", name="张三")
-    test_data2 = test_data_factory(id="2", name="李四")
-    test_data3 = test_data_factory(id="3", name="王五")
-    
-    # 存储数据
-    storage.set(test_data1, "owner1")
-    storage.set(test_data2, "owner2")
-    storage.set(test_data3, "owner3")
-    
-    # 获取所有owner_id
-    owners = storage.list_owners()
-    
-    # 验证结果
-    assert len(owners) == 3
-    assert set(owners) == {"owner1", "owner2", "owner3"}
+    @pytest.fixture
+    def test_data_factory(self, tmp_path):
+        def create_test_data(**kwargs):
+            defaults = {
+                "id": "1",
+                "name": "张三",
+                "age": 25,
+                "email": "test@example.com"
+            }
+            defaults.update(kwargs)
+            return StorageData(**defaults)
+        return create_test_data
 
-def test_has_duplicate(storage_factory: Callable, test_data_factory: Callable):
-    """测试唯一性检查"""
-    storage = storage_factory()
-    
-    # 准备测试数据
-    test_data1 = test_data_factory(id="1", name="张三", email="zhangsan@test.com")
-    test_data2 = test_data_factory(id="2", name="李四", email="lisi@test.com")
-    
-    storage.set(test_data1, "owner1")
-    storage.set(test_data2, "owner2")
-    
-    # 测试已存在的唯一值
-    assert storage.has_duplicate({"email": "zhangsan@test.com"}) == True
-    
-    # 测试不存在的唯一值
-    assert storage.has_duplicate({"email": "wangwu@test.com"}) == False
-    
-    # 测试多个属性组合的唯一性
-    assert storage.has_duplicate({"name": "张三", "email": "zhangsan@test.com"}) == True
-    assert storage.has_duplicate({"name": "张三", "email": "other@test.com"}) == False
+    @pytest.fixture
+    def storage_factory(self, tmp_path):
+        """创建文件存储实例的工厂函数"""
+        def create_storage():
+            return FileConfigStore(
+                data_dir=str(tmp_path),
+                filename="test.json",
+                data_class=StorageData
+            )
+        return create_storage
 
-def test_find(storage_factory: Callable, test_data_factory: Callable):
-    """测试find方法"""
-    storage = storage_factory()
-    
-    # 准备测试数据
-    test_data1 = test_data_factory(id="1", name="张三", age=25)
-    test_data2 = test_data_factory(id="2", name="张三", age=30)
-    test_data3 = test_data_factory(id="3", name="李四", age=25)
-    
-    storage.set(test_data1, "owner1")
-    storage.set(test_data2, "owner2")
-    storage.set(test_data3, "owner3")
-    
-    # 测试单个条件查询
-    results = storage.find({"name": "张三"})
-    assert len(results) == 2
-    assert {r.id for r in results} == {"1", "2"}
-    
-    # 测试多个条件的与查询
-    results = storage.find({"name": "张三", "age": 25})
-    assert len(results) == 1
-    assert results[0].id == "1"
-    
-    # 测试指定owner_id的查询
-    results = storage.find({"name": "张三"}, "owner1")
-    assert len(results) == 1
-    assert results[0].id == "1"
+    @pytest.fixture(autouse=True)
+    def setup_logging(self):
+        """设置日志级别为DEBUG"""
+        # 配置根日志记录器
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            force=True  # 强制重新配置
+        )
+        
+        # 特别设置 illufly 包的日志级别
+        logger = logging.getLogger('illufly')
+        logger.setLevel(logging.DEBUG)
+        
+        # 添加控制台处理器
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setLevel(logging.DEBUG)
+            formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            
+        # 确保日志器会传播到根日志记录器
+        logger.propagate = True
+        
+        yield
+        
+        # 清理处理器
+        logger.handlers.clear()
+
+    def test_set_and_get(self, storage_factory: Callable, test_data_factory: Callable):
+        """测试设置和获取功能"""
+        storage = storage_factory()
+        test_data = test_data_factory(name="李四", age=30)
+        
+        storage.set(test_data, "owner1")
+        result = storage.get("owner1")
+        
+        assert result is not None
+        assert result.name == "李四"
+        assert result.age == 30
+
+    def test_list_owners(self, storage_factory: Callable, test_data_factory: Callable):
+        """测试list_owners方法"""
+        
+        # 准备测试数据
+        storage = storage_factory()
+        test_data1 = test_data_factory(id="1", name="张三")
+        test_data2 = test_data_factory(id="2", name="李四")
+        test_data3 = test_data_factory(id="3", name="王五")
+        
+        # 存储数据
+        storage.set(test_data1, "owner1")
+        storage.set(test_data2, "owner2")
+        storage.set(test_data3, "owner3")
+        
+        # 获取所有owner_id
+        owners = storage.list_owners()
+        
+        # 验证结果
+        assert len(owners) == 3
+        assert set(owners) == {"owner1", "owner2", "owner3"}
+
+    def test_has_duplicate(self, storage_factory: Callable, test_data_factory: Callable):
+        """测试唯一性检查"""
+        storage = storage_factory()
+        
+        # 准备测试数据
+        test_data1 = test_data_factory(id="1", name="张三", email="zhangsan@test.com")
+        test_data2 = test_data_factory(id="2", name="李四", email="lisi@test.com")
+        
+        storage.set(test_data1, "owner1")
+        storage.set(test_data2, "owner2")
+        
+        # 测试已存在的唯一值
+        assert storage.has_duplicate({"email": "zhangsan@test.com"}) == True
+        
+        # 测试不存在的唯一值
+        assert storage.has_duplicate({"email": "wangwu@test.com"}) == False
+        
+        # 测试多个属性组合的唯一性
+        assert storage.has_duplicate({"name": "张三", "email": "zhangsan@test.com"}) == True
+        assert storage.has_duplicate({"name": "张三", "email": "other@test.com"}) == False
+
+    def test_find(self, storage_factory: Callable, test_data_factory: Callable):
+        """测试find方法"""
+        storage = storage_factory()
+        
+        # 准备测试数据
+        test_data1 = test_data_factory(id="1", name="张三", age=25)
+        test_data2 = test_data_factory(id="2", name="张三", age=30)
+        test_data3 = test_data_factory(id="3", name="李四", age=25)
+        
+        storage.set(test_data1, "owner1")
+        storage.set(test_data2, "owner2")
+        storage.set(test_data3, "owner3")
+        
+        # 测试单个条件查询
+        results = storage.find({"name": "张三"})
+        assert len(results) == 2
+        assert {r.id for r in results} == {"1", "2"}
+        
+        # 测试多个条件的与查询
+        results = storage.find({"name": "张三", "age": 25})
+        assert len(results) == 1
+        assert results[0].id == "1"
+        
+        # 测试指定owner_id的查询
+        results = storage.find({"name": "张三"}, "owner1")
+        assert len(results) == 1
+        assert results[0].id == "1"
+
+    def test_delete(self, storage_factory: Callable, test_data_factory: Callable, tmp_path):
+        """测试删除功能"""
+        storage = storage_factory()
+        test_data = test_data_factory(name="张三", age=25)
+        
+        # 存储数据
+        storage.set(test_data, "owner1")
+        
+        # 验证数据存在
+        assert storage.get("owner1") is not None
+        
+        # 删除数据
+        result = storage.delete("owner1")
+        assert result is True  # 确认删除成功
+        
+        # 验证数据已被删除
+        assert storage.get("owner1") is None
+        assert "owner1" not in storage.list_owners()
+        
+        # 测试删除不存在的数据
+        result = storage.delete("non_existent_owner")
+        assert result is False  # 确认删除不存在的数据返回False
+
+    def test_delete_with_multiple_files(self, storage_factory: Callable, test_data_factory: Callable, tmp_path):
+        """测试在同一目录下有多个文件时的删除功能"""
+        # 创建两个不同的存储实例，使用相同的owner目录但不同的文件名
+        storage1 = FileConfigStore(
+            data_dir=str(tmp_path),
+            filename="test1.json",
+            data_class=StorageData
+        )
+        storage2 = FileConfigStore(
+            data_dir=str(tmp_path),
+            filename="test2.json",
+            data_class=StorageData
+        )
+        
+        test_data = test_data_factory(name="张三", age=25)
+        
+        # 在同一个owner目录下存储两个文件
+        storage1.set(test_data, "owner1")
+        storage2.set(test_data, "owner1")
+        
+        # 验证两个文件都存在
+        assert storage1.get("owner1") is not None
+        assert storage2.get("owner1") is not None
+        
+        # 删除第一个文件
+        result = storage1.delete("owner1")
+        assert result is True
+        
+        # 验证只���第一个文件被删除，第二个文件仍然存在
+        assert storage1.get("owner1") is None
+        assert storage2.get("owner1") is not None
+        
+        # 验证owner目录仍然存在（因为还有其他文件）
+        assert (tmp_path / "owner1").exists()
 
 # 添加新的测试数据类
 @dataclass
@@ -341,9 +449,10 @@ class TestFileConfigStoreCompositeTypes:
     def test_dict_storage(self, tmp_path, agent_config_factory):
         """测试字典类型存储"""
         # 创建配置字典存储
-        store = FileConfigStore[Dict[str, AgentConfig]](
+        store = FileConfigStore(
             data_dir=str(tmp_path),
-            filename="agents.json"
+            filename="agents.json",
+            data_class=Dict[str, AgentConfig]
         )
         
         # 准备测试数据
@@ -376,9 +485,10 @@ class TestFileConfigStoreCompositeTypes:
     
     def test_list_storage(self, tmp_path, agent_config_factory):
         """测试列表类型存储"""
-        store = FileConfigStore[List[AgentConfig]](
+        store = FileConfigStore(
             data_dir=str(tmp_path),
-            filename="agent_list.json"
+            filename="agent_list.json",
+            data_class=List[AgentConfig]
         )
         
         # 准备测试数据
@@ -400,9 +510,10 @@ class TestFileConfigStoreCompositeTypes:
     
     def test_nested_dict_storage(self, tmp_path, agent_config_factory):
         """测试嵌套字典存储"""
-        store = FileConfigStore[Dict[str, Dict[str, AgentConfig]]](
+        store = FileConfigStore(
             data_dir=str(tmp_path),
-            filename="nested_agents.json"
+            filename="nested_agents.json",
+            data_class=Dict[str, Dict[str, AgentConfig]]
         )
         
         # 准备测试数据
@@ -430,9 +541,10 @@ class TestFileConfigStoreCompositeTypes:
     
     def test_find_in_composite_types(self, tmp_path, agent_config_factory):
         """测试复合类型的查找功能"""
-        store = FileConfigStore[Dict[str, AgentConfig]](
+        store = FileConfigStore(
             data_dir=str(tmp_path),
-            filename="searchable_agents.json"
+            filename="searchable_agents.json",
+            data_class=Dict[str, AgentConfig]
         )
         
         # 准备测试数据
@@ -464,12 +576,13 @@ class TestFileConfigStoreCompositeTypes:
     
     def test_complex_nested_structures(self, tmp_path, agent_config_factory):
         """测试复杂嵌套结构"""
-        store = FileConfigStore[Dict[str, List[Dict[str, AgentConfig]]]](
+        store = FileConfigStore(
             data_dir=str(tmp_path),
-            filename="complex_agents.json"
+            filename="complex_agents.json",
+            data_class=Dict[str, List[Dict[str, AgentConfig]]]
         )
         
-        # 准备测试数据
+        # 准备测试数��
         test_data = {
             "project1": [
                 {

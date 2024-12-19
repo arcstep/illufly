@@ -58,7 +58,7 @@ Feature: 用户认证系统 - 注册模块
     Given FastAPI 已经准备好
     And 清理测试数据
 
-  @core @happy-path @wip
+  @core @happy-path
   Scenario: [POST /auth/register] 基本用户注册
     Given 准备好用户表单
       | 字段     | 值                | 说明    |
@@ -103,7 +103,7 @@ Feature: 用户认证系统 - 注册模块
       | testuser | Test123!@# | invalid    | 邮箱格式无效      |
       | testuser | Test123!@# | @test.com  | 邮箱格式无效      |
 
-  @duplicate @error
+  @duplicate @error @wip
   Scenario: 注册重复用户名
     Given 准备好用户表单
       | 字段     | 值                |

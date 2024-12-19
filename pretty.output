@@ -49,24 +49,35 @@ Feature: 用户认证系统 - 注册模块 # bdd/features/fastapi/auth/register.
   """
   Background: 测试环境准备  # bdd/features/fastapi/auth/register.feature:57
 
-  @core @happy-path @wip
-  Scenario: [POST /auth/register] 基本用户注册  # bdd/features/fastapi/auth/register.feature:62
-    Given FastAPI 已经准备好                   # bdd/features/steps/common.py:3
-    And 清理测试数据                            # bdd/features/steps/common.py:8
-    Given 准备好用户表单                         # bdd/features/steps/register_steps.py:7
-      | 字段       | 值                | 说明  |
-      | username | mockuser         | 用户名 |
-      | password | Test123!@#       | 密码  |
-      | email    | mock@example.com | 邮箱  |
-    When 提交用户注册请求                         # bdd/features/steps/register_steps.py:12
-    Then 系统返回状态码 200                      # bdd/features/steps/register_steps.py:44
-    And 返回成功响应                            # bdd/features/steps/register_steps.py:48
-    And 返回的用户信息包含                         # bdd/features/steps/register_steps.py:53
-      | 字段        | 值                | 说明     |
-      | username  | mockuser         | 用户名    |
-      | email     | mock@example.com | 邮箱     |
-      | roles     | ["user","guest"] | 用户角色列表 |
-      | is_active | true             | 账户激活状态 |
-    And 密码应当被安全存储                         # bdd/features/steps/register_steps.py:78
-    And 系统应设置认证Cookie                     # bdd/features/steps/register_steps.py:106
+  @duplicate @error @wip
+  Scenario: 注册重复用户名       # bdd/features/fastapi/auth/register.feature:107
+    Given FastAPI 已经准备好   # bdd/features/steps/common.py:3
+    And 清理测试数据            # bdd/features/steps/common.py:8
+    Given 准备好用户表单         # bdd/features/steps/register_steps.py:7
+      | 字段       | 值               |
+      | username | duplicate_user  |
+      | password | Test123!@#      |
+      | email    | new@example.com |
+    When 提交用户注册请求         # bdd/features/steps/register_steps.py:12
+    Then 系统返回状态码 400      # bdd/features/steps/register_steps.py:44
+      Traceback (most recent call last):
+        File "/Users/xuehongwei/Library/Caches/pypoetry/virtualenvs/illufly-S5GgtCoU-py3.10/lib/python3.10/site-packages/behave/model.py", line 1329, in run
+          match.run(runner.context)
+        File "/Users/xuehongwei/Library/Caches/pypoetry/virtualenvs/illufly-S5GgtCoU-py3.10/lib/python3.10/site-packages/behave/matchers.py", line 98, in run
+          self.func(context, *args, **kwargs)
+        File "bdd/features/steps/register_steps.py", line 46, in step_impl
+          assert context.response.status_code == status_code
+      AssertionError
+      
+      Captured stdout:
+      FastAPI 已经准备好
+      清理测试数据
+      准备注册表单数据: <Table: 2x3>
+      >>> response_data {'success': True, 'user_info': {'user_id': '20241219-02894-0000-2460', 'username': 'duplicate_user', 'email': 'new@example.com', 'roles': ['guest', 'user'], 'created_at': '2024-12-19T18:08:14.533137', 'require_password_change': False, 'last_password_change': '2024-12-19T18:08:14.533144', 'password_expires_days': 90, 'last_login': None, 'failed_login_attempts': 0, 'last_failed_login': None, 'is_locked': False, 'is_active': True, 'verify_invite_code': None}}
+      获取到用户ID: 20241219-02894-0000-2460
+      
+      Captured logging:
+      INFO:httpx:HTTP Request: POST http://testserver/api/auth/register "HTTP/1.1 200 OK"
+
+    And 返回错误信息包含 "用户名已存在" # None
 

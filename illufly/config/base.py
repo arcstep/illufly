@@ -15,6 +15,7 @@ def get_env(key: str=None):
 
     default_values = {
         # 文件夹配置
+        "ILLUFLY_TEMP_DIR": FIXED_TEMP_DIR,
         "ILLUFLY_FASTAPI_USERS_PATH": "__USERS__",
         "ILLUFLY_DOCS": "__DOCS__", # 从这个目录自动加载 RAG 资料，为避免误将不必要的资料做 RAG，因此需要设置为 __DOCS__
         "ILLUFLY_RESOURCE": "./", # 根据这个媒体文件夹上传文件，因此需要设置为当前目录

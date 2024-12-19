@@ -11,6 +11,7 @@ from illufly.fastapi.user.endpoints import create_user_endpoints
 from illufly.fastapi.auth.manager import AuthManager
 from illufly.fastapi.user.manager import UserManager
 from illufly.fastapi.common import FileConfigStore
+from illufly.config import get_env
 
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(), override=True)
@@ -33,7 +34,7 @@ def before_feature(context: Context, feature: Feature) -> None:
 
 def before_scenario(context: Context, scenario) -> None:
     """每个场景开始前运行"""
-    __USERS_PATH__ = "/tmp/illufly/test_users"
+    __USERS_PATH__ = get_env("ILLUFLY_TEMP_DIR") + "/test_users"
     if os.path.exists(__USERS_PATH__):
         shutil.rmtree(__USERS_PATH__)
 

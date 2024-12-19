@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, List, Callable, Type, TypeVar, Generic, get_args, get_origin
+from typing import Dict, Any, Optional, List, Callable, Type, TypeVar, Generic, get_args, get_origin, get_type_hints
 from dataclasses import is_dataclass, asdict
 from datetime import datetime
 import inspect
@@ -181,95 +181,188 @@ class FileConfigStore(Generic[T]):
     })
     ```
     """
+    _data: Dict[str, Optional[T]]
+
+    @classmethod
+    def __class_getitem__(cls, item):
+        """支持 FileConfigStore[StorageData] 语法"""
+        if isinstance(item, TypeVar):
+            raise TypeError("必须指定具体类型，而不是类型变量")
+        return super().__class_getitem__(item)
+    
     def __init__(
         self,
         data_dir: str,
         filename: str,
-        data_class: Optional[Type] = None,
-        serializer: Optional[Callable[[T], Dict]] = None,
-        deserializer: Optional[Callable[[Dict], T]] = None,
+        data_class: Optional[Type[T]] = None,
+        serializer: Optional[Callable[[T], Dict[str, Any]]] = None,
+        deserializer: Optional[Callable[[Dict[str, Any]], T]] = None,
         logger: Optional[logging.Logger] = None
     ):
+        """
+        初始化FileConfigStore
+        
+        Args:
+            data_dir (str): 数据存储目录路径
+            filename (str): 数据文件名
+            data_class (Optional[Type]): 可选的数据类型类，如果不提供则从类型参数推断
+            serializer (Optional[Callable[[T], Dict]]): 可选的自定义序列化函数
+            deserializer (Optional[Callable[[Dict], T]]): 可选的自定义反序列化函数
+            logger (Optional[logging.Logger]): 可选的日志记录器
+
+        Raises:
+            TypeError: 如果data_class没有提供to_dict或from_dict方法且没有提供自定义序列化器
+        """
+        
+        self.logger = logger or logging.getLogger(__name__)
         self._data_dir = Path(data_dir)
         self._filename = filename
+        
         # 如果没有提供 data_class，从类型参数推断
-        self._data_class = data_class or self._infer_data_class()
+        if data_class is None:
+            orig_class = getattr(self, '__orig_class__', None)
+            if orig_class is not None:
+                args = get_args(orig_class)
+                if args:
+                    data_class = args[0]
+        
+        if data_class is None:
+            data_class = self._infer_data_class()
+            
+        self._data_class = data_class
+        print(f"推断的数据类: {self._data_class}")
+        
+        # 检查是否是复合类型
+        origin = get_origin(self._data_class)
+        if origin in (dict, list, tuple):
+            # 复合类型使用默认序列化器
+            serializer = self._default_serializer
+            deserializer = self._default_deserializer
+        else:
+            # 非复合类型检查序列化方法
+            if not serializer:
+                to_dict = getattr(self._data_class, 'to_dict', None)
+                if not to_dict or isinstance(to_dict, (classmethod, staticmethod)):
+                    raise TypeError(
+                        f"数据类 {self._data_class.__name__} 必须实现 to_dict 实例方法，"
+                        "或者提供自定义的序列化器"
+                    )
+            
+            # 检查反序列化方法
+            if not deserializer and not hasattr(self._data_class, 'from_dict'):
+                raise TypeError(
+                    f"数据类 {self._data_class.__name__} 必须实现 from_dict 类方法，"
+                    "或者提供自定义的反序列化器"
+                )
+        
         self._serializer = serializer or self._default_serializer
         self._deserializer = deserializer or self._default_deserializer
         self._data: Dict[str, Optional[T]] = {}
         self._lock = threading.Lock()
         self._file_locks: Dict[str, threading.Lock] = {}
         self._file_locks_lock = threading.Lock()
-        self.logger = logger or logging.getLogger(__name__)
 
-    def _infer_data_class(self) -> Type:
+    def _infer_data_class(self) -> Type[T]:
         """从类型参数推断数据类型"""
-        args = get_args(self.__class__.__orig_bases__[0])
-        if not args:
-            raise TypeError("Type parameter T must be specified")
+        # 1. 检查是否有原始类
+        if hasattr(self, '__class_getitem__'):
+            print(f"Class getitem: {self.__class_getitem__}")
         
-        type_param = args[0]
-        origin = get_origin(type_param)
+        # 2. 获取实例的原始类
+        orig_class = getattr(self, '__orig_class__', None)
+        if orig_class is not None:
+            print(f"Original class: {orig_class}")
+            args = get_args(orig_class)
+            print(f"Args from orig_class: {args}")
+            if args:
+                return args[0]
         
-        if origin is dict:
-            key_type, value_type = get_args(type_param)
-            return value_type
-        elif origin is list:
-            item_type = get_args(type_param)[0]
-            return item_type
-        else:
-            return type_param
+        # 3. 检查类的基类
+        bases = getattr(self.__class__, '__orig_bases__', None)
+        if bases:
+            print(f"Original bases: {bases}")
+            for base in bases:
+                if get_origin(base) is Generic:
+                    continue
+                args = get_args(base)
+                print(f"Args from base: {args}")
+                if args and not isinstance(args[0], TypeVar):
+                    return args[0]
+        
+        raise TypeError(
+            f"无法推断具体类型，请使用 FileConfigStore[YourType] 或提供 data_class 参数\n"
+            f"当前类: {self.__class__}\n"
+            f"原始类: {orig_class}\n"
+            f"基类: {bases}"
+        )
 
     def _default_serializer(self, obj: T) -> Dict:
         """默认序列化方法，支持复合类型"""
-        def serialize_value(v):
+        def serialize_value(v, type_hint=None):
             if hasattr(v, 'to_dict'):
                 return v.to_dict()
             elif isinstance(v, dict):
-                return {k: serialize_value(val) for k, val in v.items()}
+                # 获取字典值的类型提示
+                val_type = None
+                if type_hint and get_origin(type_hint) is dict:
+                    _, val_type = get_args(type_hint)
+                return {str(k): serialize_value(val, val_type) for k, val in v.items()}
             elif isinstance(v, (list, tuple)):
-                return [serialize_value(item) for item in v]
+                # 获取列表元素的类型提示
+                item_type = None
+                if type_hint and get_origin(type_hint) is list:
+                    item_type = get_args(type_hint)[0]
+                return [serialize_value(item, item_type) for item in v]
             return v
 
         if obj is None:
             return {}
             
-        if isinstance(obj, dict):
-            return {k: serialize_value(v) for k, v in obj.items()}
-        elif isinstance(obj, (list, tuple)):
-            return [serialize_value(item) for item in obj]
-        elif hasattr(obj, 'to_dict'):
-            return obj.to_dict()
-        return obj
+        # 使用 _data_class 作为类型提示
+        return serialize_value(obj, self._data_class)
 
     def _default_deserializer(self, data: Dict) -> T:
         """默认反序列化方法，支持复合类型"""
         if not data:
             return self._create_default_instance()
-            
-        type_param = get_args(self.__class__.__orig_bases__[0])[0]
-        origin = get_origin(type_param)
         
-        def deserialize_value(v, value_type):
-            if hasattr(value_type, 'from_dict') and isinstance(v, dict):
-                return value_type.from_dict(v)
-            elif get_origin(value_type) is dict:
-                key_type, val_type = get_args(value_type)
-                return {k: deserialize_value(val, val_type) for k, val in v.items()}
-            elif get_origin(value_type) is list:
-                item_type = get_args(value_type)[0]
+        def deserialize_value(v, type_hint):
+            # 如果类型提示有 from_dict 方法且值是字典
+            if hasattr(type_hint, 'from_dict') and isinstance(v, dict):
+                return type_hint.from_dict(v)
+            
+            # 获取类型的原始类型
+            origin = get_origin(type_hint)
+            if origin is dict:
+                key_type, val_type = get_args(type_hint)
+                return {key_type(k): deserialize_value(val, val_type) 
+                       for k, val in v.items()}
+            elif origin is list:
+                item_type = get_args(type_hint)[0]
                 return [deserialize_value(item, item_type) for item in v]
+            elif origin is tuple:
+                item_types = get_args(type_hint)
+                return tuple(deserialize_value(item, t) 
+                           for item, t in zip(v, item_types))
             return v
         
+        # 使用 _data_class 作为主类型提示
+        return deserialize_value(data, self._data_class)
+
+    def _create_default_instance(self) -> T:
+        """创建默认实例"""
+        origin = get_origin(self._data_class)
         if origin is dict:
-            key_type, value_type = get_args(type_param)
-            return {k: deserialize_value(v, value_type) for k, v in data.items()}
+            return {}
         elif origin is list:
-            item_type = get_args(type_param)[0]
-            return [deserialize_value(item, item_type) for item in data]
-        elif hasattr(self._data_class, 'from_dict'):
-            return self._data_class.from_dict(data)
-        return data
+            return []
+        elif origin is tuple:
+            return ()
+        elif hasattr(self._data_class, 'default'):
+            return self._data_class.default()
+        elif hasattr(self._data_class, '__dataclass_fields__'):
+            return self._data_class()  # 使用默认构造函数
+        return None
 
     def get(self, owner_id: str) -> Optional[T]:
         """获取指定所有者的数据"""
@@ -279,21 +372,35 @@ class FileConfigStore(Generic[T]):
             return self._data.get(owner_id)
 
     def set(self, value: T, owner_id: str) -> None:
-        """设置指定所有者的数��"""
+        """设置指定所有者的数据"""
         with self._lock:
             self._data[owner_id] = value
             self._save_owner_data(owner_id)
 
     def delete(self, owner_id: str) -> bool:
-        """删除指定所有者的数据"""
+        """删除指定所有者的数据
+        
+        Args:
+            owner_id (str): 所有者ID
+            
+        Returns:
+            bool: 如果数据存在并被成功删除返回True,否则返回False
+        """
         with self._lock:
-            if owner_id not in self._data:
-                self._load_owner_data(owner_id)
-            if self._data.get(owner_id) is None:
+            file_path = self._get_file_path(owner_id)
+            if not file_path.exists():
                 return False
-            self._data[owner_id] = None
-            self._save_owner_data(owner_id)
-            return True
+            
+            with self._get_file_lock(owner_id):
+                try:
+                    # 只删除特定文件
+                    file_path.unlink()
+                    # 从内存中移除数据
+                    self._data.pop(owner_id, None)
+                    return True
+                except Exception as e:
+                    self.logger.error(f"Error deleting data for {owner_id}: {e}")
+                    return False
 
     def find(self, conditions: Dict[str, Any], owner_id: str = "") -> List[Any]:
         """查找匹配指定条件的数据"""
