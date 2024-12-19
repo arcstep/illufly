@@ -23,7 +23,7 @@ def create_user_endpoints(
         dict: 包含所有注册的端点函数的字典
     """
 
-    def _create_token_data(user_info: dict) -> dict:
+    def _create_token_data(user_info: dict, device_id: str = "DEFAULT_DEVICE", device_name: str = "Default Device") -> dict:
         """从用户信息中提取JWT令牌所需的数据
 
         Args:
@@ -31,6 +31,8 @@ def create_user_endpoints(
 
         Returns:
             dict: 包含令牌所需字段的字典，包括:
+                - device_id: 设备ID
+                - device_name: 设备名称
                 - user_id: 用户ID
                 - username: 用户名
                 - email: 电子邮箱
@@ -40,6 +42,8 @@ def create_user_endpoints(
                 - require_password_change: 是否需要修改密码
         """
         return {
+            "device_id": device_id,
+            "device_name": device_name,
             "user_id": user_info["user_id"],
             "username": user_info["username"],
             "email": user_info["email"],
@@ -54,6 +58,8 @@ def create_user_endpoints(
         username: str = Form(...),
         password: str = Form(...),
         email: str = Form(...),
+        device_id: str = Form(None),
+        device_name: str = Form(None),
         invite_code: str = Form(None),
         response: Response = None
     ):
@@ -139,7 +145,7 @@ def create_user_endpoints(
                 )
 
             # 自动登录
-            token_data = _create_token_data(user_info)
+            token_data = _create_token_data(user_info, device_id, device_name)
             access_token = auth_manager.create_access_token(data=token_data)
             refresh_token = auth_manager.create_refresh_token(data=token_data)
             auth_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
@@ -158,16 +164,19 @@ def create_user_endpoints(
             )
 
     @app.post(f"{prefix}/auth/login")
-    async def login(
+    async def login(        
         username: str = Form(...),
         password: str = Form(...),
+        device_id: str = Form(None),
+        device_name: str = Form(None),
         response: Response = None
     ):
         """用户登录接口
         
-        Args:
+        Args:            
             username: 用户名
             password: 密码
+            device_id: 设备ID
             response: FastAPI响应对象
             
         Returns:
@@ -204,7 +213,7 @@ def create_user_endpoints(
             user_info = verify_result["user"]
             require_password_change = verify_result["require_password_change"]
             
-            token_data = _create_token_data(user_info)
+            token_data = _create_token_data(user_info, device_id, device_name)
             access_token = auth_manager.create_access_token(data=token_data)
             refresh_token = auth_manager.create_refresh_token(data=token_data)
             auth_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])

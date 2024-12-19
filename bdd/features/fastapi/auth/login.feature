@@ -67,8 +67,27 @@ Feature: 用户多设备登录管理
   - SEC-001: 认证安全策略
   """
 
-  Background:
-    Given 系统已有注册用户
+  Background: 测试环境准备
+    Given FastAPI 已经准备好
+    And 清理测试数据
+    And 系统已有注册用户:
+      | 字段    | 值             |
+      | username | testuser1         |
+      | password | Test123!@#        |
+      | email    | test1@example.com |
+      | roles    | ["user"]         |
+    And 系统已有注册用户:
+      | 字段    | 值             |
+      | username | testuser2         |
+      | password | Test123!@#        |
+      | email    | test2@example.com |
+      | roles    | ["user"]         |
+    And 系统已有注册用户:
+      | 字段    | 值             |
+      | username | admin             |
+      | password | Test123!@#        |
+      | email    | admin@example.com |
+      | roles    | ["admin", "user"] |
 
   # 以下是核心场景
   @core @happy-path
@@ -81,32 +100,41 @@ Feature: 用户多设备登录管理
     - 登录成功后需要设置安全的 Cookie
     - 需要检查是否需要强制修改密码
     """
-    When 用户在设备A提供正确的登录信息:
-      | Field    | Value             |
-      | username | testuser          |
+    When 用户登录到设备:
+      | 字段    | 值             |
+      | username | testuser1         |
       | password | Test123!@#        |
     Then 系统应验证用户凭据
     And 返回成功响应，包含:
-      | Field                 | Type    |
+      | 字段                 | 类型    |
       | success              | boolean |
       | token_data          | object  |
       | require_password_change | boolean |
-    And 设置设备A的认证Cookie
+    And HTTP响应存在认证令牌
 
   @core
   Scenario: 成功在多个设备上登录
-    Given 用户已在设备A登录
-    When 用户在设备B提供正确的登录信息:
-      | Field    | Value             |
-      | username | testuser          |
+    When 用户登录到设备:
+      | 字段    | 值             |
+      | username | testuser1         |
       | password | Test123!@#        |
+      | device_id | device_a         |
+    And 用户登录到设备:
+      | 字段    | 值             |
+      | username | testuser1         |
+      | password | Test123!@#        |
+      | device_id | device_b         |
     Then 系统应验证用户凭据
     And 返回成功响应，包含:
-      | Field                 | Type    |
+      | 字段                 | 类型    |
       | success              | boolean |
       | token_data          | object  |
       | require_password_change | boolean |
-    And 设置设备B的认证Cookie
+    And HTTP响应存在认证令牌
+    And 服务端存在同一个用户的多个令牌:
+      | 字段    | 值                  |
+      | username | testuser1         |
+      | device_id | ["device_a", "device_b"] |
 
   @core
   Scenario: 单个设备退出
@@ -125,7 +153,7 @@ Feature: 用户多设备登录管理
   @error
   Scenario: 登录失败 - 错误的凭据
     When 用户在设备A提供错误的登录信息:
-      | Field    | Value             |
+      | 字段    | 值             |
       | username | testuser          |
       | password | wrongpassword     |
     Then 系统应返回401未授权错误
@@ -155,7 +183,7 @@ Feature: 用户多设备登录管理
   @error
   Scenario: 登录失败 - 缺少必填字段
     When 用户在设备A提供不完整的登录信息:
-      | Field    | Value    |
+      | 字段    | 值    |
       | username | testuser |
     Then 系统应返回400错误
     And 错误信息应说明缺少必填字段

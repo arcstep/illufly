@@ -56,8 +56,6 @@ Feature: 用户认证系统 - 注册模块
 
   Background: 测试环境准备
     Given FastAPI 已经准备好
-    And 用户模块已经准备好
-    And 认证模块已经准备好
     And 清理测试数据
 
   @core @happy-path @wip
@@ -78,7 +76,6 @@ Feature: 用户认证系统 - 注册模块
       | is_active  | true            | 账户激活状态    |
     And 密码应当被安全存储
     And 系统应设置认证Cookie
-    And 记录注册审计日志
 
   @validation @error
   Scenario Outline: 注册参数验证

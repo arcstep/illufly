@@ -1,5 +1,5 @@
 @auth @register @api-doc
-Feature: 用户认证系统 - 注册模块 # bdd/features/fastapi/auth/mock/register.feature:2
+Feature: 用户认证系统 - 注册模块 # bdd/features/fastapi/auth/register.feature:2
   """
   用户认证系统 - 注册模块 API 文档
   基础路径: /api/auth
@@ -47,29 +47,26 @@ Feature: 用户认证系统 - 注册模块 # bdd/features/fastapi/auth/mock/regi
   - 频率限制: 每IP每小时最多10次注册尝试
   - 敏感信息脱敏
   """
-  Background: 测试环境准备  # bdd/features/fastapi/auth/mock/register.feature:57
+  Background: 测试环境准备  # bdd/features/fastapi/auth/register.feature:57
 
   @core @happy-path @wip
-  Scenario: [POST /auth/register] 基本用户注册  # bdd/features/fastapi/auth/mock/register.feature:64
-    Given FastAPI 已经准备好                   # bdd/features/steps/register_steps.py:7
-    And 用户模块已经准备好                         # bdd/features/steps/register_steps.py:12
-    And 认证模块已经准备好                         # bdd/features/steps/register_steps.py:17
-    And 清理测试数据                            # bdd/features/steps/register_steps.py:22
-    Given 准备好用户表单                         # bdd/features/steps/register_steps.py:33
+  Scenario: [POST /auth/register] 基本用户注册  # bdd/features/fastapi/auth/register.feature:62
+    Given FastAPI 已经准备好                   # bdd/features/steps/common.py:3
+    And 清理测试数据                            # bdd/features/steps/common.py:8
+    Given 准备好用户表单                         # bdd/features/steps/register_steps.py:7
       | 字段       | 值                | 说明  |
       | username | mockuser         | 用户名 |
       | password | Test123!@#       | 密码  |
       | email    | mock@example.com | 邮箱  |
-    When 提交用户注册请求                         # bdd/features/steps/register_steps.py:38
-    Then 系统返回状态码 200                      # bdd/features/steps/register_steps.py:64
-    And 返回成功响应                            # bdd/features/steps/register_steps.py:68
-    And 返回的用户信息包含                         # bdd/features/steps/register_steps.py:73
+    When 提交用户注册请求                         # bdd/features/steps/register_steps.py:12
+    Then 系统返回状态码 200                      # bdd/features/steps/register_steps.py:44
+    And 返回成功响应                            # bdd/features/steps/register_steps.py:48
+    And 返回的用户信息包含                         # bdd/features/steps/register_steps.py:53
       | 字段        | 值                | 说明     |
       | username  | mockuser         | 用户名    |
       | email     | mock@example.com | 邮箱     |
       | roles     | ["user","guest"] | 用户角色列表 |
       | is_active | true             | 账户激活状态 |
-    And 密码应当被安全存储                         # bdd/features/steps/register_steps.py:98
-    And 系统应设置认证Cookie                     # bdd/features/steps/register_steps.py:126
-    And 记录注册审计日志                          # bdd/features/steps/register_steps.py:150
+    And 密码应当被安全存储                         # bdd/features/steps/register_steps.py:78
+    And 系统应设置认证Cookie                     # bdd/features/steps/register_steps.py:106
 

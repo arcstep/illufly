@@ -1,18 +1,18 @@
 from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime
-import secrets
-import string
 from pathlib import Path
 from ...config import get_env
 from ..common import ConfigStoreProtocol, FileConfigStore
 from ..auth import AuthManager
 from .models import User, UserRole
-import uuid
+import secrets
+import string
+import re
 
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
 class UserManager:
-    def __init__(self, auth_manager: AuthManager, storage: Optional[ConfigStoreProtocol[User]] = None):
+    def __init__(self, auth_manager: AuthManager, storage: Optional[ConfigStoreProtocol[User]] = None, config_store_path: str = None):
         """初始化用户管理器
         Args:
             auth_manager: 认证管理器
@@ -21,7 +21,7 @@ class UserManager:
         self.auth_manager = auth_manager
         if storage is None:
             storage = FileConfigStore[User](
-                data_dir=Path(__USERS_PATH__),
+                data_dir=Path(config_store_path or __USERS_PATH__),
                 filename="profile.json",
                 serializer=lambda user: user.to_dict(include_sensitive=True),
                 deserializer=User.from_dict,
@@ -412,3 +412,88 @@ class UserManager:
         except Exception as e:
             raise
 
+    def validate_password(self, password: str) -> Dict[str, Any]:
+        """验证密码强度
+        
+        要求：
+        - 长度至少8个字符
+        - 至少包含一个大写字母
+        - 至少包含一个小写字母
+        - 至少包含一个数字
+        
+        Args:
+            password: 要验证的密码
+            
+        Returns:
+            dict: 包含验证结果的字典
+                - success: 是否通过验证
+                - error: 未通过时的错误信息
+        """
+        if len(password) < 8:
+            return {
+                "success": False,
+                "error": "密码长度必须至少为8个字符"
+            }
+        if not re.search(r"[A-Z]", password):
+            return {
+                "success": False,
+                "error": "密码必须包含至少一个大写字母"
+            }
+        if not re.search(r"[a-z]", password):
+            return {
+                "success": False,
+                "error": "密码必须包含至少一个小写字母"
+            }
+        if not re.search(r"\d", password):
+            return {
+                "success": False,
+                "error": "密码必须包含至少一个数字"
+            }
+        return {
+            "success": True,
+            "error": None
+        }
+
+    def validate_email(self, email: str) -> Dict[str, Any]:
+        """验证邮箱格式"""
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(pattern, email):
+            return {
+                "success": False,
+                "error": "邮箱格式无效"
+            }
+        return {
+            "success": True,
+            "error": None
+        }
+
+    def validate_username(self, username: str) -> Dict[str, Any]:
+        """验证用户名格式"""
+        if not username:
+            return {
+                "success": False,
+                "error": "用户名不能为空"
+            }
+            
+        if len(username) < 3 or len(username) > 32:
+            return {
+                "success": False,
+                "error": "用户名长度必须在3到32个字符之间"
+            }
+            
+        if not username[0].isalpha():
+            return {
+                "success": False,
+                "error": "用户名必须以字母开头"
+            }
+            
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', username):
+            return {
+                "success": False,
+                "error": "用户名只能包含字母、数字和下划线"
+            }
+            
+        return {
+            "success": True,
+            "error": None
+        }

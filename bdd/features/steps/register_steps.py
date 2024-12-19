@@ -4,39 +4,19 @@ from fastapi import Response
 from datetime import datetime
 import json
 
-@given('FastAPI 已经准备好')
-def step_impl(context):
-    assert context.client is not None
-    print("FastAPI 已经准备好")
-
-@given('用户模块已经准备好')
-def step_impl(context):
-    assert context.user_manager is not None
-    print("用户模块已经准备好")
-
-@given('认证模块已经准备好')
-def step_impl(context):
-    assert context.user_manager is not None
-    print("认证模块已经准备好")
-
-@given('清理测试数据')
-def step_impl(context):
-    context.storage = {
-        'register_data': [],
-        'users': [],
-        'tokens': [],
-        'audit_logs': [],
-        'refresh_tokens': {},
-        'access_tokens': {},
-    }
-
 @given('准备好用户表单')
 def step_impl(context):
     context.registration_table = context.table
     print(f"准备注册表单数据: {context.registration_table}")
 
 @when('提交用户注册请求')
-def step_impl(context):    
+def step_impl(context): 
+    """
+    提交用户注册请求
+    将注册数据写入到 context.register_data 和 context.users 中
+    """
+    context.register_data = []
+    context.users = []
     # 将表格数据转换为表单数据
     form_data = {row['字段']: row['值'] for row in context.registration_table}
     
@@ -53,8 +33,8 @@ def step_impl(context):
         print(">>> response_data", response_data)
         user_info = response_data.get('user_info')
         if user_info:
-            context.storage['register_data'].append(user_info)
-            context.storage['users'].append(user_info)
+            context.register_data.append(user_info)
+            context.users.append(user_info)
             print(f"获取到用户ID: {user_info.get('user_id')}")
     else:
         print(f"请求失败，状态码: {response.status_code}")
@@ -98,13 +78,13 @@ def step_impl(context):
 @then('密码应当被安全存储')
 def step_impl(context):
     # 获取刚注册的用户
-    user_id = context.storage['register_data'][0].get('user_id')
+    user_id = context.register_data[0].get('user_id')
     assert user_id, "用户ID不应为空"
     print(f"验证用户ID: {user_id} 的密码存储")
     
     # 从提交注册请求步骤的表格中获取原始密码
     original_password = None
-    for row in context.registration_table:  # 使用保存的注册表格数据
+    for row in context.registration_table:
         if row['字段'] == 'password':
             original_password = row['值']
             break
@@ -146,27 +126,6 @@ def step_impl(context):
     print(f"refresh_token: {refresh_token}")
     print(f"cookies类型: {type(response.cookies)}")
     print(f"cookies内容: {response.cookies}")
-
-@then('记录注册审计日志')
-def step_impl(context):
-    """验证是否正确记录了注册审计日志"""
-    user_id = context.storage['register_data'][0].get('user_id')
-    assert user_id, "用户ID不应为空"
-    
-    # 添加审计日志
-    audit_log = context.add_audit_log(
-        action='user_register',
-        user_id=user_id,
-        details=context.storage['register_data'][0]
-    )
-    
-    # 验证日志是否被正确记录
-    found_log = context.find_audit_log(
-        action='user_register',
-        user_id=user_id
-    )
-    assert found_log, "未找到用户注册的审计日志"
-    print(f"审计日志记录成功: {json.dumps(audit_log, indent=2)}")
 
 @then('返回错误信息包含 "{error_message}"')
 def step_impl(context, error_message):

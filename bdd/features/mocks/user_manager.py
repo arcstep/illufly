@@ -15,17 +15,17 @@ class UserManagerMockFactory:
         user_manager = Mock()
         
         # 设置基础配置
-        UserManagerMockFactory._setup_base_config(user_manager)
+        UserManagerMockFactory._setup_base_config(user_manager, storage)
         
         # 设置所有mock方法
-        UserManagerMockFactory._setup_auth_methods(user_manager)
+        UserManagerMockFactory._setup_auth_methods(user_manager, storage)
         UserManagerMockFactory._setup_user_methods(user_manager, storage)
         UserManagerMockFactory._setup_validation_methods(user_manager)
         
         return user_manager
 
     @staticmethod
-    def _setup_auth_methods(mock: Mock) -> None:
+    def _setup_auth_methods(mock: Mock, storage: dict) -> None:
         """设置认证相关的mock方法"""
         # 在 mock 对象上存储状态
         mock._test_state = {
@@ -201,7 +201,7 @@ class UserManagerMockFactory:
 
         def mock_get_user_info(user_id: str, include_sensitive: bool = False):
             """模拟获取用户信息"""
-            print(">>> storage", storage)
+            print(">>> 获取用户信息", storage['users'])
             for user in storage['users']:
                 if user.user_id == user_id:
                     return user.to_dict(include_sensitive=include_sensitive)
@@ -209,8 +209,8 @@ class UserManagerMockFactory:
         mock.get_user_info.side_effect = mock_get_user_info
 
     @staticmethod
-    def _setup_base_config(mock: Mock) -> None:
+    def _setup_base_config(mock: Mock, storage: dict) -> None:
         """设置基础配置"""
         mock._storage = Mock()
         mock._storage.has_duplicate.return_value = False
-        mock.auth_manager = AuthManagerMockFactory.create()
+        mock.auth_manager = AuthManagerMockFactory.create(storage)
