@@ -1,9 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, TypeVar, Generic, Protocol, List
+from typing import Dict, Any, Optional, List
 
-T = TypeVar('T')
-
-class ConfigStoreProtocol(Protocol[T]):
+class ConfigStoreProtocol(ABC):
     """用户配置存储协议
     
     设计用于：
@@ -11,12 +9,12 @@ class ConfigStoreProtocol(Protocol[T]):
     - 高频内存读取，低频持久化
     """
     @abstractmethod
-    def get(self, owner_id: str) -> Optional[T]:
+    def get(self, owner_id: str) -> Optional[Any]:
         """获取指定用户的配置"""
         pass
 
     @abstractmethod
-    def set(self, value: T, owner_id: str) -> None:
+    def set(self, value: Any, owner_id: str) -> None:
         """设置指定所有者的数据
         
         Args:
@@ -47,7 +45,7 @@ class ConfigStoreProtocol(Protocol[T]):
         pass
 
     @abstractmethod
-    def find(self, conditions: Dict[str, Any], owner_id: str = "") -> List[T]:
+    def find(self, conditions: Dict[str, Any], owner_id: str = "") -> List[Any]:
         """查找匹配指定条件的数据
         
         Args:
@@ -55,7 +53,7 @@ class ConfigStoreProtocol(Protocol[T]):
             owner_id: 可选的数据所有者ID，为空时搜索所有所有者
             
         Returns:
-            List[T]: 所有匹配条件的数据列表
+            List[Any]: 所有匹配条件的数据列表
         """
         pass
 

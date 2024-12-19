@@ -146,7 +146,7 @@ class AuthManager:
     4. 敏感操作应该验证用户角色权限
     """
     
-    def __init__(self, storage: Optional[ConfigStoreProtocol[TokenStorage]] = None, config_store_path: str = None):
+    def __init__(self, storage: Optional[ConfigStoreProtocol] = None, config_store_path: str = None):
         """初始化认证管理器
         
         Args:
@@ -170,9 +170,10 @@ class AuthManager:
         
         # 初始化存储
         if storage is None:
-            storage = FileConfigStore[TokenStorage](
+            storage = FileConfigStore(
                 data_dir=Path(config_store_path or __USERS_PATH__),
                 filename="tokens.json",
+                data_class=TokenStorage,
                 serializer=lambda x: x.to_dict() if x else {"tokens": []},
                 deserializer=TokenStorage.from_dict
             )

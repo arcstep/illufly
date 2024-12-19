@@ -14,7 +14,7 @@ class VectorDBManager:
     def __init__(
         self,
         user_manager: UserManager,
-        storage: Optional[ConfigStoreProtocol[Dict[str, VectorDBConfig]]] = None
+        storage: Optional[ConfigStoreProtocol] = None
     ):
         """初始化向量库管理器
         Args:
@@ -23,9 +23,10 @@ class VectorDBManager:
         self.user_manager = user_manager
 
         if storage is None:
-            storage = FileConfigStore[Dict[str, VectorDBConfig]](
+            storage = FileConfigStore(
                 data_dir=Path(__USERS_PATH__),
                 filename="vectordb.json",
+                data_class=Dict[str, VectorDBConfig],
                 serializer=lambda dbs: {
                     name: db_config.to_dict()
                     for name, db_config in dbs.items()

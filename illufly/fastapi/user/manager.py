@@ -12,7 +12,7 @@ import re
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
 class UserManager:
-    def __init__(self, auth_manager: AuthManager, storage: Optional[ConfigStoreProtocol[User]] = None, config_store_path: str = None):
+    def __init__(self, auth_manager: AuthManager, storage: Optional[ConfigStoreProtocol] = None, config_store_path: str = None):
         """初始化用户管理器
         Args:
             auth_manager: 认证管理器
@@ -20,9 +20,10 @@ class UserManager:
         """
         self.auth_manager = auth_manager
         if storage is None:
-            storage = FileConfigStore[User](
+            storage = FileConfigStore(
                 data_dir=Path(config_store_path or __USERS_PATH__),
                 filename="profile.json",
+                data_class=User,
                 serializer=lambda user: user.to_dict(include_sensitive=True),
                 deserializer=User.from_dict,
             )

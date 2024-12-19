@@ -17,16 +17,17 @@ class AgentManager:
         user_manager: UserManager,
         vectordb_manager: VectorDBManager,
         agent_factory: Optional[AgentFactory] = None,
-        storage: Optional[ConfigStoreProtocol[Dict[str, AgentConfig]]] = None,
+        storage: Optional[ConfigStoreProtocol] = None,
     ):
         """初始化代理管理器"""
         self.user_manager = user_manager
         self.vectordb_manager = vectordb_manager
 
         if storage is None:
-            storage = FileConfigStore[Dict[str, AgentConfig]](
+            storage = FileConfigStore(
                 data_dir=__USERS_PATH__,
                 filename="agent.json",
+                data_class=Dict[str, AgentConfig],
                 serializer=lambda agents: {
                     name: agent_config.to_dict()
                     for name, agent_config in agents.items()

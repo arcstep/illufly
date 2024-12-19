@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, List, Callable, Type, TypeVar, Generic, get_args, get_origin, get_type_hints
+from typing import Dict, Any, Optional, List, Callable, Type
 from dataclasses import is_dataclass, asdict
 from datetime import datetime
 import inspect
@@ -8,10 +8,9 @@ import threading
 import logging
 from .config_store import ConfigStoreProtocol
 from contextlib import contextmanager
+from typing import get_origin, get_args
 
-T = TypeVar('T')
-
-class FileConfigStore(Generic[T]):
+class FileConfigStore:
     """基于文件的配置存储，提供线程安全和类型安全的数据持久化能力。
     
     主要特点:
@@ -54,28 +53,32 @@ class FileConfigStore(Generic[T]):
             )
     
     # 创建基础存储
-    store = FileConfigStore[UserProfile](
+    store = FileConfigStore(
         data_dir="/path/to/data",
-        filename="profiles.json"
+        filename="profiles.json",
+        data_class=UserProfile
     )
     
     # 2. 复合类型存储
     # 字典存储
-    dict_store = FileConfigStore[Dict[str, UserProfile]](
+    dict_store = FileConfigStore(
         data_dir="/path/to/data",
-        filename="user_profiles.json"
+        filename="user_profiles.json",
+        data_class=Dict[str, UserProfile]
     )
     
     # 列表存储
-    list_store = FileConfigStore[List[UserProfile]](
+    list_store = FileConfigStore(
         data_dir="/path/to/data",
-        filename="profile_list.json"
+        filename="profile_list.json",
+        data_class=List[UserProfile]
     )
     
     # 嵌套字典存储
-    nested_store = FileConfigStore[Dict[str, Dict[str, UserProfile]]](
+    nested_store = FileConfigStore(
         data_dir="/path/to/data",
-        filename="nested_profiles.json"
+        filename="nested_profiles.json",
+        data_class=Dict[str, Dict[str, UserProfile]]
     )
     ```
     
@@ -127,14 +130,14 @@ class FileConfigStore(Generic[T]):
        - 序列化错误恢复
        - 文件操作异常处理
        - 数据完整性保护
-       - 类型安全检查
+       - 类安全检查
     
     Args:
         data_dir (str): 数据存储目录路径
         filename (str): 数据文件名
-        data_class (Optional[Type]): 可选的数据类型类，如果不提供则从类型参数推断
-        serializer (Optional[Callable[[T], Dict]]): 可选的自定义序列化函数
-        deserializer (Optional[Callable[[Dict], T]]): 可选的自定义反序列化函数
+        data_class (Type): 数据类型类 (必需)
+        serializer (Optional[Callable]): 可选的自定义序列化函数
+        deserializer (Optional[Callable]): 可选的自定义反序列化函数
         logger (Optional[logging.Logger]): 可选的日志记录器
     
     复杂数据结构示例:
@@ -154,9 +157,10 @@ class FileConfigStore(Generic[T]):
             return cls(items=[], updated_at=datetime.utcnow())
     
     # 创建嵌套存储
-    store = FileConfigStore[Dict[str, List[Dict[str, Container]]]](
+    store = FileConfigStore(
         data_dir="data",
-        filename="complex_containers.json"
+        filename="complex_containers.json",
+        data_class=Dict[str, List[Dict[str, Container]]
     )
     
     # 存储复杂数据
@@ -181,22 +185,15 @@ class FileConfigStore(Generic[T]):
     })
     ```
     """
-    _data: Dict[str, Optional[T]]
+    _data: Dict[str, Optional[Any]]
 
-    @classmethod
-    def __class_getitem__(cls, item):
-        """支持 FileConfigStore[StorageData] 语法"""
-        if isinstance(item, TypeVar):
-            raise TypeError("必须指定具体类型，而不是类型变量")
-        return super().__class_getitem__(item)
-    
     def __init__(
         self,
         data_dir: str,
         filename: str,
-        data_class: Optional[Type[T]] = None,
-        serializer: Optional[Callable[[T], Dict[str, Any]]] = None,
-        deserializer: Optional[Callable[[Dict[str, Any]], T]] = None,
+        data_class: Type,
+        serializer: Optional[Callable[[Any], Dict[str, Any]]] = None,
+        deserializer: Optional[Callable[[Dict[str, Any]], Any]] = None,
         logger: Optional[logging.Logger] = None
     ):
         """
@@ -205,39 +202,25 @@ class FileConfigStore(Generic[T]):
         Args:
             data_dir (str): 数据存储目录路径
             filename (str): 数据文件名
-            data_class (Optional[Type]): 可选的数据类型类，如果不提供则从类型参数推断
-            serializer (Optional[Callable[[T], Dict]]): 可选的自定义序列化函数
-            deserializer (Optional[Callable[[Dict], T]]): 可选的自定义反序列化函数
+            data_class (Type): 数据类型类 (必需)
+            serializer (Optional[Callable]): 可选的自定义序列化函数
+            deserializer (Optional[Callable]): 可选的自定义反序列化函数
             logger (Optional[logging.Logger]): 可选的日志记录器
 
         Raises:
             TypeError: 如果data_class没有提供to_dict或from_dict方法且没有提供自定义序列化器
         """
-        
         self.logger = logger or logging.getLogger(__name__)
         self._data_dir = Path(data_dir)
         self._filename = filename
-        
-        # 如果没有提供 data_class，从类型参数推断
-        if data_class is None:
-            orig_class = getattr(self, '__orig_class__', None)
-            if orig_class is not None:
-                args = get_args(orig_class)
-                if args:
-                    data_class = args[0]
-        
-        if data_class is None:
-            data_class = self._infer_data_class()
-            
         self._data_class = data_class
-        print(f"推断的数据类: {self._data_class}")
         
         # 检查是否是复合类型
         origin = get_origin(self._data_class)
         if origin in (dict, list, tuple):
             # 复合类型使用默认序列化器
-            serializer = self._default_serializer
-            deserializer = self._default_deserializer
+            self._serializer = self._default_serializer
+            self._deserializer = self._default_deserializer
         else:
             # 非复合类型检查序列化方法
             if not serializer:
@@ -254,49 +237,16 @@ class FileConfigStore(Generic[T]):
                     f"数据类 {self._data_class.__name__} 必须实现 from_dict 类方法，"
                     "或者提供自定义的反序列化器"
                 )
+            
+            self._serializer = serializer or self._default_serializer
+            self._deserializer = deserializer or self._default_deserializer
         
-        self._serializer = serializer or self._default_serializer
-        self._deserializer = deserializer or self._default_deserializer
-        self._data: Dict[str, Optional[T]] = {}
+        self._data = {}
         self._lock = threading.Lock()
-        self._file_locks: Dict[str, threading.Lock] = {}
+        self._file_locks = {}
         self._file_locks_lock = threading.Lock()
 
-    def _infer_data_class(self) -> Type[T]:
-        """从类型参数推断数据类型"""
-        # 1. 检查是否有原始类
-        if hasattr(self, '__class_getitem__'):
-            print(f"Class getitem: {self.__class_getitem__}")
-        
-        # 2. 获取实例的原始类
-        orig_class = getattr(self, '__orig_class__', None)
-        if orig_class is not None:
-            print(f"Original class: {orig_class}")
-            args = get_args(orig_class)
-            print(f"Args from orig_class: {args}")
-            if args:
-                return args[0]
-        
-        # 3. 检查类的基类
-        bases = getattr(self.__class__, '__orig_bases__', None)
-        if bases:
-            print(f"Original bases: {bases}")
-            for base in bases:
-                if get_origin(base) is Generic:
-                    continue
-                args = get_args(base)
-                print(f"Args from base: {args}")
-                if args and not isinstance(args[0], TypeVar):
-                    return args[0]
-        
-        raise TypeError(
-            f"无法推断具体类型，请使用 FileConfigStore[YourType] 或提供 data_class 参数\n"
-            f"当前类: {self.__class__}\n"
-            f"原始类: {orig_class}\n"
-            f"基类: {bases}"
-        )
-
-    def _default_serializer(self, obj: T) -> Dict:
+    def _default_serializer(self, obj: Any) -> Dict:
         """默认序列化方法，支持复合类型"""
         def serialize_value(v, type_hint=None):
             if hasattr(v, 'to_dict'):
@@ -317,11 +267,11 @@ class FileConfigStore(Generic[T]):
 
         if obj is None:
             return {}
-            
+        
         # 使用 _data_class 作为类型提示
         return serialize_value(obj, self._data_class)
 
-    def _default_deserializer(self, data: Dict) -> T:
+    def _default_deserializer(self, data: Dict) -> Any:
         """默认反序列化方法，支持复合类型"""
         if not data:
             return self._create_default_instance()
@@ -349,29 +299,22 @@ class FileConfigStore(Generic[T]):
         # 使用 _data_class 作为主类型提示
         return deserialize_value(data, self._data_class)
 
-    def _create_default_instance(self) -> T:
+    def _create_default_instance(self) -> Any:
         """创建默认实例"""
-        origin = get_origin(self._data_class)
-        if origin is dict:
-            return {}
-        elif origin is list:
-            return []
-        elif origin is tuple:
-            return ()
-        elif hasattr(self._data_class, 'default'):
+        if hasattr(self._data_class, 'default'):
             return self._data_class.default()
         elif hasattr(self._data_class, '__dataclass_fields__'):
-            return self._data_class()  # 使用默认构造函数
+            return self._data_class()
         return None
 
-    def get(self, owner_id: str) -> Optional[T]:
+    def get(self, owner_id: str) -> Optional[Any]:
         """获取指定所有者的数据"""
         with self._lock:
             if owner_id not in self._data:
                 self._load_owner_data(owner_id)
             return self._data.get(owner_id)
 
-    def set(self, value: T, owner_id: str) -> None:
+    def set(self, value: Any, owner_id: str) -> None:
         """设置指定所有者的数据"""
         with self._lock:
             self._data[owner_id] = value
