@@ -4,6 +4,7 @@ from pathlib import Path
 from ...config import get_env
 from ..common import ConfigStoreProtocol, FileConfigStore
 from ..auth import AuthManager
+from ..invite import InviteCodeManager
 from .models import User, UserRole
 import secrets
 import string
@@ -12,13 +13,20 @@ import re
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
 class UsersManager:
-    def __init__(self, auth_manager: AuthManager, storage: Optional[ConfigStoreProtocol] = None, config_store_path: str = None):
+    def __init__(
+        self,
+        auth_manager: AuthManager = None,
+        invite_manager: InviteCodeManager = None,
+        storage: Optional[ConfigStoreProtocol] = None,
+        config_store_path: str = None
+    ):
         """初始化用户管理器
         Args:
             auth_manager: 认证管理器
             storage: 存储实现，如果为None则使用默认的文件存储
         """
-        self.auth_manager = auth_manager
+        self.auth_manager = auth_manager or AuthManager(config_store_path=config_store_path)
+        self.invite_manager = invite_manager or InviteCodeManager(config_store_path=config_store_path)
         if storage is None:
             storage = FileConfigStore(
                 data_dir=Path(config_store_path or __USERS_PATH__),
