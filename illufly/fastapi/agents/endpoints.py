@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Form
 from typing import List, Dict, Any, Optional
 from sse_starlette.sse import EventSourceResponse
 from ..auth import AuthManager
-from .manager import AgentManager
+from .manager import AgentsManager
 from .models import AgentConfig
 
 def create_agent_endpoints(
     app, 
-    agent_manager: AgentManager,
+    agents_manager: AgentsManager,
     auth_manager: AuthManager,
     prefix: str = "/api"
 ):
@@ -19,7 +19,7 @@ def create_agent_endpoints(
     ) -> List[Dict[str, Any]]:
         """列出用户的所有 Agent"""
         username = current_user["username"]
-        return agent_manager.list_agents(username, requester=username)
+        return agents_manager.list_agents(username, requester=username)
 
     @app.post(f"{prefix}/agents")
     async def create_agent(
@@ -31,7 +31,7 @@ def create_agent_endpoints(
     ):
         """创建新的Agent"""
         username = current_user["username"]
-        success = agent_manager.create_agent(
+        success = agents_manager.create_agent(
             username=username,
             agent_type=agent_type,
             agent_name=name,
@@ -51,7 +51,7 @@ def create_agent_endpoints(
     ):
         """获取 Agent 详细信息"""
         username = current_user["username"]
-        agents = agent_manager.list_agents(username, requester=username)
+        agents = agents_manager.list_agents(username, requester=username)
         agent_info = next(
             (agent for agent in agents if agent["name"] == agent_name),
             None
@@ -70,7 +70,7 @@ def create_agent_endpoints(
     ):
         """与指定 Agent 对话"""
         username = current_user["username"]
-        agent = agent_manager.get_agent(username, agent_name, requester=username)
+        agent = agents_manager.get_agent(username, agent_name, requester=username)
         if not agent:
             raise HTTPException(status_code=404, detail="Agent not found")
             
@@ -99,7 +99,7 @@ def create_agent_endpoints(
         if is_active is not None:
             updates["is_active"] = is_active
         
-        if agent_manager.update_agent_config(
+        if agents_manager.update_agent_config(
             username, 
             agent_name, 
             updates,
@@ -115,7 +115,7 @@ def create_agent_endpoints(
     ):
         """删除 Agent"""
         username = current_user["username"]
-        if agent_manager.remove_agent(username, agent_name, requester=username):
+        if agents_manager.remove_agent(username, agent_name, requester=username):
             return {"message": f"Agent {agent_name} deleted successfully"}
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -126,7 +126,7 @@ def create_agent_endpoints(
     ) -> List[str]:
         """列出用户的所有知识库"""
         username = current_user["username"]
-        return agent_manager.list_dbs(username, requester=username)
+        return agents_manager.list_dbs(username, requester=username)
 
     @app.post(f"{prefix}/vectordbs")
     async def create_vectordb(
@@ -135,7 +135,7 @@ def create_agent_endpoints(
     ):
         """创建新的知识库"""
         username = current_user["username"]
-        success = agent_manager.create_db(
+        success = agents_manager.create_db(
             username=username,
             db_name=name,
             requester=username
@@ -159,7 +159,7 @@ def create_agent_endpoints(
     ):
         """获取知识列表"""
         username = current_user["username"]
-        db = agent_manager.get_db(username, db_name, requester=username)
+        db = agents_manager.get_db(username, db_name, requester=username)
         if not db:
             raise HTTPException(status_code=404, detail="Knowledge base not found")
             
@@ -180,7 +180,7 @@ def create_agent_endpoints(
     ):
         """获取知识详情"""
         username = current_user["username"]
-        db = agent_manager.get_db(username, db_name, requester=username)
+        db = agents_manager.get_db(username, db_name, requester=username)
         if not db:
             raise HTTPException(status_code=404, detail="Knowledge base not found")
             
@@ -204,7 +204,7 @@ def create_agent_endpoints(
     ):
         """创建新知识"""
         username = current_user["username"]
-        db = agent_manager.get_db(username, db_name, requester=username)
+        db = agents_manager.get_db(username, db_name, requester=username)
         if not db:
             raise HTTPException(status_code=404, detail="Knowledge base not found")
             
@@ -234,7 +234,7 @@ def create_agent_endpoints(
     ):
         """更新知识"""
         username = current_user["username"]
-        db = agent_manager.get_db(username, db_name, requester=username)
+        db = agents_manager.get_db(username, db_name, requester=username)
         if not db:
             raise HTTPException(status_code=404, detail="Knowledge base not found")
             
@@ -261,7 +261,7 @@ def create_agent_endpoints(
     ):
         """删除知识"""
         username = current_user["username"]
-        db = agent_manager.get_db(username, db_name, requester=username)
+        db = agents_manager.get_db(username, db_name, requester=username)
         if not db:
             raise HTTPException(status_code=404, detail="Knowledge base not found")
             
@@ -281,7 +281,7 @@ def create_agent_endpoints(
     ):
         """搜索知识"""
         username = current_user["username"]
-        db = agent_manager.get_db(username, db_name, requester=username)
+        db = agents_manager.get_db(username, db_name, requester=username)
         if not db:
             raise HTTPException(status_code=404, detail="Knowledge base not found")
             

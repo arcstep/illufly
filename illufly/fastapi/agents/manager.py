@@ -5,22 +5,22 @@ from ...config import get_env
 from ...types import VectorDB
 from ..vectordb import VectorDBManager
 from ..common import ConfigStoreProtocol, FileConfigStore
-from ..user import UserManager
+from ..users import UsersManager
 from .models import AgentConfig
 from .factory import AgentFactory
 
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
-class AgentManager:
+class AgentsManager:
     def __init__(
         self,
-        user_manager: UserManager,
+        users_manager: UsersManager,
         vectordb_manager: VectorDBManager,
         agent_factory: Optional[AgentFactory] = None,
         storage: Optional[ConfigStoreProtocol] = None,
     ):
         """初始化代理管理器"""
-        self.user_manager = user_manager
+        self.users_manager = users_manager
         self.vectordb_manager = vectordb_manager
 
         if storage is None:
@@ -61,7 +61,7 @@ class AgentManager:
         **kwargs
     ) -> bool:
         """创建代理"""
-        if not self.user_manager.can_access_user(user_id, requester_id):
+        if not self.users_manager.can_access_user(user_id, requester_id):
             return {
                 "success": False,
                 "message": "You are not allowed to create agents for other users."
@@ -107,7 +107,7 @@ class AgentManager:
 
     def get_agent(self, user_id: str, agent_name: str, requester_id: str) -> Optional[Any]:
         """获取代理实例"""
-        if not self.user_manager.can_access_user(user_id, requester_id):
+        if not self.users_manager.can_access_user(user_id, requester_id):
             return {
                 "success": False,
                 "message": "You cannot access this agent"
@@ -161,7 +161,7 @@ class AgentManager:
 
     def list_agents(self, user_id: str, requester_id: str) -> List[Dict[str, Any]]:
         """列出用户的所有代理"""
-        if not self.user_manager.can_access_user(user_id, requester_id):
+        if not self.users_manager.can_access_user(user_id, requester_id):
             return {
                 "success": False,
                 "message": "You cannot access this agent"
@@ -182,7 +182,7 @@ class AgentManager:
 
     def remove_agent(self, user_id: str, agent_name: str, requester_id: str) -> bool:
         """移除代理"""
-        if not self.user_manager.can_access_user(user_id, requester_id):
+        if not self.users_manager.can_access_user(user_id, requester_id):
             return {
                 "success": False,
                 "message": "You cannot access this agent"
@@ -217,7 +217,7 @@ class AgentManager:
         requester_id: str
     ) -> bool:
         """更新代理配置"""
-        if not self.user_manager.can_access_user(user_id, requester_id):
+        if not self.users_manager.can_access_user(user_id, requester_id):
             return {
                 "success": False,
                 "message": "You cannot access this agent"

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List
 from unittest.mock import Mock
 from illufly.fastapi.user.models import UserRole, User
-from illufly.fastapi.user.endpoints import UserManager
+from illufly.fastapi.user.endpoints import UsersManager
 from .auth_manager import AuthManagerMockFactory
 import re
 
@@ -12,17 +12,17 @@ class UserManagerMockFactory:
     @staticmethod
     def create(storage: dict) -> Mock:
         """创建UserManager的Mock实例"""
-        user_manager = Mock()
+        users_manager = Mock()
         
         # 设置基础配置
-        UserManagerMockFactory._setup_base_config(user_manager, storage)
+        UserManagerMockFactory._setup_base_config(users_manager, storage)
         
         # 设置所有mock方法
-        UserManagerMockFactory._setup_auth_methods(user_manager, storage)
-        UserManagerMockFactory._setup_user_methods(user_manager, storage)
-        UserManagerMockFactory._setup_validation_methods(user_manager)
+        UserManagerMockFactory._setup_auth_methods(users_manager, storage)
+        UserManagerMockFactory._setup_user_methods(users_manager, storage)
+        UserManagerMockFactory._setup_validation_methods(users_manager)
         
-        return user_manager
+        return users_manager
 
     @staticmethod
     def _setup_auth_methods(mock: Mock, storage: dict) -> None:

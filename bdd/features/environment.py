@@ -6,10 +6,10 @@ from behave.model import Feature
 from behave.runner import Context
 from typing import Optional
 
-from illufly.fastapi.user.models import UserRole
-from illufly.fastapi.user.endpoints import create_user_endpoints
+from illufly.fastapi.users.models import UserRole
+from illufly.fastapi.users.endpoints import create_user_endpoints
 from illufly.fastapi.auth.manager import AuthManager
-from illufly.fastapi.user.manager import UserManager
+from illufly.fastapi.users.manager import UsersManager
 from illufly.fastapi.common import FileConfigStore
 from illufly.config import get_env
 
@@ -39,16 +39,16 @@ def before_scenario(context: Context, scenario) -> None:
         shutil.rmtree(__USERS_PATH__)
 
     auth_manager = AuthManager(config_store_path=__USERS_PATH__)
-    user_manager = UserManager(auth_manager=auth_manager, config_store_path=__USERS_PATH__)
+    users_manager = UsersManager(auth_manager=auth_manager, config_store_path=__USERS_PATH__)
     
     # 设置 FastAPI 应用
     app = FastAPI()
     create_user_endpoints(
         app,
-        user_manager=user_manager,
+        users_manager=users_manager,
         auth_manager=auth_manager
     )
 
     context.client = TestClient(app)
-    context.user_manager = user_manager
+    context.users_manager = users_manager
     context.auth_manager = auth_manager

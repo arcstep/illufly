@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock, patch
 from pathlib import Path
 from datetime import datetime
-from illufly.fastapi.user import UserManager, User, UserRole
+from illufly.fastapi.users import UsersManager, User, UserRole
 from illufly.fastapi.auth import AuthManager
 from illufly.fastapi.common import FileConfigStore
 
@@ -65,7 +65,7 @@ class TestUserManagerInitialization:
         # Patch FileConfigStore
         with patch('illufly.fastapi.user.manager.FileConfigStore', mock_store_class):
             # 初始化管理器
-            manager = UserManager(auth_manager)
+            manager = UsersManager(auth_manager)
             
             # 验证 FileConfigStore 的创建
             mock_store_class.__getitem__.assert_called_once_with(User)
@@ -104,7 +104,7 @@ class TestUserManagerInitialization:
         storage.has_duplicate.return_value = False
         
         # 初始化管理器
-        manager = UserManager(auth_manager, storage)
+        manager = UsersManager(auth_manager, storage)
         
         # 验证基本属性
         assert manager.auth_manager == auth_manager
@@ -143,7 +143,7 @@ class TestUserManagerInitialization:
         }
         
         # 初始化管理器（这会触发管理员创建）
-        manager = UserManager(auth_manager, storage)
+        manager = UsersManager(auth_manager, storage)
         
         # 验证管理员创建
         storage.set.assert_called_once()
@@ -189,7 +189,7 @@ class TestUserManagerInitialization:
         storage.has_duplicate.return_value = False
         
         # 初始化管理器
-        manager = UserManager(auth_manager, storage)
+        manager = UsersManager(auth_manager, storage)
         
         # 验证没有创建新管理员
         storage.set.assert_not_called()
@@ -232,7 +232,7 @@ class TestUserCreationAndVerification:
 
     @pytest.fixture
     def manager(self, auth_manager, storage):
-        manager = UserManager(auth_manager, storage)
+        manager = UsersManager(auth_manager, storage)
         manager._storage.set.return_value = None
         return manager
     
@@ -442,7 +442,7 @@ class TestUserQueries:
 
     @pytest.fixture
     def manager(self, auth_manager, storage):
-        return UserManager(auth_manager, storage)
+        return UsersManager(auth_manager, storage)
     
     def test_get_user_by_username(self, manager):
         """测试通过用户名获取用户 - 成功"""
@@ -603,7 +603,7 @@ class TestPasswordManagement:
     @pytest.fixture
     def manager(self, auth_manager, storage):
         """创建用户管理器"""
-        manager = UserManager(auth_manager, storage)
+        manager = UsersManager(auth_manager, storage)
         # 重置所有 mock 的调用记录
         storage.reset_mock()
         return manager
@@ -770,7 +770,7 @@ class TestRoleManagement:
 
     @pytest.fixture
     def manager(self, auth_manager, storage):
-        return UserManager(auth_manager, storage)
+        return UsersManager(auth_manager, storage)
 
     def test_update_user_roles_success(self, manager):
         """测试更新用户角色 - 成功"""
@@ -839,7 +839,7 @@ class TestUserUpdateAndDeletion:
 
     @pytest.fixture
     def manager(self, auth_manager, storage):
-        return UserManager(auth_manager, storage)
+        return UsersManager(auth_manager, storage)
 
     def test_update_user_success(self, manager):
         """测试更新用户信息 - 成功"""
@@ -963,7 +963,7 @@ class TestAccessControl:
 
     @pytest.fixture
     def manager(self, auth_manager, storage):
-        return UserManager(auth_manager, storage)
+        return UsersManager(auth_manager, storage)
         
     @pytest.fixture
     def test_user(self):

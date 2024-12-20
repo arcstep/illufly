@@ -49,35 +49,50 @@ Feature: 用户认证系统 - 注册模块 # bdd/features/fastapi/auth/register.
   """
   Background: 测试环境准备  # bdd/features/fastapi/auth/register.feature:57
 
-  @duplicate @error @wip
-  Scenario: 注册重复用户名       # bdd/features/fastapi/auth/register.feature:107
-    Given FastAPI 已经准备好   # bdd/features/steps/common.py:3
-    And 清理测试数据            # bdd/features/steps/common.py:8
-    Given 准备好用户表单         # bdd/features/steps/register_steps.py:7
-      | 字段       | 值               |
-      | username | duplicate_user  |
-      | password | Test123!@#      |
-      | email    | new@example.com |
-    When 提交用户注册请求         # bdd/features/steps/register_steps.py:12
-    Then 系统返回状态码 400      # bdd/features/steps/register_steps.py:44
-      Traceback (most recent call last):
-        File "/Users/xuehongwei/Library/Caches/pypoetry/virtualenvs/illufly-S5GgtCoU-py3.10/lib/python3.10/site-packages/behave/model.py", line 1329, in run
-          match.run(runner.context)
-        File "/Users/xuehongwei/Library/Caches/pypoetry/virtualenvs/illufly-S5GgtCoU-py3.10/lib/python3.10/site-packages/behave/matchers.py", line 98, in run
-          self.func(context, *args, **kwargs)
-        File "bdd/features/steps/register_steps.py", line 46, in step_impl
-          assert context.response.status_code == status_code
-      AssertionError
+  @invite-code @error @wip
+  Scenario: 使用无效邀请码      # bdd/features/fastapi/auth/register.feature:131
+    Given FastAPI 已经准备好  # None
+    And 清理测试数据           # None
+    Given 准备好用户表单        # None
+      | 字段          | 值                |
+      | username    | mockuser         |
+      | password    | Test123!@#       |
+      | email       | mock@example.com |
+      | invite_code | INVALID_CODE     |
+    When 提交用户注册请求        # None
+    Then 系统返回状态码 400     # None
+    And 返回错误信息包含 "邀请码无效" # None
+      """
+      ## 实现注意事项
       
-      Captured stdout:
-      FastAPI 已经准备好
-      清理测试数据
-      准备注册表单数据: <Table: 2x3>
-      >>> response_data {'success': True, 'user_info': {'user_id': '20241219-02894-0000-2460', 'username': 'duplicate_user', 'email': 'new@example.com', 'roles': ['guest', 'user'], 'created_at': '2024-12-19T18:08:14.533137', 'require_password_change': False, 'last_password_change': '2024-12-19T18:08:14.533144', 'password_expires_days': 90, 'last_login': None, 'failed_login_attempts': 0, 'last_failed_login': None, 'is_locked': False, 'is_active': True, 'verify_invite_code': None}}
-      获取到用户ID: 20241219-02894-0000-2460
+      ### 数据安全
+      - 使用 Argon2id 进行密码哈希
+      - 实现密码历史记录
+      - 邮箱地址加密存储
+      - 关键操作使用事务
       
-      Captured logging:
-      INFO:httpx:HTTP Request: POST http://testserver/api/auth/register "HTTP/1.1 200 OK"
-
-    And 返回错误信息包含 "用户名已存在" # None
+      ### 性能优��
+      - 用户名索引优化
+      - 邮箱查询缓存
+      - 邀请码验证缓存
+      - 注册流程异步处理
+      
+      ### 可用性保障
+      - 支持注册失败重试
+      - 邮箱验证容错处理
+      - 友好的错误提示
+      - 注册进度保存
+      
+      ### 监控指标
+      - 注册成功率
+      - 验证失败分布
+      - 邀请码使用情况
+      - 注册来源分析
+      
+      ### 运维支持
+      - 提供注册数据导出
+      - 支持批量邀请码生成
+      - 注册策略动态配置
+      - 提供运营数据分析
+      """
 

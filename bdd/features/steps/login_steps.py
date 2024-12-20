@@ -326,7 +326,7 @@ def step_impl(context):
 
 @given('用户账户已被锁定')
 def step_impl(context):
-    context.user_manager._test_state['is_locked'] = True
+    context.users_manager._test_state['is_locked'] = True
 
 @when('用户在设备A尝试登录')
 def step_impl(context):
@@ -385,7 +385,7 @@ def step_impl(context):
 
 @given('用户账户未激活')
 def step_impl(context):
-    context.user_manager._test_state['is_active'] = False
+    context.users_manager._test_state['is_active'] = False
 
 @when('用户在设备A提供不完整的登录信息')
 def step_impl(context):

@@ -89,8 +89,8 @@ def step_impl(context):
             original_password = row['值']
             break
     
-    # 通过 UserManager 的 get_user_info 方法获取用户信息，包含敏感信息
-    user_info = context.user_manager.get_user_info(user_id, include_sensitive=True)
+    # 通过 UsersManager 的 get_user_info 方法获取用户信息，包含敏感信息
+    user_info = context.users_manager.get_user_info(user_id, include_sensitive=True)
     assert user_info is not None, "用户信息不应为空"
     assert 'password_hash' in user_info, "用户信息中应包含password_hash字段"
     

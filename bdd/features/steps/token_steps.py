@@ -49,8 +49,8 @@ def step_impl(context):
         
         context.test_users[username] = user_data
     
-    # 更新 UserManager 的用户数据
-    context.user_manager._existing_users.update(context.test_users)
+    # 更新 UsersManager 的用户数据
+    context.users_manager._existing_users.update(context.test_users)
     
     print(f"已准备测试用户数据: {json.dumps(context.test_users, indent=2)}")
 
@@ -241,8 +241,8 @@ def step_impl(context):
     )
     
     if response.status_code != 200:
-        print(f"DEBUG: Current test state: {context.user_manager.get_user_state(admin_data['user_id'])}")
-        print(f"DEBUG: User info: {context.user_manager.get_user_info(admin_data['user_id'])}")
+        print(f"DEBUG: Current test state: {context.users_manager.get_user_state(admin_data['user_id'])}")
+        print(f"DEBUG: User info: {context.users_manager.get_user_info(admin_data['user_id'])}")
     
     assert response.status_code == 200, f"管理员登录失败: {response.content.decode()}"
     print(f"已设置管理员登录状态，访问令牌: {response.cookies.get('access_token')}")

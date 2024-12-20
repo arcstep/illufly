@@ -5,7 +5,7 @@ from datetime import datetime
 from ...config import get_env
 from ...core.runnable.vectordb import VectorDB
 from ..common import ConfigStoreProtocol, FileConfigStore
-from ..user import UserManager
+from ..users import UsersManager
 from .models import VectorDBConfig
 
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
@@ -13,14 +13,14 @@ __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 class VectorDBManager:
     def __init__(
         self,
-        user_manager: UserManager,
+        users_manager: UsersManager,
         storage: Optional[ConfigStoreProtocol] = None
     ):
         """初始化向量库管理器
         Args:
             storage: 存储实现，用于保存向量库配置信息
         """
-        self.user_manager = user_manager
+        self.users_manager = users_manager
 
         if storage is None:
             storage = FileConfigStore(
@@ -51,7 +51,7 @@ class VectorDBManager:
         Returns:
             是否创建成功
         """
-        if not self.user_manager.can_access_user(user_id, requester_id):
+        if not self.users_manager.can_access_user(user_id, requester_id):
             return {
                 "success": False,
                 "message": "You are not allowed to create database"
@@ -117,7 +117,7 @@ class VectorDBManager:
 
     def get_db(self, user_id: str, db_name: str, requester_id: str) -> Optional[VectorDB]:
         """获取向量数据库实例"""
-        if not self.user_manager.can_access_user(user_id, requester_id):
+        if not self.users_manager.can_access_user(user_id, requester_id):
             return {
                 "success": False,
                 "message": "You cannot access this database"
@@ -167,7 +167,7 @@ class VectorDBManager:
 
     def remove_db(self, user_id: str, db_name: str, requester_id: str) -> bool:
         """删除知识库"""
-        if not self.user_manager.can_access_user(user_id, requester_id):
+        if not self.users_manager.can_access_user(user_id, requester_id):
             return {
                 "success": False,
                 "message": "You are not allowed to remove database"

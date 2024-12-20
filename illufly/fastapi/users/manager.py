@@ -11,7 +11,7 @@ import re
 
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
-class UserManager:
+class UsersManager:
     def __init__(self, auth_manager: AuthManager, storage: Optional[ConfigStoreProtocol] = None, config_store_path: str = None):
         """初始化用户管理器
         Args:
@@ -71,13 +71,13 @@ class UserManager:
             if self._storage.has_duplicate({"username": username}):
                 return {
                     "success": False,
-                    "error": f"User with Username '{username}' already exists"
+                    "error": f"用户名已存在"
                 }
 
             if self._storage.has_duplicate({"email": email}):
                 return {
                     "success": False,
-                    "error": f"User with Email-Address '{email}' already exists"
+                    "error": f"邮箱已存在"
                 }
 
             # 生成随机密码（如果没有提供）
@@ -389,7 +389,10 @@ class UserManager:
             bool: 邀请码是否有效
         """
         # TODO: 实现邀请码验证逻辑
-        return True
+        return {
+            "success": True,
+            "error": None
+        }
 
     def ensure_admin_user(self) -> None:
         """确保管理员用户存在"""

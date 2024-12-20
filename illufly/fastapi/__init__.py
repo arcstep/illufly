@@ -10,7 +10,8 @@ app.include_router(create_auth_api())
 ```
 """
 
+from .invite import InviteCodeManager
 from .vectordb import VectorDBManager
 from .auth import AuthManager, AuthDependencies
-from .user import create_user_endpoints, UserManager
-from .agent import create_agent_endpoints, AgentManager
+from .users import create_user_endpoints, UsersManager
+from .agents import create_agent_endpoints, AgentsManager

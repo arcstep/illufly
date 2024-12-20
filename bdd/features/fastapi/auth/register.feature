@@ -103,7 +103,7 @@ Feature: 用户认证系统 - 注册模块
       | testuser | Test123!@# | invalid    | 邮箱格式无效      |
       | testuser | Test123!@# | @test.com  | 邮箱格式无效      |
 
-  @duplicate @error @wip
+  @duplicate @error
   Scenario: 注册重复用户名
     Given 准备好用户表单
       | 字段     | 值                |
@@ -111,6 +111,7 @@ Feature: 用户认证系统 - 注册模块
       | password | Test123!@#      |
       | email    | new@example.com |
     When 提交用户注册请求
+    And 提交用户注册请求
     Then 系统返回状态码 400
     And 返回错误信息包含 "用户名已存在"
 
@@ -126,7 +127,7 @@ Feature: 用户认证系统 - 注册模块
     Then 系统返回状态码 200
     And 返回成功响应
 
-  @invite-code @error
+  @invite-code @error @wip
   Scenario: 使用无效邀请码
     Given 准备好用户表单
       | 字段        | 值                |

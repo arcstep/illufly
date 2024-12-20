@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Form, Depends, Response, HTTPException, status, Request
 from typing import Dict, Any, List
 from ..auth import AuthManager
-from .manager import UserManager
+from .manager import UsersManager
 from .models import User, UserRole
 from jose import JWTError
 
 def create_user_endpoints(
         app, 
-        user_manager: UserManager, 
+        users_manager: UsersManager, 
         auth_manager: AuthManager,
         prefix: str="/api"
     ):
@@ -15,7 +15,7 @@ def create_user_endpoints(
 
     Args:
         app: FastAPI应用实例
-        user_manager (UserManager): 用户管理器实例
+        users_manager (UsersManager): 用户管理器实例
         auth_manager (AuthManager): 认证管理器实例
         prefix (str, optional): API路由前缀. 默认为 "/api"
 
@@ -89,7 +89,7 @@ def create_user_endpoints(
                 )
 
             # 验证用户名格式
-            result = user_manager.validate_username(username)
+            result = users_manager.validate_username(username)
             if not result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -97,7 +97,7 @@ def create_user_endpoints(
                 )
 
             # 验证邮箱
-            result = user_manager.validate_email(email)
+            result = users_manager.validate_email(email)
             if not result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -105,7 +105,7 @@ def create_user_endpoints(
                 )
 
             # 验证密码强度
-            result = user_manager.validate_password(password)
+            result = users_manager.validate_password(password)
             if not result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -114,7 +114,7 @@ def create_user_endpoints(
 
             # 验证邀请码（如果需要）
             if invite_code:
-                result = user_manager.verify_invite_code(invite_code)
+                result = users_manager.verify_invite_code(invite_code)
                 if not result["success"]:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -122,7 +122,7 @@ def create_user_endpoints(
                     )
 
             # 创建用户
-            result = user_manager.create_user(
+            result = users_manager.create_user(
                 username=username,
                 password=password,
                 email=email,
@@ -137,7 +137,7 @@ def create_user_endpoints(
 
             user = result["user"]
             # 获取用户信息用于生成令牌
-            user_info = user_manager.get_user_info(user.user_id)
+            user_info = users_manager.get_user_info(user.user_id)
             if not user_info:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -191,7 +191,7 @@ def create_user_endpoints(
         """
         try:
             # 验证密码
-            verify_result = user_manager.verify_user_password(username, password)
+            verify_result = users_manager.verify_user_password(username, password)
             
             if not verify_result["success"]:
                 if verify_result.get("is_locked"):
@@ -255,7 +255,7 @@ def create_user_endpoints(
         """
         try:
             try:
-                verify_old_result = user_manager.verify_user_password(
+                verify_old_result = users_manager.verify_user_password(
                     username=current_user["username"],
                     password=current_password
                 )
@@ -277,7 +277,7 @@ def create_user_endpoints(
                     detail=validate_result["error"]
                 )
 
-            change_result = user_manager.change_password(
+            change_result = users_manager.change_password(
                 user_id=current_user["user_id"],
                 old_password=current_password,
                 new_password=new_password
@@ -376,7 +376,7 @@ def create_user_endpoints(
                     )
 
                 # 获取最新的用户信息
-                user_info = user_manager.get_user_info(current_user["user_id"])
+                user_info = users_manager.get_user_info(current_user["user_id"])
                 if not user_info:
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -501,7 +501,7 @@ def create_user_endpoints(
         """
         try:
             # 检查目标用户是否存在
-            if not user_manager.get_user_info(user_id):
+            if not users_manager.get_user_info(user_id):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="User not found"
@@ -578,7 +578,7 @@ def create_user_endpoints(
                 - 403: 权限不足
                 - 500: 服务器内部错误
         """
-        return user_manager.list_users(requester=current_user["user_id"])
+        return users_manager.list_users(requester=current_user["user_id"])
 
     @app.post(f"{prefix}/users/roles")
     async def update_user_roles(
@@ -588,7 +588,7 @@ def create_user_endpoints(
     ):
         """更新用户角色（管理员）"""
         # 检查用户是否存在
-        user_info = user_manager.get_user_info(user_id)
+        user_info = users_manager.get_user_info(user_id)
         if not user_info:
             raise HTTPException(
                 status_code=404,
@@ -596,7 +596,7 @@ def create_user_endpoints(
             )
         
         # 更新用户角色
-        if user_manager.update_user_roles(user_id, roles):
+        if users_manager.update_user_roles(user_id, roles):
             return {
                 "success": True,
                 "message": "User roles updated successfully"
@@ -614,7 +614,7 @@ def create_user_endpoints(
     ):
         """获取当前用户信息"""
         user_id = current_user["user_id"]
-        user_info = user_manager.get_user_info(user_id)
+        user_info = users_manager.get_user_info(user_id)
         if not user_info:
             raise HTTPException(
                 status_code=404,
@@ -644,7 +644,7 @@ def create_user_endpoints(
                 - 500: 服务器内部错误
         """
         user_id = current_user["user_id"]
-        if user_manager.update_user(user_id, settings=settings):
+        if users_manager.update_user(user_id, settings=settings):
             return {
                 "success": True,
                 "message": "Settings updated successfully"
@@ -657,7 +657,7 @@ def create_user_endpoints(
         current_user: dict = Depends(auth_manager.get_current_user)
     ):
         """修改当前用户密码"""
-        if user_manager.change_password(
+        if users_manager.change_password(
             user_id=current_user["user_id"],
             old_password=password_data["old_password"],
             new_password=password_data["new_password"]
@@ -701,7 +701,7 @@ def create_user_endpoints(
             )
 
         # 重置密码
-        result = user_manager.reset_password(user_id, new_password)
+        result = users_manager.reset_password(user_id, new_password)
         if not result["success"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -719,7 +719,7 @@ def create_user_endpoints(
         roles: List[str],
         current_user: dict = Depends(auth_manager.require_roles([UserRole.ADMIN]))
     ):
-        result = user_manager.update_user_roles(user_id, roles)
+        result = users_manager.update_user_roles(user_id, roles)
         if not result["success"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -736,7 +736,7 @@ def create_user_endpoints(
         settings: Dict[str, Any],
         current_user: dict = Depends(auth_manager.get_current_user)
     ):
-        result = user_manager.update_user(current_user["user_id"], **settings)
+        result = users_manager.update_user(current_user["user_id"], **settings)
         if not result["success"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
