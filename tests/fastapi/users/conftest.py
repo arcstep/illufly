@@ -23,6 +23,8 @@ def tokens_manager(temp_dir):
     manager = TokensManager(config_store_path=temp_dir)
     yield manager
 
+    shutil.rmtree(temp_dir)
+
 @pytest.fixture
 def users_manager(temp_dir, tokens_manager):
     """创建测试用的用户管理器"""
@@ -36,12 +38,14 @@ def test_user_password():
     return "TestPass123"
 
 @pytest.fixture
-def test_user(tokens_manager, test_user_password):
+def test_user():
     return User(
         user_id="test123",
         username="testuser",
         email="testuser@example.com",
-        roles=[UserRole.USER]
+        roles=[UserRole.USER],
+        device_id="test_device_123",
+        device_name="Test Device"
     )
 
 @pytest.fixture

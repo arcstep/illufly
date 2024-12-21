@@ -4,7 +4,7 @@ User Module Models
 This module defines the core user-related data models.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Set, Union
 from enum import Enum
@@ -16,18 +16,20 @@ class UserRole(str, Enum):
     """用户角色枚举"""
     ADMIN = "admin"          # 管理员
     OPERATOR = "operator"    # 运营人员
-    USER = "user"           # 普通用户
-    GUEST = "guest"         # 访客
+    USER = "user"            # 普通用户
+    GUEST = "guest"          # 访客
 
 @dataclass
 class User:
     """用户基础信息"""
-    username: str
-    roles: Set[UserRole]
-    user_id: str = None  # 新增：用户唯一ID
+    user_id: str
+    username: str = field(default_factory=lambda: "")
+    device_id: str = field(default="default_device_id")
+    device_name: str = field(default="Default-Device")
+    roles: List[UserRole] = field(default_factory=lambda: [UserRole.USER])  # 使用UserRole枚举
     email: str = None
     password_hash: str = None
-    created_at: datetime = None
+    created_at: datetime = field(default_factory=datetime.now)
     require_password_change: bool = False
     last_password_change: Optional[datetime] = None  # 新增：最后修改密码时间
     password_expires_days: int = 90  # 新增：密码有效期（天数）
@@ -37,6 +39,10 @@ class User:
     is_locked: bool = False  # 新增：账户是否锁定
     is_active: bool = True
     verify_invite_code: str = None  # 新增：邀请码字段
+
+    def __post_init__(self):
+        if not self.username:
+            self.username = self.user_id
 
     def is_password_expired(self) -> bool:
         """检查密码是否过期"""

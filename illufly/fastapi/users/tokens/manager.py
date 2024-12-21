@@ -13,60 +13,92 @@ import os
 
 from ....io import ConfigStoreProtocol, FileConfigStore
 from ..dependencies import AuthDependencies
+from .models import TokenClaims
 
 from ....config import get_env
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
 @dataclass
 class TokensManager:
-    """认证管理器，用于处理用户认证、令牌管理和多设备登录等功能。
+    """令牌管理器，用于处理JWT令牌的创建、验证和管理。
     
-    该类提供了完整的用户认证和令牌管理解决方案，包括：
+    该类提供了完整的JWT令牌管理解决方案，包括：
     - JWT令牌的创建和验证
+    - 访问令牌和刷新令牌的生命周期管理
     - 多设备登录支持
-    - 令牌撤销和过期管理
-    - 密码加密和验证
-    - 用户输入验证
+    - 令牌撤销管理
     
     主要特性：
-    - 支持访问令牌和刷新令牌
+    - 支持登陆验证和角色验证
+    - 基于JWT的双令牌认证系统
+    - 支持访问令牌失效时根据有效的刷新令牌自动刷新
+    - 支持在刷新令牌未过期时实现零登录
     - 支持多设备同时登录
-    - 支持单个设备登出
-    - 支持令牌自动过期
-    - 支持密码强度验证
-    - 支持用户名和邮箱格式验证
+    - 支持撤销在用设备的令牌
+    - 支持强制撤销所有设备的令牌
+    - 支持自动清理过期令牌
     
     使用示例:
     ```python
-    # 初始化认证管理器
-    auth_manager = TokensManager()
+    # 1. 初始化令牌管理器
+    tokens_manager = TokensManager()
     
-    # 创建访问令牌
-    token_data = {
+    # 2. 创建刷新令牌（登录）
+    user_data = {
         "user_id": "user123",
         "username": "johndoe",
-        "roles": ["user"]
+        "roles": ["user"],
+        "device_id": "browser_chrome_123",
+        "device_name": "Chrome on Windows"
     }
-    access_token = auth_manager.create_access_token(token_data)
     
-    # 设备登出
-    auth_manager.logout_device(access_token["token"])
+    refresh_result = tokens_manager.create_refresh_token(user_data)
+    if refresh_result["success"]:
+        refresh_token = refresh_result["token"]
+
+    # 3. 使用刷新令牌获取访问令牌（支持零登录）
+    access_result = tokens_manager.refresh_access_token(
+        refresh_token, 
+        user_data["user_id"]
+    )
+    if access_result["success"]:
+        access_token = access_result["token"]
+    
+    # 4. 验证令牌（日常验证）
+    verify_result = tokens_manager.verify_jwt(
+        access_token, 
+        verify_exp=True,
+        token_type="access"
+    )
+    
+    # 5. 查看用户的所有登录设备
+    devices = tokens_manager.list_user_devices(user_data["user_id"])
+    
+    # 6. 撤销当前登录设备上的令牌（退出）
+    tokens_manager.revoke_device_tokens(
+        user_data["user_id"], 
+        user_data["device_id"]
+    )
+    
+    # 7. 强制撤销所有设备上的令牌（强制要求重新登录，防止盗用）
+    tokens_manager.revoke_all_user_tokens(user_data["user_id"])
     ```
     
     配置要求：
-    必须在环境变量中设置以下配置：
+    可以通过以下环境变量修改系统配置的默认值：
     - FASTAPI_SECRET_KEY: JWT签名密钥
     - FASTAPI_ALGORITHM: JWT算法 (HS256, HS384, HS512)
-    - HASH_METHOD: 密码哈希方法 (argon2, bcrypt, pbkdf2_sha256)
     - ACCESS_TOKEN_EXPIRE_MINUTES: 访问令牌过期时间（分钟）
     - REFRESH_TOKEN_EXPIRE_DAYS: 刷新令牌过期时间（天）
-    - ILLUFLY_FASTAPI_USERS_PATH: 用户数据存储路径
+    - ILLUFLY_FASTAPI_USERS_PATH: 令牌存储路径
     
-    安全注意事项：
-    1. 访问令牌应该设置较短的过期时间（如30分钟）
-    2. 刷新令牌可以设置较长的过期时间（如7天）
-    3. 密码必须经过哈希处理后再存储
-    4. 敏感操作应该验证用户角色权限
+    安全建议：
+    1. 访问令牌过期时间建议设置为15-30分钟
+    2. 刷新令牌过期时间建议设置为7-14天
+    3. 敏感操作前应验证令牌的角色权限
+    4. 确保使用HTTPS传输所有令牌
+    5. 定期清理过期令牌
+    6. 在可疑活动时主动撤销用户的所有令牌
     """
     
     def __init__(self, storage: Optional[ConfigStoreProtocol] = None, config_store_path: str = None):
@@ -129,22 +161,29 @@ class TokensManager:
         """获取角色认证依赖"""
         return self.dependencies.require_roles(roles, require_all)
 
-    def add_access_token(self, claims: dict, token: str, owner_id: str) -> None:
+    def add_access_token(self, claims: TokenClaims, token: str, owner_id: str) -> None:
         """添加访问令牌，同时清理过期的令牌"""
         try:
-            device_id = claims.get("device_id")
+            device_id = claims.device_id
             if not device_id:
                 raise ValueError("Device ID is required")
             
             # 获取用户当前的所有令牌
             current_time = int(datetime.utcnow().timestamp())
-            user_tokens = self._access_tokens.get(owner_id, {})
+            
+            # 确保用户字典存在
+            if owner_id not in self._access_tokens:
+                self._access_tokens[owner_id] = {}
+            
+            user_tokens = self._access_tokens[owner_id]
             
             # 过滤出未过期的令牌
             valid_tokens = {
                 d_id: token_data
                 for d_id, token_data in user_tokens.items()
-                if token_data["claims"]["exp"] > current_time
+                if isinstance(token_data, dict) and  # 确保token_data是字典
+                   isinstance(token_data.get("claims"), TokenClaims) and  # 确保claims是TokenClaims对象
+                   token_data["claims"].exp > current_time
             }
             
             # 添加新令牌
@@ -152,12 +191,12 @@ class TokensManager:
             self._access_tokens[owner_id] = valid_tokens
             
         except Exception as e:
-            raise
+            raise ValueError(f"Failed to add access token: {str(e)}")
 
-    def add_refresh_token(self, claims: dict, token: str, owner_id: str) -> None:
+    def add_refresh_token(self, claims: TokenClaims, token: str, owner_id: str) -> None:
         """添加刷新令牌，同时清理过期的令牌"""
         try:
-            device_id = claims.get("device_id")
+            device_id = claims.device_id
             if not device_id:
                 raise ValueError("Device ID is required")
             
@@ -169,7 +208,7 @@ class TokensManager:
             valid_tokens = {
                 d_id: token_data
                 for d_id, token_data in refresh_data.items()
-                if token_data["claims"]["exp"] > current_time
+                if token_data["claims"].exp > current_time
             }
             
             # 添加新令牌
@@ -181,18 +220,6 @@ class TokensManager:
 
     def verify_jwt(self, token: str, verify_exp: bool = True, token_type: str = None) -> Dict[str, Any]:
         """验证JWT令牌，如果是访问令牌且验证失败，尝试使用刷新令牌刷新
-        
-        Args:
-            token: JWT令牌字符串
-            verify_exp: 是否验证过期时间
-            token_type: 令牌类型 ("access" 或 "refresh")
-            
-        Returns:
-            Dict[str, Any]: 验证结果
-                - success: 是否验证成功
-                - payload: 成功时返回的令牌载荷
-                - new_token: 如果刷新成功，返回新的访问令牌
-                - error: 失败时的错误信息
         """
         try:
             # 先不验证签名解码看看内容
@@ -212,7 +239,6 @@ class TokensManager:
                 'leeway': 0,
             }
             
-            # 正式验证
             try:
                 payload = jwt.decode(
                     token,
@@ -223,23 +249,43 @@ class TokensManager:
                 
                 # 检查令牌是否被撤销
                 user_id = payload.get("user_id")
+                device_id = payload.get("device_id")
+                
+                if not user_id or not device_id:
+                    return {
+                        "success": False,
+                        "error": "Invalid token: missing user_id or device_id"
+                    }
+                
                 if token_type == "access":
                     if self.is_access_token_revoked(token, user_id):
-                        raise jwt.JWTError("Token has been revoked")
+                        return {
+                            "success": False,
+                            "error": "Token has been revoked"
+                        }
                 elif token_type == "refresh":
                     if self.is_refresh_token_revoked(token, user_id):
-                        raise jwt.JWTError("Token has been revoked")
+                        return {
+                            "success": False,
+                            "error": "Token has been revoked"
+                        }
                 
                 return {
                     "success": True,
                     "payload": payload
                 }
                 
-            except (jwt.ExpiredSignatureError, jwt.JWTError) as e:
-                # 如果是访问令牌验证失败，尝试使用刷新令牌
+            except jwt.ExpiredSignatureError:
+                # 如果是访问令牌过期，尝试使用刷新令牌
                 if token_type == "access":
                     user_id = unverified.get("user_id")
                     device_id = unverified.get("device_id")
+                    
+                    if not user_id or not device_id:
+                        return {
+                            "success": False,
+                            "error": "Invalid token: missing user_id or device_id"
+                        }
                     
                     # 查找相同设备的刷新令牌
                     refresh_data = self._refresh_tokens.get(user_id) or {}
@@ -247,7 +293,7 @@ class TokensManager:
                     refresh_token = device_tokens.get("token")
                     
                     if refresh_token:
-                        # 尝试刷新访问令牌
+                        # 尝试刷新访���令牌
                         refresh_result = self.refresh_access_token(refresh_token, user_id)
                         if refresh_result["success"]:
                             return {
@@ -256,6 +302,12 @@ class TokensManager:
                                 "new_token": refresh_result["token"]
                             }
                 
+                return {
+                    "success": False,
+                    "error": "Token has expired"
+                }
+                
+            except jwt.JWTError as e:
                 return {
                     "success": False,
                     "error": f"Invalid token: {str(e)}"
@@ -280,33 +332,24 @@ class TokensManager:
                 - error: 失败时的错误信息
         """
         try:
-            device_id = data.get("device_id", "default")
-            device_name = data.get("device_name", "Default Device")
-            
             current_time = datetime.utcnow()
-            expire = current_time + timedelta(days=self.refresh_token_expire_days)
-            
-            # 用 timegm 获取时间戳
+            expire = current_time + timedelta(days=self.refresh_token_expire_days)            
             iat_timestamp = timegm(current_time.utctimetuple())
             exp_timestamp = timegm(expire.utctimetuple())
             
-            claims = {
+            claims = TokenClaims(
                 **data,
-                "exp": exp_timestamp,  # 使用 timegm 生成的时间戳
-                "iat": iat_timestamp,  # 使用 timegm 生成的时间戳
-                "token_type": "refresh",
-                "device_id": device_id,
-                "device_name": device_name
-            }
+                exp=exp_timestamp,
+                iat=iat_timestamp
+            )
             
             encoded_jwt = jwt.encode(
-                claims,
+                claims.to_dict(),
                 self.secret_key,
                 algorithm=self.algorithm
             )
             
-            # 使用 add_token 方法来管理令牌
-            self.add_token(claims, token=encoded_jwt, owner_id=data["user_id"])
+            self.add_refresh_token(claims, token=encoded_jwt, owner_id=data["user_id"])
             
             return {
                 "success": True,
@@ -320,48 +363,27 @@ class TokensManager:
 
     def create_access_token(self, data: dict) -> dict:
         """创建访问令牌"""
+        print(">>> data: ", data)
         try:
-            device_id = data.get("device_id", "default")
-            device_name = data.get("device_name", "Default Device")
-            
             current_time = datetime.utcnow()
-            expire = current_time + timedelta(minutes=self.access_token_expire_minutes)
-            
-            print(f"Creating token at: {current_time}")
-            print(f"Token will expire at: {expire}")
-            
-            # 使用 timegm 获取时间戳
+            expire = current_time + timedelta(minutes=self.access_token_expire_minutes)            
             iat_timestamp = timegm(current_time.utctimetuple())
             exp_timestamp = timegm(expire.utctimetuple())
             
-            print(f"IAT timestamp: {iat_timestamp}")
-            print(f"EXP timestamp: {exp_timestamp}")
-            
-            claims = {
+            claims = TokenClaims(
                 **data,
-                "exp": exp_timestamp,  # 使用 timegm 生成的时间戳
-                "iat": iat_timestamp,  # 使用 timegm 生成的时间戳
-                "token_type": "access",
-                "device_id": device_id,
-                "device_name": device_name
-            }
-            
+                exp=exp_timestamp,
+                iat=iat_timestamp,
+                token_type="access",
+            )
+
+            print(">>> claims: ", claims.to_dict())
             encoded_jwt = jwt.encode(
-                claims,
+                claims.to_dict(),
                 self.secret_key,
                 algorithm=self.algorithm
             )
             
-            # 添加令牌管理器
-            token = Token(
-                token=encoded_jwt,
-                username=data["username"],
-                user_id=data["user_id"],
-                expire=expire,
-                token_type="access",
-                device_id=device_id,
-                device_name=device_name
-            )
             self.add_access_token(claims, token=encoded_jwt, owner_id=data["user_id"])
             
             return {
@@ -514,7 +536,7 @@ class TokensManager:
             }
 
     def is_access_token_revoked(self, token: str, user_id: str) -> bool:
-        """检查访问令牌是否已被撤销
+        """检查访问令牌是否已��撤销
         
         Args:
             token: 访问令牌字符串
@@ -554,39 +576,40 @@ class TokensManager:
             return True
 
     def refresh_access_token(self, refresh_token: str, user_id: str) -> Dict[str, Any]:
-        """使用刷新令牌颁发新的访问令牌
-        
-        Args:
-            refresh_token: 刷新令牌
-            user_id: 用户ID
-            
-        Returns:
-            Dict[str, Any]: 结果字典
-                - success: 是否成功
-                - token: 新的访问令牌
-                - error: 错误信息
-        """
+        """使用刷新令牌��发新的访问令牌"""
         try:
-            # 验证刷新令牌是否有效
-            if self.is_refresh_token_revoked(refresh_token, user_id):
+            # 验证刷新令牌
+            verify_result = self.verify_jwt(refresh_token, verify_exp=True, token_type="refresh")
+            if not verify_result["success"]:
                 return {
                     "success": False,
-                    "error": "Refresh token has been revoked"
+                    "error": verify_result["error"]
                 }
             
-            # 解码刷新令牌获取信息
-            refresh_claims = jwt.decode(
-                refresh_token,
-                self.secret_key,
-                algorithms=[self.algorithm]
-            )
+            refresh_claims = verify_result["payload"]
             
-            # 创建新的访问令牌，继承原有的用户信息
+            # 验证必要字段
+            required_fields = ["user_id", "device_id"]
+            for field in required_fields:
+                if field not in refresh_claims:
+                    return {
+                        "success": False,
+                        "error": f"Missing required field: {field}"
+                    }
+            
+            # 验证用户ID匹配
+            if refresh_claims["user_id"] != user_id:
+                return {
+                    "success": False,
+                    "error": "User ID mismatch"
+                }
+            
+            # 创建新的访问令牌
             token_data = {
                 "user_id": user_id,
                 "username": refresh_claims.get("username"),
                 "roles": refresh_claims.get("roles", []),
-                "device_id": refresh_claims.get("device_id"),
+                "device_id": refresh_claims["device_id"],
                 "device_name": refresh_claims.get("device_name")
             }
             
