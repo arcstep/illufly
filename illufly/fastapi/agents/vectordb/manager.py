@@ -2,12 +2,13 @@
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 from datetime import datetime
-from ...config import get_env
-from ...core.runnable.vectordb import VectorDB
-from ..common import ConfigStoreProtocol, FileConfigStore
-from ..users import UsersManager
+
+from ....core.runnable.vectordb import VectorDB
+from ....io import ConfigStoreProtocol, FileConfigStore
+from ...users import UsersManager
 from .models import VectorDBConfig
 
+from ....config import get_env
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
 class VectorDBManager:

@@ -1,4 +1,5 @@
 import pytest
+from illufly.fastapi.users import UsersManager
 
 class TestValidation:
     """验证相关测试"""

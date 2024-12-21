@@ -5,19 +5,20 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 from fastapi import Response
 from pathlib import Path
+from calendar import timegm
+
 import re
 import uuid
 import os
-from calendar import timegm
 
-from ...config import get_env
-from ..common import ConfigStoreProtocol, FileConfigStore
-from .dependencies import AuthDependencies
+from ....io import ConfigStoreProtocol, FileConfigStore
+from ..dependencies import AuthDependencies
 
+from ....config import get_env
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
 @dataclass
-class AuthManager:
+class TokensManager:
     """认证管理器，用于处理用户认证、令牌管理和多设备登录等功能。
     
     该类提供了完整的用户认证和令牌管理解决方案，包括：
@@ -38,7 +39,7 @@ class AuthManager:
     使用示例:
     ```python
     # 初始化认证管理器
-    auth_manager = AuthManager()
+    auth_manager = TokensManager()
     
     # 创建访问令牌
     token_data = {

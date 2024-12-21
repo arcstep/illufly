@@ -3,8 +3,8 @@ from unittest.mock import Mock, patch
 from pathlib import Path
 from datetime import datetime
 from illufly.fastapi.users import UsersManager, User, UserRole
-from illufly.fastapi.auth import AuthManager
-from illufly.fastapi.common import FileConfigStore
+from illufly.fastapi.users import TokensManager
+from illufly.io import FileConfigStore
 
 class TestUserManagerInitialization:
     @pytest.fixture(autouse=True)
@@ -18,17 +18,6 @@ class TestUserManagerInitialization:
             shutil.rmtree(test_dir)
 
     @pytest.fixture
-    def auth_manager(self):
-        """创建认证管理器的 mock"""
-        mock_auth = Mock(spec=AuthManager)
-        # 设置默认的密码哈希行为
-        mock_auth.hash_password.return_value = {
-            "success": True,
-            "hash": "default_hashed_password"
-        }
-        return mock_auth
-
-    @pytest.fixture
     def storage(self):
         """创建存储的 mock"""
         mock_storage = Mock()
@@ -39,7 +28,7 @@ class TestUserManagerInitialization:
         mock_storage.set.return_value = True
         return mock_storage
 
-    def test_init_with_default_storage(self, auth_manager):
+    def test_init_with_default_storage(self, tokens_manager):
         """测试使用默认存储初始化"""
         # 创建一个完整的 Mock FileConfigStore 实例
         mock_file_store = Mock(spec=FileConfigStore)
@@ -65,7 +54,7 @@ class TestUserManagerInitialization:
         # Patch FileConfigStore
         with patch('illufly.fastapi.user.manager.FileConfigStore', mock_store_class):
             # 初始化管理器
-            manager = UsersManager(auth_manager)
+            manager = UsersManager(tokens_manager)
             
             # 验证 FileConfigStore 的创建
             mock_store_class.__getitem__.assert_called_once_with(User)
@@ -93,7 +82,7 @@ class TestUserManagerInitialization:
             # 验证 owner_id
             assert kwargs.get('owner_id') == 'admin'  # owner_id 应在关键字参数中
 
-    def test_init_with_custom_storage(self, auth_manager, storage):
+    def test_init_with_custom_storage(self, tokens_manager, storage):
         """测试使用自定义存储初始化
         
         验证:
@@ -104,10 +93,10 @@ class TestUserManagerInitialization:
         storage.has_duplicate.return_value = False
         
         # 初始化管理器
-        manager = UsersManager(auth_manager, storage)
+        manager = UsersManager(tokens_manager, storage)
         
         # 验证基本属性
-        assert manager.auth_manager == auth_manager
+        assert manager.tokens_manager == tokens_manager
         assert manager._storage == storage
         
         # 验证管理员用户创建
@@ -125,7 +114,7 @@ class TestUserManagerInitialization:
         # 验证 owner_id
         assert call_args[1]['owner_id'] == "admin"
 
-    def test_ensure_admin_user_creates_admin(self, auth_manager, storage):
+    def test_ensure_admin_user_creates_admin(self, tokens_manager, storage):
         """测试确保管理员用户存在 - 创建新管理员
         
         验证:
@@ -137,13 +126,13 @@ class TestUserManagerInitialization:
         storage.list_owners.return_value = []
         storage.has_duplicate.return_value = False
         
-        auth_manager.hash_password.return_value = {
+        tokens_manager.hash_password.return_value = {
             "success": True,
             "hash": "admin_password_hash"
         }
         
         # 初始化管理器（这会触发管理员创建）
-        manager = UsersManager(auth_manager, storage)
+        manager = UsersManager(tokens_manager, storage)
         
         # 验证管理员创建
         storage.set.assert_called_once()
@@ -165,7 +154,7 @@ class TestUserManagerInitialization:
         # 验证管理员ID被添加到管理员集合
         assert "admin" in manager._admin_ids
 
-    def test_ensure_admin_user_exists(self, auth_manager, storage):
+    def test_ensure_admin_user_exists(self, tokens_manager, storage):
         """测试确保管理员用户存在 - 管理员已存在
         
         验证:
@@ -189,7 +178,7 @@ class TestUserManagerInitialization:
         storage.has_duplicate.return_value = False
         
         # 初始化管理器
-        manager = UsersManager(auth_manager, storage)
+        manager = UsersManager(tokens_manager, storage)
         
         # 验证没有创建新管理员
         storage.set.assert_not_called()
@@ -209,9 +198,9 @@ class TestUserCreationAndVerification:
             shutil.rmtree(test_dir)
 
     @pytest.fixture
-    def auth_manager(self):
+    def tokens_manager(self):
         """创建认证管理器的 mock"""
-        mock_auth = Mock(spec=AuthManager)
+        mock_auth = Mock(spec=TokensManager)
         # 设置默认的密码哈希行为
         mock_auth.hash_password.return_value = {
             "success": True,
@@ -231,15 +220,15 @@ class TestUserCreationAndVerification:
         return mock_storage
 
     @pytest.fixture
-    def manager(self, auth_manager, storage):
-        manager = UsersManager(auth_manager, storage)
+    def manager(self, tokens_manager, storage):
+        manager = UsersManager(tokens_manager, storage)
         manager._storage.set.return_value = None
         return manager
     
     def test_create_user_success(self, manager):
         """测试成功创建用户"""
         manager._storage.has_duplicate.return_value = False
-        manager.auth_manager.hash_password.return_value = {
+        manager.tokens_manager.hash_password.return_value = {
             "success": True,
             "hash": "hashed_password"
         }
@@ -279,7 +268,7 @@ class TestUserCreationAndVerification:
     def test_create_user_with_random_password(self, manager):
         """测试创建用户 - 使用随机密码"""
         manager._storage.has_duplicate.return_value = False
-        manager.auth_manager.hash_password.return_value = {
+        manager.tokens_manager.hash_password.return_value = {
             "success": True,
             "hash": "hashed_password"
         }
@@ -295,7 +284,7 @@ class TestUserCreationAndVerification:
     def test_create_user_with_custom_roles(self, manager):
         """测试创建用户 - 指定角色"""
         manager._storage.has_duplicate.return_value = False
-        manager.auth_manager.hash_password.return_value = {
+        manager.tokens_manager.hash_password.return_value = {
             "success": True,
             "hash": "hashed_password"
         }
@@ -315,7 +304,7 @@ class TestUserCreationAndVerification:
     def test_create_user_password_hash_failure(self, manager):
         """测试创建用户 - 密码哈希失败"""
         manager._storage.has_duplicate.return_value = False
-        manager.auth_manager.hash_password.return_value = {
+        manager.tokens_manager.hash_password.return_value = {
             "success": False,
             "error": "Invalid password format"
         }
@@ -354,7 +343,7 @@ class TestUserCreationAndVerification:
         """测试创建用户 - 存储失败"""
         # 设置 mock 行为
         manager._storage.has_duplicate.return_value = False
-        manager.auth_manager.hash_password.return_value = {
+        manager.tokens_manager.hash_password.return_value = {
             "success": True,
             "hash": "hashed_password"
         }
@@ -377,7 +366,7 @@ class TestUserCreationAndVerification:
         """测试创建用户 - 指定用户ID"""
         # 设置 mock 行为
         manager._storage.has_duplicate.return_value = False
-        manager.auth_manager.hash_password.return_value = {
+        manager.tokens_manager.hash_password.return_value = {
             "success": True,
             "hash": "hashed_password"
         }
@@ -419,9 +408,9 @@ class TestUserQueries:
             shutil.rmtree(test_dir)
 
     @pytest.fixture
-    def auth_manager(self):
+    def tokens_manager(self):
         """创建认证管理器的 mock"""
-        mock_auth = Mock(spec=AuthManager)
+        mock_auth = Mock(spec=TokensManager)
         # 设置默认的密码哈希行为
         mock_auth.hash_password.return_value = {
             "success": True,
@@ -441,8 +430,8 @@ class TestUserQueries:
         return mock_storage
 
     @pytest.fixture
-    def manager(self, auth_manager, storage):
-        return UsersManager(auth_manager, storage)
+    def manager(self, tokens_manager, storage):
+        return UsersManager(tokens_manager, storage)
     
     def test_get_user_by_username(self, manager):
         """测试通过用户名获取用户 - 成功"""
@@ -564,9 +553,9 @@ class TestPasswordManagement:
             shutil.rmtree(test_dir)
 
     @pytest.fixture
-    def auth_manager(self):
+    def tokens_manager(self):
         """创建认证管理器的 mock"""
-        mock_auth = Mock(spec=AuthManager)
+        mock_auth = Mock(spec=TokensManager)
         mock_auth.hash_password.return_value = {
             "success": True,
             "hash": "default_hashed_password"
@@ -601,9 +590,9 @@ class TestPasswordManagement:
         )
 
     @pytest.fixture
-    def manager(self, auth_manager, storage):
+    def manager(self, tokens_manager, storage):
         """创建用户管理器"""
-        manager = UsersManager(auth_manager, storage)
+        manager = UsersManager(tokens_manager, storage)
         # 重置所有 mock 的调用记录
         storage.reset_mock()
         return manager
@@ -615,7 +604,7 @@ class TestPasswordManagement:
         manager._storage.get.return_value = test_user
         
         # 确保验证密码成功
-        manager.auth_manager.verify_password.return_value = {
+        manager.tokens_manager.verify_password.return_value = {
             "success": True
         }
 
@@ -629,7 +618,7 @@ class TestPasswordManagement:
         # 模拟用户查找
         manager._storage.list_owners.return_value = [test_user.user_id]
         manager._storage.get.return_value = test_user
-        manager.auth_manager.verify_password.return_value = {
+        manager.tokens_manager.verify_password.return_value = {
             "success": False,
             "error": "Invalid password"
         }
@@ -656,13 +645,13 @@ class TestPasswordManagement:
             assert "Storage error" in result["error"]
             
             # verify_password 不应该被调用，因为获取用户就失败了
-            manager.auth_manager.verify_password.assert_not_called()
+            manager.tokens_manager.verify_password.assert_not_called()
 
     def test_change_password_success(self, manager, test_user):
         """测试修改密码 - 成功"""
         manager._storage.get.return_value = test_user
-        manager.auth_manager.verify_password.return_value = {"success": True}
-        manager.auth_manager.hash_password.return_value = {
+        manager.tokens_manager.verify_password.return_value = {"success": True}
+        manager.tokens_manager.hash_password.return_value = {
             "success": True,
             "hash": "new_hash"
         }
@@ -683,7 +672,7 @@ class TestPasswordManagement:
     def test_reset_password_success(self, manager, test_user):
         """测试重置密码 - 成功"""
         manager._storage.get.return_value = test_user
-        manager.auth_manager.hash_password.return_value = {
+        manager.tokens_manager.hash_password.return_value = {
             "success": True,
             "hash": "new_hash"
         }
@@ -700,7 +689,7 @@ class TestPasswordManagement:
     def test_reset_password_storage_error(self, manager, test_user):
         """测试重置密码 - 存储错误"""
         manager._storage.get.return_value = test_user
-        manager.auth_manager.hash_password.return_value = {
+        manager.tokens_manager.hash_password.return_value = {
             "success": True,
             "hash": "new_hash"
         }
@@ -732,9 +721,9 @@ class TestRoleManagement:
             shutil.rmtree(test_dir)
 
     @pytest.fixture
-    def auth_manager(self):
+    def tokens_manager(self):
         """创建认证管理器的 mock"""
-        mock_auth = Mock(spec=AuthManager)
+        mock_auth = Mock(spec=TokensManager)
         mock_auth.hash_password.return_value = {
             "success": True,
             "hash": "default_hashed_password"
@@ -769,8 +758,8 @@ class TestRoleManagement:
         )
 
     @pytest.fixture
-    def manager(self, auth_manager, storage):
-        return UsersManager(auth_manager, storage)
+    def manager(self, tokens_manager, storage):
+        return UsersManager(tokens_manager, storage)
 
     def test_update_user_roles_success(self, manager):
         """测试更新用户角色 - 成功"""
@@ -819,9 +808,9 @@ class TestUserUpdateAndDeletion:
             shutil.rmtree(test_dir)
 
     @pytest.fixture
-    def auth_manager(self):
+    def tokens_manager(self):
         """创建认证管理器的 mock"""
-        mock_auth = Mock(spec=AuthManager)
+        mock_auth = Mock(spec=TokensManager)
         mock_auth.hash_password.return_value = {
             "success": True,
             "hash": "default_hashed_password"
@@ -838,8 +827,8 @@ class TestUserUpdateAndDeletion:
         return mock_storage
 
     @pytest.fixture
-    def manager(self, auth_manager, storage):
-        return UsersManager(auth_manager, storage)
+    def manager(self, tokens_manager, storage):
+        return UsersManager(tokens_manager, storage)
 
     def test_update_user_success(self, manager):
         """测试更新用户信息 - 成功"""
@@ -943,9 +932,9 @@ class TestAccessControl:
             shutil.rmtree(test_dir)
 
     @pytest.fixture
-    def auth_manager(self):
+    def tokens_manager(self):
         """创建认证管理器的 mock"""
-        mock_auth = Mock(spec=AuthManager)
+        mock_auth = Mock(spec=TokensManager)
         mock_auth.hash_password.return_value = {
             "success": True,
             "hash": "default_hashed_password"
@@ -962,8 +951,8 @@ class TestAccessControl:
         return mock_storage
 
     @pytest.fixture
-    def manager(self, auth_manager, storage):
-        return UsersManager(auth_manager, storage)
+    def manager(self, tokens_manager, storage):
+        return UsersManager(tokens_manager, storage)
         
     @pytest.fixture
     def test_user(self):

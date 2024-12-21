@@ -1,14 +1,13 @@
 from fastapi import APIRouter, Form, Depends, Response, HTTPException, status, Request
 from typing import Dict, Any, List
-from ..auth import AuthManager
-from .manager import UsersManager
-from .models import User, UserRole
 from jose import JWTError
 
-def create_user_endpoints(
+from ..users import TokensManager, UsersManager, User, UserRole
+
+def create_users_endpoints(
         app, 
         users_manager: UsersManager, 
-        auth_manager: AuthManager,
+        tokens_manager: TokensManager,
         prefix: str="/api"
     ):
     """创建用户相关的API端点
@@ -16,7 +15,7 @@ def create_user_endpoints(
     Args:
         app: FastAPI应用实例
         users_manager (UsersManager): 用户管理器实例
-        auth_manager (AuthManager): 认证管理器实例
+        tokens_manager (TokensManager): 认证管理器实例
         prefix (str, optional): API路由前缀. 默认为 "/api"
 
     Returns:
@@ -146,9 +145,9 @@ def create_user_endpoints(
 
             # 自动登录
             token_data = _create_token_data(user_info, device_id, device_name)
-            access_token = auth_manager.create_access_token(data=token_data)
-            refresh_token = auth_manager.create_refresh_token(data=token_data)
-            auth_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
+            access_token = tokens_manager.create_access_token(data=token_data)
+            refresh_token = tokens_manager.create_refresh_token(data=token_data)
+            tokens_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
 
             return {
                 "success": True,
@@ -214,9 +213,9 @@ def create_user_endpoints(
             require_password_change = verify_result["require_password_change"]
             
             token_data = _create_token_data(user_info, device_id, device_name)
-            access_token = auth_manager.create_access_token(data=token_data)
-            refresh_token = auth_manager.create_refresh_token(data=token_data)
-            auth_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
+            access_token = tokens_manager.create_access_token(data=token_data)
+            refresh_token = tokens_manager.create_refresh_token(data=token_data)
+            tokens_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
 
             return {
                 "success": True,
@@ -236,7 +235,7 @@ def create_user_endpoints(
     async def change_password(
         current_password: str = Form(...),
         new_password: str = Form(...),
-        current_user: dict = Depends(auth_manager.get_current_user)
+        current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         """修改密码接口
         
@@ -270,7 +269,7 @@ def create_user_endpoints(
                     detail=str(e)
                 )
 
-            validate_result = auth_manager.validate_password(new_password)
+            validate_result = tokens_manager.validate_password(new_password)
             if not validate_result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -305,7 +304,7 @@ def create_user_endpoints(
     async def refresh_token(
         request: Request, 
         response: Response = None,
-        current_user: dict = Depends(auth_manager.get_current_user)
+        current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         """刷新Token接口
         
@@ -352,7 +351,7 @@ def create_user_endpoints(
             # 2. 验证令牌状态（是否已使用、是否过期）
             try:
                 # 首先验证令牌格式和签名
-                verify_result = auth_manager.verify_jwt(refresh_token)
+                verify_result = tokens_manager.verify_jwt(refresh_token)
                 if not verify_result["success"]:
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -360,7 +359,7 @@ def create_user_endpoints(
                     )
 
                 # 然后验证令牌格式是否错误
-                valid_result = auth_manager.is_token_valid(refresh_token, "refresh")
+                valid_result = tokens_manager.is_token_valid(refresh_token, "refresh")
                 if not valid_result["success"]:
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -368,7 +367,7 @@ def create_user_endpoints(
                     )
 
                 # 然后验证令牌是否已被使用
-                valid_result = auth_manager.is_token_in_other_device(refresh_token, "refresh")
+                valid_result = tokens_manager.is_token_in_other_device(refresh_token, "refresh")
                 if not valid_result["success"]:
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -384,7 +383,7 @@ def create_user_endpoints(
                     )
 
                 # 使旧的刷新令牌失效
-                invalidate_result = auth_manager.invalidate_token(refresh_token)
+                invalidate_result = tokens_manager.invalidate_token(refresh_token)
                 if not invalidate_result["success"]:
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -393,14 +392,14 @@ def create_user_endpoints(
 
                 # 创建新的令牌
                 token_data = _create_token_data(user_info)
-                access_token_result = auth_manager.create_access_token(data=token_data)
+                access_token_result = tokens_manager.create_access_token(data=token_data)
                 if not access_token_result["success"]:
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail=access_token_result.get("error", "创建新访问令牌失败")
                     )
 
-                refresh_token_result = auth_manager.create_refresh_token(data=token_data)
+                refresh_token_result = tokens_manager.create_refresh_token(data=token_data)
                 if not refresh_token_result["success"]:
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -408,7 +407,7 @@ def create_user_endpoints(
                     )
 
                 # 设置新的令牌cookie
-                auth_manager.set_auth_cookies(
+                tokens_manager.set_auth_cookies(
                     response, 
                     access_token_result["token"],
                     refresh_token_result["token"]
@@ -438,7 +437,7 @@ def create_user_endpoints(
     async def logout(
         request: Request,
         response: Response,
-        current_user: dict = Depends(auth_manager.get_current_user)
+        current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         """注销接口
         
@@ -461,11 +460,11 @@ def create_user_endpoints(
         
         if access_token:
             # 使当前设备的访问令牌失效
-            auth_manager.invalidate_access_token(access_token)
+            tokens_manager.invalidate_access_token(access_token)
         
         if refresh_token:
             # 同时使刷新令牌失效
-            auth_manager.invalidate_refresh_token(refresh_token)
+            tokens_manager.invalidate_refresh_token(refresh_token)
         
         # 清除当前设备的 Cookie
         response.delete_cookie("access_token")
@@ -479,7 +478,7 @@ def create_user_endpoints(
     @app.post(f"{prefix}/auth/revoke-token")
     async def revoke_token(
         username: str = Form(...),
-        current_user = Depends(auth_manager.require_roles([UserRole.ADMIN]))
+        current_user = Depends(tokens_manager.require_roles([UserRole.ADMIN]))
     ):
         """撤销指定用户的所有令牌（访问令牌和刷新令牌）
 
@@ -507,7 +506,7 @@ def create_user_endpoints(
                     detail="User not found"
                 )
 
-            auth_manager.remove_user_tokens(username)
+            tokens_manager.remove_user_tokens(username)
             
             return {
                 "success": True,
@@ -526,7 +525,7 @@ def create_user_endpoints(
     @app.post(f"{prefix}/auth/revoke-access-token")
     async def revoke_access_token(
         username: str = Form(...),
-        current_user = Depends(auth_manager.require_roles([UserRole.ADMIN]))
+        current_user = Depends(tokens_manager.require_roles([UserRole.ADMIN]))
     ):
         """撤销用户访问令牌接口
         
@@ -545,7 +544,7 @@ def create_user_endpoints(
         """
         try:
             # 移除所有访问令牌
-            auth_manager.remove_user_tokens(username)
+            tokens_manager.remove_user_tokens(username)
             
             return {
                 "success": True,
@@ -563,7 +562,7 @@ def create_user_endpoints(
 
     @app.get(f"{prefix}/users")
     async def list_users(
-        current_user: dict = Depends(auth_manager.require_roles([UserRole.ADMIN, UserRole.OPERATOR]))
+        current_user: dict = Depends(tokens_manager.require_roles([UserRole.ADMIN, UserRole.OPERATOR]))
     ):
         """获取系统中所用户的列表
 
@@ -584,7 +583,7 @@ def create_user_endpoints(
     async def update_user_roles(
         user_id: str = Form(...),
         roles: List[str] = Form(...),
-        current_user: dict = Depends(auth_manager.require_roles(UserRole.ADMIN))
+        current_user: dict = Depends(tokens_manager.require_roles(UserRole.ADMIN))
     ):
         """更新用户角色（管理员）"""
         # 检查用户是否存在
@@ -610,7 +609,7 @@ def create_user_endpoints(
 
     @app.get(f"{prefix}/users/me")
     async def get_current_user_info(
-        current_user: dict = Depends(auth_manager.get_current_user)
+        current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         """获取当前用户信息"""
         user_id = current_user["user_id"]
@@ -625,7 +624,7 @@ def create_user_endpoints(
     @app.patch(f"{prefix}/users/me/settings")
     async def update_user_settings(
         settings: Dict[str, Any],
-        current_user: dict = Depends(auth_manager.get_current_user)
+        current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         """更新当前用户的个人设置
 
@@ -654,7 +653,7 @@ def create_user_endpoints(
     @app.patch(f"{prefix}/users/me/password")
     async def change_password(
         password_data: dict,
-        current_user: dict = Depends(auth_manager.get_current_user)
+        current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         """修改当前用户密码"""
         if users_manager.change_password(
@@ -672,7 +671,7 @@ def create_user_endpoints(
     async def reset_user_password(
         user_id: str,
         new_password: str = Form(...),
-        current_user: dict = Depends(auth_manager.require_roles([UserRole.ADMIN]))
+        current_user: dict = Depends(tokens_manager.require_roles([UserRole.ADMIN]))
     ):
         """管理员重置指定用户的密码
 
@@ -693,7 +692,7 @@ def create_user_endpoints(
                 - 500: 服务器内部错误
         """
         # 验证新密码强度
-        result = auth_manager.validate_password(new_password)
+        result = tokens_manager.validate_password(new_password)
         if not result["success"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -717,7 +716,7 @@ def create_user_endpoints(
     async def update_user_roles(
         user_id: str,
         roles: List[str],
-        current_user: dict = Depends(auth_manager.require_roles([UserRole.ADMIN]))
+        current_user: dict = Depends(tokens_manager.require_roles([UserRole.ADMIN]))
     ):
         result = users_manager.update_user_roles(user_id, roles)
         if not result["success"]:
@@ -734,7 +733,7 @@ def create_user_endpoints(
     @app.patch(f"{prefix}/users/me/settings")
     async def update_user_settings(
         settings: Dict[str, Any],
-        current_user: dict = Depends(auth_manager.get_current_user)
+        current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         result = users_manager.update_user(current_user["user_id"], **settings)
         if not result["success"]:

@@ -1,10 +1,11 @@
 from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime, timedelta
 from pathlib import Path
-from ...config import get_env
-from ..common import ConfigStoreProtocol, FileConfigStore
+
+from ....io import ConfigStoreProtocol, FileConfigStore
 from .models import InviteCode
 
+from ....config import get_env
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
 class InviteCodeManager:

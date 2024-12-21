@@ -1,9 +1,9 @@
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
+from ....core.runnable.vectordb import VectorDB
+from ....config import get_env
 from .models import AgentConfig
-from ...core.runnable.vectordb import VectorDB
-from ...config import get_env
 
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 

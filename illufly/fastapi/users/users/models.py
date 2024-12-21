@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Set, Union
 from enum import Enum
-from ...utils import create_id_generator
+from ....utils import create_id_generator
 
 user_id_gen = create_id_generator()
 

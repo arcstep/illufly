@@ -2,9 +2,8 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 
-from illufly.fastapi.common import FileConfigStore
-from illufly.fastapi.auth import AuthManager
-from illufly.fastapi.users import UsersManager, User, UserRole
+from illufly.io import FileConfigStore
+from illufly.fastapi.users import TokensManager, UsersManager, User, UserRole
 
 import pytest
 import tempfile
@@ -19,15 +18,15 @@ def temp_dir(tmp_path):
     return tmp_path
 
 @pytest.fixture
-def auth_manager(temp_dir):
+def tokens_manager(temp_dir):
     """创建测试用的认证管理器"""
-    manager = AuthManager(config_store_path=temp_dir)
+    manager = TokensManager(config_store_path=temp_dir)
     yield manager
 
 @pytest.fixture
-def users_manager(temp_dir, auth_manager):
+def users_manager(temp_dir, tokens_manager):
     """创建测试用的用户管理器"""
-    manager = UsersManager(config_store_path=temp_dir, auth_manager=auth_manager)
+    manager = UsersManager(config_store_path=temp_dir, tokens_manager=tokens_manager)
     yield manager
     
     shutil.rmtree(temp_dir)
@@ -37,7 +36,7 @@ def test_user_password():
     return "TestPass123"
 
 @pytest.fixture
-def test_user(auth_manager, test_user_password):
+def test_user(tokens_manager, test_user_password):
     return User(
         user_id="test123",
         username="testuser",

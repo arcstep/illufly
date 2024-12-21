@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Form
 from typing import List, Dict, Any, Optional
 from sse_starlette.sse import EventSourceResponse
-from ..auth import AuthManager
-from .manager import AgentsManager
-from .models import AgentConfig
 
-def create_agent_endpoints(
+from ..users import TokensManager
+from .agents import AgentsManager, AgentConfig
+
+def create_agents_endpoints(
     app, 
     agents_manager: AgentsManager,
-    auth_manager: AuthManager,
+    auth_manager: TokensManager,
     prefix: str = "/api"
 ):
     """Agent 相关的端点，处理 Agent 的创建、管理和调用"""

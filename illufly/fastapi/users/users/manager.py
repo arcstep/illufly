@@ -1,31 +1,33 @@
 from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime
 from pathlib import Path
-from ...config import get_env
-from ..common import ConfigStoreProtocol, FileConfigStore
-from ..auth import AuthManager
+
+from ....io import ConfigStoreProtocol, FileConfigStore
+from ..tokens import TokensManager
 from ..invite import InviteCodeManager
 from .models import User, UserRole
+
 import secrets
 import string
 import re
 
+from ....config import get_env
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
 class UsersManager:
     def __init__(
         self,
-        auth_manager: AuthManager = None,
+        tokens_manager: TokensManager = None,
         invite_manager: InviteCodeManager = None,
         storage: Optional[ConfigStoreProtocol] = None,
         config_store_path: str = None
     ):
         """初始化用户管理器
         Args:
-            auth_manager: 认证管理器
+            tokens_manager: 认证管理器
             storage: 存储实现，如果为None则使用默认的文件存储
         """
-        self.auth_manager = auth_manager or AuthManager(config_store_path=config_store_path)
+        self.tokens_manager = tokens_manager or TokensManager(config_store_path=config_store_path)
         self.invite_manager = invite_manager or InviteCodeManager(config_store_path=config_store_path)
         if storage is None:
             storage = FileConfigStore(
@@ -95,7 +97,7 @@ class UsersManager:
                 password = generated_password
 
             # 对密码进行哈希处理
-            hash_result = self.auth_manager.hash_password(password)
+            hash_result = self.tokens_manager.hash_password(password)
             if not hash_result["success"]:
                 return {
                     "success": False,
@@ -154,7 +156,7 @@ class UsersManager:
                 }
             
             # 验证密码
-            verify_result = self.auth_manager.verify_password(password, user.password_hash)
+            verify_result = self.tokens_manager.verify_password(password, user.password_hash)
             if not verify_result["success"]:
                 return {
                     "success": False, 
@@ -253,7 +255,7 @@ class UsersManager:
                 }
 
             # 验证旧密码
-            verify_result = self.auth_manager.verify_password(old_password, user.password_hash)
+            verify_result = self.tokens_manager.verify_password(old_password, user.password_hash)
             if not verify_result["success"]:
                 return {
                     "success": False,
@@ -261,7 +263,7 @@ class UsersManager:
                 }
 
             # 对新密码进行哈希处理
-            hash_result = self.auth_manager.hash_password(new_password)
+            hash_result = self.tokens_manager.hash_password(new_password)
             if not hash_result["success"]:
                 return {
                     "success": False,
@@ -294,7 +296,7 @@ class UsersManager:
                 }
 
             # 对新密码进行哈希处理
-            hash_result = self.auth_manager.hash_password(new_password)
+            hash_result = self.tokens_manager.hash_password(new_password)
             if not hash_result["success"]:
                 return {
                     "success": False,

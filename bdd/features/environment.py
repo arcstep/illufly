@@ -8,7 +8,7 @@ from typing import Optional
 
 from illufly.fastapi.users.models import UserRole
 from illufly.fastapi.users.endpoints import create_user_endpoints
-from illufly.fastapi.auth.manager import AuthManager
+from illufly.fastapi.auth.manager import TokensManager
 from illufly.fastapi.users.manager import UsersManager
 from illufly.fastapi.common import FileConfigStore
 from illufly.config import get_env
@@ -38,7 +38,7 @@ def before_scenario(context: Context, scenario) -> None:
     if os.path.exists(__USERS_PATH__):
         shutil.rmtree(__USERS_PATH__)
 
-    auth_manager = AuthManager(config_store_path=__USERS_PATH__)
+    auth_manager = TokensManager(config_store_path=__USERS_PATH__)
     users_manager = UsersManager(auth_manager=auth_manager, config_store_path=__USERS_PATH__)
     
     # 设置 FastAPI 应用

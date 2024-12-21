@@ -32,7 +32,7 @@ class TestAuthentication:
         )
         assert result["success"] is True, f"Register user failed: {result.get('error')}"
     
-    def test_login_success(self, users_manager, auth_manager, exist_user, exist_user_password, device_info):
+    def test_login_success(self, users_manager, exist_user, exist_user_password):
         """测试登录成功"""
         result = users_manager.verify_user_password(exist_user.username, exist_user_password)
 

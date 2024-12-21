@@ -61,7 +61,7 @@ def step_impl(context):
     refresh_token = context.table.rows[0]["值"]
     user_data = context.test_users["admin"]  # 使用管理员用户数据
     
-    # 存储令牌信息到 AuthManager 的设备令牌存储中
+    # 存储令牌信息到 TokensManager 的设备令牌存储中
     context.auth_manager._device_tokens["test-device"] = {
         "access_token": "mock.access.token",
         "refresh_token": refresh_token,
