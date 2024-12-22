@@ -56,3 +56,16 @@ def device_info():
         "device_name": "Test Device"
     }
 
+@pytest.fixture()
+def exist_user(users_manager, test_user, test_user_password):
+    """已存在的用户
+    创建并返回一个已存在的用户对象，用于测试。
+    """
+    result = users_manager.create_user(
+        user_id=test_user.user_id,
+        email=test_user.email,
+        username=test_user.username,
+        password=test_user_password
+    )
+    assert result["success"]
+    return test_user

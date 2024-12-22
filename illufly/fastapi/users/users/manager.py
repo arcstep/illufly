@@ -102,6 +102,32 @@ class UsersManager:
         try:
             username = username or email
 
+            # 验证用户名
+            username_validation = self.validate_username(username)
+            if not username_validation["success"]:
+                return {
+                    "success": False,
+                    "error": username_validation["error"]
+                }
+            
+            # 验证邮箱
+            if email:
+                email_validation = self.validate_email(email)
+                if not email_validation["success"]:
+                    return {
+                        "success": False,
+                        "error": email_validation["error"]
+                    }
+            
+            # 验证密码
+            if password:
+                password_validation = self.validate_password(password)
+                if not password_validation["success"]:
+                    return {
+                        "success": False,
+                        "error": password_validation["error"]
+                    }
+
             # 检查用户名或邮箱是否已存在        
             if self._storage.has_duplicate({"username": username}):
                 return {
@@ -280,7 +306,7 @@ class UsersManager:
                 }
 
             # 验证旧密码
-            verify_result = self.pwd_context.verify(old_password, new_password)
+            verify_result = self.pwd_context.verify(old_password, user.password_hash)
             if not verify_result:
                 return {
                     "success": False,

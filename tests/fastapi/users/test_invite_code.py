@@ -5,10 +5,6 @@ from illufly.fastapi.users import InviteCodeManager
 from illufly.fastapi.users.invite import InviteCode
 
 @pytest.fixture
-def temp_dir(tmp_path):
-    return str(tmp_path)
-
-@pytest.fixture
 def invite_code_manager(temp_dir):
     return InviteCodeManager(config_store_path=temp_dir)
 
