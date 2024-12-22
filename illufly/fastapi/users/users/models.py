@@ -24,9 +24,7 @@ class User:
     """用户基础信息"""
     user_id: str
     username: str = field(default_factory=lambda: "")
-    device_id: str = field(default="default_device_id")
-    device_name: str = field(default="Default-Device")
-    roles: List[UserRole] = field(default_factory=lambda: [UserRole.USER])  # 使用UserRole枚举
+    roles: Union[List[Union[str, UserRole]], Set[UserRole]] = field(default_factory=lambda: [UserRole.USER])  # 初始化类型接受字符串列表、UserRole列表或UserRole集合
     email: str = None
     password_hash: str = None
     created_at: datetime = field(default_factory=datetime.now)
@@ -41,8 +39,22 @@ class User:
     verify_invite_code: str = None  # 新增：邀请码字段
 
     def __post_init__(self):
+        # 如果没有 user_id，则使用 IDGenerator 生成一个
+        if not self.user_id:
+            self.user_id = next(user_id_gen)
+
+        # 如果没有 username，则使用 user_id 作为 username
         if not self.username:
             self.username = self.user_id
+
+        # 自动转换 self.roles 类型
+        if isinstance(self.roles, list):
+            if all(isinstance(r, str) for r in self.roles):
+                self.roles = {UserRole(r) for r in self.roles}
+            elif all(isinstance(r, UserRole) for r in self.roles):
+                self.roles = set(self.roles)
+        elif isinstance(self.roles, str):
+            self.roles = {UserRole(self.roles)}
 
     def is_password_expired(self) -> bool:
         """检查密码是否过期"""
@@ -69,7 +81,7 @@ class User:
     def to_dict(self, include_sensitive: bool = False) -> Dict[str, Any]:
         """转换为字典格式"""
         data = {
-            "user_id": self.user_id,  # 新增：添加 user_id 到输出字典
+            "user_id": self.user_id,
             "username": self.username,
             "email": self.email,
             "roles": [role.value for role in self.roles],
@@ -98,7 +110,7 @@ class User:
             username=data["username"],
             email=data.get("email", None),
             password_hash=data.get("password_hash", None),
-            roles=set(UserRole(role) for role in data.get("roles", ["user"])),
+            roles=set(UserRole(role) for role in data.get("roles", set(UserRole.USER))),
             created_at=datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", None),
             require_password_change=data.get("require_password_change", True),
             last_password_change=datetime.fromisoformat(data["last_password_change"]) if data.get("last_password_change") else None,
@@ -111,17 +123,6 @@ class User:
             verify_invite_code=data.get("verify_invite_code", None)  # 新增：从字典中获取邀请码
         )
 
-    def __post_init__(self):
-        # 如果没有 user_id，则使用 IDGenerator 生成一个
-        if not self.user_id:
-            self.user_id = next(user_id_gen)
-            
-        # 原有的 roles 处理逻辑
-        if isinstance(self.roles, (list, str)):
-            self.roles = {UserRole(r) for r in self.roles}
-        elif isinstance(self.roles, set):
-            self.roles = {UserRole(r) for r in self.roles}
-
     def has_role(self, role: Union[UserRole, str]) -> bool:
         """检查用户是否具有指定角色"""
         if isinstance(role, str):
@@ -130,8 +131,10 @@ class User:
 
     def has_any_role(self, roles: List[Union[UserRole, str]]) -> bool:
         """检查用户是否具有任意一个指定角色"""
-        return any(self.has_role(role) for role in roles)
+        to_check_roles = [UserRole(role) if isinstance(role, str) else role for role in roles]
+        return any(self.has_role(role) for role in to_check_roles)
 
     def has_all_roles(self, roles: List[Union[UserRole, str]]) -> bool:
         """检查用户是否具有所有指定角色"""
-        return all(self.has_role(role) for role in roles)
+        to_check_roles = [UserRole(role) if isinstance(role, str) else role for role in roles]
+        return all(self.has_role(role) for role in to_check_roles)

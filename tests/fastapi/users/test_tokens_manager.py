@@ -42,7 +42,7 @@ class TestTokensManagerInit:
 class TestTokenCreation:
     """测试令牌创建相关功能"""
     
-    def test_create_access_token(self, tokens_manager, test_user):
+    def test_create_access_token(self, tokens_manager, test_user, device_info):
         """测试创建访问令牌
         验证点:
         - 验证令牌格式是否正确
@@ -51,10 +51,8 @@ class TestTokenCreation:
         - 验证令牌是否被正确存储
         """
         # 创建访问令牌
-        data = {
-            k: v for k, v in test_user.to_dict().items() if k in ["user_id", "username", "device_id", "device_name", "roles"]
-        }
-        result = tokens_manager.create_access_token(data=data)
+        test_data = { **test_user.to_dict(), **device_info }
+        result = tokens_manager.create_access_token(data=test_data)
         print(">>> result: ", result)
         assert result["success"] is True
         access_token = result["token"]
@@ -80,7 +78,7 @@ class TestTokenCreation:
         # 验证令牌是否被正确存储
         assert tokens_manager._access_tokens.get(test_user.user_id, None) is not None
 
-    def test_create_refresh_token(self, tokens_manager, test_user):
+    def test_create_refresh_token(self, tokens_manager, test_user, device_info):
         """测试创建刷新令牌
         验证点:
         - 验证令牌格式是否正确
@@ -89,10 +87,8 @@ class TestTokenCreation:
         - 验证令牌是否被正确存储到持久化存储中
         """
         # 创建刷新令牌
-        data = {
-            k: v for k, v in test_user.to_dict().items() if k in ["user_id", "username", "device_id", "device_name", "roles"]
-        }
-        result = tokens_manager.create_refresh_token(data=data)
+        test_data = { **test_user.to_dict(), **device_info }
+        result = tokens_manager.create_refresh_token(data=test_data)
         print(">>> result: ", result)
         assert result["success"] is True
         refresh_token = result["token"]
@@ -116,20 +112,14 @@ class TestTokenCreation:
 class TestTokenVerification:
     """测试令牌验证相关功能"""
     
-    def test_verify_valid_access_token(self, tokens_manager, test_user):
+    def test_verify_valid_access_token(self, tokens_manager, test_user, device_info):
         """测试验证有效的访问令牌
         验证点:
         - 验证正确令牌的验证结果
         - 验证返回的payload内容
         """
         # 准备测试数据
-        test_data = {
-            "user_id": test_user.user_id,
-            "username": test_user.username,
-            "roles": test_user.roles,
-            "device_id": test_user.device_id,
-            "device_name": test_user.device_name
-        }
+        test_data = { **test_user.to_dict(), **device_info }
         
         # 创建访问令牌
         token_result = tokens_manager.create_access_token(test_data)
@@ -149,8 +139,8 @@ class TestTokenVerification:
         assert payload["user_id"] == test_user.user_id
         assert payload["username"] == test_user.username
         assert payload["roles"] == [role.value for role in test_user.roles]
-        assert payload["device_id"] == test_user.device_id
-        assert payload["device_name"] == test_user.device_name
+        assert payload["device_id"] == device_info['device_id']
+        assert payload["device_name"] == device_info['device_name']
         assert "exp" in payload
         assert "iat" in payload
         assert payload["token_type"] == "access"
@@ -159,7 +149,7 @@ class TestTokenVerification:
 class TestTokenRefresh:
     """测试令牌刷新相关功能"""
     
-    def test_refresh_with_valid_token(self, tokens_manager, test_user):
+    def test_refresh_with_valid_token(self, tokens_manager, test_user, device_info):
         """测试使用有效的刷新令牌
         验证点:
         - 验证新访问令牌的创建
@@ -168,13 +158,7 @@ class TestTokenRefresh:
         """
 
         # 准备测试数据
-        test_data = {
-            "user_id": test_user.user_id,
-            "username": test_user.username,
-            "roles": test_user.roles,
-            "device_id": test_user.device_id,
-            "device_name": test_user.device_name
-        }
+        test_data = { **test_user.to_dict(), **device_info }
         
         # 创建刷新令牌
         refresh_result = tokens_manager.create_refresh_token(test_data)
@@ -205,14 +189,14 @@ class TestTokenRefresh:
         assert payload["user_id"] == test_user.user_id
         assert payload["username"] == test_user.username
         assert set(payload["roles"]) == {role.value for role in test_user.roles}
-        assert payload["device_id"] == test_user.device_id
-        assert payload["device_name"] == test_user.device_name
+        assert payload["device_id"] == device_info['device_id']
+        assert payload["device_name"] == device_info['device_name']
         assert payload["token_type"] == "access"
 
 class TestTokenRevocation:
     """测试令牌撤销相关功能"""
     
-    def test_revoke_device_tokens(self, tokens_manager, test_user):
+    def test_revoke_device_tokens(self, tokens_manager, test_user, device_info):
         """测试撤销特定设备的令牌
         验证点:
         - 验证设备的访问令牌是否被撤销
@@ -220,45 +204,31 @@ class TestTokenRevocation:
         - 验证其他设备的令牌是否保持不变
         """
         # 准备测试数据
-        test_data = {
-            "user_id": test_user.user_id,
-            "username": test_user.username,
-            "roles": [role.value for role in test_user.roles],
-            "device_id": test_user.device_id,
-            "device_name": test_user.device_name
-        }
-        
-        # 创建另一个设备的令牌
-        other_device_data = {
-            **test_data,
-            "device_id": "other_device",
-            "device_name": "Other Device"
-        }
-        
-        # 创建两个设备的令牌
+        test_data = { **test_user.to_dict(), **device_info }        
         device1_access = tokens_manager.create_access_token(test_data)
         device1_refresh = tokens_manager.create_refresh_token(test_data)
+        assert device1_access["success"] and device1_refresh["success"]
+
+        other_device_data = { **test_data, "device_id": "other_device", "device_name": "Other Device" }
         device2_access = tokens_manager.create_access_token(other_device_data)
         device2_refresh = tokens_manager.create_refresh_token(other_device_data)
+        assert device2_access["success"] and device2_refresh["success"]
         
         # 验证令牌创建成功且存储在管理器中
-        assert device1_access["success"] and device1_refresh["success"]
-        assert device2_access["success"] and device2_refresh["success"]
         assert test_user.user_id in tokens_manager._access_tokens
         assert tokens_manager._refresh_tokens.get(test_user.user_id) is not None
         
         # 撤销第一个设备的令牌
         revoke_result = tokens_manager.revoke_device_tokens(
             test_user.user_id,
-            test_user.device_id
+            device_info['device_id']
         )
-        assert revoke_result["success"]
-        
+        assert revoke_result["success"]        
         # 验证第一个设备的令牌已被撤销
         device1_tokens = tokens_manager._access_tokens.get(test_user.user_id, {})
-        assert test_user.device_id not in device1_tokens
+        assert device_info['device_id'] not in device1_tokens
         device1_refresh_tokens = tokens_manager._refresh_tokens.get(test_user.user_id)
-        assert test_user.device_id not in device1_refresh_tokens
+        assert device_info['device_id'] not in device1_refresh_tokens
         
         # 验证第二个设备的令牌仍然存在
         assert "other_device" in tokens_manager._access_tokens.get(test_user.user_id, {})
@@ -281,9 +251,7 @@ class TestTokenRevocation:
         # 为每个设备创建令牌
         for device in devices:
             test_data = {
-                "user_id": test_user.user_id,
-                "username": test_user.username,
-                "roles": [role.value for role in test_user.roles],
+                **test_user.to_dict(),
                 **device
             }
             access_result = tokens_manager.create_access_token(test_data)
@@ -305,7 +273,7 @@ class TestTokenRevocation:
         assert all_devices["success"] is True
         assert len(all_devices["devices"]) == 0
 
-    def test_revoke_access_tokens_only(self, tokens_manager, test_user):
+    def test_revoke_access_tokens_only(self, tokens_manager, test_user, device_info):
         """测试仅撤销用户所有设备上的访问令牌
         验证点:
         - 验证访问令牌的撤销
@@ -313,13 +281,7 @@ class TestTokenRevocation:
         """
 
         # 准备测试数据
-        test_data = {
-            "user_id": test_user.user_id,
-            "username": test_user.username,
-            "roles": [role.value for role in test_user.roles],
-            "device_id": test_user.device_id,
-            "device_name": test_user.device_name
-        }
+        test_data = { **test_user.to_dict(), **device_info }
         
         # 创建令牌
         access_result = tokens_manager.create_access_token(test_data)
@@ -328,9 +290,9 @@ class TestTokenRevocation:
         
         # 验证令牌已存储
         assert test_user.user_id in tokens_manager._access_tokens
-        assert test_user.device_id in tokens_manager._access_tokens[test_user.user_id]
+        assert device_info['device_id'] in tokens_manager._access_tokens[test_user.user_id]
         assert tokens_manager._refresh_tokens.get(test_user.user_id) is not None
-        assert test_user.device_id in tokens_manager._refresh_tokens.get(test_user.user_id)
+        assert device_info['device_id'] in tokens_manager._refresh_tokens.get(test_user.user_id)
         
         # 仅撤销访问令牌
         revoke_result = tokens_manager.revoke_user_access_tokens(
@@ -339,24 +301,18 @@ class TestTokenRevocation:
         assert revoke_result["success"]
         
         # 验证访问令牌已被撤销，但刷新令牌仍然存在
-        assert test_user.device_id not in tokens_manager._access_tokens.get(test_user.user_id, {})
+        assert device_info['device_id'] not in tokens_manager._access_tokens.get(test_user.user_id, {})
         assert tokens_manager._refresh_tokens.get(test_user.user_id) is not None
-        assert test_user.device_id in tokens_manager._refresh_tokens.get(test_user.user_id)
+        assert device_info['device_id'] in tokens_manager._refresh_tokens.get(test_user.user_id)
 
-    def test_verify_revoked_tokens(self, tokens_manager, test_user):
+    def test_verify_revoked_tokens(self, tokens_manager, test_user, device_info):
         """测试验证已撤销的令牌
         验证点:
         - 验证撤销后的访问令牌验证
         - 验证撤销后的刷新令牌验证
         """
         # 准备测试数据
-        test_data = {
-            "user_id": test_user.user_id,
-            "username": test_user.username,
-            "roles": test_user.roles,
-            "device_id": test_user.device_id,
-            "device_name": test_user.device_name
-        }
+        test_data = { **test_user.to_dict(), **device_info }
         
         # 创建令牌
         access_result = tokens_manager.create_access_token(test_data)

@@ -337,11 +337,12 @@ class TokensManager:
             iat_timestamp = timegm(current_time.utctimetuple())
             exp_timestamp = timegm(expire.utctimetuple())
             
-            claims = TokenClaims(
+            claims = TokenClaims.from_dict({
                 **data,
-                exp=exp_timestamp,
-                iat=iat_timestamp
-            )
+                "exp": exp_timestamp,
+                "iat": iat_timestamp,
+                "token_type": "refresh",
+            })
             
             encoded_jwt = jwt.encode(
                 claims.to_dict(),
@@ -370,12 +371,12 @@ class TokensManager:
             iat_timestamp = timegm(current_time.utctimetuple())
             exp_timestamp = timegm(expire.utctimetuple())
             
-            claims = TokenClaims(
+            claims = TokenClaims.from_dict({
                 **data,
-                exp=exp_timestamp,
-                iat=iat_timestamp,
-                token_type="access",
-            )
+                "exp": exp_timestamp,
+                "iat": iat_timestamp,
+                "token_type": "access",
+            })
 
             print(">>> claims: ", claims.to_dict())
             encoded_jwt = jwt.encode(

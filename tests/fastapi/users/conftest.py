@@ -43,9 +43,7 @@ def test_user():
         user_id="test123",
         username="testuser",
         email="testuser@example.com",
-        roles=[UserRole.USER],
-        device_id="test_device_123",
-        device_name="Test Device"
+        roles=[UserRole.USER]
     )
 
 @pytest.fixture
