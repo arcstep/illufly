@@ -23,7 +23,8 @@ def tokens_manager(temp_dir):
     manager = TokensManager(config_store_path=temp_dir)
     yield manager
 
-    shutil.rmtree(temp_dir)
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir)
 
 @pytest.fixture
 def users_manager(temp_dir, tokens_manager):
@@ -31,7 +32,8 @@ def users_manager(temp_dir, tokens_manager):
     manager = UsersManager(config_store_path=temp_dir, tokens_manager=tokens_manager)
     yield manager
     
-    shutil.rmtree(temp_dir)
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir)
 
 @pytest.fixture
 def test_user_password():

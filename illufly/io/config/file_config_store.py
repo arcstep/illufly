@@ -345,7 +345,7 @@ class FileConfigStore:
                     self.logger.error(f"Error deleting data for {owner_id}: {e}")
                     return False
 
-    def find(self, conditions: Dict[str, Any], owner_id: str = "") -> List[Any]:
+    def find(self, conditions: Dict[str, Any]) -> List[Any]:
         """查找匹配指定条件的数据"""
         def match_value(data_value: Any, condition_value: Any) -> bool:
             """匹配值，支持复合类型"""
@@ -394,7 +394,7 @@ class FileConfigStore:
             )
 
         results = []
-        owners = [owner_id] if owner_id else self.list_owners()
+        owners = self.list_owners()
         
         for current_owner_id in owners:
             if current_owner_id not in self._data:

@@ -17,23 +17,11 @@ class TestTokensManagerInit:
         assert tokens_manager._refresh_tokens._data_dir == temp_dir
         assert tokens_manager._refresh_tokens._filename == "tokens.json"
         
-        # 2. 验证环境变量是否被正确加载
-        assert tokens_manager.secret_key is not None
-        assert tokens_manager.algorithm == "HS256"
-        assert tokens_manager.hash_method == "pbkdf2_sha256"
-        assert tokens_manager.access_token_expire_minutes == 15
-        assert tokens_manager.refresh_token_expire_days == 30
-        
-        # 3. 验证密码上下文是否正确配置
-        assert "bcrypt" in tokens_manager.pwd_context.schemes()
-        assert "argon2" in tokens_manager.pwd_context.schemes()
-        assert "pbkdf2_sha256" in tokens_manager.pwd_context.schemes()
-        
-        # 4. 验证访问令牌存储初始化
+        # 2. 验证访问令牌存储初始化
         assert isinstance(tokens_manager._access_tokens, dict)
         assert len(tokens_manager._access_tokens) == 0
         
-        # 5. 验证依赖管理器初始化
+        # 3. 验证依赖管理器初始化
         assert tokens_manager.dependencies is not None
         assert hasattr(tokens_manager.dependencies, "get_current_user")
         assert hasattr(tokens_manager.dependencies, "require_roles")

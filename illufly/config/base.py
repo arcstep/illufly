@@ -65,6 +65,9 @@ def get_env(key: str=None):
         "ZHIPUAI_API_TOOLS_BASE_URL": "https://open.bigmodel.cn/api/paas/v4/tools",
 
         # Auth
+        "FASTAPI_USERS_ADMIN_USERNAME": "admin",
+        "FASTAPI_USERS_ADMIN_PASSWORD": "admin",
+        "FASTAPI_USERS_ADMIN_EMAIL": "admin@illufly.com",
         "HASH_METHOD": "pbkdf2_sha256",
         "FASTAPI_SECRET_KEY": "MY-SECRET-KEY",
         "FASTAPI_ALGORITHM": "HS256",

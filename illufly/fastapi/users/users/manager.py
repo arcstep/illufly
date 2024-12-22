@@ -1,6 +1,7 @@
 from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime
 from pathlib import Path
+from passlib.context import CryptContext
 
 from ....io import ConfigStoreProtocol, FileConfigStore
 from ..tokens import TokensManager
@@ -13,6 +14,8 @@ import re
 
 from ....config import get_env
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
+__USER_CONFIG_FILENAME__ = "profile.json"
+__ADMIN_USER_ID__ = "admin"
 
 class UsersManager:
     def __init__(
@@ -32,29 +35,51 @@ class UsersManager:
         if storage is None:
             storage = FileConfigStore(
                 data_dir=Path(config_store_path or __USERS_PATH__),
-                filename="profile.json",
+                filename=__USER_CONFIG_FILENAME__,
                 data_class=User,
-                serializer=lambda user: user.to_dict(include_sensitive=True),
-                deserializer=User.from_dict,
+                serializer=lambda user: user.to_dict(include_sensitive=True)
             )
         self._storage = storage
-        self._admin_ids = set()
+
+        # 初始化密码加密上下文
+        self.hash_method = get_env("HASH_METHOD")
+        if self.hash_method not in ["argon2", "bcrypt", "pbkdf2_sha256"]:
+            raise ValueError(f"Unsupported hash method: {self.hash_method}")
         
+        # 初始化密码加密上下文
+        self.pwd_context = CryptContext(
+            schemes=["argon2", "bcrypt", "pbkdf2_sha256"],
+            default=self.hash_method,
+            argon2__memory_cost=65536,
+            argon2__time_cost=3,
+            argon2__parallelism=4,
+            bcrypt__rounds=12,
+            pbkdf2_sha256__rounds=100000,
+            truncate_error=True
+        )
+
         # 确保数据目录存在
         Path(__USERS_PATH__).mkdir(parents=True, exist_ok=True)
         
         # 初始化管理员用户
         self.ensure_admin_user()
 
+    def hash_password(self, password: str) -> str:
+        """对密码进行哈希处理"""
+        try:
+            return {
+                "success": True,
+                "hash": self.pwd_context.hash(password)
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
     def get_user(self, user_id: str, requester_id: str) -> Optional[User]:
         """通过ID获取用户对象"""
-        if not self.can_access_user(user_id, requester_id):
-            return None
         return self._storage.get(owner_id=user_id)
-
-    def can_access_user(self, user_id: str, requester_id: str) -> bool:
-        """检查是否有权限访问用户数据"""
-        return requester_id == user_id or requester_id in self._admin_ids
 
     def get_user_info(self, user_id: str, include_sensitive: bool = False) -> Optional[Dict[str, Any]]:
         """获取用户信息"""
@@ -97,7 +122,7 @@ class UsersManager:
                 password = generated_password
 
             # 对密码进行哈希处理
-            hash_result = self.tokens_manager.hash_password(password)
+            hash_result = self.hash_password(password)
             if not hash_result["success"]:
                 return {
                     "success": False,
@@ -156,13 +181,13 @@ class UsersManager:
                 }
             
             # 验证密码
-            verify_result = self.tokens_manager.verify_password(password, user.password_hash)
-            if not verify_result["success"]:
+            verify_result = self.pwd_context.verify(password, user.password_hash)
+            if not verify_result:
                 return {
                     "success": False, 
                     "require_password_change": False, 
                     "user": None,
-                    "error": verify_result["error"]
+                    "error": "密码错误"
                 }
 
             require_password_change = (
@@ -255,15 +280,15 @@ class UsersManager:
                 }
 
             # 验证旧密码
-            verify_result = self.tokens_manager.verify_password(old_password, user.password_hash)
-            if not verify_result["success"]:
+            verify_result = self.pwd_context.verify(old_password, new_password)
+            if not verify_result:
                 return {
                     "success": False,
-                    "error": verify_result["error"]
+                    "error": "旧密码错误"
                 }
 
             # 对新密码进行哈希处理
-            hash_result = self.tokens_manager.hash_password(new_password)
+            hash_result = self.hash_password(new_password)
             if not hash_result["success"]:
                 return {
                     "success": False,
@@ -296,7 +321,7 @@ class UsersManager:
                 }
 
             # 对新密码进行哈希处理
-            hash_result = self.tokens_manager.hash_password(new_password)
+            hash_result = self.hash_password(new_password)
             if not hash_result["success"]:
                 return {
                     "success": False,
@@ -352,76 +377,33 @@ class UsersManager:
         return ''.join(password_list)
 
     def get_user_by_username(self, username: str) -> Optional[User]:
-        """通过用户名获取用户"""       
-        try:
-            # 遍历所有用户ID
-            owners = self._storage.list_owners()
-            
-            for user_id in owners:
-                try:
-                    # 使用user_id作为存储键和owner_id
-                    user = self._storage.get(owner_id=user_id)
-                    if user and user.username == username:  # 匹配username
-                        return user
-                except Exception as e:
-                    continue
+        """通过用户名获取用户"""
+        users = self._storage.find({"username": username})
+        if not users:
             return None
-            
-        except Exception as e:
-            return None
+        return users[0]
 
     def get_user_by_email(self, email: str) -> Optional[User]:
-        """通过邮箱获取用户
-        
-        Args:
-            email: 用户邮箱
-            
-        Returns:
-            Optional[User]: 找到的用户对象，如果不存在则返回 None
-        """
-        try:
-            # 转换为小写进行比较
-            email = email.lower()
-            for user_id in self._storage.list_owners():
-                if user := self._storage.get(owner_id=user_id):
-                    # 同样转换为小写进行比较
-                    if user.email.lower() == email:
-                        return user
+        """通过邮箱获取用户"""
+        users = self._storage.find({"email": email})
+        if not users:
             return None
-        except Exception as e:
-            return None
-
-    def verify_invite_code(self, invite_code: str) -> bool:
-        """验证邀请码
-        Args:
-            invite_code: 待验证的邀请码
-        Returns:
-            bool: 邀请码是否有效
-        """
-        # TODO: 实现邀请码验证逻辑
-        return {
-            "success": True,
-            "error": None
-        }
+        return users[0]
 
     def ensure_admin_user(self) -> None:
         """确保管理员用户存在"""
         try:
-            admin = self.get_user_by_username("admin")
-            
+            admin = self._storage.get(__ADMIN_USER_ID__)
             if not admin:
-                # 使用固定的user_id作为存储键
-                admin_id = "admin"
+                admin_id = __ADMIN_USER_ID__
                 self.create_user(
-                    username="admin",  # 显示名称
-                    password="admin",
-                    email="admin@illufly.com",
-                    user_id=admin_id,  # 存储键
+                    username=get_env("FASTAPI_USERS_ADMIN_USERNAME"),
+                    password=get_env("FASTAPI_USERS_ADMIN_PASSWORD"),
+                    email=get_env("FASTAPI_USERS_ADMIN_EMAIL"),
+                    user_id=admin_id,
                     roles=[UserRole.ADMIN, UserRole.OPERATOR, UserRole.USER, UserRole.GUEST],
                     require_password_change=False
                 )
-            else:
-                self._admin_ids.add(admin.user_id)  # 使用user_id而不是username
                 
         except Exception as e:
             raise

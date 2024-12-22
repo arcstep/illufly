@@ -2,7 +2,6 @@ from typing import Dict, Any, Optional, Set, Union, List
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from jose import jwt, JWTError
-from passlib.context import CryptContext
 from fastapi import Response
 from pathlib import Path
 from calendar import timegm
@@ -110,19 +109,6 @@ class TokensManager:
         Raises:
             ValueError: 如果必要的环境变量未正确配置
         """
-        # 验证必要的环境变量
-        self.secret_key = get_env("FASTAPI_SECRET_KEY")
-        if not self.secret_key:
-            raise ValueError("FASTAPI_SECRET_KEY must be properly configured")
-            
-        self.algorithm = get_env("FASTAPI_ALGORITHM")
-        if self.algorithm not in ["HS256", "HS384", "HS512"]:
-            raise ValueError(f"Unsupported JWT algorithm: {self.algorithm}")
-            
-        self.hash_method = get_env("HASH_METHOD")
-        if self.hash_method not in ["argon2", "bcrypt", "pbkdf2_sha256"]:
-            raise ValueError(f"Unsupported hash method: {self.hash_method}")
-        
         # 初始化存储
         if storage is None:
             storage = FileConfigStore(
@@ -133,21 +119,18 @@ class TokensManager:
         self._refresh_tokens = storage
         self._access_tokens: Dict[str, Token] = {}
         
-        # 初始化密码加密上下文
-        self.pwd_context = CryptContext(
-            schemes=["argon2", "bcrypt", "pbkdf2_sha256"],
-            default=self.hash_method,
-            argon2__memory_cost=65536,
-            argon2__time_cost=3,
-            argon2__parallelism=4,
-            bcrypt__rounds=12,
-            pbkdf2_sha256__rounds=100000,
-            truncate_error=True
-        )
-        
         # 创建依赖管理器
         self.dependencies = AuthDependencies(self)
-        
+
+        # 令牌加密所需的必要的环境变量
+        self.secret_key = get_env("FASTAPI_SECRET_KEY")
+        if not self.secret_key:
+            raise ValueError("FASTAPI_SECRET_KEY must be properly configured")
+            
+        self.algorithm = get_env("FASTAPI_ALGORITHM")
+        if self.algorithm not in ["HS256", "HS384", "HS512"]:
+            raise ValueError(f"Unsupported JWT algorithm: {self.algorithm}")
+
         # 令牌过期时间配置
         self.access_token_expire_minutes = int(get_env("ACCESS_TOKEN_EXPIRE_MINUTES"))
         self.refresh_token_expire_days = int(get_env("REFRESH_TOKEN_EXPIRE_DAYS"))
@@ -416,13 +399,6 @@ class TokensManager:
                 secure=True,
                 samesite="Lax"
             )
-
-    def hash_password(self, password: str) -> str:
-        """对密码进行哈希处理"""
-        return {
-            "success": True,
-            "hash": self.pwd_context.hash(password)
-        }
 
     def list_user_devices(self, user_id: str) -> Dict[str, Any]:
         """列出用户的所有已登录设备"""
