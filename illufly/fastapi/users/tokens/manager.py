@@ -553,9 +553,9 @@ class TokensManager:
             return True
 
     def refresh_access_token(self, refresh_token: str, user_id: str) -> Dict[str, Any]:
-        """使用刷新令牌��发新的访问令牌"""
+        """使用 Refresh-Token 刷新令牌颁发新的 Access-Token"""
         try:
-            # 验证刷新令牌
+            # 验证 Refresh-Token
             verify_result = self.verify_jwt(refresh_token, verify_exp=True, token_type="refresh")
             if not verify_result["success"]:
                 return {

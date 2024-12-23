@@ -52,6 +52,22 @@ def create_users_endpoints(
             "require_password_change": user_info.get("require_password_change", False)
         }
 
+    def _create_refresh_token_and_access_token(user_id: str, token_data: dict) -> dict:
+        refresh_token = tokens_manager.create_refresh_token(data=token_data)
+        if not refresh_token["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create refresh token"
+            )
+        
+        access_token_result = tokens_manager.refresh_access_token(refresh_token, user_id)
+        if not access_token_result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create access token"
+            )
+        return refresh_token, access_token_result["token"]
+
     @app.post(f"{prefix}/auth/register")
     async def register(
         username: str = Form(...),
@@ -87,30 +103,6 @@ def create_users_endpoints(
                     detail="缺少必填字段"
                 )
 
-            # 验证用户名格式
-            result = users_manager.validate_username(username)
-            if not result["success"]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=result["error"]
-                )
-
-            # 验证邮箱
-            result = users_manager.validate_email(email)
-            if not result["success"]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=result["error"]
-                )
-
-            # 验证密码强度
-            result = users_manager.validate_password(password)
-            if not result["success"]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=result["error"]
-                )
-
             # 验证邀请码（如果需要）
             if invite_code:
                 result = users_manager.verify_invite_code(invite_code)
@@ -134,9 +126,9 @@ def create_users_endpoints(
                     detail=result["error"]
                 )
 
-            user = result["user"]
             # 获取用户信息用于生成令牌
-            user_info = users_manager.get_user_info(user.user_id)
+            user = result["user"]
+            user_info = user.to_dict()
             if not user_info:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -144,11 +136,9 @@ def create_users_endpoints(
                 )
 
             # 自动登录
-            token_data = _create_token_data(user_info, device_id, device_name)
-            access_token = tokens_manager.create_access_token(data=token_data)
-            refresh_token = tokens_manager.create_refresh_token(data=token_data)
-            tokens_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
+            refresh_token, access_token = _create_refresh_token_and_access_token(user.user_id, user_info)
 
+            tokens_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
             return {
                 "success": True,
                 "user_info": user_info
@@ -210,16 +200,16 @@ def create_users_endpoints(
                     )
 
             user_info = verify_result["user"]
+            user_info["device_id"] = device_id
+            user_info["device_name"] = device_name
             require_password_change = verify_result["require_password_change"]
             
-            token_data = _create_token_data(user_info, device_id, device_name)
-            access_token = tokens_manager.create_access_token(data=token_data)
-            refresh_token = tokens_manager.create_refresh_token(data=token_data)
+            refresh_token, access_token = _create_refresh_token_and_access_token(user_info["user_id"], user_info)
             tokens_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
 
             return {
                 "success": True,
-                "token_data": token_data,
+                "user_info": user_info,
                 "require_password_change": require_password_change
             }
             
@@ -253,40 +243,13 @@ def create_users_endpoints(
                 - 500: 服务器内部错误
         """
         try:
-            try:
-                verify_old_result = users_manager.verify_user_password(
-                    username=current_user["username"],
-                    password=current_password
-                )
-                if not verify_old_result["success"]:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=verify_old_result["error"]
-                    )
-            except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=str(e)
-                )
-
-            validate_result = tokens_manager.validate_password(new_password)
-            if not validate_result["success"]:
+            user_id = current_user["user_id"]
+            result = users_manager.change_password(user_id, current_password, new_password)
+            if not result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=validate_result["error"]
+                    detail=result["error"]
                 )
-
-            change_result = users_manager.change_password(
-                user_id=current_user["user_id"],
-                old_password=current_password,
-                new_password=new_password
-            )
-            if not change_result["success"]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=change_result["error"]
-                )
-
             return {
                 "success": True,
                 "message": "Password changed successfully"
@@ -308,7 +271,7 @@ def create_users_endpoints(
     ):
         """刷新Token接口
         
-        从 http_only cookie 中获取刷新令牌
+        从 http_only cookie 中获取 Refresh-Token 并重新颁发新的 Access-Token
         
         Args:
             request: FastAPI请求对象，用于获取cookie
@@ -334,96 +297,20 @@ def create_users_endpoints(
                     - 使令牌失效失败
         """
         try:
-            # 1. 基本格式验证
-            refresh_token = request.cookies.get("refresh_token")
-            if not refresh_token:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="缺少刷新令牌"
-                )
+            new_access_token = tokens_manager.refresh_access_token(
+                refresh_token=request.cookies.get("refresh_token"),
+                user_id=current_user["user_id"]
+            )
+            # 设置新的令牌cookie
+            tokens_manager.set_auth_cookies(
+                response,
+                access_token=new_access_token["token"]
+            )
 
-            if len(refresh_token.split(".")) != 3:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="无效的刷新令牌格式"
-                )
-
-            # 2. 验证令牌状态（是否已使用、是否过期）
-            try:
-                # 首先验证令牌格式和签名
-                verify_result = tokens_manager.verify_jwt(refresh_token)
-                if not verify_result["success"]:
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="令牌验证失败"  # JWT验证失败通常是因为过期
-                    )
-
-                # 然后验证令牌格式是否错误
-                valid_result = tokens_manager.is_token_valid(refresh_token, "refresh")
-                if not valid_result["success"]:
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="令牌格式错误"
-                    )
-
-                # 然后验证令牌是否已被使用
-                valid_result = tokens_manager.is_token_in_other_device(refresh_token, "refresh")
-                if not valid_result["success"]:
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="令牌已在其他设备上使用"
-                    )
-
-                # 获取最新的用户信息
-                user_info = users_manager.get_user_info(current_user["user_id"])
-                if not user_info:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="获取用户信息失败"
-                    )
-
-                # 使旧的刷新令牌失效
-                invalidate_result = tokens_manager.invalidate_token(refresh_token)
-                if not invalidate_result["success"]:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=invalidate_result.get("error", "使令牌失效失败")
-                    )
-
-                # 创建新的令牌
-                token_data = _create_token_data(user_info)
-                access_token_result = tokens_manager.create_access_token(data=token_data)
-                if not access_token_result["success"]:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=access_token_result.get("error", "创建新访问令牌失败")
-                    )
-
-                refresh_token_result = tokens_manager.create_refresh_token(data=token_data)
-                if not refresh_token_result["success"]:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=refresh_token_result.get("error", "创建新刷新令牌失败")
-                    )
-
-                # 设置新的令牌cookie
-                tokens_manager.set_auth_cookies(
-                    response, 
-                    access_token_result["token"],
-                    refresh_token_result["token"]
-                )
-
-                return {
-                    "success": True,
-                    "access_token": access_token_result["token"],
-                    "refresh_token": refresh_token_result["token"]
-                }
-
-            except JWTError:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="令牌已过期"
-                )
+            return {
+                "success": True,
+                "message": "Token refreshed successfully"
+            }
 
         except HTTPException:
             raise
@@ -437,6 +324,7 @@ def create_users_endpoints(
     async def logout(
         request: Request,
         response: Response,
+        device_id: str = Form(...),
         current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         """注销接口
@@ -457,18 +345,13 @@ def create_users_endpoints(
         # 获取当前设备的访问令牌
         access_token = request.cookies.get("access_token")
         refresh_token = request.cookies.get("refresh_token")
-        
-        if access_token:
-            # 使当前设备的访问令牌失效
-            tokens_manager.invalidate_access_token(access_token)
-        
-        if refresh_token:
-            # 同时使刷新令牌失效
-            tokens_manager.invalidate_refresh_token(refresh_token)
-        
-        # 清除当前设备的 Cookie
-        response.delete_cookie("access_token")
-        response.delete_cookie("refresh_token")
+
+        revoke_result = tokens_manager.revoke_device_tokens(current_user["user_id"], device_id)
+        if not revoke_result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=revoke_result["error"]
+            )
 
         return {
             "success": True,

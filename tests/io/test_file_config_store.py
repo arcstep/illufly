@@ -170,10 +170,6 @@ class TestSimpleStorageData:
         assert len(results) == 1
         assert results[0].id == "1"
         
-        # 测试指定owner_id的查询
-        results = storage.find({"name": "张三"}, "owner1")
-        assert len(results) == 1
-        assert results[0].id == "1"
 
     def test_delete(self, storage_factory: Callable, test_data_factory: Callable, tmp_path):
         """测试删除功能"""
@@ -565,14 +561,14 @@ class TestFileConfigStoreCompositeTypes:
         store.set(test_data, "user1")
         
         # 测试基于模型的查找
-        results = store.find({"model": "gpt-4"}, "user1")
+        results = store.find({"model": "gpt-4"})
         assert len(results) == 1
         assert list(results)[0]["agent2"].name == "agent2"
         
         # 测试基于参数的查找
         results = store.find({
             "parameters": lambda p: p.get("temperature", 0) > 0.8
-        }, "user1")
+        })
         assert len(results) == 1
         assert list(results)[0]["agent2"].parameters["temperature"] == 0.9
     
