@@ -214,7 +214,10 @@ class FileConfigStore:
         self._data_dir = Path(data_dir)
         self._filename = filename
         self._data_class = data_class
-        
+
+        # 确保数据目录存在
+        Path(self._data_dir).mkdir(parents=True, exist_ok=True)
+
         # 检查是否是复合类型
         origin = get_origin(self._data_class)
         if origin in (dict, list, tuple):

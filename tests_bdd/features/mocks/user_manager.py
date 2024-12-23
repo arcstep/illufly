@@ -158,7 +158,6 @@ class UserManagerMockFactory:
                 "success": True,
                 "error": None
             }
-        mock.verify_invite_code.side_effect = mock_verify_invite_code
 
     @staticmethod
     def _setup_user_methods(mock: Mock, storage: dict) -> None:

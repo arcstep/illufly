@@ -1,17 +1,18 @@
 from typing import List, Any, Dict, Union
 from dataclasses import dataclass, field
 from datetime import datetime
+import uuid
 
 @dataclass
 class TokenClaims:
     """令牌信息"""
     user_id: str
     username: str = field(default="")
-    device_id: str = field(default="default_device_id")
-    device_name: str = field(default="Default-Device")
+    device_id: str = field(default="")
+    device_name: str = field(default="")
     roles: List[str] = field(default_factory=list)
-    exp: int = field(default_factory=lambda: int(datetime.now().timestamp()))
-    iat: int = field(default_factory=lambda: int(datetime.now().timestamp()))
+    exp: int = field(default=0)
+    iat: int = field(default=0)
     token_type: str = field(default="refresh")
 
     def __post_init__(self):
@@ -19,10 +20,16 @@ class TokenClaims:
         if not self.username:
             self.username = self.user_id
         
-        if not self.roles:
-            self.roles = ["user"]
-        elif isinstance(self.roles, str):
+        if not self.device_id:
+            self.device_id = f"device_{uuid.uuid4().hex[:8]}"
+        
+        if not self.device_name:
+            self.device_name = f"Device {self.device_id}"
+        
+        if isinstance(self.roles, str):
             self.roles = [self.roles]
+        elif not self.roles:
+            self.roles = ["user"]
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -58,17 +65,24 @@ class TokenClaims:
         """
         from ..users.models import UserRole
         
+        roles = data.get('roles', ['user'])
+        if isinstance(roles, str):
+            roles = [roles]
+        
+        device_id = data.get('device_id')
+        if not device_id:
+            device_id = f"device_{uuid.uuid4().hex[:8]}"
+        
+        device_name = data.get('device_name') or f"Device {device_id}"
+        
         return cls(
             user_id=data['user_id'],
             username=data.get('username', ''),
-            device_id=data.get('device_id', 'default_device_id'),
-            device_name=data.get('device_name', 'Default-Device'),
-            roles=[
-                UserRole(role) if isinstance(role, str) else role 
-                for role in data.get('roles', ['user'])
-            ],
-            exp=data.get('exp', int(datetime.now().timestamp())),
-            iat=data.get('iat', int(datetime.now().timestamp())),
+            device_id=device_id,
+            device_name=device_name,
+            roles=roles,
+            exp=data.get('exp', 0),
+            iat=data.get('iat', 0),
             token_type=data.get('token_type', 'refresh'),
         )
 

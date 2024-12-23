@@ -58,9 +58,6 @@ class UsersManager:
             truncate_error=True
         )
 
-        # 确保数据目录存在
-        Path(__USERS_PATH__).mkdir(parents=True, exist_ok=True)
-        
         # 初始化管理员用户
         self.ensure_admin_user()
 

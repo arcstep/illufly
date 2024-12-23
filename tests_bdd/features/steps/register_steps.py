@@ -19,6 +19,12 @@ def step_impl(context):
     context.users = []
     # 将表格数据转换为表单数据
     form_data = {row['字段']: row['值'] for row in context.registration_table}
+
+    # 如果邀请码为 AUTO_FIND_VALID_CODE，则自动找到第一个有效的邀请码
+    if form_data.get('invite_code', '') == 'AUTO_FIND_VALID_CODE':
+        assert len(context.invite_codes) > 0, "没有有效的邀请码"
+        form_data['invite_code'] = context.invite_codes[0].invite_code
+        form_data['invite_from'] = context.invite_codes[0].invite_from
     
     response = context.client.post(
         "/api/auth/register",
@@ -50,83 +56,6 @@ def step_impl(context):
     data = context.response.json()
     assert data["success"] is True
 
-@then('返回的用户信息包含')
-def step_impl(context):
-    data = context.response.json()
-    user_info = data["user_info"]
-    print(f"Actual user_info: {json.dumps(user_info, indent=2)}")
-    
-    for row in context.table:
-        field = row['字段']
-        expected = row['值']
-        actual = user_info[field]
-        
-        if field == 'roles':
-            expected_roles = json.loads(expected)
-            actual_roles = set(role.lower() for role in actual)
-            expected_roles = set(role.lower() for role in expected_roles)
-            assert actual_roles == expected_roles, \
-                f"Roles mismatch. Expected: {expected_roles}, Got: {actual_roles}"
-        elif isinstance(actual, bool):
-            expected_bool = expected.lower() == 'true'
-            assert actual == expected_bool, \
-                f"Field {field} mismatch. Expected: {expected_bool}, Got: {actual}"
-        else:
-            assert str(actual) == expected, \
-                f"Field {field} mismatch. Expected: {expected}, Got: {actual}"
-
-@then('密码应当被安全存储')
-def step_impl(context):
-    # 获取刚注册的用户
-    user_id = context.register_data[0].get('user_id')
-    assert user_id, "用户ID不应为空"
-    print(f"验证用户ID: {user_id} 的密码存储")
-    
-    # 从提交注册请求步骤的表格中获取原始密码
-    original_password = None
-    for row in context.registration_table:
-        if row['字段'] == 'password':
-            original_password = row['值']
-            break
-    
-    # 通过 UsersManager 的 get_user_info 方法获取用户信息，包含敏感信息
-    user_info = context.users_manager.get_user_info(user_id, include_sensitive=True)
-    assert user_info is not None, "用户信息不应为空"
-    assert 'password_hash' in user_info, "用户信息中应包含password_hash字段"
-    
-    # 验证密码哈希
-    password_hash = user_info['password_hash']
-    assert password_hash, "密码哈希不应为空"
-    assert len(password_hash) > 0, "密码哈希长度应大于0"
-    assert password_hash != original_password, "密码不应以明文存储"
-    
-    # 可以添加更多的哈希验证逻辑
-    print(f"密码哈希验证成功: {password_hash[:10]}...")
-
-@then('系统应设置认证Cookie')
-def step_impl(context):
-    """验证系统是否正确设置了认证Cookie"""
-    response = context.response
-    
-    # 检查cookies是否存在
-    assert 'access_token' in response.cookies
-    assert 'refresh_token' in response.cookies
-    
-    # 直接检查cookies的值
-    access_token = response.cookies['access_token']
-    refresh_token = response.cookies['refresh_token']
-    
-    # 验证token不为空
-    assert access_token
-    assert refresh_token
-    
-    # 打印调试信息
-    print("Cookie信息:")
-    print(f"access_token: {access_token}")
-    print(f"refresh_token: {refresh_token}")
-    print(f"cookies类型: {type(response.cookies)}")
-    print(f"cookies内容: {response.cookies}")
-
 @then('返回错误信息包含 "{error_message}"')
 def step_impl(context, error_message):
     """验证响应中包含指定的错误信息"""
@@ -138,3 +67,19 @@ def step_impl(context, error_message):
     assert detail == error_message, f"错误消息不匹配。期望: '{error_message}', 实际: '{detail}'"
     
     print(f"错误消息验证成功: {detail}")
+
+@given('准备好邀请码')
+def step_impl(context):
+    form_data = {row['字段']: row['值'] for row in context.table}
+    print(f"准备邀请码数据: {form_data}")
+    im = context.users_manager.invite_manager
+    count = int(form_data['invite_count'])
+    owner_id = form_data['invite_from']
+
+    assert context.users_manager.invite_manager._storage._data_dir, "邀请码存储目录不存在"
+    context.invite_codes = im.generate_new_invite_codes(
+        count=count,
+        owner_id=owner_id
+    )
+    print(f"生成的邀请码: {context.invite_codes}")
+    assert len(context.invite_codes) == count

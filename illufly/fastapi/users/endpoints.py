@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Form, Depends, Response, HTTPException, status, Request
 from typing import Dict, Any, List
 from jose import JWTError
+import uuid
 
 from ..users import TokensManager, UsersManager, User, UserRole
 
@@ -68,14 +69,24 @@ def create_users_endpoints(
             )
         return refresh_token, access_token_result["token"]
 
+    def _create_browser_device_id(request: Request) -> str:
+        """为浏览器创建或获取设备ID
+        
+        优先从cookie中获取，如果没有则创建新的
+        """
+        existing_device_id = request.cookies.get("device_id")
+        if existing_device_id:
+            return existing_device_id
+        
+        return f"browser_{uuid.uuid4().hex[:8]}"
+
     @app.post(f"{prefix}/auth/register")
     async def register(
         username: str = Form(...),
         password: str = Form(...),
         email: str = Form(...),
-        device_id: str = Form(None),
-        device_name: str = Form(None),
         invite_code: str = Form(None),
+        invite_from: str = Form(None),
         response: Response = None
     ):
         """用户注册接口
@@ -105,11 +116,11 @@ def create_users_endpoints(
 
             # 验证邀请码（如果需要）
             if invite_code:
-                result = users_manager.verify_invite_code(invite_code)
-                if not result["success"]:
+                used_success = users_manager.invite_manager.use_invite_code(invite_code, invite_from)
+                if not used_success:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=result["error"]
+                        detail="邀请码无效"
                     )
 
             # 创建用户
@@ -125,23 +136,10 @@ def create_users_endpoints(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=result["error"]
                 )
-
-            # 获取用户信息用于生成令牌
-            user = result["user"]
-            user_info = user.to_dict()
-            if not user_info:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to retrieve user info"
-                )
-
-            # 自动登录
-            refresh_token, access_token = _create_refresh_token_and_access_token(user.user_id, user_info)
-
-            tokens_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
+            
             return {
                 "success": True,
-                "user_info": user_info
+                "message": "User registered successfully"
             }
 
         except HTTPException:
@@ -153,19 +151,17 @@ def create_users_endpoints(
             )
 
     @app.post(f"{prefix}/auth/login")
-    async def login(        
+    async def login(
+        request: Request,
+        response: Response,
         username: str = Form(...),
         password: str = Form(...),
-        device_id: str = Form(None),
-        device_name: str = Form(None),
-        response: Response = None
     ):
         """用户登录接口
         
         Args:            
             username: 用户名
             password: 密码
-            device_id: 设备ID
             response: FastAPI响应对象
             
         Returns:
@@ -178,6 +174,27 @@ def create_users_endpoints(
                 - 403: 账户被锁定或未激活
                 - 500: 服务器内部错误
         """
+
+        # 获取或创建设备ID
+        device_id = request.cookies.get("device_id") or _create_browser_device_id(request)
+        
+        # 设置设备cookie（http_only=False 允许前端读取设备ID）
+        response.set_cookie(
+            "device_id",
+            device_id,
+            httponly=False,
+            secure=True,
+            samesite="Lax"
+        )
+        
+        # 创建令牌时使用固定的设备ID
+        token_data = {
+            "user_id": user_info["user_id"],
+            "username": user_info["username"],
+            "device_id": device_id,
+            "device_name": device_name or f"Browser on {request.headers.get('User-Agent', 'Unknown')}"
+        }
+
         try:
             # 验证密码
             verify_result = users_manager.verify_user_password(username, password)
@@ -200,11 +217,15 @@ def create_users_endpoints(
                     )
 
             user_info = verify_result["user"]
-            user_info["device_id"] = device_id
-            user_info["device_name"] = device_name
+            token_data = _create_token_data(user_info, device_id, device_name)
+            if not token_data:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to retrieve user info"
+                )
             require_password_change = verify_result["require_password_change"]
             
-            refresh_token, access_token = _create_refresh_token_and_access_token(user_info["user_id"], user_info)
+            refresh_token, access_token = _create_refresh_token_and_access_token(user_info["user_id"], token_data)
             tokens_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
 
             return {
@@ -630,6 +651,22 @@ def create_users_endpoints(
             "message": "Settings updated successfully"
         }
 
+    @app.get(f"{prefix}/auth/devices")
+    async def list_devices(current_user: dict = Depends(tokens_manager.get_current_user)):
+        """列出用户的所有登录设备"""
+        devices = tokens_manager.list_user_devices(current_user["user_id"])
+        return {
+            "devices": [
+                {
+                    "device_id": device_id,
+                    "device_name": device_info["claims"].device_name,
+                    "last_active": device_info["claims"].iat,
+                    "is_current": device_id == current_user["device_id"]
+                }
+                for device_id, device_info in devices.items()
+            ]
+        }
+
     return {
         "register": register,
         "login": login,
@@ -642,5 +679,6 @@ def create_users_endpoints(
         "update_user_roles": update_user_roles,
         "get_current_user_info": get_current_user_info,
         "update_user_settings": update_user_settings,
-        "reset_user_password": reset_user_password
+        "reset_user_password": reset_user_password,
+        "list_devices": list_devices
     }

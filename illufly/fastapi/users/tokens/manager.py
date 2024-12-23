@@ -586,8 +586,8 @@ class TokensManager:
                 "user_id": user_id,
                 "username": refresh_claims.get("username"),
                 "roles": refresh_claims.get("roles", []),
-                "device_id": refresh_claims["device_id"],
-                "device_name": refresh_claims.get("device_name")
+                "device_id": refresh_claims.get("device_id", ""),
+                "device_name": refresh_claims.get("device_name", "")
             }
             
             return self.create_access_token(token_data)

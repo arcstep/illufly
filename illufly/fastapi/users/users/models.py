@@ -36,7 +36,6 @@ class User:
     last_failed_login: Optional[datetime] = None  # 新增：最后一次登录失败时间
     is_locked: bool = False  # 新增：账户是否锁定
     is_active: bool = True
-    verify_invite_code: str = None  # 新增：邀请码字段
 
     def __post_init__(self):
         # 如果没有 user_id，则使用 IDGenerator 生成一个
@@ -94,7 +93,6 @@ class User:
             "last_failed_login": self.last_failed_login.isoformat() if self.last_failed_login else None,
             "is_locked": self.is_locked,
             "is_active": self.is_active,
-            "verify_invite_code": self.verify_invite_code  # 新增：添加邀请码到输出字典
         }
         
         if include_sensitive:
@@ -120,7 +118,6 @@ class User:
             last_failed_login=datetime.fromisoformat(data["last_failed_login"]) if data.get("last_failed_login") else None,
             is_locked=data.get("is_locked", False),
             is_active=data.get("is_active", True),
-            verify_invite_code=data.get("verify_invite_code", None)  # 新增：从字典中获取邀请码
         )
 
     def has_role(self, role: Union[UserRole, str]) -> bool:

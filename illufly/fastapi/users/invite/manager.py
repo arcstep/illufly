@@ -23,14 +23,14 @@ class InviteCodeManager:
                 deserializer=lambda invite_codes: [InviteCode.from_dict(invite_code) for invite_code in invite_codes],
             )
         self._storage = storage
-        
-        # 确保数据目录存在
-        Path(__USERS_PATH__).mkdir(parents=True, exist_ok=True)
 
     def generate_new_invite_codes(self, count: int, owner_id: str, expired_days: int = 30) -> List[InviteCode]:
         """生成新的邀请码"""
         existing_codes = self.get_invite_codes(owner_id)        
-        invite_codes = [InviteCode(expired_at=datetime.now() + timedelta(days=expired_days)) for _ in range(count)]
+        invite_codes = [InviteCode(
+            invite_from=owner_id,
+            expired_at=datetime.now() + timedelta(days=expired_days)
+        ) for _ in range(count)]
         self._storage.set(existing_codes + invite_codes, owner_id)
         return invite_codes
 
@@ -38,9 +38,9 @@ class InviteCodeManager:
         """获取邀请码"""
         return self._storage.get(owner_id) or []
 
-    def use_invite_code(self, invite_code: str, owner_id: str):
+    def use_invite_code(self, invite_code: str, owner_id: str=None):
         """使用邀请码"""
-        invite_codes = self.get_invite_codes(owner_id)
+        invite_codes = self.get_invite_codes(owner_id or 'admin')
         for code in invite_codes:
             if code.invite_code == invite_code and not code.is_used() and not code.is_expired():
                 code.use()
@@ -48,7 +48,7 @@ class InviteCodeManager:
                 return True
         return False
 
-    def is_invite_code(self, invite_code: str, owner_id: str) -> bool:
+    def invite_code_is_valid(self, invite_code: str, owner_id: str) -> bool:
         """检查邀请码是否可用"""
         invite_codes = self.get_invite_codes(owner_id)
         for code in invite_codes:

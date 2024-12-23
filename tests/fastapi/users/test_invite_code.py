@@ -82,8 +82,8 @@ def test_is_valid_invite_code(invite_code_manager):
     codes = invite_code_manager.generate_new_invite_codes(1, owner_id)
     code = codes[0]
     
-    assert invite_code_manager.is_invite_code(code.invite_code, owner_id)
-    assert not invite_code_manager.is_invite_code("invalid_code", owner_id)
+    assert invite_code_manager.invite_code_is_valid(code.invite_code, owner_id)
+    assert not invite_code_manager.invite_code_is_valid("invalid_code", owner_id)
 
 # 建议添加的新功能测试
 def test_delete_invite_code(invite_code_manager):

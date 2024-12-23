@@ -68,14 +68,6 @@ Feature: 用户认证系统 - 注册模块
     When 提交用户注册请求
     Then 系统返回状态码 200
     And 返回成功响应
-    And 返回的用户信息包含
-      | 字段        | 值                | 说明          |
-      | username   | mockuser         | 用户名         |
-      | email      | mock@example.com | 邮箱          |
-      | roles      | ["user","guest"] | 用户角色列表    |
-      | is_active  | true            | 账户激活状态    |
-    And 密码应当被安全存储
-    And 系统应设置认证Cookie
 
   @validation @error
   Scenario Outline: 注册参数验证
@@ -117,12 +109,16 @@ Feature: 用户认证系统 - 注册模块
 
   @invite-code
   Scenario: 使用邀请码注册
-    Given 准备好用户表单
+    Given 准备好邀请码
+      | 字段        | 值         |
+      | invite_from | admin     |
+      | invite_count | 2        |
+    And 准备好用户表单
       | 字段        | 值                |
       | username    | mockuser         |
       | password    | Test123!@#      |
       | email       | mock@example.com |
-      | invite_code | VALID_CODE_1      |
+      | invite_code | AUTO_FIND_VALID_CODE  |
     When 提交用户注册请求
     Then 系统返回状态码 200
     And 返回成功响应

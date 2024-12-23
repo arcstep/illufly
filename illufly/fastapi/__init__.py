@@ -12,7 +12,7 @@ app.include_router(create_auth_api())
 
 from .users import (
     InviteCodeManager, TokensManager, UsersManager, AuthDependencies,
-    User, UserRole,
+    User, UserRole, InviteCode,
     create_users_endpoints
 )
 
