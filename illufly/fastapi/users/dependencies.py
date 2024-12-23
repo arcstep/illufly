@@ -9,40 +9,17 @@ class AuthDependencies:
     async def get_current_user(self, request: Request, response: Response) -> dict:
         """获取当前用户信息，包含令牌刷新逻辑"""
         access_token = request.cookies.get("access_token")
-        refresh_token = request.cookies.get("refresh_token")
+        print(">>> access_token: ", access_token)
 
-        # 1. 验证访问令牌
+        # 当访问令牌过期时，会自动尝试重新颁发访问令牌
         if access_token:
-            token_valid = self.tokens_manager.is_token_valid(access_token, "access")
-            if token_valid["success"]:
-                try:
-                    verify_result = self.tokens_manager.verify_jwt(access_token)
-                    if verify_result["success"]:
-                        return verify_result["payload"]
-                except JWTError:
-                    # 移除无效的访问令牌
-                    self.tokens_manager.invalidate_token(access_token)
-
-        # 2. 尝试使用刷新令牌
-        if refresh_token:
-            refresh_valid = self.tokens_manager.is_token_valid(refresh_token, "refresh")
-            if refresh_valid["success"]:
-                try:
-                    refresh_result = self.tokens_manager.verify_jwt(refresh_token)
-                    if refresh_result["success"]:
-                        # 创建新的访问令牌
-                        new_token_result = self.tokens_manager.create_access_token(refresh_result["payload"])
-                        if new_token_result["success"]:
-                            # 如果旧的访问令牌存在，使其失效
-                            if access_token:
-                                self.tokens_manager.invalidate_token(access_token)
-                            
-                            # 设置新的访问令牌
-                            self.tokens_manager.set_auth_cookies(response, access_token=new_token_result["token"])
-                            
-                            return refresh_result["payload"]
-                except JWTError:
-                    self.tokens_manager.invalidate_token(refresh_token)
+            verify_result = self.tokens_manager.verify_jwt(access_token, token_type="access")
+            print(">>> verify_result: ", verify_result)
+            if verify_result["success"]:
+                payload = verify_result["payload"]
+                is_revoked = self.tokens_manager.is_access_token_revoked(access_token, payload['user_id'])
+                if not is_revoked:
+                    return payload
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

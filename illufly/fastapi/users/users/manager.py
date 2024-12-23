@@ -219,7 +219,7 @@ class UsersManager:
             )
 
             # 确保返回的用户对象中的roles是list类型
-            user_dict = user.to_dict(include_sensitive=True)
+            user_dict = user.to_dict(include_sensitive=False)
             if "roles" in user_dict:
                 user_dict["roles"] = list(user_dict["roles"])
 

@@ -51,13 +51,25 @@ def create_users_endpoints(
             "require_password_change": user_info.get("require_password_change", False)
         }
 
-    def _create_refresh_token_and_access_token(user_id: str, token_data: dict) -> dict:
-        refresh_token = tokens_manager.create_refresh_token(data=token_data)
-        if not refresh_token["success"]:
+    def _create_refresh_token_and_access_token(user_id: str, token_data: dict) -> tuple[str, str]:
+        """创建刷新令牌和访问令牌
+        
+        Args:
+            user_id: 用户ID
+            token_data: 令牌数据
+            
+        Returns:
+            tuple[str, str]: (refresh_token, access_token) 两个令牌字符串
+        """
+        refresh_token_result = tokens_manager.create_refresh_token(data=token_data)
+        if not refresh_token_result["success"]:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=refresh_token["error"]
+                detail=refresh_token_result["error"]
             )
+        
+        refresh_token = refresh_token_result["token"]  # 获取令牌字符串
+        print(">>> refresh_token:", refresh_token)
         
         access_token_result = tokens_manager.refresh_access_token(refresh_token, user_id)
         if not access_token_result["success"]:
@@ -65,7 +77,11 @@ def create_users_endpoints(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=access_token_result["error"]
             )
-        return refresh_token, access_token_result["token"]
+        
+        access_token = access_token_result["token"]  # 获取令牌字符串
+        print(">>> access_token:", access_token)
+        
+        return refresh_token, access_token  # 返回两个令牌字符串
 
     def _create_browser_device_id(request: Request) -> str:
         """为浏览器创建或获取设备ID
@@ -172,6 +188,7 @@ def create_users_endpoints(
         response: Response,
         username: str = Form(...),
         password: str = Form(...),
+        device_id: str = Form(None),
     ):
         """用户登录接口
         
@@ -191,31 +208,12 @@ def create_users_endpoints(
                 - 500: 服务器内部错误
         """
 
-        # 获取或创建设备ID
-        device_id = request.cookies.get("device_id") or _create_browser_device_id(request)
-        
-        # 设置设备cookie（http_only=False 允许前端读取设备ID）
-        response.set_cookie(
-            "device_id",
-            device_id,
-            httponly=False,
-            secure=True,
-            samesite="Lax"
-        )
-        
-        # 创建令牌时使用固定的设备ID
-        token_data = {
-            "user_id": user_info["user_id"],
-            "username": user_info["username"],
-            "device_id": device_id,
-        }
-
         try:
             # 验证密码
             verify_result = users_manager.verify_user_password(username, password)
             
-            if not verify_result["success"]:
-                if verify_result.get("is_locked"):
+            if not verify_result.get("success", False):
+                if verify_result.get("is_locked", False):
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="账户已锁定"
@@ -230,8 +228,20 @@ def create_users_endpoints(
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         detail="认证失败"
                     )
+            
+            if not verify_result.get("user", None):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="用户信息不存在"
+                )
 
+            # 获取或创建设备ID
             user_info = verify_result["user"]
+            print(">>> user_info: ", user_info)
+
+            device_id = device_id or request.cookies.get("device_id") or _create_browser_device_id(request)
+            print(">>> device_id: ", device_id)
+
             token_data = _create_token_data(user_info, device_id)
             if not token_data:
                 raise HTTPException(
@@ -241,7 +251,14 @@ def create_users_endpoints(
             require_password_change = verify_result["require_password_change"]
             
             refresh_token, access_token = _create_refresh_token_and_access_token(user_info["user_id"], token_data)
-            tokens_manager.set_auth_cookies(response, access_token["token"], refresh_token["token"])
+            print(">>> refresh_token: ", refresh_token)
+            print(">>> access_token: ", access_token)
+            tokens_manager.set_auth_cookies(
+                response, 
+                access_token=access_token, 
+                refresh_token=refresh_token,
+                device_id=device_id
+            )
 
             return {
                 "success": True,
@@ -252,6 +269,7 @@ def create_users_endpoints(
         except HTTPException:
             raise
         except Exception as e:
+            print(">>> Exception: ", e)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="登录过程发生错误"  # 模糊化具体错误
@@ -360,7 +378,6 @@ def create_users_endpoints(
     async def logout(
         request: Request,
         response: Response,
-        device_id: str = Form(...),
         current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         """注销接口
@@ -381,6 +398,7 @@ def create_users_endpoints(
         # 获取当前设备的访问令牌
         access_token = request.cookies.get("access_token")
         refresh_token = request.cookies.get("refresh_token")
+        device_id = request.cookies.get("device_id")
 
         revoke_result = tokens_manager.revoke_device_tokens(current_user["user_id"], device_id)
         if not revoke_result["success"]:

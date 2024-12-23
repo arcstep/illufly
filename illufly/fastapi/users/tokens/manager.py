@@ -200,7 +200,7 @@ class TokensManager:
         except Exception as e:
             raise
 
-    def verify_jwt(self, token: str, verify_exp: bool = True, token_type: str = None) -> Dict[str, Any]:
+    def verify_jwt(self, token: str, verify_exp: bool = True, token_type: str = "access") -> Dict[str, Any]:
         """验证JWT令牌，如果是访问令牌且验证失败，尝试使用刷新令牌刷新
         """
         try:
@@ -272,10 +272,11 @@ class TokensManager:
                     # 查找相同设备的刷新令牌
                     refresh_data = self._refresh_tokens.get(user_id) or {}
                     device_tokens = refresh_data.get(device_id, {})
+                    print(">>> device_tokens: ", device_tokens)
                     refresh_token = device_tokens.get("token")
                     
                     if refresh_token:
-                        # 尝试刷新访���令牌
+                        # 尝试刷新访问令牌
                         refresh_result = self.refresh_access_token(refresh_token, user_id)
                         if refresh_result["success"]:
                             return {
@@ -379,31 +380,64 @@ class TokensManager:
                 "error": f"Failed to create access token: {str(e)}"
             }
 
-    def set_auth_cookies(self, response: Response, access_token: str = None, refresh_token: str = None) -> None:
+    def set_auth_cookies(
+        self, response: Response,
+        access_token: str = None,
+        refresh_token: str = None,
+        device_id: str = None
+    ) -> None:
         """设置认证Cookie"""
-        if access_token:
-            response.set_cookie(
-                key="access_token",
-                value=access_token,
-                httponly=True,
-                secure=True,
-                samesite="Lax"
-            )
+        print(">>> 开始设置 cookies...")
+        print(">>> response 类型:", type(response))
+        print(">>> access_token:", access_token[:20] if access_token else None)
+        print(">>> refresh_token:", refresh_token[:20] if refresh_token else None)
+        print(">>> device_id:", device_id)
+        
+        try:
+            if access_token:
+                print(">>> 设置 access_token cookie...")
+                response.set_cookie(
+                    key="access_token",
+                    value=access_token,
+                    httponly=True,
+                    secure=True,
+                    samesite="Lax"
+                )
+                print(">>> access_token cookie 已设置")
 
-        if refresh_token:
-            response.set_cookie(
-                key="refresh_token",
-                value=refresh_token,
-                httponly=True,
-                secure=True,
-                samesite="Lax"
-            )
+            if refresh_token:
+                print(">>> 设置 refresh_token cookie...")
+                response.set_cookie(
+                    key="refresh_token",
+                    value=refresh_token,
+                    httponly=True,
+                    secure=True,
+                    samesite="Lax"
+                )
+                print(">>> refresh_token cookie 已设置")
+
+            if device_id:
+                print(">>> 设置 device_id cookie...")
+                response.set_cookie(
+                    key="device_id",
+                    value=device_id,
+                    httponly=True,
+                    secure=True,
+                    samesite="Lax"
+                )
+                print(">>> device_id cookie 已设置")
+            
+            print(">>> cookies 设置完成")
+            
+        except Exception as e:
+            print(">>> 设置 cookies 时发生错误:", str(e))
+            raise
 
     def list_user_devices(self, user_id: str) -> Dict[str, Any]:
         """列出用户的所有已登录设备"""
         try:
             refresh_data = self._refresh_tokens.get(user_id) or {}
-            devices = refresh_data.keys()
+            devices = list(refresh_data.keys())
 
             return {
                 "success": True,

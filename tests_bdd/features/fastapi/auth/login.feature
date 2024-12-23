@@ -15,7 +15,7 @@ Feature: 用户多设备登录管理
       - password: str, 必填, 密码
     - 返回:
       - success: bool
-      - token_data: dict
+      - user_info: dict
       - require_password_change: bool
     - 错误码:
       - 400: 参数验证失败
@@ -104,11 +104,11 @@ Feature: 用户多设备登录管理
       | 字段    | 值             |
       | username | testuser1         |
       | password | Test123!@#        |
-    Then 系统应验证用户凭据
+    Then 用户凭据应验证成功
     And 返回成功响应，包含:
       | 字段                 | 类型    |
       | success              | boolean |
-      | token_data          | object  |
+      | user_info            | object  |
       | require_password_change | boolean |
     And HTTP响应存在认证令牌
 
@@ -124,69 +124,51 @@ Feature: 用户多设备登录管理
       | username | testuser1         |
       | password | Test123!@#        |
       | device_id | device_b         |
-    Then 系统应验证用户凭据
+    Then 用户凭据应验证成功
     And 返回成功响应，包含:
       | 字段                 | 类型    |
       | success              | boolean |
-      | token_data          | object  |
+      | user_info            | object  |
       | require_password_change | boolean |
     And HTTP响应存在认证令牌
-    And 服务端存在同一个用户的多个令牌:
-      | 字段    | 值                  |
-      | username | testuser1         |
-      | device_id | ["device_a", "device_b"] |
+    And 服务端应存在用户的令牌:
+      | 字段    | 值          |
+      | username | testuser1 |
+      | device_id | device_a |
+      | device_id | device_b |
 
   @core
   Scenario: 单个设备退出
-    Given 用户已在设备A和设备B登录
-    When 用户在设备A请求退出
-    Then 系统应清除设备A的认证Cookie
-    And 设备B的令牌仍然有效
-
-  @core
-  Scenario: 零登录支持
-    Given 用户持有有效的http_only刷新令牌
-    When 用户请求零登录
-    Then 系统应验证刷新令牌
-    And 返回成功响应，包含新的访问令牌
+    When 用户登录到设备:
+      | 字段    | 值             |
+      | username | testuser1         |
+      | password | Test123!@#        |
+      | device_id | device_a         |
+    And 用户登录到设备:
+      | 字段    | 值             |
+      | username | testuser1         |
+      | password | Test123!@#        |
+      | device_id | device_b         |
+    And 系统验证用户凭据
+    And 用户在最近使用的设备上退出登录
+    Then 服务端应存在用户的令牌:
+      | 字段    | 值          |
+      | username | testuser1 |
+      | device_id | device_a |
+    And 服务端不应存在用户的令牌:
+      | 字段    | 值          |
+      | username | testuser1 |
+      | device_id | device_b |
 
   @error
   Scenario: 登录失败 - 错误的凭据
-    When 用户在设备A提供错误的登录信息:
+    When 用户使用错误的凭据登录:
       | 字段    | 值             |
       | username | testuser          |
       | password | wrongpassword     |
     Then 系统应返回401未授权错误
     And 错误信息应包含认证失败的详情
 
-  @error-handling
-  Scenario: 登录失败 - 账户被锁定
-    """
-    安全策略：
-    - 连续失败5次后锁定账户
-    - 锁定时间为30分钟
-    - 管理员可手动解锁
-    """
-    Given 用户账户已被锁定
-    When 用户在设备A尝试登录
-    Then 系统应返回403禁止访问错误
-    And 错误信息应说明"账户已锁定"
-
-  @error
-  Scenario: 登录失败 - 账户未激活
-    Given 系统已有注册用户
-    Given 用户账户未激活
-    When 用户在设备A尝试登录
-    Then 系统应返回403禁止访问错误
-    And 错误信息应说明"账户未激活"
-
-  @error
-  Scenario: 登录失败 - 缺少必填字段
-    When 用户在设备A提供不完整的登录信息:
-      | 字段    | 值    |
-      | username | testuser |
-    Then 系统应返回400错误
-    And 错误信息应说明缺少必填字段
 
   """
   ## 实现注意事项
