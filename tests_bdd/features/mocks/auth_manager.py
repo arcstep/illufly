@@ -237,7 +237,7 @@ class AuthManagerMockFactory:
     def _setup_device_methods(mock: Mock, storage: dict) -> None:
         """设置设备相关的mock方法"""
 
-        def mock_login(user_dict, password, password_hash, device_id, device_name, response: Response):
+        def mock_login(user_dict, password, password_hash, device_id, response: Response):
             """模拟登录验证
             
             Args:
@@ -245,7 +245,6 @@ class AuthManagerMockFactory:
                 password: 用户提供的密码
                 password_hash: 存储的密码哈希
                 device_id: 设备ID
-                device_name: 设备名称
                 response: FastAPI响应对象
             
             Returns:
@@ -298,7 +297,6 @@ class AuthManagerMockFactory:
             devices = [
                 {
                     "device_id": device_id,
-                    "device_name": f"Device {device_id}",
                     "last_active": datetime.utcnow().isoformat(),
                     "is_current": tokens["access_token"] == token
                 }

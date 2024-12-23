@@ -128,7 +128,6 @@ class TestTokenVerification:
         assert payload["username"] == test_user.username
         assert payload["roles"] == [role.value for role in test_user.roles]
         assert payload["device_id"] == device_info['device_id']
-        assert payload["device_name"] == device_info['device_name']
         assert "exp" in payload
         assert "iat" in payload
         assert payload["token_type"] == "access"
@@ -178,7 +177,6 @@ class TestTokenRefresh:
         assert payload["username"] == test_user.username
         assert set(payload["roles"]) == {role.value for role in test_user.roles}
         assert payload["device_id"] == device_info['device_id']
-        assert payload["device_name"] == device_info['device_name']
         assert payload["token_type"] == "access"
 
 class TestTokenRevocation:
@@ -197,7 +195,7 @@ class TestTokenRevocation:
         device1_refresh = tokens_manager.create_refresh_token(test_data)
         assert device1_access["success"] and device1_refresh["success"]
 
-        other_device_data = { **test_data, "device_id": "other_device", "device_name": "Other Device" }
+        other_device_data = { **test_data, "device_id": "other_device" }
         device2_access = tokens_manager.create_access_token(other_device_data)
         device2_refresh = tokens_manager.create_refresh_token(other_device_data)
         assert device2_access["success"] and device2_refresh["success"]
@@ -231,9 +229,9 @@ class TestTokenRevocation:
 
         # 准备多个设备的测试数据
         devices = [
-            {"device_id": "device1", "device_name": "Device 1"},
-            {"device_id": "device2", "device_name": "Device 2"},
-            {"device_id": "device3", "device_name": "Device 3"}
+            {"device_id": "device1"},
+            {"device_id": "device2"},
+            {"device_id": "device3"}
         ]
         
         # 为每个设备创建令牌

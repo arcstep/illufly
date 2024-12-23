@@ -53,7 +53,6 @@ def device_info():
     """设备信息fixture"""
     return {
         "device_id": "test_device_123",
-        "device_name": "Test Device"
     }
 
 @pytest.fixture()

@@ -236,7 +236,6 @@ def step_impl(context):
             "username": admin_data["username"],
             "password": admin_data["password"],
             "device_id": "admin-device",
-            "device_name": "Admin Device"
         }
     )
     

@@ -9,7 +9,6 @@ class TokenClaims:
     user_id: str
     username: str = field(default="")
     device_id: str = field(default="")
-    device_name: str = field(default="")
     roles: List[str] = field(default_factory=list)
     exp: int = field(default=0)
     iat: int = field(default=0)
@@ -23,9 +22,6 @@ class TokenClaims:
         if not self.device_id:
             self.device_id = f"device_{uuid.uuid4().hex[:8]}"
         
-        if not self.device_name:
-            self.device_name = f"Device {self.device_id}"
-        
         if isinstance(self.roles, str):
             self.roles = [self.roles]
         elif not self.roles:
@@ -38,7 +34,6 @@ class TokenClaims:
             'user_id': self.user_id,
             'username': self.username,
             'device_id': self.device_id,
-            'device_name': self.device_name,
             'roles': [role.value if isinstance(role, UserRole) else role for role in self.roles],
             'exp': self.exp,
             'iat': self.iat,
@@ -72,14 +67,11 @@ class TokenClaims:
         device_id = data.get('device_id')
         if not device_id:
             device_id = f"device_{uuid.uuid4().hex[:8]}"
-        
-        device_name = data.get('device_name') or f"Device {device_id}"
-        
+
         return cls(
             user_id=data['user_id'],
             username=data.get('username', ''),
             device_id=device_id,
-            device_name=device_name,
             roles=roles,
             exp=data.get('exp', 0),
             iat=data.get('iat', 0),

@@ -23,7 +23,7 @@ def create_users_endpoints(
         dict: 包含所有注册的端点函数的字典
     """
 
-    def _create_token_data(user_info: dict, device_id: str = "DEFAULT_DEVICE", device_name: str = "Default Device") -> dict:
+    def _create_token_data(user_info: dict, device_id: str = "DEFAULT_DEVICE") -> dict:
         """从用户信息中提取JWT令牌所需的数据
 
         Args:
@@ -32,7 +32,6 @@ def create_users_endpoints(
         Returns:
             dict: 包含令牌所需字段的字典，包括:
                 - device_id: 设备ID
-                - device_name: 设备名称
                 - user_id: 用户ID
                 - username: 用户名
                 - email: 电子邮箱
@@ -43,7 +42,6 @@ def create_users_endpoints(
         """
         return {
             "device_id": device_id,
-            "device_name": device_name,
             "user_id": user_info["user_id"],
             "username": user_info["username"],
             "email": user_info["email"],
@@ -78,7 +76,25 @@ def create_users_endpoints(
         if existing_device_id:
             return existing_device_id
         
-        return f"browser_{uuid.uuid4().hex[:8]}"
+        user_agent = request.headers.get("user-agent", "unknown")
+        os_info = "unknown_os"
+        browser_info = "unknown_browser"
+        
+        if "Windows" in user_agent:
+            os_info = "Windows"
+        elif "Macintosh" in user_agent:
+            os_info = "Mac"
+        elif "Linux" in user_agent:
+            os_info = "Linux"
+        
+        if "Chrome" in user_agent:
+            browser_info = "Chrome"
+        elif "Firefox" in user_agent:
+            browser_info = "Firefox"
+        elif "Safari" in user_agent and "Chrome" not in user_agent:
+            browser_info = "Safari"
+        
+        return f"{os_info}_{browser_info}_{uuid.uuid4().hex[:8]}"
 
     @app.post(f"{prefix}/auth/register")
     async def register(
@@ -192,7 +208,6 @@ def create_users_endpoints(
             "user_id": user_info["user_id"],
             "username": user_info["username"],
             "device_id": device_id,
-            "device_name": device_name or f"Browser on {request.headers.get('User-Agent', 'Unknown')}"
         }
 
         try:
@@ -217,7 +232,7 @@ def create_users_endpoints(
                     )
 
             user_info = verify_result["user"]
-            token_data = _create_token_data(user_info, device_id, device_name)
+            token_data = _create_token_data(user_info, device_id)
             if not token_data:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -659,7 +674,6 @@ def create_users_endpoints(
             "devices": [
                 {
                     "device_id": device_id,
-                    "device_name": device_info["claims"].device_name,
                     "last_active": device_info["claims"].iat,
                     "is_current": device_id == current_user["device_id"]
                 }

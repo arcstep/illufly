@@ -48,7 +48,6 @@ class TokensManager:
         "username": "johndoe",
         "roles": ["user"],
         "device_id": "browser_chrome_123",
-        "device_name": "Chrome on Windows"
     }
     
     refresh_result = tokens_manager.create_refresh_token(user_data)
@@ -587,7 +586,6 @@ class TokensManager:
                 "username": refresh_claims.get("username"),
                 "roles": refresh_claims.get("roles", []),
                 "device_id": refresh_claims.get("device_id", ""),
-                "device_name": refresh_claims.get("device_name", "")
             }
             
             return self.create_access_token(token_data)
