@@ -57,14 +57,14 @@ def create_users_endpoints(
         if not refresh_token["success"]:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create refresh token"
+                detail=refresh_token["error"]
             )
         
         access_token_result = tokens_manager.refresh_access_token(refresh_token, user_id)
         if not access_token_result["success"]:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create access token"
+                detail=access_token_result["error"]
             )
         return refresh_token, access_token_result["token"]
 

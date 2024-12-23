@@ -51,7 +51,7 @@ class AuthDependencies:
 
     def require_roles(self, roles: Union["UserRole", List["UserRole"]], require_all: bool = False):
         """角色验证装饰器"""
-        from ..user import User, UserRole
+        from ..users import User, UserRole
 
         if isinstance(roles, UserRole):
             roles = [roles]

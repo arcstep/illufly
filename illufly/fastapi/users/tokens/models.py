@@ -1,22 +1,28 @@
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Union
 from dataclasses import dataclass, field
+from datetime import datetime
 
 @dataclass
 class TokenClaims:
     """令牌信息"""
-
     user_id: str
-    username: str = field(default_factory=lambda: "")
+    username: str = field(default="")
     device_id: str = field(default="default_device_id")
     device_name: str = field(default="Default-Device")
-    roles: List[str] = field(default_factory=lambda: ["user"])
-    exp: int = field(default=0)
-    iat: int = field(default=0)
+    roles: List[str] = field(default_factory=list)
+    exp: int = field(default_factory=lambda: int(datetime.now().timestamp()))
+    iat: int = field(default_factory=lambda: int(datetime.now().timestamp()))
     token_type: str = field(default="refresh")
 
     def __post_init__(self):
+        """初始化后处理"""
         if not self.username:
             self.username = self.user_id
+        
+        if not self.roles:
+            self.roles = ["user"]
+        elif isinstance(self.roles, str):
+            self.roles = [self.roles]
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -34,15 +40,50 @@ class TokenClaims:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TokenClaims':
-        """从字典创建实例"""
+        """从字典创建实例
+        
+        Args:
+            data: 包含令牌信息的字典
+            
+        Returns:
+            TokenClaims: 令牌信息实例
+            
+        Examples:
+            >>> data = {
+            ...     'user_id': 'user123',
+            ...     'username': 'john_doe',
+            ...     'roles': ['admin', 'user']
+            ... }
+            >>> token = TokenClaims.from_dict(data)
+        """
         from ..users.models import UserRole
+        
         return cls(
             user_id=data['user_id'],
-            username=data['username'],
-            device_id=data['device_id'],
-            device_name=data['device_name'],
-            roles=[UserRole(role) if isinstance(role, str) else role for role in data['roles']],
-            exp=data['exp'],
-            iat=data['iat'],
-            token_type=data['token_type'],
+            username=data.get('username', ''),
+            device_id=data.get('device_id', 'default_device_id'),
+            device_name=data.get('device_name', 'Default-Device'),
+            roles=[
+                UserRole(role) if isinstance(role, str) else role 
+                for role in data.get('roles', ['user'])
+            ],
+            exp=data.get('exp', int(datetime.now().timestamp())),
+            iat=data.get('iat', int(datetime.now().timestamp())),
+            token_type=data.get('token_type', 'refresh'),
         )
+
+    @classmethod
+    def create(cls, user_id: str, **kwargs) -> 'TokenClaims':
+        """便捷创建方法
+        
+        Args:
+            user_id: 用户ID
+            **kwargs: 其他可选参数
+            
+        Returns:
+            TokenClaims: 令牌信息实例
+            
+        Examples:
+            >>> token = TokenClaims.create('user123', roles=['admin'])
+        """
+        return cls(user_id=user_id, **kwargs)

@@ -1,5 +1,5 @@
 @auth @register @api-doc
-Feature: 用户认证系统 - 注册模块 # bdd/features/fastapi/auth/register.feature:2
+Feature: 用户认证系统 - 注册模块 # tests_bdd/features/fastapi/auth/register.feature:2
   """
   用户认证系统 - 注册模块 API 文档
   基础路径: /api/auth
@@ -47,10 +47,10 @@ Feature: 用户认证系统 - 注册模块 # bdd/features/fastapi/auth/register.
   - 频率限制: 每IP每小时最多10次注册尝试
   - 敏感信息脱敏
   """
-  Background: 测试环境准备  # bdd/features/fastapi/auth/register.feature:57
+  Background: 测试环境准备  # tests_bdd/features/fastapi/auth/register.feature:57
 
   @invite-code @error @wip
-  Scenario: 使用无效邀请码      # bdd/features/fastapi/auth/register.feature:131
+  Scenario: 使用无效邀请码      # tests_bdd/features/fastapi/auth/register.feature:131
     Given FastAPI 已经准备好  # None
     And 清理测试数据           # None
     Given 准备好用户表单        # None

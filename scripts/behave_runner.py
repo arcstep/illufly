@@ -7,21 +7,27 @@ import os
 def run_bdd(feature=None, tags=None):
     """运行 BDD 测试
     
+    支持以下运行模式：
+    1. 不带参数：运行所有测试
+    2. 指定特性：运行特定功能的测试
+    3. 指定标签：运行带特定标签的测试
+    4. 组合模式：同时指定特性和标签
+    
     Args:
-        feature: 可选,指定要运行的特性名称(不含路径和扩展名)
-        tags: 可选,指定要运行的标签
+        feature (str, optional): 要运行的特性名称，无需包含路径和扩展名
+        tags (str, optional): 要运行的标签表达式，多个标签用逗号分隔
         
     Examples:
         >>> run_bdd()  # 运行所有测试
         >>> run_bdd(feature="register")  # 运行注册相关的特性
-        >>> run_bdd(tags="@wip")  # 运行带 @wip 标签的场景
-        >>> run_bdd(tags="@core,@validation")  # 运行带多个标签的场景
-        >>> run_bdd(feature="register", tags="@validation")  # 运行注册特性中的验证场景
+        >>> run_bdd(tags="@wip")  # 运行标记为开发中的场景
+        >>> run_bdd(tags="@core,@validation")  # 运行核心功能和验证相关的场景
+        >>> run_bdd(feature="register", tags="@validation")  # 运行注册功能中的验证场景
     """
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     os.chdir(project_root)
     
-    features_dir = "bdd/features"
+    features_dir = "tests_bdd/features"
     
     cmd_parts = ["behave", "-v", "-k", "--format=pretty"]
     
@@ -53,20 +59,30 @@ def run_bdd(feature=None, tags=None):
         sys.exit(1)
 
 def main():
-    """命令行入口函数
+    """BDD 测试运行器的命令行入口
     
-    支持以下使用方式:
+    支持以下使用方式：
+    1. 运行所有测试：
+        poetry run bdd
     
-    1. 运行 WIP 场景:
+    2. 运行开发中(WIP)的场景：
         poetry run bdd --wip
     
-    2. 运行指定标签的场景:
+    3. 运行指定标签的场景：
         poetry run bdd --tags=@core
         poetry run bdd --tags=@validation
         poetry run bdd --tags=@core,@validation
     
-    3. 运行指定特性:
+    4. 运行指定特性：
         poetry run bdd --feature register
+    
+    5. 组合使用：
+        poetry run bdd --feature register --tags=@validation
+    
+    参数说明：
+        --wip: 只运行标记为 @wip 的场景
+        --feature: 指定要运行的特性名称
+        --tags: 指定要运行的标签表达式，多个标签用逗号分隔
     """
     parser = argparse.ArgumentParser(description="运行 BDD 测试")
     parser.add_argument("--wip", action="store_true", help="只运行 @wip 标记的场景")
