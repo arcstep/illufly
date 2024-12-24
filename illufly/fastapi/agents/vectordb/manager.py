@@ -11,12 +11,14 @@ from .models import VectorDBConfig
 
 from ....config import get_env
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
+__VECTOR_CONFIG_FILENAME__ = "vectordb.json"
 
 class VectorDBManager:
     def __init__(
         self,
         users_manager: UsersManager,
-        storage: Optional[ConfigStoreProtocol] = None
+        storage: Optional[ConfigStoreProtocol] = None,
+        config_store_path: str = None
     ):
         """初始化向量库管理器
         Args:
@@ -26,8 +28,8 @@ class VectorDBManager:
 
         if storage is None:
             storage = FileConfigStore(
-                data_dir=Path(__USERS_PATH__),
-                filename="vectordb.json",
+                data_dir=Path(config_store_path or __USERS_PATH__),
+                filename=__VECTOR_CONFIG_FILENAME__,
                 data_class=Dict[str, VectorDBConfig],
             )
         self._storage = storage

@@ -20,20 +20,12 @@ def temp_dir(tmp_path):
 @pytest.fixture
 def tokens_manager(temp_dir):
     """创建测试用的认证管理器"""
-    manager = TokensManager(config_store_path=temp_dir)
-    yield manager
-
-    if temp_dir.exists():
-        shutil.rmtree(temp_dir)
+    return TokensManager(config_store_path=temp_dir)
 
 @pytest.fixture
 def users_manager(temp_dir, tokens_manager):
     """创建测试用的用户管理器"""
-    manager = UsersManager(config_store_path=temp_dir, tokens_manager=tokens_manager)
-    yield manager
-    
-    if temp_dir.exists():
-        shutil.rmtree(temp_dir)
+    return UsersManager(config_store_path=temp_dir, tokens_manager=tokens_manager)
 
 @pytest.fixture
 def test_user_password():
