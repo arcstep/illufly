@@ -75,7 +75,14 @@ class AgentsManager:
         except Exception as e:
             return Result.fail(f"创建代理失败: {str(e)}")
 
-    def get_agent(self, user_id: str, agent_name: str) -> Result[Any]:
+    def get_agent_config(self, user_id: str, agent_name: str) -> Result[AgentConfig]:
+        """获取代理配置"""
+        user_agents = self._storage.get(owner_id=user_id)
+        if not user_agents or agent_name not in user_agents:
+            return Result.fail("代理不存在")
+        return Result.ok(data=user_agents[agent_name])
+
+    def load_agent(self, user_id: str, agent_name: str) -> Result[Any]:
         """获取代理实例"""
         try:
             # 检查缓存
@@ -86,15 +93,10 @@ class AgentsManager:
                 )
 
             # 获取配置
-            user_agents = self._storage.get(owner_id=user_id)
-            if not user_agents or agent_name not in user_agents:
-                return Result.fail("代理不存在")
-
-            agent_config = user_agents[agent_name]
-            
-            # 创建实例
-            if user_id not in self._agent_instances:
-                self._agent_instances[user_id] = {}
+            config_result = self.get_agent_config(user_id, agent_name)
+            if not config_result.success:
+                return Result.fail(config_result.error)
+            agent_config = config_result.data
             
             # 获取向量库实例
             vectordb_instances = []
@@ -110,12 +112,28 @@ class AgentsManager:
                 agent_config=agent_config,
                 vectordb_instances=vectordb_instances
             )
-            print(">>> 创建新的Agent实例", instance)
+            
+            if instance is None:
+                return Result.fail("创建代理实例失败")
+            
+            # 缓存实例
+            if user_id not in self._agent_instances:
+                self._agent_instances[user_id] = {}
             self._agent_instances[user_id][agent_name] = instance
             
+            print(">>> 创建新的Agent实例", instance)
             return Result.ok(data=instance, message="成功获取代理实例")
         except Exception as e:
             return Result.fail(f"获取代理实例失败: {str(e)}")
+
+    def unload_agent(self, user_id: str, agent_name: str) -> Result[None]:
+        """卸载代理实例"""
+        if user_id in self._agent_instances and agent_name in self._agent_instances[user_id]:
+            del self._agent_instances[user_id][agent_name]
+            if not self._agent_instances[user_id]:
+                del self._agent_instances[user_id]
+            return Result.ok(message="代理实例卸载成功")
+        return Result.fail("代理实例不存在")
 
     def list_agents(self, user_id: str) -> Result[List[Dict[str, Any]]]:
         """列出用户的所有代理"""
@@ -156,3 +174,32 @@ class AgentsManager:
             return Result.ok(message="代理删除成功")
         except Exception as e:
             return Result.fail(f"删除代理失败: {str(e)}")
+
+    def update_agent(self, user_id: str, agent_name: str, updates: Dict[str, Any]) -> Result[None]:
+        """更新代理配置""" 
+        try:
+            user_agents = self._storage.get(owner_id=user_id)
+            if not user_agents or agent_name not in user_agents:
+                return Result.fail("代理不存在")
+            
+            # 先卸载实例
+            self.unload_agent(user_id, agent_name)
+            
+            # 更新配置
+            try:
+                user_agents[agent_name].update(updates)
+            except ValueError as e:
+                return Result.fail(str(e))
+            
+            self._storage.set(user_agents, owner_id=user_id)
+            
+            return Result.ok(message="代理配置更新成功")
+        except Exception as e:
+            return Result.fail(f"更新代理配置失败: {str(e)}")
+
+    def is_agent_loaded(self, user_id: str, agent_name: str) -> bool:
+        """检查代理是否已加载"""
+        return (
+            user_id in self._agent_instances 
+            and agent_name in self._agent_instances[user_id]
+        )

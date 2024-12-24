@@ -15,6 +15,33 @@ class AgentConfig:
     created_at: Optional[datetime] = None
     is_active: bool = True
 
+    # 添加不可更新的字段列表
+    _IMMUTABLE_FIELDS = {'agent_name', 'created_at'}
+
+    def update(self, updates: Dict[str, Any]) -> None:
+        """更新配置
+        
+        Args:
+            updates: 要更新的字段和值的字典
+            
+        Raises:
+            ValueError: 当尝试更新不允许的字段时
+        """
+        # 检查是否尝试更新不可变字段
+        invalid_fields = set(updates.keys()) & self._IMMUTABLE_FIELDS
+        if invalid_fields:
+            raise ValueError(f"不允许更新以下字段: {', '.join(invalid_fields)}")
+
+        # 更新允许的字段
+        for key, value in updates.items():
+            if hasattr(self, key):
+                if key == 'config' and isinstance(self.config, dict):
+                    self.config.update(value)
+                else:
+                    setattr(self, key, value)
+            else:
+                raise ValueError(f"未知的字段: {key}")
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         return {
