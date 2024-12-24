@@ -52,36 +52,28 @@ def create_users_endpoints(
         }
 
     def _create_refresh_token_and_access_token(user_id: str, token_data: dict) -> tuple[str, str]:
-        """创建刷新令牌和访问令牌
-        
-        Args:
-            user_id: 用户ID
-            token_data: 令牌数据
-            
-        Returns:
-            tuple[str, str]: (refresh_token, access_token) 两个令牌字符串
-        """
-        refresh_token_result = tokens_manager.create_refresh_token(data=token_data)
-        if not refresh_token_result["success"]:
+        """创建刷新令牌和访问令牌"""
+        refresh_result = tokens_manager.create_refresh_token(data=token_data)
+        if not refresh_result.success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=refresh_token_result["error"]
+                detail=refresh_result.error
             )
         
-        refresh_token = refresh_token_result["token"]  # 获取令牌字符串
+        refresh_token = refresh_result.data
         print(">>> refresh_token:", refresh_token)
         
-        access_token_result = tokens_manager.refresh_access_token(refresh_token, user_id)
-        if not access_token_result["success"]:
+        access_result = tokens_manager.refresh_access_token(refresh_token, user_id)
+        if not access_result.success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=access_token_result["error"]
+                detail=access_result.error
             )
         
-        access_token = access_token_result["token"]  # 获取令牌字符串
+        access_token = access_result.data
         print(">>> access_token:", access_token)
         
-        return refresh_token, access_token  # 返回两个令牌字符串
+        return refresh_token, access_token
 
     def _create_browser_device_id(request: Request) -> str:
         """为浏览器创建或获取设备ID
@@ -190,35 +182,18 @@ def create_users_endpoints(
         password: str = Form(...),
         device_id: str = Form(None),
     ):
-        """用户登录接口
-        
-        Args:            
-            username: 用户名
-            password: 密码
-            response: FastAPI响应对象
-            
-        Returns:
-            JSONResponse: 包含用户信息和认证令牌的响应
-            
-        Raises:
-            HTTPException:
-                - 400: 缺少用户名或密码
-                - 401: 认证失败
-                - 403: 账户被锁定或未激活
-                - 500: 服务器内部错误
-        """
-
+        """用户登录接口"""
         try:
             # 验证密码
             verify_result = users_manager.verify_user_password(username, password)
             
-            if not verify_result.get("success", False):
-                if verify_result.get("is_locked", False):
+            if not verify_result.success:
+                if verify_result.data.get("is_locked", False):
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="账户已锁定"
                     )
-                elif not verify_result.get("is_active", True):
+                elif not verify_result.data.get("is_active", True):
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN, 
                         detail="账户未激活"
@@ -226,33 +201,21 @@ def create_users_endpoints(
                 else:
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="认证失败"
+                        detail=verify_result.error or "认证失败"
                     )
             
-            if not verify_result.get("user", None):
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="用户信息不存在"
-                )
-
-            # 获取或创建设备ID
-            user_info = verify_result["user"]
-            print(">>> user_info: ", user_info)
-
-            device_id = device_id or request.cookies.get("device_id") or _create_browser_device_id(request)
-            print(">>> device_id: ", device_id)
-
-            token_data = _create_token_data(user_info, device_id)
-            if not token_data:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to retrieve user info"
-                )
-            require_password_change = verify_result["require_password_change"]
+            user_info = verify_result.data["user"]
+            require_password_change = verify_result.data["require_password_change"]
             
-            refresh_token, access_token = _create_refresh_token_and_access_token(user_info["user_id"], token_data)
-            print(">>> refresh_token: ", refresh_token)
-            print(">>> access_token: ", access_token)
+            # 获取或创建设备ID
+            device_id = device_id or request.cookies.get("device_id") or _create_browser_device_id(request)
+            
+            token_data = _create_token_data(user_info, device_id)
+            refresh_token, access_token = _create_refresh_token_and_access_token(
+                user_info["user_id"], 
+                token_data
+            )
+            
             tokens_manager.set_auth_cookies(
                 response, 
                 access_token=access_token, 
@@ -656,10 +619,10 @@ def create_users_endpoints(
         current_user: dict = Depends(tokens_manager.require_roles([UserRole.ADMIN]))
     ):
         result = users_manager.update_user_roles(user_id, roles)
-        if not result["success"]:
+        if not result.success:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result["error"]
+                detail=result.error
             )
 
         return {
@@ -685,9 +648,17 @@ def create_users_endpoints(
         }
 
     @app.get(f"{prefix}/auth/devices")
-    async def list_devices(current_user: dict = Depends(tokens_manager.get_current_user)):
+    async def list_devices(
+        current_user: dict = Depends(tokens_manager.get_current_user)
+    ):
         """列出用户的所有登录设备"""
-        devices = tokens_manager.list_user_devices(current_user["user_id"])
+        result = tokens_manager.list_user_devices(current_user["user_id"])
+        if not result.success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.error
+            )
+        
         return {
             "devices": [
                 {
@@ -695,7 +666,7 @@ def create_users_endpoints(
                     "last_active": device_info["claims"].iat,
                     "is_current": device_id == current_user["device_id"]
                 }
-                for device_id, device_info in devices.items()
+                for device_id, device_info in result.data.items()
             ]
         }
 

@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Set, Union, List
+from typing import Dict, Any, Optional, Set, Union, List, Dict
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from jose import jwt, JWTError
@@ -11,11 +11,19 @@ import uuid
 import os
 
 from ....io import ConfigStoreProtocol, FileConfigStore
+from ...result import Result
 from ..dependencies import AuthDependencies
 from .models import TokenClaims
 
 from ....config import get_env
 __USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
+
+@dataclass
+class TokenResult:
+    """令牌操作结果"""
+    token: str
+    payload: Optional[Dict[str, Any]] = None
+    new_token: Optional[str] = None
 
 @dataclass
 class TokensManager:
@@ -200,9 +208,8 @@ class TokensManager:
         except Exception as e:
             raise
 
-    def verify_jwt(self, token: str, verify_exp: bool = True, token_type: str = "access") -> Dict[str, Any]:
-        """验证JWT令牌，如果是访问令牌且验证失败，尝试使用刷新令牌刷新
-        """
+    def verify_jwt(self, token: str, verify_exp: bool = True, token_type: str = "access") -> Result[TokenResult]:
+        """验证JWT令牌"""
         try:
             # 先不验证签名解码看看内容
             unverified = jwt.decode(
@@ -211,119 +218,75 @@ class TokensManager:
                 options={"verify_signature": False}
             )
             
-            # 设置验证选项
-            options = {
-                'verify_signature': True,
-                'verify_exp': verify_exp,
-                'verify_iat': True,
-                'require_exp': True,
-                'require_iat': True,
-                'leeway': 0,
-            }
-            
             try:
                 payload = jwt.decode(
                     token,
                     key=self.secret_key,
                     algorithms=[self.algorithm],
-                    options=options
+                    options={
+                        'verify_signature': True,
+                        'verify_exp': verify_exp,
+                        'verify_iat': True,
+                        'require_exp': True,
+                        'require_iat': True,
+                        'leeway': 0,
+                    }
                 )
                 
-                # 检查令牌是否被撤销
                 user_id = payload.get("user_id")
                 device_id = payload.get("device_id")
                 
                 if not user_id or not device_id:
-                    return {
-                        "success": False,
-                        "error": "Invalid token: missing user_id or device_id"
-                    }
+                    return Result.fail("无效的令牌：缺少user_id或device_id")
                 
-                if token_type == "access":
-                    if self.is_access_token_revoked(token, user_id):
-                        return {
-                            "success": False,
-                            "error": "Token has been revoked"
-                        }
-                elif token_type == "refresh":
-                    if self.is_refresh_token_revoked(token, user_id):
-                        return {
-                            "success": False,
-                            "error": "Token has been revoked"
-                        }
+                if token_type == "access" and self.is_access_token_revoked(token, user_id):
+                    return Result.fail("令牌已被撤销")
+                elif token_type == "refresh" and self.is_refresh_token_revoked(token, user_id):
+                    return Result.fail("令牌已被撤销")
                 
-                return {
-                    "success": True,
-                    "payload": payload
-                }
+                return Result.ok(data=TokenResult(token=token, payload=payload))
                 
             except jwt.ExpiredSignatureError:
-                # 如果是访问令牌过期，尝试使用刷新令牌
                 if token_type == "access":
                     user_id = unverified.get("user_id")
                     device_id = unverified.get("device_id")
                     
                     if not user_id or not device_id:
-                        return {
-                            "success": False,
-                            "error": "Invalid token: missing user_id or device_id"
-                        }
+                        return Result.fail("无效的令牌：缺少user_id或device_id")
                     
                     # 查找相同设备的刷新令牌
                     refresh_data = self._refresh_tokens.get(user_id) or {}
                     device_tokens = refresh_data.get(device_id, {})
-                    print(">>> device_tokens: ", device_tokens)
                     refresh_token = device_tokens.get("token")
                     
                     if refresh_token:
                         # 尝试刷新访问令牌
                         refresh_result = self.refresh_access_token(refresh_token, user_id)
-                        if refresh_result["success"]:
-                            return {
-                                "success": True,
-                                "payload": unverified,
-                                "new_token": refresh_result["token"]
-                            }
-                
-                return {
-                    "success": False,
-                    "error": "Token has expired"
-                }
+                        if refresh_result.success:
+                            return Result.ok(
+                                data=TokenResult(
+                                    token=token,
+                                    payload=unverified,
+                                    new_token=refresh_result.data
+                                )
+                            )
+                return Result.fail("令牌已过期")
                 
             except jwt.JWTError as e:
-                return {
-                    "success": False,
-                    "error": f"Invalid token: {str(e)}"
-                }
+                return Result.fail(f"无效的令牌: {str(e)}")
                 
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"Token verification error: {str(e)}"
-            }
+            return Result.fail(f"令牌验证错误: {str(e)}")
 
-    def create_refresh_token(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """创建刷新令牌
-        
-        Args:
-            data: 同 create_access_token
-                
-        Returns:
-            dict: 包含创建结果的字典
-                - success: 是否成功
-                - token: 成功时返回的令牌
-                - error: 失败时的错误信息
-        """
+    def create_refresh_token(self, data: Dict[str, Any]) -> Result[str]:
+        """创建刷新令牌"""
         try:
             current_time = datetime.utcnow()
             expire = current_time + timedelta(days=self.refresh_token_expire_days)            
-            iat_timestamp = timegm(current_time.utctimetuple())
-            exp_timestamp = timegm(expire.utctimetuple())
-            
             claims = TokenClaims.from_dict({
                 **data,
-                "exp": exp_timestamp,
-                "iat": iat_timestamp,
+                "exp": timegm(expire.utctimetuple()),
+                "iat": timegm(current_time.utctimetuple()),
                 "token_type": "refresh",
             })
             
@@ -334,34 +297,22 @@ class TokensManager:
             )
             
             self.add_refresh_token(claims, token=encoded_jwt, owner_id=data["user_id"])
-            
-            return {
-                "success": True,
-                "token": encoded_jwt
-            }
+            return Result.ok(data=encoded_jwt)
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"Failed to create refresh token: {str(e)}"
-            }
+            return Result.fail(f"创建刷新令牌失败: {str(e)}")
 
-    def create_access_token(self, data: dict) -> dict:
+    def create_access_token(self, data: dict) -> Result[str]:
         """创建访问令牌"""
-        print(">>> data: ", data)
         try:
             current_time = datetime.utcnow()
-            expire = current_time + timedelta(minutes=self.access_token_expire_minutes)            
-            iat_timestamp = timegm(current_time.utctimetuple())
-            exp_timestamp = timegm(expire.utctimetuple())
-            
+            expire = current_time + timedelta(minutes=self.access_token_expire_minutes)
             claims = TokenClaims.from_dict({
                 **data,
-                "exp": exp_timestamp,
-                "iat": iat_timestamp,
+                "exp": timegm(expire.utctimetuple()),
+                "iat": timegm(current_time.utctimetuple()),
                 "token_type": "access",
             })
-
-            print(">>> claims: ", claims.to_dict())
+            
             encoded_jwt = jwt.encode(
                 claims.to_dict(),
                 self.secret_key,
@@ -369,16 +320,9 @@ class TokensManager:
             )
             
             self.add_access_token(claims, token=encoded_jwt, owner_id=data["user_id"])
-            
-            return {
-                "success": True,
-                "token": encoded_jwt
-            }
+            return Result.ok(data=encoded_jwt)
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"Failed to create access token: {str(e)}"
-            }
+            return Result.fail(f"创建访问令牌失败: {str(e)}")
 
     def set_auth_cookies(
         self, response: Response,
@@ -433,120 +377,64 @@ class TokensManager:
             print(">>> 设置 cookies 时发生错误:", str(e))
             raise
 
-    def list_user_devices(self, user_id: str) -> Dict[str, Any]:
+    def list_user_devices(self, user_id: str) -> Result[List[str]]:
         """列出用户的所有已登录设备"""
         try:
             refresh_data = self._refresh_tokens.get(user_id) or {}
-            devices = list(refresh_data.keys())
-
-            return {
-                "success": True,
-                "devices": devices
-            }
-            
+            return Result.ok(data=list(refresh_data.keys()))
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"Failed to list devices: {str(e)}"
-            }
+            return Result.fail(f"获取设备列表失败: {str(e)}")
 
-    def revoke_user_access_tokens(self, user_id: str) -> dict:
-        """仅撤销指定用户的所有访问令牌
-        
-        Args:
-            user_id: 用户ID
-            
-        Returns:
-            dict: 操作结果
-                - success: 是否成功
-                - message: 成功消息，包含撤销的令牌数量
-                - error: 错误信息（如果失败）
-        """
+    def revoke_user_access_tokens(self, user_id: str) -> Result[None]:
+        """仅撤销指定用户的所有访问令牌"""
         try:
-            # 获取用户的所有访问令牌
             user_tokens = self._access_tokens.get(user_id, {})
             token_count = len(user_tokens)
             
-            # 清除用户的所有访问令牌
             if user_id in self._access_tokens:
                 del self._access_tokens[user_id]
             
-            return {
-                "success": True,
-                "message": f"已撤销 {token_count} 个访问令牌"
-            }
+            return Result.ok(message=f"已撤销 {token_count} 个访问令牌")
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"撤销访问令牌失败: {str(e)}"
-            }
+            return Result.fail(f"撤销访问令牌失败: {str(e)}")
 
-    def revoke_all_user_tokens(self, user_id: str) -> dict:
-        """撤销用户的所有访问令牌和刷新令牌
-        
-        Args:
-            user_id: 用户ID
-            
-        Returns:
-            dict: 操作结果
-        """
+    def revoke_all_user_tokens(self, user_id: str) -> Result[None]:
+        """撤销用户的所有访问令牌和刷新令牌"""
         try:
-            # 1. 撤销访问令牌
             access_count = len(self._access_tokens.get(user_id, {}))
             if user_id in self._access_tokens:
                 del self._access_tokens[user_id]
             
-            # 2. 撤销刷新令牌
             refresh_data = self._refresh_tokens.get(user_id)
             refresh_count = len(refresh_data) if refresh_data else 0
             self._refresh_tokens.set(value={}, owner_id=user_id)
             
-            return {
-                "success": True,
-                "message": f"已撤销 {access_count} 个访问令牌和 {refresh_count} 个刷新令牌"
-            }
+            return Result.ok(
+                message=f"已撤销 {access_count} 个访问令牌和 {refresh_count} 个刷新令牌"
+            )
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"撤销所有令牌失败: {str(e)}"
-            }
+            return Result.fail(f"撤销所有令牌失败: {str(e)}")
 
-    def revoke_device_tokens(self, user_id: str, device_id: str) -> dict:
-        """撤销指定设备的所有令牌
-        
-        Args:
-            user_id: 用户ID
-            device_id: 设备ID
-            
-        Returns:
-            dict: 操作结果
-        """
+    def revoke_device_tokens(self, user_id: str, device_id: str) -> Result[None]:
+        """撤销指定设备的所有令牌"""
         try:
-            # 1. 撤销访问令牌
             access_tokens = self._access_tokens.get(user_id, {})
             if device_id in access_tokens:
                 del access_tokens[device_id]
                 self._access_tokens[user_id] = access_tokens
             
-            # 2. 撤销刷新令牌
             refresh_data = self._refresh_tokens.get(user_id) or {}
             had_refresh = device_id in refresh_data
             if had_refresh:
                 del refresh_data[device_id]
                 self._refresh_tokens.set(value=refresh_data, owner_id=user_id)
             
-            return {
-                "success": True,
-                "message": f"已撤销设备 {device_id} 的所有令牌"
-            }
+            return Result.ok(message=f"已撤销设备 {device_id} 的所有令牌")
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"撤销设备令牌失败: {str(e)}"
-            }
+            return Result.fail(f"撤销设备令牌失败: {str(e)}")
 
     def is_access_token_revoked(self, token: str, user_id: str) -> bool:
-        """检查访问令牌是否已��撤销
+        """检查访问令牌是否已被撤销
         
         Args:
             token: 访问令牌字符串
@@ -585,34 +473,25 @@ class TokensManager:
         except Exception as e:
             return True
 
-    def refresh_access_token(self, refresh_token: str, user_id: str) -> Dict[str, Any]:
+    def refresh_access_token(self, refresh_token: str, user_id: str) -> Result[str]:
         """使用 Refresh-Token 刷新令牌颁发新的 Access-Token"""
         try:
             # 验证 Refresh-Token
             verify_result = self.verify_jwt(refresh_token, verify_exp=True, token_type="refresh")
-            if not verify_result["success"]:
-                return {
-                    "success": False,
-                    "error": verify_result["error"]
-                }
+            if not verify_result.success:
+                return Result.fail(verify_result.error)
             
-            refresh_claims = verify_result["payload"]
+            refresh_claims = verify_result.data.payload
             
             # 验证必要字段
             required_fields = ["user_id", "device_id"]
             for field in required_fields:
                 if field not in refresh_claims:
-                    return {
-                        "success": False,
-                        "error": f"Missing required field: {field}"
-                    }
+                    return Result.fail(f"令牌缺少必要字段: {field}")
             
             # 验证用户ID匹配
             if refresh_claims["user_id"] != user_id:
-                return {
-                    "success": False,
-                    "error": "User ID mismatch"
-                }
+                return Result.fail("用户ID不匹配")
             
             # 创建新的访问令牌
             token_data = {
@@ -625,7 +504,4 @@ class TokensManager:
             return self.create_access_token(token_data)
             
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"Failed to refresh access token: {str(e)}"
-            }
+            return Result.fail(f"刷新访问令牌失败: {str(e)}")

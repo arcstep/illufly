@@ -41,24 +41,23 @@ class TestTokenCreation:
         # 创建访问令牌
         test_data = { **test_user.to_dict(), **device_info }
         result = tokens_manager.create_access_token(data=test_data)
-        print(">>> result: ", result)
-        assert result["success"] is True
-        access_token = result["token"]
+        assert result.success, f"创建访问令牌失败: {result.error}"
+        access_token = result.data
 
-        # 验证令牌格式是否正确
+        # 验证令牌格式
         assert isinstance(access_token, str)
         assert access_token.count('.') == 2  # JWT 令牌应包含两个点
 
         # 解码令牌以验证声明
         verified = tokens_manager.verify_jwt(access_token, token_type="access")
-        assert verified["success"] is True
-        payload = verified["payload"]
+        assert verified.success, f"验证令牌失败: {verified.error}"
+        payload = verified.data.payload
         assert payload["user_id"] == test_user.user_id
         assert payload["exp"] is not None
         assert payload["iat"] is not None
         assert payload["token_type"] == "access"
 
-        # 验证过期时间是否正确设置
+        # 验证过期时间
         expire_time = datetime.utcfromtimestamp(payload["exp"])
         expected_expire_time = datetime.utcnow() + timedelta(minutes=tokens_manager.access_token_expire_minutes)
         assert abs((expire_time - expected_expire_time).total_seconds()) < 60  # 允许一分钟的误差
@@ -77,18 +76,17 @@ class TestTokenCreation:
         # 创建刷新令牌
         test_data = { **test_user.to_dict(), **device_info }
         result = tokens_manager.create_refresh_token(data=test_data)
-        print(">>> result: ", result)
-        assert result["success"] is True
-        refresh_token = result["token"]
+        assert result.success, f"创建刷新令牌失败: {result.error}"
+        refresh_token = result.data
 
-        # 验证令牌格式是否正确
+        # 验证令牌格式
         assert isinstance(refresh_token, str)
         assert refresh_token.count('.') == 2  # JWT 令牌应包含两个点
 
-        # 解码令牌以验证声明
+        # 验证令牌声明
         verified = tokens_manager.verify_jwt(refresh_token, token_type="refresh")
-        assert verified["success"] is True
-        payload = verified["payload"]
+        assert verified.success, f"验证令牌失败: {verified.error}"
+        payload = verified.data.payload
         assert payload["user_id"] == test_user.user_id
         assert payload["exp"] is not None
         assert payload["iat"] is not None
@@ -111,8 +109,8 @@ class TestTokenVerification:
         
         # 创建访问令牌
         token_result = tokens_manager.create_access_token(test_data)
-        assert token_result["success"]
-        access_token = token_result["token"]
+        assert token_result.success, f"创建令牌失败: {token_result.error}"
+        access_token = token_result.data
         
         # 验证令牌
         verify_result = tokens_manager.verify_jwt(
@@ -121,9 +119,8 @@ class TestTokenVerification:
             token_type="access"
         )
         
-        # 验证结果
-        assert verify_result["success"]
-        payload = verify_result["payload"]
+        assert verify_result.success, f"验证令牌失败: {verify_result.error}"
+        payload = verify_result.data.payload
         assert payload["user_id"] == test_user.user_id
         assert payload["username"] == test_user.username
         assert payload["roles"] == [role.value for role in test_user.roles]
@@ -149,8 +146,8 @@ class TestTokenRefresh:
         
         # 创建刷新令牌
         refresh_result = tokens_manager.create_refresh_token(test_data)
-        assert refresh_result["success"]
-        refresh_token = refresh_result["token"]
+        assert refresh_result.success, f"创建刷新令牌失败: {refresh_result.error}"
+        refresh_token = refresh_result.data
         
         # 使用刷新令牌获取新的访问令牌
         refresh_access_result = tokens_manager.refresh_access_token(
@@ -158,21 +155,18 @@ class TestTokenRefresh:
             user_id=test_user.user_id
         )
         
-        # 验证刷新结果
-        assert refresh_access_result["success"]
-        assert "token" in refresh_access_result
+        assert refresh_access_result.success, f"刷新访问令牌失败: {refresh_access_result.error}"
+        new_token = refresh_access_result.data
         
-        # 验证新令牌的有效性
-        new_token = refresh_access_result["token"]
+        # 验证新令牌
         verify_result = tokens_manager.verify_jwt(
             new_token,
             verify_exp=True,
             token_type="access"
         )
         
-        # 验证新令牌的payload
-        assert verify_result["success"]
-        payload = verify_result["payload"]
+        assert verify_result.success, f"验证新令牌失败: {verify_result.error}"
+        payload = verify_result.data.payload
         assert payload["user_id"] == test_user.user_id
         assert payload["username"] == test_user.username
         assert set(payload["roles"]) == {role.value for role in test_user.roles}
@@ -193,12 +187,12 @@ class TestTokenRevocation:
         test_data = { **test_user.to_dict(), **device_info }        
         device1_access = tokens_manager.create_access_token(test_data)
         device1_refresh = tokens_manager.create_refresh_token(test_data)
-        assert device1_access["success"] and device1_refresh["success"]
+        assert device1_access.success and device1_refresh.success
 
         other_device_data = { **test_data, "device_id": "other_device" }
         device2_access = tokens_manager.create_access_token(other_device_data)
         device2_refresh = tokens_manager.create_refresh_token(other_device_data)
-        assert device2_access["success"] and device2_refresh["success"]
+        assert device2_access.success and device2_refresh.success
         
         # 验证令牌创建成功且存储在管理器中
         assert test_user.user_id in tokens_manager._access_tokens
@@ -209,7 +203,8 @@ class TestTokenRevocation:
             test_user.user_id,
             device_info['device_id']
         )
-        assert revoke_result["success"]        
+        assert revoke_result.success, f"撤销令牌失败: {revoke_result.error}"
+        
         # 验证第一个设备的令牌已被撤销
         device1_tokens = tokens_manager._access_tokens.get(test_user.user_id, {})
         assert device_info['device_id'] not in device1_tokens
@@ -242,7 +237,7 @@ class TestTokenRevocation:
             }
             access_result = tokens_manager.create_access_token(test_data)
             refresh_result = tokens_manager.create_refresh_token(test_data)
-            assert access_result["success"] and refresh_result["success"]
+            assert access_result.success and refresh_result.success
         
         # 验证令牌已存储
         assert test_user.user_id in tokens_manager._access_tokens
@@ -251,13 +246,13 @@ class TestTokenRevocation:
         
         # 撤销所有令牌
         revoke_result = tokens_manager.revoke_all_user_tokens(test_user.user_id)
-        assert revoke_result["success"]
+        assert revoke_result.success, f"撤销所有令牌失败: {revoke_result.error}"
         
         # 验证所有令牌已被撤销
         assert len(tokens_manager._access_tokens.get(test_user.user_id, {})) == 0
-        all_devices = tokens_manager.list_user_devices(test_user.user_id)
-        assert all_devices["success"] is True
-        assert len(all_devices["devices"]) == 0
+        devices_result = tokens_manager.list_user_devices(test_user.user_id)
+        assert devices_result.success, f"获取设备列表失败: {devices_result.error}"
+        assert len(devices_result.data) == 0
 
     def test_revoke_access_tokens_only(self, tokens_manager, test_user, device_info):
         """测试仅撤销用户所有设备上的访问令牌
@@ -272,7 +267,7 @@ class TestTokenRevocation:
         # 创建令牌
         access_result = tokens_manager.create_access_token(test_data)
         refresh_result = tokens_manager.create_refresh_token(test_data)
-        assert access_result["success"] and refresh_result["success"]
+        assert access_result.success and refresh_result.success
         
         # 验证令牌已存储
         assert test_user.user_id in tokens_manager._access_tokens
@@ -281,10 +276,8 @@ class TestTokenRevocation:
         assert device_info['device_id'] in tokens_manager._refresh_tokens.get(test_user.user_id)
         
         # 仅撤销访问令牌
-        revoke_result = tokens_manager.revoke_user_access_tokens(
-            test_user.user_id
-        )
-        assert revoke_result["success"]
+        revoke_result = tokens_manager.revoke_user_access_tokens(test_user.user_id)
+        assert revoke_result.success, f"撤销访问令牌失败: {revoke_result.error}"
         
         # 验证访问令牌已被撤销，但刷新令牌仍然存在
         assert device_info['device_id'] not in tokens_manager._access_tokens.get(test_user.user_id, {})
@@ -303,17 +296,17 @@ class TestTokenRevocation:
         # 创建令牌
         access_result = tokens_manager.create_access_token(test_data)
         refresh_result = tokens_manager.create_refresh_token(test_data)
-        assert access_result["success"] and refresh_result["success"]
+        assert access_result.success and refresh_result.success
         
-        access_token = access_result["token"]
-        refresh_token = refresh_result["token"]
+        access_token = access_result.data
+        refresh_token = refresh_result.data
         
         # 撤销令牌
         revoke_result = tokens_manager.revoke_device_tokens(
             test_user.user_id,
             test_data["device_id"]
         )
-        assert revoke_result["success"]
+        assert revoke_result.success, f"撤销令牌失败: {revoke_result.error}"
         
         # 验证已撤销的访问令牌
         access_verify = tokens_manager.verify_jwt(
@@ -321,8 +314,8 @@ class TestTokenRevocation:
             verify_exp=True,
             token_type="access"
         )
-        assert not access_verify["success"]
-        assert "Token has been revoked" in access_verify["error"]
+        assert not access_verify.success
+        assert "令牌已被撤销" in access_verify.error
         
         # 验证已撤销的刷新令牌
         refresh_verify = tokens_manager.verify_jwt(
@@ -330,6 +323,6 @@ class TestTokenRevocation:
             verify_exp=True,
             token_type="refresh"
         )
-        assert not refresh_verify["success"]
-        assert "Token has been revoked" in refresh_verify["error"]
+        assert not refresh_verify.success
+        assert "令牌已被撤销" in refresh_verify.error
 

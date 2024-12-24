@@ -6,6 +6,7 @@ from datetime import datetime
 from ....core.runnable.vectordb import VectorDB
 from ....io import ConfigStoreProtocol, FileConfigStore
 from ...users import UsersManager
+from ...result import Result
 from .models import VectorDBConfig
 
 from ....config import get_env
@@ -28,161 +29,92 @@ class VectorDBManager:
                 data_dir=Path(__USERS_PATH__),
                 filename="vectordb.json",
                 data_class=Dict[str, VectorDBConfig],
-                serializer=lambda dbs: {
-                    name: db_config.to_dict()
-                    for name, db_config in dbs.items()
-                },
-                deserializer=lambda data: {
-                    name: VectorDBConfig.from_dict(db_data)
-                    for name, db_data in data.items()
-                },
-                use_id_subdirs=True
             )
         self._storage = storage
         # 向量数据库实例缓存
         self._db_instances: Dict[str, Dict[str, VectorDB]] = {}  # user_id -> {db_name -> instance}
 
-    def create_db(self, user_id: str, db_name: str, db_config: Dict[str, Any], requester_id: str) -> bool:
-        """创建新的知识库
-        Args:
-            user_id: 用户ID
-            db_name: 数据库名称
-            db_config: 数据库配置
-            requester_id: 请求者用户ID
-        Returns:
-            是否创建成功
-        """
-        if not self.users_manager.can_access_user(user_id, requester_id):
-            return {
-                "success": False,
-                "message": "You are not allowed to create database"
-            }
-
+    def create_db(self, user_id: str, db_name: str, db_config: Dict[str, Any]) -> Result[VectorDB]:
+        """创建新的知识库"""
         try:
             # 获取用户的数据库配置
-            user_dbs = self._storage.get("vectordbs", owner_id=user_id) or {}
+            user_dbs = self._storage.get(owner_id=user_id) or {}
             
             if db_name in user_dbs:
-                return {
-                    "success": False,
-                    "message": "Database already exists"
-                }
+                return Result.fail("数据库已存在")
                 
             config = VectorDBConfig(
                 name=db_name,
                 **db_config
             )
             user_dbs[db_name] = config
-            self._storage.set("vectordbs", user_dbs, owner_id=user_id)
+            self._storage.set(user_dbs, owner_id=user_id)
 
             # 创建数据库实例
             db = self.create_db_instance(user_id, db_name, config)
             if not db:
-                return {
-                    "success": False,
-                    "message": "Failed to create database instance"
-                }
+                return Result.fail("创建数据库实例失败")
 
             # 更新缓存
             if user_id not in self._db_instances:
                 self._db_instances[user_id] = {}
             self._db_instances[user_id][db_name] = db
-            return {
-                "success": True,
-                "message": "Database created successfully",
-                "instance": db
-            }
+            return Result.ok(data=db, message="数据库创建成功")
 
         except Exception as e:
-            return {
-                "success": False,
-                "message": f"Error creating database: {e}"
-            }
+            return Result.fail(f"创建数据库时发生错误: {e}")
 
-    def list_dbs(self, user_id: str, requester_id: str) -> List[str]:
-        """列出用户的所有知识库
-        Args:
-            user_id: 用户ID
-            requester_id: 请求者用户ID
-        Returns:
-            知识库名称列表
-        """
-        if requester_id != user_id:  # 权限检查
-            return []
-
-        user_dbs = self._storage.get("vectordbs", owner_id=user_id)
-        if not user_dbs:
-            return []
-            
-        return list(user_dbs.keys())
-
-    def get_db(self, user_id: str, db_name: str, requester_id: str) -> Optional[VectorDB]:
-        """获取向量数据库实例"""
-        if not self.users_manager.can_access_user(user_id, requester_id):
-            return {
-                "success": False,
-                "message": "You cannot access this database"
-            }
-
-        # 检查缓存
-        if user_id in self._db_instances and db_name in self._db_instances[user_id]:
-            return {
-                "success": True,
-                "message": "Database retrieved successfully",
-                "instance": self._db_instances[user_id][db_name]
-            }
-
-        # 获取配置
-        user_dbs = self._storage.get("vectordbs", owner_id=user_id)
-        if not user_dbs or db_name not in user_dbs:
-            return {
-                "success": False,
-                "message": "Database not found"
-            }
-            
-        config = user_dbs[db_name]
-
+    def list_dbs(self, user_id: str) -> Result[List[str]]:
+        """列出用户的所有知识库"""
         try:
+            user_dbs = self._storage.get(owner_id=user_id)
+            if not user_dbs:
+                return Result.ok(data=[])
+            
+            return Result.ok(data=list(user_dbs.keys()))
+        except Exception as e:
+            return Result.fail(f"获取数据库列表失败: {e}")
+
+    def get_db(self, user_id: str, db_name: str) -> Result[VectorDB]:
+        """获取向量数据库实例"""
+        try:
+            # 检查缓存
+            if user_id in self._db_instances and db_name in self._db_instances[user_id]:
+                return Result.ok(
+                    data=self._db_instances[user_id][db_name],
+                    message="成功获取数据库实例"
+                )
+
+            # 获取配置
+            user_dbs = self._storage.get(owner_id=user_id)
+            if not user_dbs or db_name not in user_dbs:
+                return Result.fail("数据库不存在")
+            
+            config = user_dbs[db_name]
+
             # 创建实例
             if user_id not in self._db_instances:
                 self._db_instances[user_id] = {}
-                
+            
             db = self.create_db_instance(user_id, db_name, config)
             if db:
                 self._db_instances[user_id][db_name] = db
-                return {
-                    "success": True,
-                    "message": "Database retrieved successfully",
-                    "instance": db
-                }
+                return Result.ok(data=db, message="成功获取数据库实例")
+            return Result.fail("创建数据库实例失败")
         except Exception as e:
-            return {
-                "success": False,
-                "message": f"Error loading vector database: {e}"
-            }
-        
-        return {
-            "success": False,
-            "message": "Database not found"
-        }
+            return Result.fail(f"获取数据库实例失败: {e}")
 
-    def remove_db(self, user_id: str, db_name: str, requester_id: str) -> bool:
+    def remove_db(self, user_id: str, db_name: str) -> Result[None]:
         """删除知识库"""
-        if not self.users_manager.can_access_user(user_id, requester_id):
-            return {
-                "success": False,
-                "message": "You are not allowed to remove database"
-            }
-
         try:
             # 从配置中移除
-            user_dbs = self._storage.get("vectordbs", owner_id=user_id)
+            user_dbs = self._storage.get(owner_id=user_id)
             if user_dbs and db_name in user_dbs:
                 del user_dbs[db_name]
                 if user_dbs:
-                    self._storage.set("vectordbs", user_dbs, owner_id=user_id)
+                    self._storage.set(user_dbs, owner_id=user_id)
                 else:
-                    self._storage.delete("vectordbs", owner_id=user_id)
+                    self._storage.delete(owner_id=user_id)
 
             # 从缓存中移除
             if user_id in self._db_instances and db_name in self._db_instances[user_id]:
@@ -190,21 +122,15 @@ class VectorDBManager:
                 if not self._db_instances[user_id]:
                     del self._db_instances[user_id]
 
-            return {
-                "success": True,
-                "message": "Database removed successfully"
-            }
+            return Result.ok(message="数据库删除成功")
         except Exception as e:
-            return {
-                "success": False,
-                "message": f"Error removing database: {e}"
-            }
+            return Result.fail(f"删除数据库失败: {e}")
 
     def create_db_instance(self, user_id: str, db_name: str, config: VectorDBConfig) -> Optional[VectorDB]:
         """创建向量库实例"""
-        from ...community.dashscope import TextEmbeddings
-        from ...community.faiss import FaissDB
-        from ...io import LocalFileKnowledgeDB
+        from ....community.dashscope import TextEmbeddings
+        from ....community.faiss import FaissDB
+        from ....io import LocalFileKnowledgeDB
 
         # 创建向量库实例
         if config.db_type == "faiss":

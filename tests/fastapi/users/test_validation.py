@@ -20,7 +20,7 @@ class TestValidation:
         - 验证密码包含数字
         """
         result = users_manager.validate_password(password)
-        assert result["success"] is is_valid
+        assert result.success is is_valid
 
     @pytest.mark.parametrize("email,is_valid", [
         ("invalid", False),
@@ -34,7 +34,7 @@ class TestValidation:
         - 验证邮箱格式是否正确
         """
         result = users_manager.validate_email(email)
-        assert result["success"] is is_valid
+        assert result.success is is_valid
 
     @pytest.mark.parametrize("username,is_valid", [
         ("ab", False),  # 太短
@@ -50,4 +50,4 @@ class TestValidation:
         - 验证用户名的最大长度
         """
         result = users_manager.validate_username(username)
-        assert result["success"] is is_valid 
+        assert result.success is is_valid 

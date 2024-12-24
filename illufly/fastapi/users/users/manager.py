@@ -4,6 +4,7 @@ from pathlib import Path
 from passlib.context import CryptContext
 
 from ....io import ConfigStoreProtocol, FileConfigStore
+from ...result import Result
 from ..tokens import TokensManager
 from ..invite import InviteCodeManager
 from .models import User, UserRole
@@ -61,20 +62,14 @@ class UsersManager:
         # 初始化管理员用户
         self.ensure_admin_user()
 
-    def hash_password(self, password: str) -> str:
+    def hash_password(self, password: str) -> Result[str]:
         """对密码进行哈希处理"""
         try:
-            return {
-                "success": True,
-                "hash": self.pwd_context.hash(password)
-            }
+            return Result.ok(data=self.pwd_context.hash(password))
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return Result.fail(f"密码哈希处理失败: {str(e)}")
 
-    def get_user(self, user_id: str, requester_id: str) -> Optional[User]:
+    def get_user(self, user_id: str) -> Optional[User]:
         """通过ID获取用户对象"""
         return self._storage.get(owner_id=user_id)
 
@@ -94,49 +89,34 @@ class UsersManager:
         password: str = None, 
         require_password_change: bool = True,
         password_expires_days: int = 90
-    ) -> Dict[str, Any]:
+    ) -> Result[Tuple[User, Optional[str]]]:
         """创建新用户"""
         try:
             username = username or email
 
             # 验证用户名
             username_validation = self.validate_username(username)
-            if not username_validation["success"]:
-                return {
-                    "success": False,
-                    "error": username_validation["error"]
-                }
+            if not username_validation.success:
+                return Result.fail(username_validation.error)
             
             # 验证邮箱
             if email:
                 email_validation = self.validate_email(email)
-                if not email_validation["success"]:
-                    return {
-                        "success": False,
-                        "error": email_validation["error"]
-                    }
+                if not email_validation.success:
+                    return Result.fail(email_validation.error)
             
             # 验证密码
             if password:
                 password_validation = self.validate_password(password)
-                if not password_validation["success"]:
-                    return {
-                        "success": False,
-                        "error": password_validation["error"]
-                    }
+                if not password_validation.success:
+                    return Result.fail(password_validation.error)
 
             # 检查用户名或邮箱是否已存在        
             if self._storage.has_duplicate({"username": username}):
-                return {
-                    "success": False,
-                    "error": f"用户名已存在"
-                }
+                return Result.fail("用户名已存在")
 
             if self._storage.has_duplicate({"email": email}):
-                return {
-                    "success": False,
-                    "error": f"邮箱已存在"
-                }
+                return Result.fail("邮箱已存在")
 
             # 生成随机密码（如果没有提供）
             generated_password = None
@@ -146,18 +126,15 @@ class UsersManager:
 
             # 对密码进行哈希处理
             hash_result = self.hash_password(password)
-            if not hash_result["success"]:
-                return {
-                    "success": False,
-                    "error": hash_result["error"]
-                }
+            if not hash_result.success:
+                return Result.fail(hash_result.error)
 
             # 创建新用户对象
             user = User(
                 user_id=user_id,
                 username=username,
                 email=email,
-                password_hash=hash_result["hash"],
+                password_hash=hash_result.data,
                 roles=set(roles or [UserRole.USER, UserRole.GUEST]),
                 created_at=datetime.now(),
                 require_password_change=require_password_change,
@@ -168,50 +145,23 @@ class UsersManager:
             # 保存用户数据
             try:
                 self._storage.set(user, owner_id=user.user_id)
+                return Result.ok(data=(user, generated_password))
             except Exception as e:
-                return {
-                    "success": False,
-                    "error": f"Failed to save user data: {str(e)}",
-                    "user": None,
-                    "generated_password": None
-                }
-            
-            return {
-                "success": True,
-                "generated_password": generated_password,
-                "user": user,
-                "error": None
-            }
+                return Result.fail(f"保存用户数据失败: {str(e)}")
             
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"Unexpected error while creating user: {str(e)}",
-                "user": None,
-                "generated_password": None
-            }
+            return Result.fail(f"创建用户时发生错误: {str(e)}")
 
-    def verify_user_password(self, username: str, password: str) -> Dict[str, Any]:
+    def verify_user_password(self, username: str, password: str) -> Result[Dict[str, Any]]:
         """验证用户密码"""
         try:
             user = self.get_user_by_username(username)
             if not user:
-                return {
-                    "success": False, 
-                    "require_password_change": False, 
-                    "user": None,
-                    "error": "User not found"
-                }
+                return Result.fail("用户不存在")
             
             # 验证密码
-            verify_result = self.pwd_context.verify(password, user.password_hash)
-            if not verify_result:
-                return {
-                    "success": False, 
-                    "require_password_change": False, 
-                    "user": None,
-                    "error": "密码错误"
-                }
+            if not self.pwd_context.verify(password, user.password_hash):
+                return Result.fail("密码错误")
 
             require_password_change = (
                 user.require_password_change or 
@@ -223,42 +173,50 @@ class UsersManager:
             if "roles" in user_dict:
                 user_dict["roles"] = list(user_dict["roles"])
 
-            return {
-                "success": True, 
-                "require_password_change": require_password_change, 
-                "user": user_dict,
-                "error": None
-            }
+            return Result.ok(data={
+                "require_password_change": require_password_change,
+                "user": user_dict
+            })
         except Exception as e:
-            return {
-                "success": False,
-                "require_password_change": False,
-                "user": None,
-                "error": str(e)
-            }
+            return Result.fail(f"密码验证失败: {str(e)}")
 
-    def update_user_roles(self, user_id: str, roles: List[str]) -> Dict[str, Any]:
+    def update_user_roles(self, user_id: str, roles: List[str]) -> Result[None]:
         """更新用户角色"""
         try:
             user = self._storage.get(owner_id=user_id)
             if not user:
-                return {
-                    "success": False,
-                    "error": "User not found"
-                }
+                return Result.fail("用户不存在")
 
             user_roles = {UserRole(role) for role in roles}
             user.roles = user_roles
             self._storage.set(user, owner_id=user_id)
-            return {
-                "success": True,
-                "error": None
-            }
+            return Result.ok()
         except ValueError:
-            return {
-                "success": False,
-                "error": "Invalid role value"
-            }
+            return Result.fail("无效的角色值")
+
+    def update_user(self, user_id: str, **kwargs) -> Result[None]:
+        """更新用户信息"""
+        try:    
+            user = self._storage.get(owner_id=user_id)
+            if not user:
+                return Result.fail("用户不存在")
+
+            for key, value in kwargs.items():
+                if hasattr(user, key):
+                    setattr(user, key, value)
+            self._storage.set(user, owner_id=user_id)
+            return Result.ok()
+        except Exception as e:
+            return Result.fail(f"更新用户信息失败: {str(e)}")
+
+    def delete_user(self, user_id: str) -> Result[None]:
+        """删除用户"""
+        try:
+            if not self._storage.delete(owner_id=user_id):
+                return Result.fail("用户不存在")
+            return Result.ok()
+        except Exception as e:
+            return Result.fail(f"删除用户失败: {str(e)}")
 
     def list_users(self) -> List[Dict[str, Any]]:
         """列出所有用户"""
@@ -267,122 +225,54 @@ class UsersManager:
             if user := self._storage.get(owner_id=user_id):
                 users.append(user.to_dict(include_sensitive=False))
         return users
-
-    def update_user(self, user_id: str, **kwargs) -> Dict[str, Any]:
-        """更新用户信息"""
-        try:    
-            user = self._storage.get(owner_id=user_id)
-            if not user:
-                return {
-                    "success": False,
-                    "error": "User not found"
-                }
-
-            for key, value in kwargs.items():
-                if hasattr(user, key):
-                    setattr(user, key, value)
-            self._storage.set(user, owner_id=user_id)
-            return {
-                "success": True,
-                "error": None
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
-
-    def change_password(self, user_id: str, old_password: str, new_password: str) -> Dict[str, Any]:
+    
+    def change_password(self, user_id: str, old_password: str, new_password: str) -> Result[None]:
         """修改用户密码"""
         try:
             user = self._storage.get(owner_id=user_id)
             if not user:
-                return {
-                    "success": False,
-                    "error": "User not found"
-                }
+                return Result.fail("用户不存在")
 
             # 验证旧密码
             verify_result = self.pwd_context.verify(old_password, user.password_hash)
             if not verify_result:
-                return {
-                    "success": False,
-                    "error": "旧密码错误"
-                }
+                return Result.fail("旧密码错误")
 
             # 对新密码进行哈希处理
             hash_result = self.hash_password(new_password)
-            if not hash_result["success"]:
-                return {
-                    "success": False,
-                    "error": hash_result["error"]
-                }
+            if not hash_result.success:
+                return Result.fail(hash_result.error)
 
-            user.password_hash = hash_result["hash"]
+            user.password_hash = hash_result.data
             user.last_password_change = datetime.now()
             user.require_password_change = False
             
             self._storage.set(user, owner_id=user_id)
-            return {
-                "success": True,
-                "error": None
-            }
+            return Result.ok()
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            print(f"修改用户密码失败: {str(e)}")
+            return Result.fail(f"修改用户密码失败: {str(e)}")
 
     def reset_password(self, user_id: str, new_password: str, admin_required: bool = True) -> Dict[str, Any]:
         """重置用户密码（管理员功能）"""
         try:
             user = self._storage.get(owner_id=user_id)
             if not user:
-                return {
-                    "success": False,
-                    "error": "User not found"
-                }
+                return Result.fail("用户不存在")
 
             # 对新密码进行哈希处理
             hash_result = self.hash_password(new_password)
             if not hash_result["success"]:
-                return {
-                    "success": False,
-                    "error": hash_result["error"]
-                }
+                return Result.fail(hash_result.error)
         
             user.password_hash = hash_result["hash"]
             user.last_password_change = datetime.now()
             user.require_password_change = True
             
             self._storage.set(user, owner_id=user_id)
-            return {
-                "success": True,
-                "error": None
-            }
+            return Result.ok()
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
-
-    def delete_user(self, user_id: str) -> Dict[str, Any]:
-        """删除用户"""
-        try:
-            if not self._storage.delete(owner_id=user_id):
-                return {
-                    "success": False,
-                    "error": "User not found"
-                }
-            return {
-                "success": True,
-                "error": None
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return Result.fail(f"重置用户密码失败: {str(e)}")
 
     def user_exists(self, user_id: str) -> bool:
         """检查用户是否存在"""
@@ -449,70 +339,40 @@ class UsersManager:
                 - error: 未通过时的错误信息
         """
         if len(password) < 8:
-            return {
-                "success": False,
-                "error": "密码长度必须至少为8个字符"
-            }
+            return Result.fail("密码长度必须至少为8个字符")
+        
         if not re.search(r"[A-Z]", password):
-            return {
-                "success": False,
-                "error": "密码必须包含至少一个大写字母"
-            }
+            return Result.fail("密码必须包含至少一个大写字母")
+        
         if not re.search(r"[a-z]", password):
-            return {
-                "success": False,
-                "error": "密码必须包含至少一个小写字母"
-            }
+            return Result.fail("密码必须包含至少一个小写字母")
+        
         if not re.search(r"\d", password):
-            return {
-                "success": False,
-                "error": "密码必须包含至少一个数字"
-            }
-        return {
-            "success": True,
-            "error": None
-        }
+            return Result.fail("密码必须包含至少一个数字")
+        
+        return Result.ok()
 
     def validate_email(self, email: str) -> Dict[str, Any]:
         """验证邮箱格式"""
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         if not re.match(pattern, email):
-            return {
-                "success": False,
-                "error": "邮箱格式无效"
-            }
-        return {
-            "success": True,
-            "error": None
-        }
+            return Result.fail("邮箱格式无效")
+        
+        return Result.ok()
 
     def validate_username(self, username: str) -> Dict[str, Any]:
         """验证用户名格式"""
         if not username:
-            return {
-                "success": False,
-                "error": "用户名不能为空"
-            }
+            return Result.fail("用户名不能为空")
             
         if len(username) < 3 or len(username) > 32:
-            return {
-                "success": False,
-                "error": "用户名长度必须在3到32个字符之间"
-            }
+            return Result.fail("用户名长度必须在3到32个字符之间")
+            
             
         if not username[0].isalpha():
-            return {
-                "success": False,
-                "error": "用户名必须以字母开头"
-            }
+            return Result.fail("用户名必须以字母开头")
             
         if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', username):
-            return {
-                "success": False,
-                "error": "用户名只能包含字母、数字和下划线"
-            }
+            return Result.fail("用户名只能包含字母、数字和下划线")
             
-        return {
-            "success": True,
-            "error": None
-        }
+        return Result.ok()

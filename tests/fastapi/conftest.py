@@ -66,5 +66,5 @@ def exist_user(users_manager, test_user, test_user_password):
         username=test_user.username,
         password=test_user_password
     )
-    assert result["success"]
+    assert result.success
     return test_user
