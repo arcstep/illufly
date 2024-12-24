@@ -36,7 +36,7 @@ class VectorDBManager:
         # 向量数据库实例缓存
         self._db_instances: Dict[str, Dict[str, VectorDB]] = {}  # user_id -> {db_name -> instance}
 
-    def create_db(self, user_id: str, db_name: str, db_config: Dict[str, Any]) -> Result[VectorDB]:
+    def create_db(self, user_id: str, db_name: str, db_config: Dict[str, Any]={}) -> Result[VectorDB]:
         """创建新的知识库"""
         try:
             # 获取用户的数据库配置
@@ -147,3 +147,38 @@ class VectorDBManager:
         #     return MilvusDB(name=db_name, embeddings=TextEmbeddings(), knowledge=LocalFileKnowledgeDB(db_name))
         else:
             raise ValueError(f"Unsupported database type: {config.db_type}")
+
+    def update_db_config(self, user_id: str, db_name: str, updates: Dict[str, Any]) -> Result[None]:
+        """更新知识库配置
+        
+        Args:
+            user_id: 用户ID
+            db_name: 知识库名称
+            updates: 要更新的配置项
+        """
+        try:
+            # 获取现有配置
+            user_dbs = self._storage.get(owner_id=user_id)
+            if not user_dbs or db_name not in user_dbs:
+                return Result.fail("数据库不存在")
+            
+            config = user_dbs[db_name]
+            
+            # 更新配置
+            for key, value in updates.items():
+                setattr(config, key, value)
+            
+            # 保存更新后的配置
+            user_dbs[db_name] = config
+            self._storage.set(user_dbs, owner_id=user_id)
+            
+            # 重新创建实例
+            if user_id in self._db_instances and db_name in self._db_instances[user_id]:
+                del self._db_instances[user_id][db_name]
+                db = self.create_db_instance(user_id, db_name, config)
+                if db:
+                    self._db_instances[user_id][db_name] = db
+            
+            return Result.ok(message="配置更新成功")
+        except Exception as e:
+            return Result.fail(f"更新配置失败: {e}")
