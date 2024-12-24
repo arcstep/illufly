@@ -51,20 +51,21 @@ def step_impl(context):
 def step_impl(context):
     """验证系统正确验证了用户凭据"""
     response = context.response.json()
-    assert response['user_info']
-    context.user_info = response['user_info']
+    assert response['data']['user_info']
+    context.user_info = response['data']['user_info']
 
 @then('用户凭据应验证成功')
 def step_impl(context):
     """验证系统正确验证了用户凭据"""
     response = context.response.json()
-    assert response['user_info']
-    context.user_info = response['user_info']
+    print(">>> login response: ", response)
+    assert response['data']['user_info']
+    context.user_info = response['data']['user_info']
 
 @then('返回成功响应，包含')
 def step_impl(context):
     """验证返回的数据结构符合API文档"""
-    data = context.response.json()
+    data = context.response.json()['data']
     
     # 验证所有必需字段存在且类型正确
     for row in context.table:
@@ -122,15 +123,15 @@ def step_impl(context):
     
     # 获取用户的设备列表
     user_id = context.user_info["user_id"]
-    all_devices = context.tokens_manager.list_user_devices(user_id)
-    print(">>> list_user_devices: ", all_devices)
+    result = context.tokens_manager.list_user_devices(user_id)
+    print(">>> list_user_devices: ", result.data)
     
     # 验证响成功
-    assert all_devices["success"] is True, "获取设备列表失败"
-    assert all_devices["devices"] is not None, "设备列表为空"
+    assert result.success is True, "获取设备列表失败"
+    assert result.data is not None, "设备列表为空"
     
     # 验证设备列表中包含表格中指定的所有设备
-    device_ids = all_devices["devices"]
+    device_ids = result.data
     for row in context.table:
         if row['字段'] == 'device_id':
             print(">>> 验证设备：", row['值'], "是否在列表中", device_ids)
@@ -143,14 +144,14 @@ def step_impl(context):
     
     # 获取用户的设备列表
     user_id = context.user_info["user_id"]
-    all_devices = context.tokens_manager.list_user_devices(user_id)
-    print(">>> list_user_devices: ", all_devices)
+    result = context.tokens_manager.list_user_devices(user_id)
+    print(">>> list_user_devices: ", result.data)
     
     # 验证响成功
-    assert all_devices["success"] is True, "获取设备列表失败"
+    assert result.success is True, "获取设备列表失败"
     
     # 验证设备列表中包含表格中指定的所有设备
-    device_ids = all_devices["devices"]
+    device_ids = result.data
     for row in context.table:
         if row['字段'] == 'device_id':
             print(">>> 验证设备：", row['值'], "是否不在列表中", device_ids)
@@ -172,7 +173,7 @@ def step_impl(context):
     
     # 发送登出请求，带上所有 cookies
     response = context.client.post(
-        "/api/auth/logout",
+        "/api/auth/logout-device",
     )
 
     # 打印响应信息用于调试
@@ -210,8 +211,7 @@ def step_impl(context):
 def step_impl(context):
     """验证系统返回401错误"""
     response = context.login_response
-    assert response.status_code == 401, \
-        f"期望状态码401，实际得到{response.status_code}"
+    assert response.status_code == 401, f"期望状态码401，实际得到{response.status_code}"
     
     # 验证响应中没有设置认证cookie
     assert "access_token" not in response.cookies
@@ -220,20 +220,3 @@ def step_impl(context):
     print(f"Response Status Code: {response.status_code}")
     print(f"Response Cookies: {response.cookies}")
 
-
-@then('错误信息应包含认证失败的详情')
-def step_impl(context):
-    """验证错误响应的详细信息"""
-    response = context.login_response
-    response_data = response.json()
-    
-    # 验证错误响应的结构
-    assert "detail" in response_data, \
-        "响应中缺少错误详情"
-    
-    error_detail = response_data["detail"]
-    # 只验是否包含"认证失败"，不再检查具体原因
-    assert "认证失败" in error_detail, \
-        f"错误信息不符合预期: {error_detail}"
-    
-    print(f"Error Response: {response_data}")

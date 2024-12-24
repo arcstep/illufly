@@ -18,3 +18,11 @@ class Result(Generic[T]):
     @classmethod
     def fail(cls, error: str, message: str = "操作失败") -> "Result[T]":
         return cls(success=False, message=message, error=error)
+
+    def to_dict(self) -> dict:
+        return {
+            "success": self.success,
+            "message": self.message,
+            "error": self.error,
+            "data": self.data
+        }

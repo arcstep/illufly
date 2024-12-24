@@ -331,15 +331,8 @@ class TokensManager:
         device_id: str = None
     ) -> None:
         """设置认证Cookie"""
-        print(">>> 开始设置 cookies...")
-        print(">>> response 类型:", type(response))
-        print(">>> access_token:", access_token[:20] if access_token else None)
-        print(">>> refresh_token:", refresh_token[:20] if refresh_token else None)
-        print(">>> device_id:", device_id)
-        
         try:
             if access_token:
-                print(">>> 设置 access_token cookie...")
                 response.set_cookie(
                     key="access_token",
                     value=access_token,
@@ -347,10 +340,8 @@ class TokensManager:
                     secure=True,
                     samesite="Lax"
                 )
-                print(">>> access_token cookie 已设置")
 
             if refresh_token:
-                print(">>> 设置 refresh_token cookie...")
                 response.set_cookie(
                     key="refresh_token",
                     value=refresh_token,
@@ -358,10 +349,8 @@ class TokensManager:
                     secure=True,
                     samesite="Lax"
                 )
-                print(">>> refresh_token cookie 已设置")
 
             if device_id:
-                print(">>> 设置 device_id cookie...")
                 response.set_cookie(
                     key="device_id",
                     value=device_id,
@@ -369,9 +358,6 @@ class TokensManager:
                     secure=True,
                     samesite="Lax"
                 )
-                print(">>> device_id cookie 已设置")
-            
-            print(">>> cookies 设置完成")
             
         except Exception as e:
             print(">>> 设置 cookies 时发生错误:", str(e))

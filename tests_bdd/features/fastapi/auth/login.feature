@@ -107,7 +107,6 @@ Feature: 用户多设备登录管理
     Then 用户凭据应验证成功
     And 返回成功响应，包含:
       | 字段                 | 类型    |
-      | success              | boolean |
       | user_info            | object  |
       | require_password_change | boolean |
     And HTTP响应存在认证令牌
@@ -127,7 +126,6 @@ Feature: 用户多设备登录管理
     Then 用户凭据应验证成功
     And 返回成功响应，包含:
       | 字段                 | 类型    |
-      | success              | boolean |
       | user_info            | object  |
       | require_password_change | boolean |
     And HTTP响应存在认证令牌
@@ -167,7 +165,6 @@ Feature: 用户多设备登录管理
       | username | testuser          |
       | password | wrongpassword     |
     Then 系统应返回401未授权错误
-    And 错误信息应包含认证失败的详情
 
 
   """

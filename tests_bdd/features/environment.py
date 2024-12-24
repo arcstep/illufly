@@ -36,17 +36,15 @@ def before_scenario(context: Context, scenario) -> None:
     if os.path.exists(__USERS_PATH__):
         shutil.rmtree(__USERS_PATH__)
 
-    tokens_manager = TokensManager(config_store_path=__USERS_PATH__)
-    users_manager = UsersManager(tokens_manager=tokens_manager, config_store_path=__USERS_PATH__)
+    users_manager = UsersManager(config_store_path=__USERS_PATH__)
     
     # 设置 FastAPI 应用
     app = FastAPI()
     create_users_endpoints(
         app,
         users_manager=users_manager,
-        tokens_manager=tokens_manager
     )
 
     context.client = TestClient(app)
     context.users_manager = users_manager
-    context.tokens_manager = tokens_manager
+    context.tokens_manager = users_manager.tokens_manager
