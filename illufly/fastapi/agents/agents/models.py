@@ -13,7 +13,6 @@ class AgentConfig:
     events_history_path: str = ""
     memory_history_path: str = ""
     created_at: Optional[datetime] = None
-    last_used: Optional[datetime] = None
     is_active: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
@@ -27,7 +26,6 @@ class AgentConfig:
             'events_history_path': self.events_history_path,
             'memory_history_path': self.memory_history_path,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'last_used': self.last_used.isoformat() if self.last_used else None,
             'is_active': self.is_active
         }
 
@@ -43,6 +41,5 @@ class AgentConfig:
             events_history_path=data.get('events_history_path', ''),
             memory_history_path=data.get('memory_history_path', ''),
             created_at=datetime.fromisoformat(data['created_at']) if data.get('created_at') else None,
-            last_used=datetime.fromisoformat(data['last_used']) if data.get('last_used') else None,
             is_active=data.get('is_active', True)
         )

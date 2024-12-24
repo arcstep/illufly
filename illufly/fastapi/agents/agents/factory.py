@@ -1,98 +1,135 @@
-from typing import Any, Dict, List, Optional, Tuple
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Protocol
 from pathlib import Path
 from datetime import datetime
+
 from ....core.runnable.vectordb import VectorDB
+from ....core.runnable import Runnable
 from ....config import get_env
 from .models import AgentConfig
 
-__USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
-
-def get_agent_paths(user_id: str, agent_name: str) -> Dict[str, str]:
-    """获取代理相关的所有路径"""
-    base_store_path = Path(__USERS_PATH__) / user_id / "store"
+class BaseAgentFactory(ABC):
+    """Agent工厂基类"""
     
-    paths = {
-        'events': str(base_store_path / "hist" / agent_name),
-        'memory': str(base_store_path / "memory" / agent_name),
-    }
-    
-    for path in paths.values():
-        Path(path).mkdir(parents=True, exist_ok=True)
-    
-    return paths
-
-class AgentFactory:
-    """Agent实例创建工厂"""
-    
-    @staticmethod
-    def create_agent(
+    @abstractmethod
+    def create_agent_config(
+        self,
         user_id: str,
         agent_type: str,
         agent_name: str,
         vectordbs: List[str] = None,
         **kwargs
-    ) -> Tuple[AgentConfig, Any]:
-        """创建代理实例和配置"""
+    ) -> AgentConfig:
+        """创建代理配置
+        
+        Args:
+            user_id: 用户ID
+            agent_type: 代理类型
+            agent_name: 代理名称
+            vectordbs: 向量库列表
+            **kwargs: 额外配置参数
+            
+        Returns:
+            AgentConfig: 代理配置对象
+        """
+        pass
+
+    @abstractmethod
+    def create_agent_instance(
+        self,
+        user_id: str,
+        agent_config: AgentConfig,
+        vectordb_instances: List[VectorDB] = None,
+    ) -> Runnable:
+        """创建代理实例
+        
+        Args:
+            user_id: 用户ID
+            agent_config: 代理配置
+            vectordb_instances: 向量库实例列表
+            
+        Returns:
+            Runnable: Agent实例
+        """
+        pass
+
+class DefaultAgentFactory(BaseAgentFactory):
+    """默认的Agent工厂实现"""
+    
+    def create_agent_config(
+        self,
+        user_id: str,
+        agent_type: str,
+        agent_name: str,
+        vectordbs: List[str] = None,
+        **kwargs
+    ) -> AgentConfig:
+        """创建代理配置"""
+        def get_agent_paths(user_id: str, agent_name: str) -> Dict[str, str]:
+            """获取代理相关的所有路径"""
+            base_store_path = Path(get_env("ILLUFLY_FASTAPI_USERS_PATH")) / user_id / "store"
+            paths = {
+                'events': str(base_store_path / "hist" / agent_name),
+                'memory': str(base_store_path / "memory" / agent_name),
+            }            
+            for path in paths.values():
+                Path(path).mkdir(parents=True, exist_ok=True)
+            
+            return paths
+
         paths = get_agent_paths(user_id, agent_name)
-        # 创建配置
-        config = AgentConfig(
+        return AgentConfig(
             agent_name=agent_name,
             agent_type=agent_type,
             description=kwargs.get("description", ""),
             config=kwargs.get("config", {}),
-            vectordbs=vectordbs,
+            vectordbs=vectordbs or [],
             events_history_path=paths['events'],
             memory_history_path=paths['memory'],
-            created_at=datetime.now(),
-            last_used=datetime.now()
+            created_at=datetime.now()
         )
-        
-        return config
 
-    @staticmethod
-    def cleanup_agent(user_id: str, agent_name: str):
-        """清理代理相关的文件"""
-        paths = get_agent_paths(user_id, agent_name)
-        
-        for path in [paths['events'], paths['memory']]:
-            path = Path(path)
-            if path.exists():
-                import shutil
-                shutil.rmtree(path)
-
-    @staticmethod
     def create_agent_instance(
+        self,
         user_id: str,
         agent_config: AgentConfig,
         vectordb_instances: List[VectorDB] = None,
-    ) -> Optional[VectorDB]:
-        """创建智能体实例"""
-        from ...chat import ChatQwen
-        from ...flow import ChatLearn
-        from ...io import LocalFileEventsHistory, LocalFileMemoryHistory, LocalFileKnowledgeDB
+    ) -> Runnable:
+        """创建代理实例"""
+        from ....chat import ChatQwen, FakeLLM
+        from ....flow import ChatLearn
+        from ....io import LocalFileEventsHistory, LocalFileMemoryHistory
 
         agent_type = agent_config.agent_type
         agent_name = agent_config.agent_name
-        paths = get_agent_paths(user_id, agent_name)        
+        events_path = agent_config.events_history_path
+        memory_path = agent_config.memory_history_path
         vectordb_instances = vectordb_instances or []
 
         if agent_type == "chat":
             return ChatQwen(
                 name=agent_name,
                 vectordbs=vectordb_instances,
-                events_history=LocalFileEventsHistory(paths['events']),
-                memory_history=LocalFileMemoryHistory(paths['memory'])
+                events_history=LocalFileEventsHistory(events_path),
+                memory_history=LocalFileMemoryHistory(memory_path)
+            )
+        elif agent_type == "fake":
+            return FakeLLM(
+                name=agent_name,
+                vectordbs=vectordb_instances,
+                events_history=LocalFileEventsHistory(events_path),
+                memory_history=LocalFileMemoryHistory(memory_path)
             )
         elif agent_type == "learn":
             chat_agent = ChatQwen(
                 name=f"{agent_name}_scribe",
                 vectordbs=vectordb_instances,
-                memory_history=LocalFileMemoryHistory(paths['memory'])
+                memory_history=LocalFileMemoryHistory(memory_path)
             )
             return ChatLearn(
                 chat_agent,
                 name=agent_name,
-                events_history=LocalFileEventsHistory(paths['events'])
+                events_history=LocalFileEventsHistory(events_path)
             )
         else:
             raise ValueError(f"Unknown agent type: {agent_type}")
