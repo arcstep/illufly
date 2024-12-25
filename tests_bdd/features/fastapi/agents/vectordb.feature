@@ -80,15 +80,18 @@ Feature: 向量知识库管理
   Background: 测试环境准备
     Given FastAPI 已经准备好
     And 清理测试数据
-    And 系统已有测试用户:
+    And 系统已有注册用户:
       | 字段     | 值              |
       | username | test_user       |
       | password | Test123!@#      |
       | email    | test@example.com|
       | roles    | ["user"]        |
-    And 用户已登录系统
+    When 用户登录到设备:
+      | 字段    | 值             |
+      | username | test_user         |
+      | password | Test123!@#        |
 
-  @core @happy-path
+  @core @happy-path @wip
   Scenario: 创建新的知识库
     """
     基础场景,创建一个新的知识库并验证其配置。

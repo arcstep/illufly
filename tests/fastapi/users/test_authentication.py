@@ -10,6 +10,7 @@ class TestAuthentication:
         """测试注册用户
         验证用户注册功能是否正常工作。
         """
+        print(">>> users_manager: ", users_manager._storage._data_dir)
         result = users_manager.create_user(
             email=test_user.email,
             username=test_user.username,

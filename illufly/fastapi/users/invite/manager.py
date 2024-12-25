@@ -2,21 +2,19 @@ from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ....config import get_env
 from ....io import ConfigStoreProtocol, FileConfigStore
 from .models import InviteCode
 
-from ....config import get_env
-__USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
-
 class InviteCodeManager:
-    def __init__(self, storage: Optional[ConfigStoreProtocol] = None, config_store_path: str = None):
+    def __init__(self, storage: Optional[ConfigStoreProtocol] = None):
         """初始化邀请码管理器
         Args:
             storage: 存储实现，如果为None则使用默认的文件存储
         """
         if storage is None:
             storage = FileConfigStore(
-                data_dir=Path(config_store_path or __USERS_PATH__),
+                data_dir=Path(get_env("ILLUFLY_CONFIG_STORE_DIR")),
                 filename="invite_codes.json",
                 data_class=List[InviteCode],
                 serializer=lambda invite_codes: [invite_code.to_dict() for invite_code in invite_codes],

@@ -10,13 +10,12 @@ import re
 import uuid
 import os
 
+from ....config import get_env
 from ....io import ConfigStoreProtocol, FileConfigStore
 from ...result import Result
 from ..dependencies import AuthDependencies
 from .models import TokenClaims
 
-from ....config import get_env
-__USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 
 @dataclass
 class TokenResult:
@@ -96,7 +95,7 @@ class TokensManager:
     - FASTAPI_ALGORITHM: JWT算法 (HS256, HS384, HS512)
     - ACCESS_TOKEN_EXPIRE_MINUTES: 访问令牌过期时间（分钟）
     - REFRESH_TOKEN_EXPIRE_DAYS: 刷新令牌过期时间（天）
-    - ILLUFLY_FASTAPI_USERS_PATH: 令牌存储路径
+    - ILLUFLY_CONFIG_STORE_DIR: 令牌存储路径
     
     安全建议：
     1. 访问令牌过期时间建议设置为15-30分钟
@@ -107,7 +106,7 @@ class TokensManager:
     6. 在可疑活动时主动撤销用户的所有令牌
     """
     
-    def __init__(self, storage: Optional[ConfigStoreProtocol] = None, config_store_path: str = None):
+    def __init__(self, storage: Optional[ConfigStoreProtocol] = None):
         """初始化认证管理器
         
         Args:
@@ -119,7 +118,7 @@ class TokensManager:
         # 初始化存储
         if storage is None:
             storage = FileConfigStore(
-                data_dir=Path(config_store_path or __USERS_PATH__),
+                data_dir=Path(get_env("ILLUFLY_CONFIG_STORE_DIR")),
                 filename="tokens.json",
                 data_class=Dict[str, Dict[str, Dict[str, Any]]]
             )

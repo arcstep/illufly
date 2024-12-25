@@ -89,21 +89,36 @@ class FaissDB(VectorDB):
         
         # GPU相关设置
         if self.device.startswith("cuda"):
-            if ":" in self.device:  # 单GPU
-                gpu_id = int(self.device.split(":")[-1])
-                res = faiss.StandardGpuResources()
-                self.index = faiss.index_cpu_to_gpu(res, gpu_id, self.index)
-            else:  # 多GPU
-                if self.gpu_devices:
-                    co = faiss.GpuMultipleClonerOptions()
-                    co.shard = True  # 在GPU间分片
-                    self.index = faiss.index_cpu_to_gpu_multiple_py(
-                        self.gpu_devices, 
-                        self.index,
-                        co
-                    )
-                else:  # 使用所有可用GPU
-                    self.index = faiss.index_cpu_to_all_gpus(self.index)
+            try:
+                if ":" in self.device:  # 单GPU
+                    gpu_id = int(self.device.split(":")[-1])
+                    res = faiss.StandardGpuResources()
+                    self.index = faiss.index_cpu_to_gpu(res, gpu_id, self.index)
+                else:  # 多GPU
+                    if self.gpu_devices:
+                        try:
+                            co = faiss.GpuMultipleClonerOptions()
+                            co.shard = True  # 在GPU间分片
+                            self.index = faiss.index_cpu_to_gpu_multiple_py(
+                                self.gpu_devices, 
+                                self.index,
+                                co
+                            )
+                        except Exception as e:
+                            print(f"Warning: Failed to initialize multiple GPUs: {e}")
+                            print("Falling back to CPU mode")
+                            self.device = "cpu"
+                    else:  # 使用所有可用GPU
+                        try:
+                            self.index = faiss.index_cpu_to_all_gpus(self.index)
+                        except Exception as e:
+                            print(f"Warning: Failed to initialize all GPUs: {e}")
+                            print("Falling back to CPU mode")
+                            self.device = "cpu"
+            except Exception as e:
+                print(f"Warning: GPU initialization failed: {e}")
+                print("Falling back to CPU mode")
+                self.device = "cpu"
 
     def _batch_search(self, query_vector: np.ndarray, k: int) -> tuple:
         """分批执行搜索，用于GPU模式"""

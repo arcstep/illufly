@@ -14,7 +14,6 @@ import string
 import re
 
 from ....config import get_env
-__USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 __USER_CONFIG_FILENAME__ = "profile.json"
 __ADMIN_USER_ID__ = "admin"
 
@@ -24,18 +23,17 @@ class UsersManager:
         tokens_manager: TokensManager = None,
         invite_manager: InviteCodeManager = None,
         storage: Optional[ConfigStoreProtocol] = None,
-        config_store_path: str = None
     ):
         """初始化用户管理器
         Args:
             tokens_manager: 认证管理器
             storage: 存储实现，如果为None则使用默认的文件存储
         """
-        self.tokens_manager = tokens_manager or TokensManager(config_store_path=config_store_path)
-        self.invite_manager = invite_manager or InviteCodeManager(config_store_path=config_store_path)
+        self.tokens_manager = tokens_manager or TokensManager()
+        self.invite_manager = invite_manager or InviteCodeManager()
         if storage is None:
             storage = FileConfigStore(
-                data_dir=Path(config_store_path or __USERS_PATH__),
+                data_dir=Path(get_env("ILLUFLY_CONFIG_STORE_DIR")),
                 filename=__USER_CONFIG_FILENAME__,
                 data_class=User,
                 serializer=lambda user: user.to_dict(include_sensitive=True)

@@ -67,7 +67,7 @@ class DefaultAgentFactory(BaseAgentFactory):
         """创建代理配置"""
         def get_agent_paths(user_id: str, agent_name: str) -> Dict[str, str]:
             """获取代理相关的所有路径"""
-            base_store_path = Path(get_env("ILLUFLY_FASTAPI_USERS_PATH")) / user_id / "store"
+            base_store_path = Path(get_env("ILLUFLY_CONFIG_STORE_DIR")) / user_id / "store"
             paths = {
                 'events': str(base_store_path / "hist" / agent_name),
                 'memory': str(base_store_path / "memory" / agent_name),

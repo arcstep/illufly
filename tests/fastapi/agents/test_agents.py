@@ -7,9 +7,9 @@ def exist_db_name():
     return "test_db1"
 
 @pytest.fixture
-def vector_db_manager(users_manager, temp_dir, exist_user, exist_db_name):
+def vector_db_manager(users_manager, exist_user, exist_db_name, setup_env):
     """创建测试用的向量库管理器"""
-    manager = VectorDBManager(users_manager=users_manager, config_store_path=temp_dir)
+    manager = VectorDBManager(users_manager=users_manager)
     manager.create_db(
         user_id=exist_user.user_id,
         db_name=exist_db_name,
@@ -19,12 +19,11 @@ def vector_db_manager(users_manager, temp_dir, exist_user, exist_db_name):
     return manager
 
 @pytest.fixture
-def agents_manager(users_manager, vector_db_manager, temp_dir, exist_user):
+def agents_manager(users_manager, vector_db_manager, exist_user, setup_env):
     """创建测试用的代理管理器"""
     manager = AgentsManager(
         users_manager=users_manager,
         vectordb_manager=vector_db_manager,
-        config_store_path=temp_dir
     )
     return manager
 

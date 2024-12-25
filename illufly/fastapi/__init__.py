@@ -17,6 +17,7 @@ from .users import (
 )
 
 from .agents import (
-    AgentsManager, VectorDBManager, AgentConfig, VectorDBConfig,
+    AgentsManager, VectorDBManager, AgentConfig, VectorDBConfig, 
+    BaseAgentFactory, DefaultAgentFactory, BaseVectorDBFactory, DefaultVectorDBFactory,
     create_agents_endpoints
 )

@@ -5,8 +5,8 @@ from illufly.fastapi.users import InviteCodeManager
 from illufly.fastapi.users.invite import InviteCode
 
 @pytest.fixture
-def invite_code_manager(temp_dir):
-    return InviteCodeManager(config_store_path=temp_dir)
+def invite_code_manager():
+    return InviteCodeManager()
 
 def test_generate_invite_codes(invite_code_manager):
     """测试批量生成邀请码

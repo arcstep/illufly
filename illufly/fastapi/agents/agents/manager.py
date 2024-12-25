@@ -11,25 +11,25 @@ from .models import AgentConfig
 from .factory import BaseAgentFactory, DefaultAgentFactory
 
 from ....config import get_env
-__USERS_PATH__ = get_env("ILLUFLY_FASTAPI_USERS_PATH")
 __AGENT_CONFIG_FILENAME__ = "agent.json"
 
 class AgentsManager:
     def __init__(
         self,
         users_manager: UsersManager,
-        vectordb_manager: VectorDBManager,
+        vectordb_manager: VectorDBManager = None,
         agent_factory: Optional[BaseAgentFactory] = None,
         storage: Optional[ConfigStoreProtocol] = None,
-        config_store_path: str = None
     ):
         """初始化代理管理器"""
         self.users_manager = users_manager
-        self.vectordb_manager = vectordb_manager
+        self.vectordb_manager = vectordb_manager or VectorDBManager(
+            users_manager=users_manager,
+        )
 
         if storage is None:
             storage = FileConfigStore(
-                data_dir=Path(config_store_path or __USERS_PATH__),
+                data_dir=Path(get_env("ILLUFLY_CONFIG_STORE_DIR")),
                 filename=__AGENT_CONFIG_FILENAME__,
                 data_class=Dict[str, AgentConfig],
             )
