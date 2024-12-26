@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from typing import get_origin, get_args
 from pydantic import BaseModel, Field
 from collections import OrderedDict
+import warnings
 
 class DateTimeEncoder(json.JSONEncoder):
     """处理datetime和自定义对象的JSON编码器"""
@@ -589,16 +590,60 @@ class TinyFileDB(ConfigStoreProtocol):
                 results.append(data)
         return results
 
-    def has_duplicate(self, unique_attributes: Dict[str, Any], owner_id: str = "") -> bool:
-        """检查是否存在具有相同唯一属性值的数据"""
-        owners = [owner_id] if owner_id else self.list_owners()
+    def has_duplicate(self, unique_attributes: Dict[str, Any]) -> bool:
+        """检查是否存在具有相同唯一属性值的数据
         
-        for current_owner_id in owners:
-            if current_owner_id not in self._data:
-                self._load_owner_data(current_owner_id)
+        Args:
+            unique_attributes: 需要检查唯一性的属性字典。
+                             建议使用已建立索引的字段进行查询以获得更好的性能。
+        
+        Returns:
+            bool: 如果存在重复返回 True，否则返回 False
+        """
+        # 优先使用索引字段进行查询
+        indexed_attrs = {
+            k: v for k, v in unique_attributes.items() 
+            if k in self._index_fields
+        }
+        
+        if indexed_attrs:
+            # 使用第一个索引字段快速查找
+            field, value = next(iter(indexed_attrs.items()))
+            owners = self._find_with_index(field, value)
             
-            data = self._data.get(current_owner_id)
-            if data is not None and all(getattr(data, k, None) == v for k, v in unique_attributes.items()):
+            # 如果有其他条件，进一步过滤
+            if len(owners) > 0 and len(unique_attributes) > 1:
+                for owner_id in owners:
+                    if owner_id not in self._data:
+                        self._load_owner_data(owner_id)
+                    
+                    data = self._data.get(owner_id)
+                    if data is not None and all(
+                        getattr(data, k, None) == v 
+                        for k, v in unique_attributes.items()
+                    ):
+                        return True
+                return False
+            
+            return len(owners) > 0
+        
+        # 如果没有索引字段，发出警告并退化为全量扫描
+        warnings.warn(
+            f"No indexed fields found in unique_attributes. "
+            f"Consider adding indexes for better performance: {list(unique_attributes.keys())}",
+            UserWarning
+        )
+        
+        # 全量扫描
+        for owner_id in self.list_owners():
+            if owner_id not in self._data:
+                self._load_owner_data(owner_id)
+            
+            data = self._data.get(owner_id)
+            if data is not None and all(
+                getattr(data, k, None) == v 
+                for k, v in unique_attributes.items()
+            ):
                 return True
         
         return False

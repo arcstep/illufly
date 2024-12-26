@@ -129,9 +129,15 @@ class TestSimpleStorageData:
         assert len(owners) == 3
         assert set(owners) == {"owner1", "owner2", "owner3"}
 
-    def test_has_duplicate(self, storage_factory: Callable, test_data_factory: Callable):
-        """测试唯一性检查"""
-        storage = storage_factory()
+    def test_has_duplicate(self, tmp_path, test_data_factory: Callable):
+        """测试带索引的唯一性检查"""
+        # 创建带索引的存储实例
+        storage = TinyFileDB(
+            data_dir=str(tmp_path),
+            filename="test.json",
+            data_class=StorageData,
+            indexes=["email", "name"]  # 添加需要的索引
+        )
         
         # 准备测试数据
         test_data1 = test_data_factory(id="1", name="张三", email="zhangsan@test.com")
@@ -140,15 +146,31 @@ class TestSimpleStorageData:
         storage.set(test_data1, "owner1")
         storage.set(test_data2, "owner2")
         
-        # 测试已存在的唯一值
-        assert storage.has_duplicate({"email": "zhangsan@test.com"}) == True
+        # 验证索引已建立
+        assert "email" in storage._indexes
+        assert "name" in storage._indexes
         
-        # 测试不存在的唯一值
-        assert storage.has_duplicate({"email": "wangwu@test.com"}) == False
+        # 测试单个索引字段
+        with patch.object(storage, '_find_with_index') as mock_index_find:
+            mock_index_find.return_value = ["owner1"]
+            assert storage.has_duplicate({"email": "zhangsan@test.com"}) is True
+            mock_index_find.assert_called_once_with("email", "zhangsan@test.com")
         
-        # 测试多个属性组合的唯一性
-        assert storage.has_duplicate({"name": "张三", "email": "zhangsan@test.com"}) == True
-        assert storage.has_duplicate({"name": "张三", "email": "other@test.com"}) == False
+        # 测试不存在的值
+        with patch.object(storage, '_find_with_index') as mock_index_find:
+            mock_index_find.return_value = []
+            assert storage.has_duplicate({"email": "wangwu@test.com"}) is False
+            mock_index_find.assert_called_once_with("email", "wangwu@test.com")
+        
+        # 测试多个索引字段组合
+        with patch.object(storage, '_find_with_index') as mock_index_find:
+            mock_index_find.return_value = ["owner1"]
+            assert storage.has_duplicate({
+                "name": "张三",
+                "email": "zhangsan@test.com"
+            }) is True
+            # 验证使用了第一个索引字段
+            mock_index_find.assert_called_once()
 
     def test_find(self, storage_factory: Callable, test_data_factory: Callable):
         """测试find方法"""
@@ -231,6 +253,132 @@ class TestSimpleStorageData:
         
         # 验证owner目录仍然存在（因为还有其他文件）
         assert (tmp_path / "owner1").exists()
+
+    def test_has_duplicate_with_index(self, tmp_path, test_data_factory: Callable):
+        """测试使用索引的唯一性检查"""
+        # 创建带索引的存储实例
+        storage = TinyFileDB(
+            data_dir=str(tmp_path),
+            filename="test.json",
+            data_class=StorageData,
+            indexes=["email"]  # 启用email索引
+        )
+        
+        # 准备测试数据
+        test_data1 = test_data_factory(id="1", name="张三", email="zhangsan@test.com")
+        test_data2 = test_data_factory(id="2", name="李四", email="lisi@test.com")
+        
+        storage.set(test_data1, "owner1")
+        storage.set(test_data2, "owner2")
+        
+        # 验证索引已建立
+        assert "email" in storage._indexes
+        assert storage._indexes["email"]["zhangsan@test.com"] == ["owner1"]
+        
+        # 使用索引字段进行查询
+        with patch.object(storage, '_find_with_index') as mock_index_find:
+            mock_index_find.return_value = ["owner1"]
+            result = storage.has_duplicate({"email": "zhangsan@test.com"})
+            mock_index_find.assert_called_once_with("email", "zhangsan@test.com")
+            assert result is True
+        
+        # 测试不存在的值
+        with patch.object(storage, '_find_with_index') as mock_index_find:
+            mock_index_find.return_value = []
+            result = storage.has_duplicate({"email": "wangwu@test.com"})
+            mock_index_find.assert_called_once_with("email", "wangwu@test.com")
+            assert result is False
+        
+        # 测试组合条件（一个索引字段 + 一个非索引字段）
+        with patch.object(storage, '_find_with_index') as mock_index_find:
+            mock_index_find.return_value = ["owner1"]
+            result = storage.has_duplicate({
+                "email": "zhangsan@test.com",  # 索引字段
+                "name": "张三"  # 非索引字段
+            })
+            mock_index_find.assert_called_once_with("email", "zhangsan@test.com")
+            assert result is True
+
+    def test_has_duplicate_without_index(self, tmp_path, test_data_factory: Callable):
+        """测试无索引的唯一性检查"""
+        # 创建无索引的存储实例
+        storage = TinyFileDB(
+            data_dir=str(tmp_path),
+            filename="test.json",
+            data_class=StorageData
+        )
+        
+        # 准备测试数据
+        test_data1 = test_data_factory(id="1", name="张三", email="zhangsan@test.com")
+        test_data2 = test_data_factory(id="2", name="李四", email="lisi@test.com")
+        
+        storage.set(test_data1, "owner1")
+        storage.set(test_data2, "owner2")
+        
+        # 验证确实没有索引
+        assert not storage._indexes
+        
+        # 捕获警告信息
+        with pytest.warns(UserWarning, match="No indexed fields found"):
+            result = storage.has_duplicate({"email": "zhangsan@test.com"})
+            assert result is True
+        
+        # 测试不存在的值
+        with pytest.warns(UserWarning, match="No indexed fields found"):
+            result = storage.has_duplicate({"email": "wangwu@test.com"})
+            assert result is False
+        
+        # 测试多个属性组合
+        with pytest.warns(UserWarning, match="No indexed fields found"):
+            result = storage.has_duplicate({
+                "name": "张三",
+                "email": "zhangsan@test.com"
+            })
+            assert result is True
+
+    def test_has_duplicate_performance(self, tmp_path, test_data_factory: Callable):
+        """测试唯一性检查的性能差异"""
+        # 创建带索引和不带索引的存储实例
+        storage_with_index = TinyFileDB(
+            data_dir=str(tmp_path),
+            filename="test_indexed.json",
+            data_class=StorageData,
+            indexes=["email"]
+        )
+        
+        storage_without_index = TinyFileDB(
+            data_dir=str(tmp_path),
+            filename="test_no_index.json",
+            data_class=StorageData
+        )
+        
+        # 准备大量测试数据
+        for i in range(100):
+            data = test_data_factory(
+                id=str(i),
+                name=f"user{i}",
+                email=f"user{i}@test.com"
+            )
+            storage_with_index.set(data, f"owner{i}")
+            storage_without_index.set(data, f"owner{i}")
+        
+        # 测试索引查询性能
+        import time
+        
+        # 带索引的查询
+        start_time = time.time()
+        result_with_index = storage_with_index.has_duplicate({"email": "user99@test.com"})
+        index_time = time.time() - start_time
+        
+        # 不带索引的查询
+        start_time = time.time()
+        with pytest.warns(UserWarning):
+            result_without_index = storage_without_index.has_duplicate({"email": "user99@test.com"})
+        no_index_time = time.time() - start_time
+        
+        # 验证结果正确性和性能提升
+        assert result_with_index == result_without_index
+        assert index_time < no_index_time
 
 # 添加新的测试数据类
 @dataclass
@@ -399,7 +547,7 @@ class TestFileConfigStoreAdvanced:
             "tags": []
         }
         
-        # 验证反序���化错误处理
+        # 验证反序列化错误处理
         with pytest.raises(ValueError):
             storage._deserializer(invalid_data)
 
@@ -1178,7 +1326,7 @@ class TestFileConfigStoreCache:
             mock_get_path.assert_called_once()
 
     def test_indexed_search_with_cache(self, cached_storage_factory):
-        """测试索引搜索与缓���交互"""
+        """测试索引搜索与缓存交互"""
         storage = cached_storage_factory(cache_size=5)
         storage._index_fields = ["email"]  # 启用索引
         
