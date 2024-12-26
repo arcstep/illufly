@@ -236,6 +236,80 @@ class TinyFileDB(ConfigStoreProtocol):
        - 支持增量备份
        - 提供数据迁移工具
     
+    Pydantic 模型支持:
+    ```python
+    # 1. 定义 Pydantic 模型
+    class UserProfile(BaseModel):
+        user_id: str
+        email: str
+        name: str
+        age: int
+        created_at: datetime = Field(default_factory=datetime.now)
+        tags: List[str] = []
+        
+    # 2. 创建带索引的存储实例
+    db = TinyFileDB(
+        data_dir="/data",
+        filename="profiles.json",
+        data_class=UserProfile,
+        indexes=["email", "name"],  # 创建email和name的索引
+        cache_size=1000
+    )
+    
+    # 3. 存储和查询
+    user = UserProfile(
+        user_id="user1",
+        email="test@example.com",
+        name="张三",
+        age=25,
+        tags=["vip", "active"]
+    )
+    db.set(user, "owner1")
+    
+    # 使用索引快速查询
+    results = db.find({"email": "test@example.com"})
+    
+    # 复杂查询（组合索引和非索引字段）
+    results = db.find({
+        "email": "test@example.com",  # 使用索引
+        "age": lambda x: x > 20,      # 自定义条件
+        "tags": lambda x: "vip" in x  # 列表匹配
+    })
+    ```
+    
+    索引机制说明:
+    1. 索引结构:
+       ```python
+       {
+           "email": {
+               "test@example.com": ["owner1", "owner2"],
+               "other@example.com": ["owner3"]
+           },
+           "name": {
+               "张三": ["owner1"],
+               "李四": ["owner2", "owner3"]
+           }
+       }
+       ```
+    
+    2. 索引特点:
+       - 自动维护: 数据更新时自动更新索引
+       - 内存常驻: 索引保持在内存中以提供快速查询
+       - 持久化: 索引数据会被保存到文件系统
+       - 字段选择: 支持对多个字段建立索引
+    
+    3. 索引使用建议:
+       - 选择基数适中的字段建立索引
+       - 避免对大型列表或复杂对象建立索引
+       - 权衡索引数量与内存占用
+       - 优先索引常用的查询字段
+    
+    4. 查询优化:
+       - 优先使用索引字段进行查询
+       - 支持索引和非索引字段的组合查询
+       - 支持自定义匹配函数
+       - 支持复杂的嵌套查询
+    
     Args:
         data_dir (str): 数据存储目录路径
         filename (str): 数据文件名
@@ -653,21 +727,35 @@ class TinyFileDB(ConfigStoreProtocol):
             self.logger.error(f"保存索引失败: {e}")
 
     def _update_indexes(self, data: Any, owner_id: str) -> None:
-        """更新索引"""
+        """更新索引，支持列表值索引"""
         # 删除旧索引
         self._remove_from_indexes(owner_id)
         
         # 添加新索引
         for field in self._index_fields:
-            value = getattr(data, field)
+            value = getattr(data, field) if hasattr(data, field) else data.get(field)
+            if value is None:
+                continue
+            
             if field not in self._indexes:
                 self._indexes[field] = {}
-                
-            value_key = str(value)  # 确保键是字符串
-            if value_key not in self._indexes[field]:
-                self._indexes[field][value_key] = []
-            if owner_id not in self._indexes[field][value_key]:
-                self._indexes[field][value_key].append(owner_id)
+            
+            # 处理列表值
+            if isinstance(value, (list, tuple, set)):
+                # 为列表中的每个值创建索引
+                for item in value:
+                    value_key = str(item)
+                    if value_key not in self._indexes[field]:
+                        self._indexes[field][value_key] = []
+                    if owner_id not in self._indexes[field][value_key]:
+                        self._indexes[field][value_key].append(owner_id)
+            else:
+                # 处理普通值
+                value_key = str(value)
+                if value_key not in self._indexes[field]:
+                    self._indexes[field][value_key] = []
+                if owner_id not in self._indexes[field][value_key]:
+                    self._indexes[field][value_key].append(owner_id)
 
     def _remove_from_indexes(self, owner_id: str) -> None:
         """从索引中删除指定owner的数据"""
@@ -712,31 +800,36 @@ class TinyFileDB(ConfigStoreProtocol):
         )
 
     def _match_value(self, data_value: Any, condition_value: Any) -> bool:
-        """匹配值，支持复合类型"""
+        """匹配值，支持列表值匹配"""
         if data_value is None:
             return False
         
         if callable(condition_value):
             return condition_value(data_value)
-        elif isinstance(condition_value, dict):
-            if isinstance(data_value, dict):
-                return all(
-                    k in data_value and self._match_value(data_value[k], v)
-                    for k, v in condition_value.items()
-                )
-            elif hasattr(data_value, '__dict__'):
-                return all(
-                    hasattr(data_value, k) and 
-                    self._match_value(getattr(data_value, k), v)
-                    for k, v in condition_value.items()
-                )
-            return False
-        elif isinstance(condition_value, (list, tuple)):
-            if isinstance(data_value, (list, tuple)):
-                return all(
-                    any(self._match_value(dv, cv) for dv in data_value)
-                    for cv in condition_value
-                )
-            return False
+        
+        # 处理列表值的匹配
+        if isinstance(data_value, (list, tuple, set)):
+            if isinstance(condition_value, (list, tuple, set)):
+                # 对于复杂对象列表，需要逐个比较
+                if len(data_value) != len(condition_value):
+                    return False
+                    
+                for d_item, c_item in zip(data_value, condition_value):
+                    # 如果是字典条件，尝试匹配对象属性
+                    if isinstance(c_item, dict):
+                        if not all(
+                            getattr(d_item, k, None) == v 
+                            for k, v in c_item.items()
+                        ):
+                            return False
+                    # 否则直接比较值
+                    elif d_item != c_item:
+                        return False
+                return True
+                
+            # 如果条件是单个值，检查是否在列表中
+            return condition_value in data_value
+        
+        # 其他类型的匹配保持不变
         return data_value == condition_value
 
