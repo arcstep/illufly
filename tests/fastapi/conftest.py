@@ -46,7 +46,8 @@ def test_user():
         user_id="test123",
         username="testuser",
         email="testuser@example.com",
-        roles=[UserRole.USER]
+        roles=[UserRole.USER],
+        password_hash="dummy_hash_for_testing"
     )
 
 @pytest.fixture

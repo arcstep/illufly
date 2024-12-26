@@ -1,11 +1,15 @@
 from typing import Any, TypeVar, Generic, Optional
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict
 
 T = TypeVar('T')
 
-@dataclass
-class Result(Generic[T]):
+class Result(BaseModel, Generic[T]):
     """返回结果"""
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,  # 允许任意类型
+        from_attributes=True,  # 允许从对象属性读取（原 orm_mode）
+    )
+    
     success: bool
     message: Optional[str] = None
     error: Optional[str] = None
@@ -18,11 +22,3 @@ class Result(Generic[T]):
     @classmethod
     def fail(cls, error: str, message: str = "操作失败") -> "Result[T]":
         return cls(success=False, message=message, error=error)
-
-    def to_dict(self) -> dict:
-        return {
-            "success": self.success,
-            "message": self.message,
-            "error": self.error,
-            "data": self.data
-        }

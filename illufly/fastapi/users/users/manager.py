@@ -11,7 +11,6 @@ from .models import User, UserRole
 
 import secrets
 import string
-import re
 
 from ....config import get_env
 __USER_CONFIG_FILENAME__ = "profile.json"
@@ -24,11 +23,7 @@ class UsersManager:
         invite_manager: InviteCodeManager = None,
         storage: Optional[ConfigStoreProtocol] = None,
     ):
-        """初始化用户管理器
-        Args:
-            tokens_manager: 认证管理器
-            storage: 存储实现，如果为None则使用默认的文件存储
-        """
+        """初始化用户管理器"""
         self.tokens_manager = tokens_manager or TokensManager()
         self.invite_manager = invite_manager or InviteCodeManager()
         if storage is None:
@@ -36,7 +31,7 @@ class UsersManager:
                 data_dir=Path(get_env("ILLUFLY_CONFIG_STORE_DIR")),
                 filename=__USER_CONFIG_FILENAME__,
                 data_class=User,
-                serializer=lambda user: user.to_dict(include_sensitive=True)
+                serializer=lambda user: user.model_dump(include={"password_hash"} if include_sensitive else {})
             )
         self._storage = storage
 
@@ -45,7 +40,6 @@ class UsersManager:
         if self.hash_method not in ["argon2", "bcrypt", "pbkdf2_sha256"]:
             raise ValueError(f"Unsupported hash method: {self.hash_method}")
         
-        # 初始化密码加密上下文
         self.pwd_context = CryptContext(
             schemes=["argon2", "bcrypt", "pbkdf2_sha256"],
             default=self.hash_method,
@@ -76,7 +70,7 @@ class UsersManager:
         user = self._storage.get(owner_id=user_id)
         if not user:
             return None
-        return user.to_dict(include_sensitive=include_sensitive)
+        return user.model_dump(exclude={"password_hash"} if not include_sensitive else {})
 
     def create_user(
         self, 
@@ -91,23 +85,6 @@ class UsersManager:
         """创建新用户"""
         try:
             username = username or email
-
-            # 验证用户名
-            username_validation = self.validate_username(username)
-            if not username_validation.success:
-                return Result.fail(username_validation.error)
-            
-            # 验证邮箱
-            if email:
-                email_validation = self.validate_email(email)
-                if not email_validation.success:
-                    return Result.fail(email_validation.error)
-            
-            # 验证密码
-            if password:
-                password_validation = self.validate_password(password)
-                if not password_validation.success:
-                    return Result.fail(password_validation.error)
 
             # 检查用户名或邮箱是否已存在        
             if self._storage.has_duplicate({"username": username}):
@@ -133,7 +110,7 @@ class UsersManager:
                 username=username,
                 email=email,
                 password_hash=hash_result.data,
-                roles=set(roles or [UserRole.USER, UserRole.GUEST]),
+                roles=set(roles or [UserRole.USER]),
                 created_at=datetime.now(),
                 require_password_change=require_password_change,
                 last_password_change=datetime.now() if not require_password_change else None,
@@ -166,11 +143,7 @@ class UsersManager:
                 user.is_password_expired()
             )
 
-            # 确保返回的用户对象中的roles是list类型
-            user_dict = user.to_dict(include_sensitive=False)
-            if "roles" in user_dict:
-                user_dict["roles"] = list(user_dict["roles"])
-
+            user_dict = user.model_dump(exclude={"password_hash"})
             return Result.ok(data={
                 "require_password_change": require_password_change,
                 "user": user_dict
@@ -186,8 +159,7 @@ class UsersManager:
             if not user:
                 return Result.fail("用户不存在")
 
-            user_roles = {UserRole(role) for role in roles}
-            user.roles = user_roles
+            user.roles = {UserRole(role) for role in roles}
             self._storage.set(user, owner_id=user_id)
             return Result.ok()
         except ValueError:
@@ -222,7 +194,7 @@ class UsersManager:
         users = []
         for user_id in self._storage.list_owners():
             if user := self._storage.get(owner_id=user_id):
-                users.append(user.to_dict(include_sensitive=False))
+                users.append(user.model_dump(exclude={"password_hash"}))
         return users
     
     def change_password(self, user_id: str, old_password: str, new_password: str) -> Result[None]:
@@ -261,10 +233,10 @@ class UsersManager:
 
             # 对新密码进行哈希处理
             hash_result = self.hash_password(new_password)
-            if not hash_result["success"]:
+            if not hash_result.success:
                 return Result.fail(hash_result.error)
         
-            user.password_hash = hash_result["hash"]
+            user.password_hash = hash_result.data
             user.last_password_change = datetime.now()
             user.require_password_change = True
             
@@ -313,65 +285,9 @@ class UsersManager:
                     password=get_env("FASTAPI_USERS_ADMIN_PASSWORD"),
                     email=get_env("FASTAPI_USERS_ADMIN_EMAIL"),
                     user_id=admin_id,
-                    roles=[UserRole.ADMIN, UserRole.OPERATOR, UserRole.USER, UserRole.GUEST],
+                    roles=[UserRole.ADMIN],
                     require_password_change=False
                 )
                 
         except Exception as e:
             raise
-
-    def validate_password(self, password: str) -> Dict[str, Any]:
-        """验证密码强度
-        
-        要求：
-        - 长度至少8个字符
-        - 至少包含一个大写字母
-        - 至少包含一个小写字母
-        - 至少包含一个数字
-        
-        Args:
-            password: 要验证的密码
-            
-        Returns:
-            dict: 包含验证结果的字典
-                - success: 是否通过验证
-                - error: 未通过时的错误信息
-        """
-        if len(password) < 8:
-            return Result.fail("密码长度必须至少为8个字符")
-        
-        if not re.search(r"[A-Z]", password):
-            return Result.fail("密码必须包含至少一个大写字母")
-        
-        if not re.search(r"[a-z]", password):
-            return Result.fail("密码必须包含至少一个小写字母")
-        
-        if not re.search(r"\d", password):
-            return Result.fail("密码必须包含至少一个数字")
-        
-        return Result.ok()
-
-    def validate_email(self, email: str) -> Dict[str, Any]:
-        """验证邮箱格式"""
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        if not re.match(pattern, email):
-            return Result.fail("邮箱格式无效")
-        
-        return Result.ok()
-
-    def validate_username(self, username: str) -> Dict[str, Any]:
-        """验证用户名格式"""
-        if not username:
-            return Result.fail("用户名不能为空")
-            
-        if len(username) < 3 or len(username) > 32:
-            return Result.fail("用户名长度必须在3到32个字符之间")
-            
-            
-        if not username[0].isalpha():
-            return Result.fail("用户名必须以字母开头")
-            
-        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', username):
-            return Result.fail("用户名只能包含字母、数字和下划线")
-            
-        return Result.ok()

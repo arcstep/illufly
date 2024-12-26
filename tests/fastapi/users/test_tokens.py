@@ -39,7 +39,7 @@ class TestTokenCreation:
         - 验证令牌是否被正确存储
         """
         # 创建访问令牌
-        test_data = { **test_user.to_dict(), **device_info }
+        test_data = { **test_user.model_dump(), **device_info }
         result = tokens_manager.create_access_token(data=test_data)
         assert result.success, f"创建访问令牌失败: {result.error}"
         access_token = result.data
@@ -74,7 +74,7 @@ class TestTokenCreation:
         - 验证令牌是否被正确存储到持久化存储中
         """
         # 创建刷新令牌
-        test_data = { **test_user.to_dict(), **device_info }
+        test_data = { **test_user.model_dump(), **device_info }
         result = tokens_manager.create_refresh_token(data=test_data)
         assert result.success, f"创建刷新令牌失败: {result.error}"
         refresh_token = result.data
@@ -105,7 +105,7 @@ class TestTokenVerification:
         - 验证返回的payload内容
         """
         # 准备测试数据
-        test_data = { **test_user.to_dict(), **device_info }
+        test_data = { **test_user.model_dump(), **device_info }
         
         # 创建访问令牌
         token_result = tokens_manager.create_access_token(test_data)
@@ -142,7 +142,7 @@ class TestTokenRefresh:
         """
 
         # 准备测试数据
-        test_data = { **test_user.to_dict(), **device_info }
+        test_data = { **test_user.model_dump(), **device_info }
         
         # 创建刷新令牌
         refresh_result = tokens_manager.create_refresh_token(test_data)
@@ -184,7 +184,7 @@ class TestTokenRevocation:
         - 验证其他设备的令牌是否保持不变
         """
         # 准备测试数据
-        test_data = { **test_user.to_dict(), **device_info }        
+        test_data = { **test_user.model_dump(), **device_info }        
         device1_access = tokens_manager.create_access_token(test_data)
         device1_refresh = tokens_manager.create_refresh_token(test_data)
         assert device1_access.success and device1_refresh.success
@@ -232,7 +232,7 @@ class TestTokenRevocation:
         # 为每个设备创建令牌
         for device in devices:
             test_data = {
-                **test_user.to_dict(),
+                **test_user.model_dump(),
                 **device
             }
             access_result = tokens_manager.create_access_token(test_data)
@@ -262,7 +262,7 @@ class TestTokenRevocation:
         """
 
         # 准备测试数据
-        test_data = { **test_user.to_dict(), **device_info }
+        test_data = { **test_user.model_dump(), **device_info }
         
         # 创建令牌
         access_result = tokens_manager.create_access_token(test_data)
@@ -291,7 +291,7 @@ class TestTokenRevocation:
         - 验证撤销后的刷新令牌验证
         """
         # 准备测试数据
-        test_data = { **test_user.to_dict(), **device_info }
+        test_data = { **test_user.model_dump(), **device_info }
         
         # 创建令牌
         access_result = tokens_manager.create_access_token(test_data)

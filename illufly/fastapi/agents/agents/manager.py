@@ -144,7 +144,7 @@ class AgentsManager:
                 return Result.ok(data=[])
             
             agents = [
-                agent_config.to_dict()
+                agent_config.model_dump()
                 for agent_config in user_agents.values()
             ]
             return Result.ok(data=agents)

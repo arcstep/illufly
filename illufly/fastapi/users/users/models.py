@@ -1,14 +1,15 @@
 """
-User Module Models
+用户模块数据模型
 
-This module defines the core user-related data models.
+定义用户相关的核心数据模型,包括用户角色和用户基础信息。
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Set, Union
 from enum import Enum
+from pydantic import BaseModel, Field, EmailStr, field_validator, constr, ConfigDict, model_validator, model_serializer
 from ....utils import create_id_generator
+import re
 
 user_id_gen = create_id_generator()
 
@@ -16,122 +17,142 @@ class UserRole(str, Enum):
     """用户角色枚举"""
     ADMIN = "admin"          # 管理员
     OPERATOR = "operator"    # 运营人员
-    USER = "user"            # 普通用户
-    GUEST = "guest"          # 访客
+    USER = "user"           # 普通用户
+    GUEST = "guest"         # 访客
 
-@dataclass
-class User:
-    """用户基础信息"""
-    user_id: str
-    username: str = field(default_factory=lambda: "")
-    roles: Union[List[Union[str, UserRole]], Set[UserRole]] = field(default_factory=lambda: [UserRole.USER])  # 初始化类型接受字符串列表、UserRole列表或UserRole集合
-    email: str = None
-    password_hash: str = None
-    created_at: datetime = field(default_factory=datetime.now)
-    require_password_change: bool = False
-    last_password_change: Optional[datetime] = None  # 新增：最后修改密码时间
-    password_expires_days: int = 90  # 新增：密码有效期（天数）
-    last_login: Optional[datetime] = None
-    failed_login_attempts: int = 0  # 新增：登录失败次数
-    last_failed_login: Optional[datetime] = None  # 新增：最后一次登录失败时间
-    is_locked: bool = False  # 新增：账户是否锁定
-    is_active: bool = True
+    @classmethod
+    def get_role_hierarchy(cls) -> Dict[str, List[str]]:
+        """获取角色层级关系"""
+        return {
+            cls.ADMIN: [cls.OPERATOR, cls.USER, cls.GUEST],
+            cls.OPERATOR: [cls.USER, cls.GUEST],
+            cls.USER: [cls.GUEST],
+            cls.GUEST: []
+        }
 
-    def __post_init__(self):
-        # 如果没有 user_id，则使用 IDGenerator 生成一个
-        if not self.user_id:
-            self.user_id = next(user_id_gen)
+class User(BaseModel):
+    """用户基础信息模型"""
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_assignment=True
+    )
 
-        # 如果没有 username，则使用 user_id 作为 username
-        if not self.username:
-            self.username = self.user_id
+    user_id: str = Field(..., description="用户唯一标识")
+    username: constr(min_length=3, max_length=32) = Field(..., description="用户名")
+    email: EmailStr = Field(..., description="电子邮箱")
+    roles: Set[UserRole] = Field(
+        default_factory=lambda: {UserRole.USER},
+        description="用户角色集合"
+    )
+    password_hash: str = Field(..., description="密码哈希值")
+    created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
+    require_password_change: bool = Field(default=False, description="是否需要修改密码")
+    last_password_change: Optional[datetime] = Field(default=None, description="最后密码修改时间")
+    password_expires_days: int = Field(default=90, description="密码有效期(天)")
+    last_login: Optional[datetime] = Field(default=None, description="最后登录时间")
+    failed_login_attempts: int = Field(default=0, description="登录失败次数")
+    last_failed_login: Optional[datetime] = Field(default=None, description="最后失败登录时间")
+    is_locked: bool = Field(default=False, description="是否锁定")
+    is_active: bool = Field(default=True, description="是否激活")
 
-        # 自动转换 self.roles 类型
-        if isinstance(self.roles, list):
-            if all(isinstance(r, str) for r in self.roles):
-                self.roles = {UserRole(r) for r in self.roles}
-            elif all(isinstance(r, UserRole) for r in self.roles):
-                self.roles = set(self.roles)
-        elif isinstance(self.roles, str):
-            self.roles = {UserRole(self.roles)}
+    def model_dump(
+        self,
+        *,
+        mode: str = 'python',
+        include: set[str] | None = None,
+        exclude: set[str] | None = None,
+        by_alias: bool = False,
+        exclude_unset: bool = False,
+        exclude_defaults: bool = False,
+        exclude_none: bool = False,
+    ) -> dict[str, Any]:
+        """自定义序列化方法"""
+        data = {}
+        for field_name, field_value in super().model_dump(
+            mode=mode,
+            include=include,
+            exclude=exclude,
+            by_alias=by_alias,
+            exclude_unset=exclude_unset,
+            exclude_defaults=exclude_defaults,
+            exclude_none=exclude_none,
+        ).items():
+            # 处理日期时间类型
+            if isinstance(field_value, datetime):
+                data[field_name] = field_value.isoformat()
+            # 处理角色集合
+            elif field_name == 'roles':
+                data[field_name] = [role.value for role in field_value]
+            else:
+                data[field_name] = field_value
+        return data
+
+    @model_validator(mode='before')
+    def set_defaults(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """初始化默认值"""
+        values['user_id'] = values.get('user_id') or next(user_id_gen)
+        values['username'] = values.get('username') or values['user_id']
+        
+        roles = values.get('roles', [UserRole.USER])
+        if isinstance(roles, (str, UserRole)):
+            roles = [roles]
+        values['roles'] = {UserRole(r) if isinstance(r, str) else r for r in roles}
+
+        return values
 
     def is_password_expired(self) -> bool:
         """检查密码是否过期"""
         if not self.last_password_change:
             return True
-        days_since_change = (datetime.now() - self.last_password_change).days
-        return days_since_change >= self.password_expires_days
+        expiry_date = self.last_password_change + timedelta(days=self.password_expires_days)
+        return datetime.now() >= expiry_date
 
-    def record_login_attempt(self, success: bool):
-        """记录登录尝试
-        Args:
-            success: 登录是否成功
-        """
+    def record_login_attempt(self, success: bool) -> None:
+        """记录登录尝试"""
+        current_time = datetime.now()
         if success:
             self.failed_login_attempts = 0
-            self.last_login = datetime.now()
+            self.last_login = current_time
             self.last_failed_login = None
+            self.is_locked = False
         else:
             self.failed_login_attempts += 1
-            self.last_failed_login = datetime.now()
-            if self.failed_login_attempts >= 5:  # 可配置的阈值
+            self.last_failed_login = current_time
+            if self.failed_login_attempts >= 5:
                 self.is_locked = True
 
-    def to_dict(self, include_sensitive: bool = False) -> Dict[str, Any]:
-        """转换为字典格式"""
-        data = {
-            "user_id": self.user_id,
-            "username": self.username,
-            "email": self.email,
-            "roles": [role.value for role in self.roles],
-            "created_at": self.created_at.isoformat(),
-            "require_password_change": self.require_password_change,
-            "last_password_change": self.last_password_change.isoformat() if self.last_password_change else None,
-            "password_expires_days": self.password_expires_days,
-            "last_login": self.last_login.isoformat() if self.last_login else None,
-            "failed_login_attempts": self.failed_login_attempts,
-            "last_failed_login": self.last_failed_login.isoformat() if self.last_failed_login else None,
-            "is_locked": self.is_locked,
-            "is_active": self.is_active,
-        }
-        
-        if include_sensitive:
-            data["password_hash"] = self.password_hash
-            
-        return data
-
-    @classmethod
-    def from_dict(cls, data: dict) -> 'User':
-        """从字典创建用户对象"""
-        return cls(
-            user_id=data.get("user_id"),  # 新增：从字典中获取 user_id
-            username=data["username"],
-            email=data.get("email", None),
-            password_hash=data.get("password_hash", None),
-            roles=set(UserRole(role) for role in data.get("roles", set(UserRole.USER))),
-            created_at=datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", None),
-            require_password_change=data.get("require_password_change", True),
-            last_password_change=datetime.fromisoformat(data["last_password_change"]) if data.get("last_password_change") else None,
-            password_expires_days=data.get("password_expires_days", 90),
-            last_login=datetime.fromisoformat(data["last_login"]) if data.get("last_login") else None,
-            failed_login_attempts=data.get("failed_login_attempts", 0),
-            last_failed_login=datetime.fromisoformat(data["last_failed_login"]) if data.get("last_failed_login") else None,
-            is_locked=data.get("is_locked", False),
-            is_active=data.get("is_active", True),
-        )
-
     def has_role(self, role: Union[UserRole, str]) -> bool:
-        """检查用户是否具有指定角色"""
-        if isinstance(role, str):
-            role = UserRole(role)
-        return role in self.roles
+        """检查用户是否具有指定角色(包含继承的角色)"""
+        role_obj = UserRole(role) if isinstance(role, str) else role
+        if role_obj in self.roles:
+            return True
+            
+        hierarchy = UserRole.get_role_hierarchy()
+        return any(
+            role_obj in hierarchy.get(user_role, [])
+            for user_role in self.roles
+        )
 
     def has_any_role(self, roles: List[Union[UserRole, str]]) -> bool:
         """检查用户是否具有任意一个指定角色"""
-        to_check_roles = [UserRole(role) if isinstance(role, str) else role for role in roles]
-        return any(self.has_role(role) for role in to_check_roles)
+        return any(self.has_role(role) for role in roles)
 
     def has_all_roles(self, roles: List[Union[UserRole, str]]) -> bool:
         """检查用户是否具有所有指定角色"""
-        to_check_roles = [UserRole(role) if isinstance(role, str) else role for role in roles]
-        return all(self.has_role(role) for role in to_check_roles)
+        return all(self.has_role(role) for role in roles)
+
+    @field_validator('username')
+    def validate_username(cls, v: str) -> str:
+        """验证用户名格式"""
+        if not v[0].isalpha():
+            raise ValueError("用户名必须以字母开头")
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', v):
+            raise ValueError("用户名只能包含字母、数字和下划线")
+        return v
+
+    @field_validator('roles', mode='before')
+    def validate_roles(cls, v: Union[str, UserRole]) -> UserRole:
+        """验证并转换角色值"""
+        if isinstance(v, str):
+            return UserRole(v)
+        return v

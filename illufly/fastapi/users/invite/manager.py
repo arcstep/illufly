@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Any, List, Tuple
+from typing import Dict, Optional, Any, List
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -17,8 +17,6 @@ class InviteCodeManager:
                 data_dir=Path(get_env("ILLUFLY_CONFIG_STORE_DIR")),
                 filename="invite_codes.json",
                 data_class=List[InviteCode],
-                serializer=lambda invite_codes: [invite_code.to_dict() for invite_code in invite_codes],
-                deserializer=lambda invite_codes: [InviteCode.from_dict(invite_code) for invite_code in invite_codes],
             )
         self._storage = storage
 
@@ -40,7 +38,7 @@ class InviteCodeManager:
         """使用邀请码"""
         invite_codes = self.get_invite_codes(owner_id or 'admin')
         for code in invite_codes:
-            if code.invite_code == invite_code and not code.is_used() and not code.is_expired():
+            if code.invite_code == invite_code and code.is_valid():
                 code.use()
                 self._storage.set(invite_codes, owner_id)
                 return True
@@ -50,7 +48,7 @@ class InviteCodeManager:
         """检查邀请码是否可用"""
         invite_codes = self.get_invite_codes(owner_id)
         for code in invite_codes:
-            if code.invite_code == invite_code and not code.is_used() and not code.is_expired():
+            if code.invite_code == invite_code and code.is_valid():
                 return True
         return False
 
@@ -102,7 +100,7 @@ class InviteCodeManager:
         total = len(invite_codes)
         used = sum(1 for code in invite_codes if code.is_used())
         expired = sum(1 for code in invite_codes if code.is_expired())
-        available = sum(1 for code in invite_codes if not code.is_used() and not code.is_expired())
+        available = sum(1 for code in invite_codes if code.is_valid())
         
         return {
             "total": total,

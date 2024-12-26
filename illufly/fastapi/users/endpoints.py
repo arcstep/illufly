@@ -1,10 +1,33 @@
 from fastapi import APIRouter, Form, Depends, Response, HTTPException, status, Request
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, EmailStr
 from jose import JWTError
 import uuid
 
 from ..result import Result
 from ..users import TokensManager, UsersManager, User, UserRole
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    email: EmailStr
+    invite_code: Optional[str] = None
+    invite_from: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    device_id: Optional[str] = None
+
+class UpdateUserProfileRequest(BaseModel):
+    settings: Dict[str, Any]
+
+class UpdateUserRolesRequest(BaseModel):
+    roles: List[str]
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 def create_users_endpoints(
         app, 
@@ -79,25 +102,12 @@ def create_users_endpoints(
         return f"{os_info}_{browser_info}_{uuid.uuid4().hex[:8]}"
 
     @app.post(f"{prefix}/auth/register")
-    async def register(
-        username: str = Form(...),
-        password: str = Form(...),
-        email: str = Form(...),
-        invite_code: str = Form(None),
-        invite_from: str = Form(None),
-        response: Response = None
-    ):
+    async def register(request: RegisterRequest, response: Response):
         """用户注册接口"""
         try:
-            # 验证必填字段
-            if not all([username, password, email]):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="缺少必填字段"
-                )
             # 验证邀请码（如果需要）
-            if invite_code:
-                used_success = users_manager.invite_manager.use_invite_code(invite_code, invite_from)
+            if request.invite_code:
+                used_success = users_manager.invite_manager.use_invite_code(request.invite_code, request.invite_from)
                 if not used_success:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -105,14 +115,14 @@ def create_users_endpoints(
                     )
             # 创建用户
             result = users_manager.create_user(
-                username=username,
-                password=password,
-                email=email,
+                username=request.username,
+                password=request.password,
+                email=request.email,
                 roles=[UserRole.USER, UserRole.GUEST],
                 require_password_change=False
             )
             if result.success:
-                return result.to_dict()
+                return result
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -128,17 +138,11 @@ def create_users_endpoints(
             )
 
     @app.post(f"{prefix}/auth/login")
-    async def login(
-        request: Request,
-        response: Response,
-        username: str = Form(...),
-        password: str = Form(...),
-        device_id: str = Form(None),
-    ):
+    async def login(request: LoginRequest, response: Response):
         """用户登录接口"""
         try:
             # 验证密码
-            verify_result = users_manager.verify_user_password(username, password)
+            verify_result = users_manager.verify_user_password(request.username, request.password)
             
             if not verify_result.success:
                 if verify_result.data:
@@ -161,7 +165,7 @@ def create_users_endpoints(
             require_password_change = verify_result.data["require_password_change"]
             
             # 获取或创建设备ID
-            device_id = device_id or request.cookies.get("device_id") or _create_browser_device_id(request)
+            device_id = request.device_id or _create_browser_device_id(request)
 
             token_data = _create_token_data(user_info, device_id)
             refresh_token, access_token = _create_refresh_token_and_access_token(
@@ -179,7 +183,7 @@ def create_users_endpoints(
             return Result.ok({
                 "user_info": user_info,
                 "require_password_change": require_password_change
-            }).to_dict()
+            })
 
         except HTTPException:
             raise
@@ -208,7 +212,7 @@ def create_users_endpoints(
                 access_token=new_access_token["token"]
             )
 
-            return Result.ok(message="Token refreshed successfully").to_dict()
+            return Result.ok(message="Token refreshed successfully")
 
         except HTTPException:
             raise
@@ -229,7 +233,7 @@ def create_users_endpoints(
         device_id = request.cookies.get("device_id")
         revoke_result = tokens_manager.revoke_device_tokens(current_user["user_id"], device_id)
         if revoke_result:
-            return revoke_result.to_dict()
+            return revoke_result
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -244,7 +248,7 @@ def create_users_endpoints(
         try:
             revoke_result = tokens_manager.revoke_all_user_tokens(current_user["user_id"])
             if revoke_result.success:
-                return revoke_result.to_dict()
+                return revoke_result
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -267,7 +271,7 @@ def create_users_endpoints(
         try:
             revoke_result = tokens_manager.revoke_user_access_tokens(current_user["user_id"])
             if revoke_result.success:
-                return revoke_result.to_dict()
+                return revoke_result
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -290,7 +294,7 @@ def create_users_endpoints(
         user_id = current_user["user_id"]
         user_info = users_manager.get_user_info(user_id)
         if user_info:
-            return Result.ok(data=user_info).to_dict()
+            return Result.ok(data=user_info)
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -299,13 +303,13 @@ def create_users_endpoints(
 
     @app.patch(f"{prefix}/auth/profile")
     async def update_user_profile(
-        settings: Dict[str, Any],
+        request: UpdateUserProfileRequest,
         current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         """更新当前用户的个人设置"""
-        update_result = users_manager.update_user(current_user["user_id"], settings=settings)
+        update_result = users_manager.update_user(current_user["user_id"], **request.settings)
         if update_result.success:
-            return update_result.to_dict()
+            return update_result
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -314,16 +318,15 @@ def create_users_endpoints(
 
     @app.post(f"{prefix}/auth/change-password")
     async def change_password(
-        current_password: str = Form(...),
-        new_password: str = Form(...),
+        request: ChangePasswordRequest,
         current_user: dict = Depends(tokens_manager.get_current_user)
     ):
         """修改密码接口"""
         try:
             user_id = current_user["user_id"]
-            result = users_manager.change_password(user_id, current_password, new_password)
+            result = users_manager.change_password(user_id, request.current_password, request.new_password)
             if result.success:
-                return result.to_dict()
+                return result
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -345,7 +348,7 @@ def create_users_endpoints(
         """列出用户的所有登录设备"""
         result = tokens_manager.list_user_devices(current_user["user_id"])
         if result.success:
-            return result.to_dict()
+            return result
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -358,19 +361,19 @@ def create_users_endpoints(
     ):
         """获取系统中所用户的列表（管理员或运营角色）"""
         all_users = users_manager.list_users()
-        return Result.ok(data=all_users).to_dict()
+        return Result.ok(data=all_users)
 
     @app.post(f"{prefix}/users/{{user_id}}/roles")
     async def update_user_roles(
         user_id: str,
-        roles: List[str] = Form(...),
+        request: UpdateUserRolesRequest,
         current_user: dict = Depends(tokens_manager.require_roles([UserRole.ADMIN, UserRole.OPERATOR]))
     ):
         """更新用户角色（管理员）"""
         # 更新用户角色
-        result = users_manager.update_user_roles(user_id, roles)
+        result = users_manager.update_user_roles(user_id, request.roles)
         if result.success:
-            return result.to_dict()
+            return result
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

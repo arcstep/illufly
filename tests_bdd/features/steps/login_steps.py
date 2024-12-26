@@ -45,7 +45,7 @@ def step_impl(context):
         name, value = cookie
         context.client.cookies.set(name, value)
     
-    print(">>> Client cookies after login:", dict(context.client.cookies))
+    print(">>> Client cookies after login:", model_dump(context.client.cookies))
 
 @when('系统验证用户凭据')
 def step_impl(context):
@@ -164,7 +164,7 @@ def step_impl(context):
     cookies = context.client.cookies
     
     # 打印当前的 cookies 用于调试
-    print(">>> Current cookies:", dict(cookies))
+    print(">>> Current cookies:", model_dump(cookies))
     
     # 确保有认证信息
     assert "refresh_token" in cookies, "No refresh token found in cookies"

@@ -1,49 +1,48 @@
 from typing import List, Any, Optional, Dict
-from datetime import datetime
-from dataclasses import dataclass, field
-import uuid
-import time
+from datetime import datetime, timedelta
+from pydantic import BaseModel, Field, field_validator, ConfigDict, ValidationInfo
 import secrets
 import string
 
-@dataclass
-class InviteCode:
+class InviteCode(BaseModel):
     """邀请码信息"""
-    invite_code: str = field(default_factory=lambda: ''.join(secrets.choice(string.digits) for _ in range(8)))
-    invite_from: str = field(default='admin')
-    created_at: Optional[datetime] = field(default_factory=lambda: datetime.now())
-    expired_at: Optional[datetime] = field(default_factory=lambda: datetime.now() + timedelta(days=30))
-    used_at: Optional[datetime] = None
+    invite_code: str = Field(
+        default_factory=lambda: ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8)),
+        description="8位邀请码,由大写字母和数字组成"
+    )
+    invite_from: str = Field(default='admin', description="邀请人")
+    created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
+    expired_at: datetime = Field(
+        default_factory=lambda: datetime.now() + timedelta(days=30),
+        description="过期时间,默认30天"
+    )
+    used_at: Optional[datetime] = Field(default=None, description="使用时间")
+    
+    @field_validator('expired_at')
+    def validate_expired_at(cls, v, info: ValidationInfo) -> datetime:
+        """验证过期时间必须大于创建时间"""
+        data = info.data  # 使用 ValidationInfo 对象获取数据
+        if 'created_at' in data and v <= data['created_at']:
+            raise ValueError('过期时间必须大于创建时间')
+        return v
 
     def is_used(self) -> bool:
         """是否已使用"""
         return self.used_at is not None
     
-    def is_expired(self) -> bool:
+    def is_expired(self, current_time: Optional[datetime] = None) -> bool:
         """是否已过期"""
-        return self.expired_at < datetime.now()
+        if current_time is None:
+            current_time = datetime.now()
+        return current_time > self.expired_at
     
-    def use(self):
-        """使用邀请码"""
-        self.used_at = datetime.now()
-
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
-        return {
-            'invite_code': self.invite_code,
-            'invite_from': self.invite_from,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'expired_at': self.expired_at.isoformat() if self.expired_at else None,
-            'used_at': self.used_at.isoformat() if self.used_at else None,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'InviteCode':
-        """从字典创建实例"""
-        return cls(
-            invite_code=data['invite_code'],
-            invite_from=data['invite_from'],
-            created_at=datetime.fromisoformat(data['created_at']) if data.get('created_at') else None,
-            expired_at=datetime.fromisoformat(data['expired_at']) if data.get('expired_at') else None,
-            used_at=datetime.fromisoformat(data['used_at']) if data.get('used_at') else None,
-        )
+    def is_valid(self, current_time: Optional[datetime] = None) -> bool:
+        """是否有效(未使用且未过期)"""
+        return not self.is_used() and not self.is_expired(current_time)
+    
+    def use(self, current_time: Optional[datetime] = None) -> bool:
+        """使用邀请码,返回是否使用成功"""
+        if self.is_valid(current_time):
+            self.used_at = current_time or datetime.now()
+            return True
+        return False

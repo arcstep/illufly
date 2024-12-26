@@ -93,7 +93,7 @@ class VectorDBManager:
             )
             
             # 存储配置字典
-            user_dbs[db_name] = db_config.to_dict()
+            user_dbs[db_name] = db_config.model_dump()
             self._storage.set(user_dbs, owner_id=user_id)
 
             # 加载数据库实例
@@ -101,7 +101,7 @@ class VectorDBManager:
             if not result.success:
                 return result
 
-            return Result.ok(message="数据库创建成功", data=db_config.to_dict())
+            return Result.ok(message="数据库创建成功", data=db_config.model_dump())
         except Exception as e:
             return Result.fail(f"创建数据库时发生错误: {e}")
 
@@ -124,7 +124,7 @@ class VectorDBManager:
                 return Result.fail("数据库不存在")
             
             # 从存储的字典创建配置实例
-            config = VectorDBConfig.from_dict(user_dbs[db_name])
+            config = VectorDBConfig.model_validate(user_dbs[db_name])
             return Result.ok(data=config, message="成功获取数据库配置")
         except Exception as e:
             return Result.fail(f"获取数据库配置失败: {e}")
@@ -180,7 +180,7 @@ class VectorDBManager:
                 return Result.fail("数据库不存在")
             
             # 获取当前配置并更新
-            current_config = VectorDBConfig.from_dict(user_dbs[db_name])
+            current_config = VectorDBConfig.model_validate(user_dbs[db_name])
             
             # 更新配置
             for key, value in updates.items():
@@ -188,7 +188,7 @@ class VectorDBManager:
                     setattr(current_config, key, value)
             
             # 保存更新后的配置
-            user_dbs[db_name] = current_config.to_dict()
+            user_dbs[db_name] = current_config.model_dump()
             self._storage.set(user_dbs, owner_id=user_id)
             
             # 重新加载数据库实例
@@ -197,6 +197,6 @@ class VectorDBManager:
             if not result.success:
                 return result
             
-            return Result.ok(message="配置更新成功", data=current_config.to_dict())
+            return Result.ok(message="配置更新成功", data=current_config.model_dump())
         except Exception as e:
             return Result.fail(f"更新配置失败: {e}")

@@ -23,7 +23,7 @@ def create_agents_endpoints(
         user_id = current_user["user_id"]
         result = agents_manager.list_agents(user_id)
         if result.success:
-            return result.to_dict()
+            return result
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result.error)
 
     @app.post(f"{prefix}/agents")
@@ -43,7 +43,7 @@ def create_agents_endpoints(
             vectordbs=vectordb_names,
         )        
         if result.success:
-            return result.to_dict()
+            return result
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result.error)
 
     @app.get(f"{prefix}/agents/{{agent_name}}")
@@ -61,7 +61,7 @@ def create_agents_endpoints(
                 None
             )
             if agent_info:
-                return Result.ok(data=agent_info).to_dict()
+                return Result.ok(data=agent_info)
             else:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
         else:
@@ -114,7 +114,7 @@ def create_agents_endpoints(
             updates,
         )
         if result.success:
-            return result.to_dict()
+            return result
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.error)
 
     @app.delete(f"{prefix}/agents/{{agent_name}}")
@@ -126,7 +126,7 @@ def create_agents_endpoints(
         user_id = current_user["user_id"]
         result = agents_manager.remove_agent(user_id, agent_name)
         if result.success:
-            return result.to_dict()
+            return result
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.error)
 
     # 新增知识库相关端点
@@ -138,7 +138,7 @@ def create_agents_endpoints(
         user_id = current_user["user_id"]
         result = agents_manager.vectordb_manager.list_dbs(user_id)
         if result.success:
-            return result.to_dict()
+            return result
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result.message)
 
     @app.post(f"{prefix}/vectordbs")
@@ -153,7 +153,7 @@ def create_agents_endpoints(
             db_name=name
         )
         if result.success:
-            return result.to_dict()
+            return result
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result.error)
 
 
@@ -167,7 +167,7 @@ def create_agents_endpoints(
         user_id = current_user["user_id"]
         result = agents_manager.vectordb_manager.get_db_config(user_id, db_name)
         if result.success:
-            return result.to_dict()
+            return result
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.error)
 
     @app.delete(f"{prefix}/vectordbs/{{db_name}}")
@@ -179,7 +179,7 @@ def create_agents_endpoints(
         user_id = current_user["user_id"]
         result = agents_manager.vectordb_manager.remove_db(user_id, db_name)
         if result.success:
-            return result.to_dict()
+            return result
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.error)
 
     @app.patch(f"{prefix}/vectordbs/{{db_name}}")
@@ -204,7 +204,7 @@ def create_agents_endpoints(
             
         result = agents_manager.vectordb_manager.update_db_config(user_id, db_name, updates)
         if result.success:
-            return result.to_dict()
+            return result
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.error)
 
     # 知识库管理端点
@@ -232,7 +232,7 @@ def create_agents_endpoints(
                 tags=tags,
                 match_all_tags=match_all_tags
             )
-            return Result.ok(data=resp).to_dict()
+            return Result.ok(data=resp)
         raise HTTPException(status_code=404, detail=result.error)
 
     @app.get(f"{prefix}/vectordbs/{{db_name}}/knowledge/{{knowledge_id}}")
@@ -252,7 +252,7 @@ def create_agents_endpoints(
             return Result.ok(data={
                 "id": knowledge_id,
                 "content": content
-            }).to_dict()
+            })
         raise HTTPException(status_code=404, detail=result.error)
 
     @app.post(f"{prefix}/vectordbs/{{db_name}}/knowledge")
@@ -280,7 +280,7 @@ def create_agents_endpoints(
             return Result.ok(data={
                 "message": "知识创建成功",
                 "id": knowledge_id
-            }).to_dict()
+            })
         raise HTTPException(status_code=500, detail=result.error)
 
     @app.put(f"{prefix}/vectordbs/{{db_name}}/knowledge/{{knowledge_id}}")
@@ -309,7 +309,7 @@ def create_agents_endpoints(
                 source=source
             )
             if success:
-                return Result.ok(data={"message": "知识更新成功"}).to_dict()
+                return Result.ok(data={"message": "知识更新成功"})
             raise HTTPException(status_code=400, detail="更新失败，可能存在重复内容")
         raise HTTPException(status_code=404, detail=result.error)
 
@@ -327,7 +327,7 @@ def create_agents_endpoints(
             if not db:
                 raise HTTPException(status_code=404, detail="Knowledge base not found")
             db.knowledge.delete(knowledge_id)
-            return Result.ok(data={"message": "知识删除成功"}).to_dict()
+            return Result.ok(data={"message": "知识删除成功"})
         raise HTTPException(status_code=404, detail=result.error)
 
     # 知识库搜索
@@ -349,7 +349,7 @@ def create_agents_endpoints(
             return Result.ok(data={
                 "query": query,
                 "results": results
-            }).to_dict()
+            })
         raise HTTPException(status_code=500, detail=result.error)
 
     return {
