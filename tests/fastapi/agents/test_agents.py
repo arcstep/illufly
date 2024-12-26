@@ -13,7 +13,6 @@ def vector_db_manager(users_manager, exist_user, exist_db_name, setup_env):
     manager.create_db(
         user_id=exist_user.user_id,
         db_name=exist_db_name,
-        db_config={},
     )
     assert manager.get_db(exist_user.user_id, exist_db_name).success, "创建向量库失败"
     return manager
@@ -32,8 +31,7 @@ def exist_db1(vector_db_manager, exist_user):
     """已存在的数据库"""
     vector_db_manager.create_db(
         user_id=exist_user.user_id,
-        db_name="test_db1",
-        db_config={},
+        db_name="test_db1"
     )
 
 @pytest.fixture
@@ -198,7 +196,6 @@ def test_update_agent_vectordbs(agents_manager, exist_user, exist_agent1, vector
     vector_db_manager.create_db(
         user_id=exist_user.user_id,
         db_name="test_db2",
-        db_config={}
     )
     
     # 更新向量库列表

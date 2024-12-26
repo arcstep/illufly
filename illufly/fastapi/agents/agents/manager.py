@@ -60,12 +60,13 @@ class AgentsManager:
                 if not db_result.success:
                     return Result.fail(f"向量库 '{db_name}' 不存在")
 
-            config = self._agent_factory.create_agent_config(
-                user_id=user_id,
-                agent_type=agent_type,
+            config = AgentConfig(
                 agent_name=agent_name,
-                vectordbs=vectordbs,
-                **kwargs
+                agent_type=agent_type,
+                description=kwargs.get("description", ""),
+                config=kwargs.get("config", {}),
+                vectordbs=vectordbs or [],
+                created_at=datetime.now()
             )
             user_agents[agent_name] = config
             print(">>> 创建新的Agent配置", config)

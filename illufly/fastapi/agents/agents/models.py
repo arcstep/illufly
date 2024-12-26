@@ -8,15 +8,18 @@ class AgentConfig:
     agent_name: str
     agent_type: str
     description: str = ""
-    config: Dict[str, Any] = field(default_factory=dict)
+    config: Dict[str, Any] = field(default_factory=dict)  # 添加缺失的config字段
     vectordbs: List[str] = field(default_factory=list)
-    events_history_path: str = ""
-    memory_history_path: str = ""
     created_at: Optional[datetime] = None
     is_active: bool = True
 
     # 添加不可更新的字段列表
     _IMMUTABLE_FIELDS = {'agent_name', 'created_at'}
+
+    def __post_init__(self):
+        """初始化后设置默认值"""
+        if self.created_at is None:
+            self.created_at = datetime.now()
 
     def update(self, updates: Dict[str, Any]) -> None:
         """更新配置
@@ -50,8 +53,6 @@ class AgentConfig:
             'description': self.description,
             'config': self.config,
             'vectordbs': self.vectordbs,
-            'events_history_path': self.events_history_path,
-            'memory_history_path': self.memory_history_path,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'is_active': self.is_active
         }
@@ -65,8 +66,6 @@ class AgentConfig:
             description=data.get('description', ''),
             config=data.get('config', {}),
             vectordbs=data.get('vectordbs', []),
-            events_history_path=data.get('events_history_path', ''),
-            memory_history_path=data.get('memory_history_path', ''),
             created_at=datetime.fromisoformat(data['created_at']) if data.get('created_at') else None,
             is_active=data.get('is_active', True)
         )
