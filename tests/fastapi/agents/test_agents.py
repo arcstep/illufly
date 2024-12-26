@@ -14,7 +14,7 @@ def vector_db_manager(users_manager, exist_user, exist_db_name, setup_env):
         user_id=exist_user.user_id,
         db_name=exist_db_name,
     )
-    assert manager.get_db(exist_user.user_id, exist_db_name).success, "创建向量库失败"
+    assert manager.get_db_instance(exist_user.user_id, exist_db_name).success, "创建向量库失败"
     return manager
 
 @pytest.fixture

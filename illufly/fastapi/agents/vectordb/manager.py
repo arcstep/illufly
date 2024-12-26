@@ -101,7 +101,7 @@ class VectorDBManager:
             if not result.success:
                 return result
 
-            return Result.ok(message="数据库创建成功", data=result.data)
+            return Result.ok(message="数据库创建成功", data=db_config.to_dict())
         except Exception as e:
             return Result.fail(f"创建数据库时发生错误: {e}")
 
@@ -116,7 +116,20 @@ class VectorDBManager:
         except Exception as e:
             return Result.fail(f"获取数据库列表失败: {e}")
 
-    def get_db(self, user_id: str, db_name: str) -> Result[VectorDB]:
+    def get_db_config(self, user_id: str, db_name: str) -> Result[VectorDBConfig]:
+        """获取向量数据库配置"""
+        try:
+            user_dbs = self._storage.get(owner_id=user_id)
+            if not user_dbs or db_name not in user_dbs:
+                return Result.fail("数据库不存在")
+            
+            # 从存储的字典创建配置实例
+            config = VectorDBConfig.from_dict(user_dbs[db_name])
+            return Result.ok(data=config, message="成功获取数据库配置")
+        except Exception as e:
+            return Result.fail(f"获取数据库配置失败: {e}")
+
+    def get_db_instance(self, user_id: str, db_name: str) -> Result[VectorDB]:
         """获取向量数据库实例"""
         try:
             # 检查缓存
@@ -127,15 +140,12 @@ class VectorDBManager:
                 )
 
             # 获取配置
-            user_dbs = self._storage.get(owner_id=user_id)
-            if not user_dbs or db_name not in user_dbs:
-                return Result.fail("数据库不存在")
-            
-            # 从存储的字典创建配置实例
-            config = VectorDBConfig.from_dict(user_dbs[db_name])
+            config_result = self.get_db_config(user_id, db_name)
+            if not config_result.success:
+                return Result.fail(config_result.error)
 
             # 加载数据库实例
-            result = self.load_db(user_id, db_name, config)
+            result = self.load_db(user_id, db_name, config_result.data)
             if not result.success:
                 return result
 
@@ -187,6 +197,6 @@ class VectorDBManager:
             if not result.success:
                 return result
             
-            return Result.ok(message="配置更新成功")
+            return Result.ok(message="配置更新成功", data=current_config.to_dict())
         except Exception as e:
             return Result.fail(f"更新配置失败: {e}")

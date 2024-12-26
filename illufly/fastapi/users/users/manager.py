@@ -153,9 +153,7 @@ class UsersManager:
     def verify_user_password(self, username: str, password: str) -> Result[Dict[str, Any]]:
         """验证用户密码"""
         try:
-            print(">>> verify_user_password: ", username, password)
             user = self.get_user_by_username(username)
-            print(">>> user: ", user)
             if not user:
                 return Result.fail("用户不存在")
             
@@ -172,7 +170,6 @@ class UsersManager:
             user_dict = user.to_dict(include_sensitive=False)
             if "roles" in user_dict:
                 user_dict["roles"] = list(user_dict["roles"])
-            print(">>> user_dict: ", user_dict)
 
             return Result.ok(data={
                 "require_password_change": require_password_change,

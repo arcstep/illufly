@@ -139,7 +139,6 @@ def create_users_endpoints(
         try:
             # 验证密码
             verify_result = users_manager.verify_user_password(username, password)
-            print(">>> verify_result: ", verify_result.to_dict())
             
             if not verify_result.success:
                 if verify_result.data:

@@ -56,7 +56,7 @@ class AgentsManager:
 
             # 验证向量库是否存在
             for db_name in vectordbs:
-                db_result = self.vectordb_manager.get_db(user_id, db_name)
+                db_result = self.vectordb_manager.get_db_instance(user_id, db_name)
                 if not db_result.success:
                     return Result.fail(f"向量库 '{db_name}' 不存在")
 
@@ -102,7 +102,7 @@ class AgentsManager:
             # 获取向量库实例
             vectordb_instances = []
             for db_name in agent_config.vectordbs:
-                db_result = self.vectordb_manager.get_db(user_id, db_name)
+                db_result = self.vectordb_manager.get_db_instance(user_id, db_name)
                 if not db_result.success:
                     return Result.fail(f"获取向量库失败: {db_result.error}")
                 vectordb_instances.append(db_result.data)

@@ -109,7 +109,12 @@ Feature: 向量知识库管理
       | 字段    | 类型    |
       | success | boolean |
       | data    | object  |
-    And 知识库应出现在用户的知识库列表中
+    And 指定知识库应出现在知识库列表中:
+      | 字段  | 值            |
+      | name  | test_vectordb |
+    And 可以获取指定知识库详情:
+      | 字段  | 值            |
+      | name  | test_vectordb |
 
   @core
   Scenario: 获取知识库列表

@@ -138,7 +138,7 @@ def create_agents_endpoints(
         user_id = current_user["user_id"]
         result = agents_manager.vectordb_manager.list_dbs(user_id)
         if result.success:
-            return result.data
+            return result.to_dict()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result.message)
 
     @app.post(f"{prefix}/vectordbs")
@@ -165,7 +165,7 @@ def create_agents_endpoints(
     ):
         """获取知识库详细信息"""
         user_id = current_user["user_id"]
-        result = agents_manager.vectordb_manager.get_db(user_id, db_name)
+        result = agents_manager.vectordb_manager.get_db_config(user_id, db_name)
         if result.success:
             return result.to_dict()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.error)
@@ -221,7 +221,7 @@ def create_agents_endpoints(
     ):
         """获取知识列表"""
         user_id = current_user["user_id"]
-        result = agents_manager.vectordb_manager.get_db(user_id, db_name)
+        result = agents_manager.vectordb_manager.get_db_instance(user_id, db_name)
         if result.success:
             db = result.data
             resp = db.knowledge.get_meta_list(
@@ -243,7 +243,7 @@ def create_agents_endpoints(
     ):
         """获取知识详情"""
         user_id = current_user["user_id"]
-        result = agents_manager.vectordb_manager.get_db(user_id, db_name)
+        result = agents_manager.vectordb_manager.get_db_instance(user_id, db_name)
         if result.success:
             db = result.data
             if not db:
@@ -266,7 +266,7 @@ def create_agents_endpoints(
     ):
         """创建新知识"""
         user_id = current_user["user_id"]
-        result = agents_manager.vectordb_manager.get_db(user_id, db_name)
+        result = agents_manager.vectordb_manager.get_db_instance(user_id, db_name)
         if result.success:
             db = result.data
             if not db:
@@ -295,7 +295,7 @@ def create_agents_endpoints(
     ):
         """更新知识"""
         user_id = current_user["user_id"]
-        result = agents_manager.vectordb_manager.get_db(user_id, db_name)
+        result = agents_manager.vectordb_manager.get_db_instance(user_id, db_name)
         if result.success:
             db = result.data
             if not db:
@@ -321,7 +321,7 @@ def create_agents_endpoints(
     ):
         """删除知识"""
         user_id = current_user["user_id"]
-        result = agents_manager.vectordb_manager.get_db(user_id, db_name)
+        result = agents_manager.vectordb_manager.get_db_instance(user_id, db_name)
         if result.success:
             db = result.data
             if not db:
@@ -340,7 +340,7 @@ def create_agents_endpoints(
     ):
         """搜索知识"""
         user_id = current_user["user_id"]
-        result = agents_manager.vectordb_manager.get_db(user_id, db_name)
+        result = agents_manager.vectordb_manager.get_db_instance(user_id, db_name)
         if result.success:
             db = result.data
             if not db:

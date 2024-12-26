@@ -117,7 +117,7 @@ def test_list_dbs(vector_db_manager, exist_user, exist_db1, exist_db2):
 
 def test_get_db(vector_db_manager, exist_user, exist_db1):
     """测试获取向量库实例"""
-    result = vector_db_manager.get_db(
+    result = vector_db_manager.get_db_instance(
         user_id=exist_user.user_id,
         db_name="test_db1",
     )
@@ -137,23 +137,28 @@ def test_update_db_config(vector_db_manager, exist_user, exist_db1):
             }
         }
     }
-    
+
     result = vector_db_manager.update_db_config(
         user_id=exist_user.user_id,
         db_name="test_db1",
         updates=new_config
     )
-    
+
     assert result.success, f"更新配置失败: {result.error}"
-    
+
     # 验证配置已更新
-    db_result = vector_db_manager.get_db(
+    db_result = vector_db_manager.get_db_config(
         user_id=exist_user.user_id,
         db_name="test_db1"
     )
     assert db_result.success
-    assert db_result.data.top_k == 10
-    assert db_result.data.batch_size == 2048
+    
+    # 修正配置属性的访问路径
+    assert db_result.data.vdb_config["params"]["top_k"] == 10
+    # 可以添加其他参数的验证
+    assert db_result.data.vdb_config["params"]["batch_size"] == 2048
+    assert db_result.data.vdb_config["params"]["device"] == "cpu"
+    assert db_result.data.vdb_config["vdb"] == "FaissDB"
 
 def test_remove_db(vector_db_manager, exist_user, exist_db1):
     """测试删除向量库"""

@@ -10,12 +10,10 @@ class AuthDependencies:
     async def get_current_user(self, request: Request, response: Response) -> Dict[str, Any]:
         """获取当前用户信息，包含令牌刷新逻辑"""
         access_token = request.cookies.get("access_token")
-        print(">>> access_token: ", access_token)
 
         # 当访问令牌过期时，会自动尝试重新颁发访问令牌
         if access_token:
             verify_result = self.tokens_manager.verify_jwt(access_token, token_type="access")
-            print(">>> verify_result: ", verify_result)
             
             if verify_result.success:
                 payload = verify_result.data.payload
