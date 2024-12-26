@@ -6,7 +6,7 @@ from pathlib import Path
 from calendar import timegm
 
 from ....config import get_env
-from ....io import ConfigStoreProtocol, FileConfigStore
+from ....io import ConfigStoreProtocol, TinyFileDB
 from ...result import Result
 from ..dependencies import AuthDependencies
 from .models import TokenClaims
@@ -95,7 +95,7 @@ class TokensManager:
     def __init__(self, storage: Optional[ConfigStoreProtocol] = None):
         """初始化认证管理器"""
         if storage is None:
-            storage = FileConfigStore(
+            storage = TinyFileDB(
                 data_dir=Path(get_env("ILLUFLY_CONFIG_STORE_DIR")),
                 filename="tokens.json",
                 data_class=Dict[str, Dict[str, Dict[str, Any]]]

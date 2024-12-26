@@ -6,7 +6,7 @@ from pathlib import Path
 import json
 import threading
 import logging
-from .config_store import ConfigStoreProtocol
+from .config_protocol import ConfigStoreProtocol
 from contextlib import contextmanager
 from typing import get_origin, get_args
 from pydantic import BaseModel, Field
@@ -63,7 +63,7 @@ class LRUCache:
         with self._lock:
             self._cache.clear()
 
-class FileConfigStore(ConfigStoreProtocol):
+class TinyFileDB(ConfigStoreProtocol):
     """基于文件的配置存储，提供线程安全和类型安全的数据持久化能力。
     
     设计思路:
@@ -129,7 +129,7 @@ class FileConfigStore(ConfigStoreProtocol):
     基本用法:
     ```python
     # 1. 创建带缓存和索引的存储
-    store = FileConfigStore(
+    store = TinyFileDB(
         data_dir="/path/to/data",
         filename="profiles.json",
         data_class=UserProfile,
@@ -159,7 +159,7 @@ class FileConfigStore(ConfigStoreProtocol):
         updated_at: datetime
     
     # 2. 创建存储
-    store = FileConfigStore(
+    store = TinyFileDB(
         data_dir="data",
         filename="containers.json",
         data_class=Dict[str, List[Container]]
@@ -176,13 +176,13 @@ class FileConfigStore(ConfigStoreProtocol):
     多模块数据管理示例:
     ```python
     # 1. 不同模块的存储实例
-    profile_store = FileConfigStore(
+    profile_store = TinyFileDB(
         data_dir="/data",
         filename="profiles.json",
         data_class=UserProfile
     )
     
-    chat_store = FileConfigStore(
+    chat_store = TinyFileDB(
         data_dir="/data",
         filename="chat_history.json",
         data_class=Dict[str, List[ChatMessage]]

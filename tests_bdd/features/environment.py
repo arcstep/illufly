@@ -10,7 +10,7 @@ from illufly.fastapi.users import UserRole, TokensManager, UsersManager
 from illufly.fastapi.users.endpoints import create_users_endpoints
 from illufly.fastapi.agents import AgentsManager
 from illufly.fastapi.agents.endpoints import create_agents_endpoints
-from illufly.io import FileConfigStore
+from illufly.io import TinyFileDB
 from illufly.config import get_env
 
 from dotenv import load_dotenv, find_dotenv

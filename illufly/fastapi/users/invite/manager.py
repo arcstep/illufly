@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ....config import get_env
-from ....io import ConfigStoreProtocol, FileConfigStore
+from ....io import ConfigStoreProtocol, TinyFileDB
 from .models import InviteCode
 
 class InviteCodeManager:
@@ -13,7 +13,7 @@ class InviteCodeManager:
             storage: 存储实现，如果为None则使用默认的文件存储
         """
         if storage is None:
-            storage = FileConfigStore(
+            storage = TinyFileDB(
                 data_dir=Path(get_env("ILLUFLY_CONFIG_STORE_DIR")),
                 filename="invite_codes.json",
                 data_class=List[InviteCode],

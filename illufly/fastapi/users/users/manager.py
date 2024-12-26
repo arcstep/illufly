@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from passlib.context import CryptContext
 
-from ....io import ConfigStoreProtocol, FileConfigStore
+from ....io import ConfigStoreProtocol, TinyFileDB
 from ...result import Result
 from ..tokens import TokensManager
 from ..invite import InviteCodeManager
@@ -27,7 +27,7 @@ class UsersManager:
         self.tokens_manager = tokens_manager or TokensManager()
         self.invite_manager = invite_manager or InviteCodeManager()
         if storage is None:
-            storage = FileConfigStore(
+            storage = TinyFileDB(
                 data_dir=Path(get_env("ILLUFLY_CONFIG_STORE_DIR")),
                 filename=__USER_CONFIG_FILENAME__,
                 data_class=User,

@@ -10,7 +10,7 @@ import logging
 import json
 from unittest.mock import patch
 
-from illufly.io import FileConfigStore
+from illufly.io import TinyFileDB
 from pydantic import BaseModel, Field
 
 @dataclass(frozen=True)
@@ -59,7 +59,7 @@ class TestSimpleStorageData:
     def storage_factory(self, tmp_path):
         """创建文件存储实例的工厂函数"""
         def create_storage():
-            return FileConfigStore(
+            return TinyFileDB(
                 data_dir=str(tmp_path),
                 filename="test.json",
                 data_class=StorageData
@@ -200,12 +200,12 @@ class TestSimpleStorageData:
     def test_delete_with_multiple_files(self, storage_factory: Callable, test_data_factory: Callable, tmp_path):
         """测试在同一目录下有多个文件时的删除功能"""
         # 创建两个不同的存储实例，使用相同的owner目录但不同的文件名
-        storage1 = FileConfigStore(
+        storage1 = TinyFileDB(
             data_dir=str(tmp_path),
             filename="test1.json",
             data_class=StorageData
         )
-        storage2 = FileConfigStore(
+        storage2 = TinyFileDB(
             data_dir=str(tmp_path),
             filename="test2.json",
             data_class=StorageData
@@ -282,7 +282,7 @@ class TestFileConfigStoreAdvanced:
     def complex_storage_factory(self, tmp_path):
         """创建支持复杂数据的存储实例"""
         def create_storage():
-            return FileConfigStore(
+            return TinyFileDB(
                 data_dir=str(tmp_path),
                 filename="complex_test.json",
                 data_class=ComplexStorageData
@@ -450,7 +450,7 @@ class TestFileConfigStoreCompositeTypes:
     def test_dict_storage(self, tmp_path, agent_config_factory):
         """测试字典类型存储"""
         # 创建配置字典存储
-        store = FileConfigStore(
+        store = TinyFileDB(
             data_dir=str(tmp_path),
             filename="agents.json",
             data_class=Dict[str, AgentConfig]
@@ -486,7 +486,7 @@ class TestFileConfigStoreCompositeTypes:
     
     def test_list_storage(self, tmp_path, agent_config_factory):
         """测试列表类型存储"""
-        store = FileConfigStore(
+        store = TinyFileDB(
             data_dir=str(tmp_path),
             filename="agent_list.json",
             data_class=List[AgentConfig]
@@ -511,7 +511,7 @@ class TestFileConfigStoreCompositeTypes:
     
     def test_nested_dict_storage(self, tmp_path, agent_config_factory):
         """测试嵌套字典存储"""
-        store = FileConfigStore(
+        store = TinyFileDB(
             data_dir=str(tmp_path),
             filename="nested_agents.json",
             data_class=Dict[str, Dict[str, AgentConfig]]
@@ -542,7 +542,7 @@ class TestFileConfigStoreCompositeTypes:
     
     def test_find_in_composite_types(self, tmp_path, agent_config_factory):
         """测试复合类型的查找功能"""
-        store = FileConfigStore(
+        store = TinyFileDB(
             data_dir=str(tmp_path),
             filename="searchable_agents.json",
             data_class=Dict[str, AgentConfig]
@@ -577,7 +577,7 @@ class TestFileConfigStoreCompositeTypes:
     
     def test_complex_nested_structures(self, tmp_path, agent_config_factory):
         """测试复杂嵌套结构"""
-        store = FileConfigStore(
+        store = TinyFileDB(
             data_dir=str(tmp_path),
             filename="complex_agents.json",
             data_class=Dict[str, List[Dict[str, AgentConfig]]]
@@ -617,14 +617,14 @@ class TestFileConfigStoreCompositeTypes:
     def test_list_and_tuple_storage(self, tmp_path, agent_config_factory):
         """测试列表和元组类型存储"""
         # 创建列表存储
-        list_store = FileConfigStore(
+        list_store = TinyFileDB(
             data_dir=str(tmp_path),
             filename="list_test.json",
             data_class=List[str]
         )
         
         # 创建元组存储
-        tuple_store = FileConfigStore(
+        tuple_store = TinyFileDB(
             data_dir=str(tmp_path),
             filename="tuple_test.json",
             data_class=tuple[str, int, bool]  # Python 3.9+
@@ -656,7 +656,7 @@ class TestFileConfigStoreCompositeTypes:
     def test_nested_list_storage(self, tmp_path, agent_config_factory):
         """测试嵌套列表存储"""
         # 创建嵌套列表存储
-        nested_store = FileConfigStore(
+        nested_store = TinyFileDB(
             data_dir=str(tmp_path),
             filename="nested_list.json",
             data_class=List[List[str]]
@@ -705,7 +705,7 @@ class TestPydanticSupport:
     def pydantic_storage_factory(self, tmp_path):
         """创建支持Pydantic的存储实例"""
         def create_storage():
-            return FileConfigStore(
+            return TinyFileDB(
                 data_dir=str(tmp_path),
                 filename="pydantic_test.json",
                 data_class=PydanticComplexData
@@ -747,14 +747,14 @@ class TestPydanticSupport:
     def test_pydantic_composite_types(self, tmp_path):
         """测试Pydantic复合类型"""
         # 创建字典存储
-        dict_store = FileConfigStore(
+        dict_store = TinyFileDB(
             data_dir=str(tmp_path),
             filename="pydantic_dict.json",
             data_class=Dict[str, PydanticComplexData]
         )
         
         # 创建列表存储
-        list_store = FileConfigStore(
+        list_store = TinyFileDB(
             data_dir=str(tmp_path),
             filename="pydantic_list.json",
             data_class=List[PydanticComplexData]
@@ -909,7 +909,7 @@ class TestFileConfigStoreIndexing:
     def indexed_storage_factory(self, tmp_path):
         """创建带索引的存储实例"""
         def create_storage(indexes=None, cache_size=1000):
-            return FileConfigStore(
+            return TinyFileDB(
                 data_dir=str(tmp_path),
                 filename="indexed_test.json",
                 data_class=StorageData,
@@ -1094,7 +1094,7 @@ class TestFileConfigStoreCache:
     @pytest.fixture
     def cached_storage_factory(self, tmp_path):
         def create_storage(cache_size=10):
-            return FileConfigStore(
+            return TinyFileDB(
                 data_dir=str(tmp_path),
                 filename="cached_test.json",
                 data_class=StorageData,

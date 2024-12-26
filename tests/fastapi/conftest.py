@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 
-from illufly.io import FileConfigStore
+from illufly.io import TinyFileDB
 from illufly.fastapi.users import TokensManager, UsersManager, User, UserRole
 from illufly.config import get_env
 
@@ -62,17 +62,13 @@ def exist_user(users_manager, test_user_password):
     """已存在的用户
     创建并返回一个已存在的用户对象，用于测试。
     """
-    user = User(
-        user_id="exist_user",
-        username="exist_user",
-        email="exist_user@example.com",
-        roles=[UserRole.USER]
-    )
+    pass_result = users_manager.hash_password(test_user_password)
     result = users_manager.create_user(
-        user_id=user.user_id,
-        email=user.email,
-        username=user.username,
+        user_id="exist_user",
+        email="exist_user@example.com", 
+        username="exist_user",
         password=test_user_password
     )
     assert result.success
+    user, _ = result.data  # create_user 返回 Tuple[User, Optional[str]]
     return user
