@@ -614,6 +614,75 @@ class TestFileConfigStoreCompositeTypes:
         assert loaded["project1"][1]["backup"].name == "agent2_backup"
         assert loaded["project2"][0]["main"].name == "agent3"
 
+    def test_list_and_tuple_storage(self, tmp_path, agent_config_factory):
+        """测试列表和元组类型存储"""
+        # 创建列表存储
+        list_store = FileConfigStore(
+            data_dir=str(tmp_path),
+            filename="list_test.json",
+            data_class=List[str]
+        )
+        
+        # 创建元组存储
+        tuple_store = FileConfigStore(
+            data_dir=str(tmp_path),
+            filename="tuple_test.json",
+            data_class=tuple[str, int, bool]  # Python 3.9+
+        )
+        
+        # 测试列表存储
+        test_list = ["item1", "item2", "item3"]
+        list_store.set(test_list, "owner1")
+        
+        # 测试元组存储
+        test_tuple = ("test", 42, True)
+        tuple_store.set(test_tuple, "owner1")
+        
+        # 验证列表存储
+        loaded_list = list_store.get("owner1")
+        assert loaded_list is not None
+        assert isinstance(loaded_list, list)
+        assert loaded_list == test_list
+        
+        # 验证元组存储
+        loaded_tuple = tuple_store.get("owner1")
+        assert loaded_tuple is not None
+        assert isinstance(loaded_tuple, tuple)
+        assert loaded_tuple == test_tuple
+        assert loaded_tuple[0] == "test"
+        assert loaded_tuple[1] == 42
+        assert loaded_tuple[2] is True
+
+    def test_nested_list_storage(self, tmp_path, agent_config_factory):
+        """测试嵌套列表存储"""
+        # 创建嵌套列表存储
+        nested_store = FileConfigStore(
+            data_dir=str(tmp_path),
+            filename="nested_list.json",
+            data_class=List[List[str]]
+        )
+        
+        # 准备测试数据
+        test_data = [
+            ["a1", "a2", "a3"],
+            ["b1", "b2"],
+            ["c1", "c2", "c3", "c4"]
+        ]
+        
+        # 存储数据
+        nested_store.set(test_data, "owner1")
+        
+        # 读取并验证
+        loaded = nested_store.get("owner1")
+        assert loaded is not None
+        assert isinstance(loaded, list)
+        assert all(isinstance(item, list) for item in loaded)
+        assert loaded == test_data
+        assert len(loaded[0]) == 3
+        assert len(loaded[1]) == 2
+        assert len(loaded[2]) == 4
+        assert loaded[0][0] == "a1"
+
 class PydanticNestedData(BaseModel):
     """Pydantic嵌套数据结构"""
     key: str
