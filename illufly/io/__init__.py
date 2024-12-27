@@ -1,7 +1,7 @@
 from .block import EventBlock, EndBlock, NewLineBlock, ResponseBlock
 from .document import Document, convert_to_documents_list
 
-from .config import ConfigStoreProtocol, TinyFileDB
+from .jiaozi_cache import ConfigStoreProtocol, JiaoziCache
 from .handlers import log, alog, usage, async_usage
 from .history import BaseMemoryHistory, LocalFileMemoryHistory
 from .history import BaseEventsHistory, LocalFileEventsHistory
@@ -23,5 +23,5 @@ __all__ = [
     "BaseKnowledgeDB",
     "LocalFileKnowledgeDB",
     "ConfigStoreProtocol",
-    "TinyFileDB",
+    "JiaoziCache",
 ]

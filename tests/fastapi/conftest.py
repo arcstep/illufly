@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 
-from illufly.io import TinyFileDB
+from illufly.io import JiaoziCache
 from illufly.fastapi.users import TokensManager, UsersManager, User, UserRole
 from illufly.config import get_env
 

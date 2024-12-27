@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime
 
 from ....core.runnable.vectordb import VectorDB
-from ....io import ConfigStoreProtocol, TinyFileDB
+from ....io import ConfigStoreProtocol, JiaoziCache
 from ...users import UsersManager
 from ...result import Result
 from .models import VectorDBConfig
@@ -25,7 +25,7 @@ class VectorDBManager:
         self._db_factory = db_factory or DefaultVectorDBFactory()
 
         if storage is None:
-            storage = TinyFileDB(
+            storage = JiaoziCache(
                 data_dir=Path(get_env("ILLUFLY_CONFIG_STORE_DIR")),
                 filename=__VECTOR_CONFIG_FILENAME__,
                 data_class=Dict[str, VectorDBConfig],
