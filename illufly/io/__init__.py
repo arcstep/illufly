@@ -1,7 +1,7 @@
 from .block import EventBlock, EndBlock, NewLineBlock, ResponseBlock
 from .document import Document, convert_to_documents_list
 
-from .jiaozi_cache import ConfigStoreProtocol, JiaoziCache
+from .jiaozi_cache import JiaoziCache
 from .handlers import log, alog, usage, async_usage
 from .history import BaseMemoryHistory, LocalFileMemoryHistory
 from .history import BaseEventsHistory, LocalFileEventsHistory

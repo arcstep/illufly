@@ -2,15 +2,16 @@ from dataclasses import dataclass, asdict
 from typing import Callable
 import pytest
 import logging
-import time  # 添加 time 导入
-import os
-from unittest.mock import patch
+import time
 
 from illufly.io import JiaoziCache
 from tests.io.jiaozi_cache.conftest import StorageData  # 使用绝对导入路径
-from illufly.io.jiaozi_cache.base import JiaoziCache
 
 class TestSimpleStorageData:
+    @pytest.fixture(autouse=True)
+    def setup_env(self):
+        import os
+        os.environ["JIAOZI_CACHE_FULL_SCAN_THRESHOLD"] = "1"
 
     @pytest.fixture
     def test_data_factory(self, tmp_path):
@@ -24,10 +25,6 @@ class TestSimpleStorageData:
             defaults.update(kwargs)
             return StorageData(**defaults)
         return create_test_data
-
-    @pytest.fixture(autouse=True)
-    def setup_env(self):
-        os.environ["JIAOZI_CACHE_FULL_SCAN_THRESHOLD"] = "1"
 
     @pytest.fixture(autouse=True)
     def setup_logging(self):

@@ -1,12 +1,12 @@
-from typing import Dict, Any, Optional, List, Callable, Type
+from typing import Dict, Any, Optional, List, Callable, Type, Union, Tuple
 from dataclasses import is_dataclass, asdict
 from datetime import datetime
 from contextlib import contextmanager
 from typing import get_origin, get_args
 from pydantic import BaseModel, Field
 from collections import OrderedDict
-
 from pathlib import Path
+
 import inspect
 import json
 import threading
@@ -14,9 +14,8 @@ import logging
 import warnings
 
 from ...config import get_env
-from .config_protocol import ConfigStoreProtocol
-from .backend import StorageBackend, JSONFileStorageBackend
-from .index import IndexBackend, HashIndexBackend
+from .store import StorageBackend, JSONFileStorageBackend
+from .index import IndexBackend, HashIndexBackend, CompositeIndexBackend, IndexType
 from .cache import LRUCacheBackend
 
 class JiaoziCache():
@@ -28,7 +27,7 @@ class JiaoziCache():
     def __init__(
         self,
         data_class: Type,
-        indexes: Optional[List[str]] = None,
+        index_config: Optional[Dict[str, IndexType]] = None,
         cache_backend: Optional[LRUCacheBackend] = None,
         storage_backend: Optional[StorageBackend] = None,
         index_backend: Optional[IndexBackend] = None,
@@ -40,7 +39,7 @@ class JiaoziCache():
         
         Args:
             data_class: 数据类型类
-            indexes: 索引字段列表
+            index_config: 索引配置字典
             cache_backend: 缓存后端
             storage_backend: 存储后端
             index_backend: 索引后端
@@ -63,13 +62,13 @@ class JiaoziCache():
         self._storage = storage_backend
         
         # 初始化索引后端
-        if index_backend is None and indexes:
-            raise ValueError("index_backend is required when indexes are specified")
+        if index_backend is None and index_config:
+            raise ValueError("index_backend is required when index_config is specified")
         self._index = index_backend
 
         # 验证索引字段
-        if indexes:
-            self._validate_index_fields(indexes)
+        if index_config:
+            self._validate_index_fields(index_config.keys())
 
     def _init_serializers(self, serializer, deserializer):
         """初始化序列化器"""
@@ -164,28 +163,80 @@ class JiaoziCache():
         
         return result
 
-    def find(self, conditions: Dict[str, Any]) -> List[Any]:
-        """查找匹配条件的数据，优先使用索引"""
-        # 获取所有可用的索引字段
-        indexed_attrs = {
-            k: v for k, v in conditions.items() 
-            if self._index and self._index.has_index(k)
-        }
+    def query(self, conditions: Dict[str, Union[Any, Tuple[str, Any, Any]]]) -> List[Any]:
+        """统一的查询接口，支持等值查询和范围查询
         
-        if indexed_attrs:
-            # 使用第一个索引字段进行查找
-            field, value = next(iter(indexed_attrs.items()))
-            owner_ids = self._index.find_with_index(field, value)
+        Args:
+            conditions: 查询条件
+                - 等值查询: field: value
+                - 范围查询: field: (op, value1, value2)
+                
+        Examples:
+            # 等值查询
+            cache.query({"status": "active"})
             
-            # 如果还有其他条件，进一步过滤
-            results = []
-            for current_owner_id in owner_ids:
-                data = self.get(current_owner_id)
-                if data and self._match_conditions(data, conditions):
-                    results.append(data)
-            return results
+            # 范围查询
+            cache.query({
+                "age": (">=", 18),
+                "price": ("[]", 100, 200)
+            })
+        """
+        if not self._index:
+            return self._full_scan(conditions)
+            
+        # 处理查询条件
+        indexed_conditions = {}
+        other_conditions = {}
         
-        # 没有可用索引时才全量扫描
+        for field, value in conditions.items():
+            if not self._index.has_index(field):
+                if isinstance(value, tuple):
+                    warnings.warn(
+                        f"字段 {field} 未建立索引，不支持范围查询。将使用等值匹配。",
+                        UserWarning
+                    )
+                    other_conditions[field] = value[1]
+                else:
+                    other_conditions[field] = value
+                continue
+                
+            if isinstance(value, tuple):
+                op, *values = value
+                # 获取索引中存储的类型
+                field_type = type(getattr(self._data_class, field, None))
+                # 转换值为索引中存储的类型
+                values = [self._convert_to_type(v, field_type) for v in values]
+                indexed_conditions[field] = (op, *values)
+            else:
+                # 获取索引中存储的类型
+                field_type = type(getattr(self._data_class, field, None))
+                # 转换值为索引中存储的类型
+                value = self._convert_to_type(value, field_type)
+                indexed_conditions[field] = ("==", value)
+        
+        if not indexed_conditions:
+            return self._full_scan(conditions)
+            
+        # 使用第一个索引条件
+        field, (op, *values) = next(iter(indexed_conditions.items()))
+        owner_ids = self._index.query(field, op, *values)
+        
+        # 应用其他索引条件
+        for field, (op, *values) in list(indexed_conditions.items())[1:]:
+            ids = self._index.query(field, op, *values)
+            owner_ids = list(set(owner_ids) & set(ids))
+            
+        # 获取并过滤数据
+        results = []
+        for owner_id in owner_ids:
+            data = self.get(owner_id)
+            if data and self._match_conditions(data, other_conditions):
+                results.append(data)
+                
+        return results
+
+    def _full_scan(self, conditions: Dict[str, Any]) -> List[Any]:
+        """全表扫描（仅支持等值匹配）"""
         all_owners = list(self._storage.list_owners())
         if len(all_owners) > int(get_env("JIAOZI_CACHE_FULL_SCAN_THRESHOLD")):
             warnings.warn(
@@ -194,12 +245,51 @@ class JiaoziCache():
                 UserWarning
             )
         
-        # 执行全量扫描
+        # 转换所有条件为等值匹配
+        simple_conditions = {}
+        for field, value in conditions.items():
+            if isinstance(value, tuple):
+                warnings.warn(
+                    f"全表扫描不支持字段 {field} 的范围查询，将使用等值匹配。",
+                    UserWarning
+                )
+                simple_conditions[field] = value[1]  # 使用第一个值
+            else:
+                simple_conditions[field] = value
+        
         results = []
-        for current_owner_id in all_owners:
-            data = self.get(current_owner_id)
-            if data and self._match_conditions(data, conditions):
+        for owner_id in all_owners:
+            data = self.get(owner_id)
+            if data and self._match_conditions(data, simple_conditions):
                 results.append(data)
+        return results
+
+    def find_one(self, field: str, value: Any) -> Optional[Any]:
+        """查找单个匹配的记录
+        
+        Example:
+            user = cache.find_one("id", "user123")
+        """
+        results = self.query({field: value})
+        return results[0] if results else None
+
+    def find_by_id(self, id: str) -> Optional[Any]:
+        """通过ID查找记录
+        
+        Example:
+            user = cache.find_by_id("user123")
+        """
+        return self.get(id)  # 直接使用 get 方法，更高效
+
+    def find_many(self, field: str, values: List[Any]) -> List[Any]:
+        """查找多个匹配的记录
+        
+        Example:
+            users = cache.find_many("status", ["active", "pending"])
+        """
+        results = []
+        for value in values:
+            results.extend(self.query({field: value}))
         return results
 
     def clear_cache(self) -> None:
@@ -213,46 +303,6 @@ class JiaoziCache():
     def list_owners(self) -> List[str]:
         """列出所有的所有者ID"""
         return self._storage.list_owners()
-
-    def exists(self, attributes: Dict[str, Any]) -> bool:
-        """检查是否存在匹配给定属性的记录"""
-        indexed_attrs = {
-            k: v for k, v in attributes.items() 
-            if self._index.has_index(k)
-        }
-        
-        if indexed_attrs:
-            field, value = next(iter(indexed_attrs.items()))
-            owners = self._index.find_with_index(field, value)
-            
-            if len(owners) > 0 and len(attributes) > 1:
-                for owner_id in owners:
-                    data = self.get(owner_id)
-                    if data is not None and all(
-                        getattr(data, k, None) == v 
-                        for k, v in attributes.items()
-                    ):
-                        return True
-                return False
-            
-            return len(owners) > 0
-        
-        # 没有索引时发出警告
-        warnings.warn(
-            f"属性中没有索引字段。建议为以下字段添加索引以提升性能: {list(attributes.keys())}",
-            UserWarning
-        )
-        
-        # 全量扫描
-        for owner_id in self.list_owners():
-            data = self.get(owner_id)
-            if data is not None and all(
-                getattr(data, k, None) == v 
-                for k, v in attributes.items()
-            ):
-                return True
-        
-        return False
 
     def _match_conditions(self, data: Any, conditions: Dict[str, Any]) -> bool:
         """匹配所有条件"""
@@ -270,12 +320,15 @@ class JiaoziCache():
         )
 
     def _match_value(self, data_value: Any, condition_value: Any) -> bool:
-        """匹配值,支持列表值匹配"""
+        """匹配值,��列表值匹配"""
         if data_value is None:
             return False
         
         if callable(condition_value):
             return condition_value(data_value)
+        
+        # 将条件值转换为数据值的类型
+        condition_value = self._convert_to_type(condition_value, type(data_value))
         
         if isinstance(data_value, (list, tuple, set)):
             if isinstance(condition_value, (list, tuple, set)):
@@ -365,44 +418,33 @@ class JiaoziCache():
         data_dir: str,
         filename: str,
         data_class: Type,
-        indexes: Optional[List[str]] = None,
+        index_config: Optional[Dict[str, IndexType]] = None,  # 改为索引配置
         cache_size: int = 1000,
         serializer: Optional[Callable] = None,
         deserializer: Optional[Callable] = None,
         logger: Optional[logging.Logger] = None
     ) -> 'JiaoziCache':
-        """使用JSON文件存储后端创建JiaoziCache实例
-        
-        Args:
-            data_dir: 数据存储目录路径
-            filename: 数据文件名
-            data_class: 数据类型类
-            indexes: 索引字段列表
-            cache_size: LRU缓存容量
-            serializer: 自定义序列化函数
-            deserializer: 自定义反序列化函数
-            logger: 日志记录器
-        """
         logger = logger or logging.getLogger(__name__)
         
-        # 创建存储后端
         storage_backend = JSONFileStorageBackend(
             data_dir=data_dir,
             filename=filename,
             logger=logger
         )
         
-        # 创建索引后端
-        index_backend = HashIndexBackend(
-            data_dir=data_dir,
-            filename=filename,
-            index_fields=indexes or [],
-            logger=logger
-        )
+        # 使用组合索引后端
+        index_backend = None
+        if index_config:
+            index_backend = CompositeIndexBackend(
+                data_dir=data_dir,
+                filename=filename,
+                index_config=index_config,
+                logger=logger
+            )
         
         return cls(
             data_class=data_class,
-            indexes=indexes,
+            index_config=index_config,
             cache_backend=LRUCacheBackend(cache_size),
             storage_backend=storage_backend,
             index_backend=index_backend,
@@ -410,3 +452,38 @@ class JiaoziCache():
             deserializer=deserializer,
             logger=logger
         )
+
+    def rebuild_indexes(self) -> None:
+        """重建所有索引"""
+        if not self._index:
+            return
+        
+        def data_iterator():
+            results = []
+            for owner_id in self._storage.list_owners():
+                data = self.get(owner_id)
+                if data:
+                    results.append((owner_id, data))
+            return results
+        
+        self._index.rebuild_indexes(data_iterator)
+
+    def _convert_to_type(self, value: Any, target_type: Type) -> Any:
+        """将值转换为目标类型"""
+        if target_type is datetime:
+            if isinstance(value, str):
+                try:
+                    return datetime.fromisoformat(value)
+                except ValueError:
+                    return value
+        elif target_type is int:
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                return value
+        elif target_type is float:
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return value
+        return value

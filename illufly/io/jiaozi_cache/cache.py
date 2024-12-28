@@ -40,16 +40,21 @@ class LRUCacheBackend(CacheBackend):
         self.capacity = capacity
         self._cache = OrderedDict()
         self._lock = threading.Lock()
+        self._hits = 0
+        self._misses = 0
     
     def get(self, key: str) -> Optional[Any]:
         if self.capacity == 0:
+            self._misses += 1
             return None
             
         with self._lock:
             if key not in self._cache:
+                self._misses += 1
                 return None
             value = self._cache.pop(key)
             self._cache[key] = value
+            self._hits += 1
             return value
     
     def put(self, key: str, value: Any) -> None:
@@ -76,5 +81,7 @@ class LRUCacheBackend(CacheBackend):
             return {
                 "capacity": self.capacity,
                 "size": len(self._cache),
-                "type": "LRU"
+                "type": "LRU",
+                "hits": self._hits,
+                "misses": self._misses
             }

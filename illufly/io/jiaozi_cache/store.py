@@ -7,10 +7,12 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 
 class DateTimeEncoder(json.JSONEncoder):
-    """处理datetime和自定义对象的JSON编码器"""
+    """处理datetime、集合类型和自定义对象的JSON编码器"""
     def default(self, obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
+        if isinstance(obj, (set, frozenset)):
+            return list(obj)  # 将集合类型转换为列表
         if hasattr(obj, 'to_dict') and callable(obj.to_dict):
             return obj.to_dict()
         return super().default(obj)
@@ -52,11 +54,27 @@ class JSONFileStorageBackend(StorageBackend):
         with self._get_file_lock(owner_id):
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    # 反序列化时处理 datetime
+                    for key, value in data.items():
+                        if isinstance(value, str) and self._is_iso_format(value):
+                            try:
+                                data[key] = datetime.fromisoformat(value)
+                            except ValueError:
+                                pass
+                    return data
             except Exception as e:
                 if self.logger:
                     self.logger.error(f"Error loading data from {file_path}: {e}")
                 return None
+
+    def _is_iso_format(self, value: str) -> bool:
+        """检查字符串是否为 ISO 格式"""
+        try:
+            datetime.fromisoformat(value)
+            return True
+        except ValueError:
+            return False
 
     def set(self, owner_id: str, data: Any) -> None:
         """将数据保存到文件"""

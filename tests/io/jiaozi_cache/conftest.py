@@ -1,4 +1,7 @@
 from dataclasses import dataclass, asdict
+from typing import Optional
+from datetime import datetime
+
 import pytest
 import logging
 
@@ -11,7 +14,9 @@ class StorageData:
     name: str = "张三"
     age: int = 25
     email: str = "test@example.com"
-    
+    status: Optional[str] = None
+    created_at: Optional[datetime] = None
+
     def to_dict(self) -> dict:
         """序列化方法"""
         return asdict(self)
