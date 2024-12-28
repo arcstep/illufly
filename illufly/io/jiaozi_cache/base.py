@@ -273,7 +273,7 @@ class JiaoziCache():
             
             if isinstance(condition, tuple):
                 op, *values = condition
-                # 转换查询值类型
+                # 转换查询值类��
                 values = [self._convert_value(v, field_type) for v in values]
                 
                 if op in COMPARE_OPS:
@@ -388,29 +388,77 @@ class JiaoziCache():
         data_dir: str,
         filename: str,
         data_class: Type,
-        index_config: Optional[Dict[str, IndexType]] = None,  # 改为索引配置
+        index_config: Optional[Dict[str, IndexType]] = None,
         cache_size: int = 1000,
         serializer: Optional[Callable] = None,
         deserializer: Optional[Callable] = None,
         logger: Optional[logging.Logger] = None
     ) -> 'JiaoziCache':
+        """创建基于JSON存储的缓存实例
+        
+        Args:
+            data_dir: 数据目录路径
+            filename: 文件名
+            data_class: 数据类型类
+            index_config: 索引配置
+            cache_size: 缓存大小
+            serializer: 自定义序列化函数
+            deserializer: 自定义反序列化函数
+            logger: 日志记录器
+        """
         logger = logger or logging.getLogger(__name__)
         
+        # 创建存储后端
         storage_backend = JSONFileStorageBackend(
             data_dir=data_dir,
             filename=filename,
             logger=logger
         )
         
-        # 使用组合索引后端
+        # 创建索引后端
         index_backend = None
         if index_config:
+            # 收集字段类型信息
+            field_types = {}
+            
+            # 从类型注解中获取字段类型
+            if hasattr(data_class, '__annotations__'):
+                annotations = data_class.__annotations__
+                for field in index_config:
+                    # 处理嵌套字段
+                    parts = field.split('.')
+                    current_type = data_class
+                    current_field = field
+                    
+                    try:
+                        for part in parts:
+                            if not hasattr(current_type, '__annotations__'):
+                                raise ValueError(f"类型 {current_type.__name__} 没有类型注解")
+                            current_field = part
+                            current_type = current_type.__annotations__[part]
+                        
+                        # 处理泛型类型
+                        origin = get_origin(current_type)
+                        if origin is not None:
+                            args = get_args(current_type)
+                            if args:
+                                current_type = args[0]  # 使用第一个类型参数
+                        
+                        field_types[field] = current_type
+                        logger.debug(f"字段 {field} 的类型为 {current_type}")
+                        
+                    except (AttributeError, KeyError) as e:
+                        raise ValueError(f"无法获取字段 {current_field} 的类型: {e}")
+            
+            # 创建组合索引后端
             index_backend = CompositeIndexBackend(
                 data_dir=data_dir,
                 filename=filename,
                 index_config=index_config,
+                field_types=field_types,
                 logger=logger
             )
+            logger.debug(f"创建索引后端，配置: {index_config}，字段类型: {field_types}")
         
         return cls(
             data_class=data_class,
@@ -422,6 +470,28 @@ class JiaoziCache():
             deserializer=deserializer,
             logger=logger
         )
+
+    @staticmethod
+    def _get_field_type(data_class: Type, field: str) -> Optional[Type]:
+        """获取字段类型"""
+        try:
+            annotations = data_class.__annotations__
+            if field in annotations:
+                return annotations[field]
+            
+            # 处理嵌套字段
+            parts = field.split('.')
+            current_type = data_class
+            for part in parts:
+                if not hasattr(current_type, '__annotations__'):
+                    return None
+                annotations = current_type.__annotations__
+                if part not in annotations:
+                    return None
+                current_type = annotations[part]
+            return current_type
+        except (AttributeError, KeyError):
+            return None
 
     def rebuild_indexes(self) -> None:
         """重建所有索引"""
@@ -460,7 +530,7 @@ class JiaoziCache():
 
     def _infer_field_type(self, field: str) -> Optional[type]:
         """推断字段的数据类型"""
-        # 从已有数据中推断类型
+        # 从已有数据中推类型
         for owner_id in self._storage.list_owners():
             data = self.get(owner_id)
             if data:

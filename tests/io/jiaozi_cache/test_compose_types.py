@@ -144,39 +144,71 @@ class TestFileConfigStoreCompositeTypes:
         assert len(loaded["project1"]) == 2
         assert loaded["project1"]["agent1"].name == "agent1"
 
-    def test_find_in_composite_types(self, tmp_path, agent_config_factory):
+    def test_find_in_composite_types(self, tmp_path, agent_config_factory, caplog):
         """测试复合类型的查找功能"""
+        # 设置日志级别为 DEBUG
+        caplog.set_level(logging.DEBUG)
+        
         store = JiaoziCache.create_with_json_storage(
             data_dir=str(tmp_path),
             filename="searchable_agents.json",
-            data_class=Dict[str, AgentConfig]
+            data_class=Dict[str, AgentConfig],
+            index_config={
+                "model": IndexType.HASH,
+                "parameters.temperature": IndexType.BTREE,
+                "is_active": IndexType.HASH
+            }
         )
+        
+        # 打印调试信息
+        print("\n=== Debug Information ===")
+        print(f"Data Class: {store._data_class}")
+        print(f"Index Config: {store._index._index_config}")
+        print(f"Field Types: {store._index._field_types}")
+        print("=== Log Messages ===")
+        for record in caplog.records:
+            print(f"{record.levelname}: {record.message}")
+        print("=====================")
         
         test_data = {
             "agent1": agent_config_factory(
                 name="agent1",
                 model="gpt-3.5",
-                parameters={"temperature": 0.7}
+                parameters={"temperature": 0.7},
+                is_active=True
             ),
             "agent2": agent_config_factory(
                 name="agent2",
                 model="gpt-4",
-                parameters={"temperature": 0.9}
+                parameters={"temperature": 0.9},
+                is_active=True
             )
         }
         store.set(test_data, "user1")
         
-        # 测试基于模型的查找
+        # 测试基于模型的哈希索引查询
         results = store.query({"model": "gpt-4"})
         assert len(results) == 1
-        assert list(results)[0]["agent2"].name == "agent2"
+        assert results[0]["agent2"].name == "agent2"
         
-        # 测试基于参数的查找
+        # 测试基于参数的B树索引范围查询
         results = store.query({
-            "parameters": lambda p: p.get("temperature", 0) > 0.8
+            "parameters.temperature": (">=", 0.8)
         })
         assert len(results) == 1
-        assert list(results)[0]["agent2"].parameters["temperature"] == 0.9
+        assert results[0]["agent2"].parameters["temperature"] == 0.9
+        
+        # 测试组合查询
+        results = store.query({
+            "model": "gpt-4",
+            "is_active": True
+        })
+        assert len(results) == 1
+        assert results[0]["agent2"].model == "gpt-4"
+        
+        # 测试不存在的值
+        results = store.query({"model": "non-existent"})
+        assert len(results) == 0
 
     def test_complex_nested_structures(self, tmp_path, agent_config_factory):
         """测试复杂嵌套结构"""
@@ -242,7 +274,7 @@ class TestFileConfigStoreCompositeTypes:
         file_path = tmp_path / "user1" / "error_test.json"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w") as f:
-            f.write('{"invalid": "json"')  # 不完整的JSON
+            f.write('{"invalid": "json"')  # 不完整���JSON
 
         # 验证读取时的错误处理
         result = store.get("user1")

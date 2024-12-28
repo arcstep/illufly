@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List, Dict, Optional, Callable, Union
+from typing import Any, List, Dict, Optional, Callable, Union, Type
 from abc import ABC, abstractmethod
 from enum import Enum
 from collections import defaultdict
@@ -23,13 +23,12 @@ class CompositeIndexBackend(IndexBackend):
     """组合索引后端"""
     def __init__(self, data_dir: str = None, filename: str = None,
                  index_config: Dict[str, IndexType] = None,
+                 field_types: Dict[str, Type] = None,
                  logger: Optional[logging.Logger] = None):
-        self._hash_backend = HashIndexBackend(data_dir=data_dir,
-                                            filename=filename,
-                                            index_fields=[],
-                                            logger=logger)
+        self._hash_backend = None
         self._btree_backend = None
         self._index_config = index_config or {}
+        self._field_types = field_types or {}
         self._data_dir = Path(data_dir) if data_dir else None
         self._filename = filename
         self.logger = logger
@@ -40,32 +39,48 @@ class CompositeIndexBackend(IndexBackend):
         """初始化索引"""
         hash_fields = []
         btree_fields = []
+        hash_types = {}
+        btree_types = {}
         
+        # 分类字段和类型
         for field, index_type in self._index_config.items():
+            field_type = self._field_types.get(field)
+            if not field_type:
+                raise ValueError(f"无法获取字段 {field} 的类型")
+                
             if index_type == IndexType.HASH:
                 hash_fields.append(field)
+                hash_types[field] = field_type
             elif index_type == IndexType.BTREE:
                 btree_fields.append(field)
-                
-        self._hash_backend._index_fields = hash_fields
+                btree_types[field] = field_type
         
+        # 创建哈希索引后端
+        if hash_fields:
+            self._hash_backend = HashIndexBackend(
+                data_dir=self._data_dir,
+                filename=f"{self._filename}_hash" if self._filename else None,
+                field_types=hash_types,
+                logger=self.logger
+            )
+        
+        # 创建B树索引后端
         if btree_fields:
             self._btree_backend = BTreeIndexBackend(
                 data_dir=self._data_dir,
-                filename=f"{self._filename}_btree",
+                filename=f"{self._filename}_btree" if self._filename else None,
                 index_fields=btree_fields,
+                field_types=btree_types,
                 logger=self.logger
             )
 
     def update_index(self, data: Any, owner_id: str) -> None:
         """更新索引"""
-        for field, index_type in self._index_config.items():
-            value = self._get_value_by_path(data, field)
-            if value is not None:
-                if index_type == IndexType.HASH:
-                    self._hash_backend.update_index({field: value}, owner_id)
-                elif index_type == IndexType.BTREE and self._btree_backend:
-                    self._btree_backend.update_index({field: value}, owner_id)
+        if self._hash_backend:
+            self._hash_backend.update_index(data, owner_id)
+            
+        if self._btree_backend:
+            self._btree_backend.update_index(data, owner_id)
 
     def find_with_index(self, field: str, value: Any) -> List[str]:
         """查找索引"""
@@ -73,7 +88,7 @@ class CompositeIndexBackend(IndexBackend):
             return []
             
         index_type = self._index_config[field]
-        if index_type == IndexType.HASH:
+        if index_type == IndexType.HASH and self._hash_backend:
             return self._hash_backend.find_with_index(field, value)
         elif index_type == IndexType.BTREE and self._btree_backend:
             return self._btree_backend.find_with_index(field, value)
@@ -96,19 +111,7 @@ class CompositeIndexBackend(IndexBackend):
             self._btree_backend.remove_from_index(owner_id)
 
     def query(self, field: str, op: str, *values: Any) -> List[str]:
-        """统一的查询接口
-        
-        Args:
-            field: 字段名
-            op: 操作符 (==, !=, >=, <=, >, <, [], (), [), (], contains)
-            values: 查询值
-            
-        Returns:
-            匹配的 owner_id 列表
-            
-        Raises:
-            ValueError: 当操作符与索引类型不匹配时
-        """
+        """统一的查询接口"""
         if field not in self._index_config:
             return []
             
@@ -140,18 +143,7 @@ class CompositeIndexBackend(IndexBackend):
 
     def clear(self) -> None:
         """清除所有索引"""
-        self._hash_backend = HashIndexBackend(
-            data_dir=self._data_dir,
-            filename=self._filename,
-            index_fields=[],
-            logger=self.logger
-        )
-        if self._btree_backend:
-            self._btree_backend = BTreeIndexBackend(
-                data_dir=self._data_dir,
-                filename=f"{self._filename}_btree",
-                index_fields=[],
-                logger=self.logger
-            )
+        self._hash_backend = None
+        self._btree_backend = None
         self._init_indexes()
 

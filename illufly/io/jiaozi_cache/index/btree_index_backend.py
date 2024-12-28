@@ -1,15 +1,12 @@
+from typing import Dict, Type, Any, Optional, List, Callable, Union
 from pathlib import Path
-from typing import Any, List, Dict, Optional, Callable, Union, Type
-from abc import ABC, abstractmethod
-from enum import Enum
-from collections import defaultdict
-from datetime import datetime
-
-import json
 import logging
+from datetime import datetime
+import json
+from collections import defaultdict
 from functools import lru_cache
 
-from .index_backend import IndexBackend
+from .typed_index_backend import TypedIndexBackend, ErrorHandling, TypeMismatchError
 from .ops import COMPARE_OPS, RANGE_OPS
 
 class BTreeNode:
@@ -332,7 +329,7 @@ class BTreeIndex:
         return result
 
     def _one_sided_search(self, node: BTreeNode, op: str, value: Any, result: List[str]) -> None:
-        """��进的单侧查询实现，移除调试输出"""
+        """改进的单侧查询实现，移除调试输出"""
         i = 0
         while i < len(node.keys):
             current_key = node.keys[i]
@@ -431,25 +428,61 @@ class BTreeIndex:
             if i < len(node.children):
                 self._range_search(node.children[i], op, start, end, result)
 
-    def _serialize_value(self, value: Any) -> Union[str, int, float, bool, None]:
-        """序列化值以便存储"""
+    def _serialize_value(self, value: Any) -> Union[str, int, float, bool, None, tuple]:
+        """序列化值以便在B树中存储和比较
+        
+        扩展基类的序列化方法，增加对复合键和特殊类型的支持
+        """
+        if value is None:
+            return None
+        
+        # 处理复合键
+        if isinstance(value, (list, tuple)):
+            return tuple(self._serialize_value(v) for v in value)
+        
+        # 处理日期时间
         if isinstance(value, datetime):
             return value.isoformat()
-        elif isinstance(value, (str, int, float, bool)) or value is None:
+        
+        # 处理基本类型
+        if isinstance(value, (str, int, float, bool)):
             return value
+        
+        # 其他类型转换为字符串
         return str(value)
 
     def _deserialize_value(self, value: Any, field: str) -> Any:
-        """反序列化存储的值"""
+        """反序列化B树中存储的值
+        
+        扩展基类的反序列化方法，增加对复合键和特殊类型的支持
+        """
         if value is None:
             return None
         
         field_type = self._field_types.get(field)
-        if field_type is datetime and isinstance(value, str):
+        
+        # 处理复合键
+        if isinstance(value, (list, tuple)):
+            return tuple(self._deserialize_value(v, field) for v in value)
+        
+        # 处理日期时间
+        if field_type == datetime and isinstance(value, str):
             try:
                 return datetime.fromisoformat(value)
             except ValueError:
-                pass
+                self.logger.warning(f"无法将值 {value} 转换为日期时间")
+                return None
+            
+        # 处理基本类型
+        try:
+            if field_type in (int, float, str, bool):
+                return field_type(value)
+        except (ValueError, TypeError) as e:
+            self.logger.warning(f"类型转换失败: {e}")
+            if self._error_handling == ErrorHandling.STRICT:
+                raise TypeMismatchError(field, value, field_type)
+            return None
+        
         return value
 
     def _debug_print_tree(self) -> str:
@@ -473,53 +506,92 @@ class BTreeIndex:
             node.keys.pop(idx)
             del node.values[key]
 
-class BTreeIndexBackend(IndexBackend):
-    """B树索引后端"""
-    def __init__(self, 
-                 data_dir: str = None, 
+class BTreeIndexBackend(TypedIndexBackend):
+    """支持类型安全的B树索引后端"""
+    
+    def __init__(self,
+                 data_dir: str = None,
                  filename: str = None,
                  index_fields: List[str] = None,
-                 field_types: Dict[str, Type] = None,  # 新增字段类型映射参数
+                 field_types: Dict[str, Type] = None,
+                 error_handling: ErrorHandling = ErrorHandling.WARNING,
                  logger: Optional[logging.Logger] = None):
+        # 初始化类型检查基类
+        super().__init__(field_types, error_handling, logger)
+        
         self._indexes: Dict[str, BTreeIndex] = {}
         self._index_fields = index_fields or []
-        self._field_types = field_types or {}  # 存储字段类型映射
         self._data_dir = Path(data_dir) if data_dir else None
         self._filename = filename
-        self.logger = logger
         
-        # 为未指定类型的字段设置默认类型（str）
+        # 初始化索引
         for field in self._index_fields:
             if field not in self._field_types:
                 self._field_types[field] = str
             self._indexes[field] = BTreeIndex()
-        
+            
         if data_dir and filename:
             self._load_indexes()
 
-    def _serialize_value(self, value: Any) -> Union[str, int, float, bool, None]:
-        """序列化值以便存储"""
+    def _serialize_value(self, value: Any) -> Union[str, int, float, bool, None, tuple]:
+        """序列化值以便在B树中存储和比较
+        
+        扩展基类的序列化方法，增加对复合键和特殊类型的支持
+        """
+        if value is None:
+            return None
+        
+        # 处理复合键
+        if isinstance(value, (list, tuple)):
+            return tuple(self._serialize_value(v) for v in value)
+        
+        # 处理日期时间
         if isinstance(value, datetime):
             return value.isoformat()
-        elif isinstance(value, (str, int, float, bool)) or value is None:
+        
+        # 处理基本类型
+        if isinstance(value, (str, int, float, bool)):
             return value
+        
+        # 其他类型转换为字符串
         return str(value)
 
     def _deserialize_value(self, value: Any, field: str) -> Any:
-        """反序列化存储的值"""
+        """反序列化B树中存储的值
+        
+        扩展基类的反序列化方法，增加对复合键和特殊类型的支持
+        """
         if value is None:
             return None
         
         field_type = self._field_types.get(field)
-        if field_type is datetime and isinstance(value, str):
+        
+        # 处理复合键
+        if isinstance(value, (list, tuple)):
+            return tuple(self._deserialize_value(v, field) for v in value)
+        
+        # 处理日期时间
+        if field_type == datetime and isinstance(value, str):
             try:
                 return datetime.fromisoformat(value)
             except ValueError:
-                pass
+                self.logger.warning(f"无法将值 {value} 转换为日期时间")
+                return None
+            
+        # 处理基本类型
+        try:
+            if field_type in (int, float, str, bool):
+                return field_type(value)
+        except (ValueError, TypeError) as e:
+            self.logger.warning(f"类型转换失败: {e}")
+            if self._error_handling == ErrorHandling.STRICT:
+                raise TypeMismatchError(field, value, field_type)
+            return None
+        
         return value
 
-    def update_index(self, data: Any, owner_id: str) -> None:
-        """更新索引，使用预定义的字段类型"""
+    def update_index(self, data: Dict[str, Any], owner_id: str) -> None:
+        """更新索引，包含类型检查和序列化"""
         self.remove_from_index(owner_id)
         
         for field in self._index_fields:
@@ -527,31 +599,44 @@ class BTreeIndexBackend(IndexBackend):
             if value is None:
                 continue
                 
-            # 使用预定义的类型进行转换
-            field_type = self._field_types[field]
             try:
-                if isinstance(value, field_type):
-                    typed_value = value
-                else:
-                    typed_value = field_type(value)  # 尝试类型转换
-            except (ValueError, TypeError) as e:
-                if self.logger:
-                    self.logger.warning(f"字段 {field} 值 {value} 无法转换为 {field_type.__name__}: {e}")
+                # 先进行类型检查和转换
+                if not self._validate_value(field, value):
+                    continue
+                    
+                converted_value = self._convert_value(field, value)
+                if converted_value is not None:
+                    # 序列化转换后的值，使用B树特定的序列化方法
+                    serialized_value = self._serialize_value(converted_value)
+                    self._indexes[field].add(serialized_value, owner_id)
+                    
+            except TypeMismatchError as e:
+                if self._error_handling == ErrorHandling.STRICT:
+                    raise
+                self.logger.warning(str(e))
                 continue
                 
-            serialized_value = self._serialize_value(typed_value)
-            self._indexes[field].add(serialized_value, owner_id)
-        
         self._save_indexes()
 
     def query(self, field: str, op: str, value1: Any, value2: Any = None) -> List[str]:
-        """统一的查询接口"""
+        """带类型检查的查询接口"""
         if field not in self._indexes:
             return []
             
         btree = self._indexes[field]
         
         try:
+            # 类型检查和转换
+            value1 = self._convert_value(field, value1)
+            if value1 is None and op != "==":  # 允许 None 值的等值查询
+                return []
+                
+            if value2 is not None:
+                value2 = self._convert_value(field, value2)
+                if value2 is None:
+                    return []
+            
+            # 序列化转换后的值
             value1 = self._serialize_value(value1)
             if value2 is not None:
                 value2 = self._serialize_value(value2)
@@ -569,23 +654,52 @@ class BTreeIndexBackend(IndexBackend):
                     raise ValueError(f"区间操作符 {op} 需要两个值")
                 return btree.range_search(value1, value2)
                 
-        except Exception as e:
-            if self.logger:
-                self.logger.warning(f"查询执行失败: {e}")
+        except (TypeMismatchError, ValueError) as e:
+            if self._error_handling == ErrorHandling.STRICT:
+                raise
+            self.logger.warning(f"查询执行失败: {e}")
             return []
             
         return []
 
     def find_with_index(self, field: str, value: Any) -> List[str]:
-        """等值查询"""
+        """带类型检查的等值查询"""
         if field not in self._indexes:
             return []
-        return self._indexes[field].search(value)
+            
+        try:
+            converted_value = self._convert_value(field, value)
+            if converted_value is None:
+                return []
+            serialized_value = self._serialize_value(converted_value)
+            return self._indexes[field].search(serialized_value)
+        except TypeMismatchError as e:
+            if self._error_handling == ErrorHandling.STRICT:
+                raise
+            self.logger.warning(str(e))
+            return []
 
     def find_range(self, field: str, start: Any, end: Any) -> List[str]:
+        """带类型检查的范围查询"""
         if field not in self._indexes:
             return []
-        return self._indexes[field].range_search(start, end)
+            
+        try:
+            start_value = self._convert_value(field, start)
+            end_value = self._convert_value(field, end)
+            
+            if start_value is None or end_value is None:
+                return []
+                
+            serialized_start = self._serialize_value(start_value)
+            serialized_end = self._serialize_value(end_value)
+            
+            return self._indexes[field].range_search(serialized_start, serialized_end)
+        except TypeMismatchError as e:
+            if self._error_handling == ErrorHandling.STRICT:
+                raise
+            self.logger.warning(str(e))
+            return []
 
     def has_index(self, field: str) -> bool:
         return field in self._index_fields
