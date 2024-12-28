@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List, Dict, Optional, Callable, Union
+from typing import Any, List, Dict, Optional, Callable, Union, Type
 from abc import ABC, abstractmethod
 from enum import Enum
 from collections import defaultdict
@@ -332,7 +332,7 @@ class BTreeIndex:
         return result
 
     def _one_sided_search(self, node: BTreeNode, op: str, value: Any, result: List[str]) -> None:
-        """改进的单侧查询实现，移除调试输出"""
+        """��进的单侧查询实现，移除调试输出"""
         i = 0
         while i < len(node.keys):
             current_key = node.keys[i]
@@ -369,7 +369,7 @@ class BTreeIndex:
     def _range_search(self, node: BTreeNode, op: str, start: Any, end: Any, result: List[str]) -> None:
         """改进的区间查询实现"""
         def in_range(key: Any) -> bool:
-            """判断键是否在��定范围内"""
+            """判断键是否在定范围内"""
             if isinstance(key, tuple) and isinstance(start, tuple) and isinstance(end, tuple):
                 # 对于复合键，需要分别比较每个组件
                 start_cmp = all(self._safe_compare(k, s) >= 0 for k, s in zip(key, start))
@@ -432,7 +432,7 @@ class BTreeIndex:
                 self._range_search(node.children[i], op, start, end, result)
 
     def _serialize_value(self, value: Any) -> Union[str, int, float, bool, None]:
-        """��列化值以便存储"""
+        """序列化值以便存储"""
         if isinstance(value, datetime):
             return value.isoformat()
         elif isinstance(value, (str, int, float, bool)) or value is None:
@@ -475,17 +475,23 @@ class BTreeIndex:
 
 class BTreeIndexBackend(IndexBackend):
     """B树索引后端"""
-    def __init__(self, data_dir: str = None, filename: str = None,
+    def __init__(self, 
+                 data_dir: str = None, 
+                 filename: str = None,
                  index_fields: List[str] = None,
+                 field_types: Dict[str, Type] = None,  # 新增字段类型映射参数
                  logger: Optional[logging.Logger] = None):
         self._indexes: Dict[str, BTreeIndex] = {}
         self._index_fields = index_fields or []
-        self._field_types: Dict[str, type] = {}
+        self._field_types = field_types or {}  # 存储字段类型映射
         self._data_dir = Path(data_dir) if data_dir else None
         self._filename = filename
         self.logger = logger
         
+        # 为未指定类型的字段设置默认类型（str）
         for field in self._index_fields:
+            if field not in self._field_types:
+                self._field_types[field] = str
             self._indexes[field] = BTreeIndex()
         
         if data_dir and filename:
@@ -513,20 +519,27 @@ class BTreeIndexBackend(IndexBackend):
         return value
 
     def update_index(self, data: Any, owner_id: str) -> None:
-        """更新索引，同时记录字段类型"""
+        """更新索引，使用预定义的字段类型"""
         self.remove_from_index(owner_id)
         
         for field in self._index_fields:
             value = self._get_value_by_path(data, field)
             if value is None:
                 continue
-            
-            self._field_types[field] = type(value)
-            
-            if field not in self._indexes:
-                self._indexes[field] = BTreeIndex()
-            
-            serialized_value = self._serialize_value(value)
+                
+            # 使用预定义的类型进行转换
+            field_type = self._field_types[field]
+            try:
+                if isinstance(value, field_type):
+                    typed_value = value
+                else:
+                    typed_value = field_type(value)  # 尝试类型转换
+            except (ValueError, TypeError) as e:
+                if self.logger:
+                    self.logger.warning(f"字段 {field} 值 {value} 无法转换为 {field_type.__name__}: {e}")
+                continue
+                
+            serialized_value = self._serialize_value(typed_value)
             self._indexes[field].add(serialized_value, owner_id)
         
         self._save_indexes()
@@ -635,13 +648,21 @@ class BTreeIndexBackend(IndexBackend):
         
         for field, index in self._indexes.items():
             path = self._get_index_path(field)
-            if path:
-                try:
-                    data = {
-                        'type': self._field_types[field].__name__,
-                        'index': index._serialize_tree(index._tree)
-                    }
-                    with open(f"{path}.btree", 'w', encoding='utf-8') as f:
-                        json.dump(data, f)
-                except Exception as e:
+            if not path:
+                continue
+                
+            try:
+                # 确保字段类型存在
+                field_type = self._field_types.get(field, str)
+                data = {
+                    'type': field_type.__name__,
+                    'index': index._serialize_tree(index._tree)
+                }
+                with open(f"{path}.btree", 'w', encoding='utf-8') as f:
+                    json.dump(data, f)
+            except Exception as e:
+                # 使用 print 作为后备方案
+                if self.logger:
                     self.logger.error(f"保存B树索引失败 {field}: {e}")
+                else:
+                    print(f"保存B树索引失败 {field}: {e}")

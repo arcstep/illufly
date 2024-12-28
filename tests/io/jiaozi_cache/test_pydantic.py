@@ -136,12 +136,12 @@ class TestPydanticSupport:
         storage.set(data2, "owner2")
         
         # 测试简单查找
-        results = list(storage.find({"id": "1"}))
+        results = list(storage.query({"id": "1"}))
         assert len(results) == 1
         assert results[0].metadata["env"] == "dev"
         
         # 测试复杂查找
-        results = list(storage.find({
+        results = list(storage.query({
             "tags": lambda x: "python" in x and "test" in x
         }))
         assert len(results) == 1
