@@ -5,7 +5,7 @@ from typing import List, Optional
 import pytest
 import logging
 
-from illufly.io import JiaoziCache
+from illufly.io import JiaoziCache, IndexType
 from tests.io.jiaozi_cache.conftest import StorageData
 
 class TestFileConfigStoreCache:
@@ -18,7 +18,7 @@ class TestFileConfigStoreCache:
                 data_dir=str(tmp_path),
                 filename="cached_test.json",
                 data_class=StorageData,
-                indexes=[],  # 默认不使用索引
+                index_config={},  # 默认不使用索引
                 cache_size=cache_size
             )
         return create_storage
@@ -184,7 +184,7 @@ class TestFileConfigStoreCache:
             data_dir=str(tmp_path),
             filename="cached_test.json",
             data_class=StorageData,
-            indexes=["email"],  # 启用email索引
+            index_config={"email": IndexType.HASH},  # 启用email索引
             cache_size=5
         )
         
@@ -198,7 +198,7 @@ class TestFileConfigStoreCache:
             storage.set(data, f"owner{i}")
         
         # 使用索引查询
-        results = storage.find({"email": "user5@test.com"})
+        results = storage.query({"email": "user5@test.com"})
         assert len(results) == 1
         assert results[0].id == "5"
         

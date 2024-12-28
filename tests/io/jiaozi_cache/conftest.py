@@ -6,6 +6,7 @@ import pytest
 import logging
 
 from illufly.io import JiaoziCache
+from illufly.io.jiaozi_cache.index import IndexType
 
 @dataclass(frozen=True)
 class StorageData:
@@ -39,7 +40,7 @@ def storage_factory(tmp_path):
             data_dir=str(tmp_path),
             filename="test.json",
             data_class=StorageData,
-            indexes=["email", "name"]
+            index_config={"email": IndexType.HASH, "name": IndexType.HASH}
         )
     return create_storage
 

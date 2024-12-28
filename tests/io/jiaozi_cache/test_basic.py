@@ -6,12 +6,8 @@ import time
 
 from illufly.io import JiaoziCache
 from tests.io.jiaozi_cache.conftest import StorageData  # 使用绝对导入路径
-
+from illufly.io.jiaozi_cache.index import IndexType
 class TestSimpleStorageData:
-    @pytest.fixture(autouse=True)
-    def setup_env(self):
-        import os
-        os.environ["JIAOZI_CACHE_FULL_SCAN_THRESHOLD"] = "1"
 
     @pytest.fixture
     def test_data_factory(self, tmp_path):
@@ -113,13 +109,11 @@ class TestSimpleStorageData:
             data_dir=str(tmp_path),
             filename="test1.json",
             data_class=StorageData,
-            indexes=[]  # 显式指定空索引列表
         )
         storage2 = JiaoziCache.create_with_json_storage(
             data_dir=str(tmp_path),
             filename="test2.json",
             data_class=StorageData,
-            indexes=[]  # 显式指定空索引列表
         )
         
         test_data = test_data_factory(name="张三", age=25)
@@ -143,7 +137,7 @@ class TestSimpleStorageData:
             data_dir=str(tmp_path),
             filename="test.json",
             data_class=StorageData,
-            indexes=["email"]
+            index_config={"email": IndexType.HASH}
         )
         
         # 准备测试数据
@@ -154,21 +148,20 @@ class TestSimpleStorageData:
         storage.set(test_data2, "owner2")
         
         # 验证索引已建立
-        assert "email" in storage._index._indexes
-        assert storage._index._indexes["email"]["zhangsan@test.com"] == ["owner1"]
+        assert storage._index.has_index("email")
         
         # 使用索引字段进行查询
-        results = storage.find({"email": "zhangsan@test.com"})
+        results = storage.query({"email": "zhangsan@test.com"})
         assert len(results) == 1
         assert results[0].email == "zhangsan@test.com"
         assert results[0].name == "张三"
         
         # 测试不存在的值
-        results = storage.find({"email": "wangwu@test.com"})
+        results = storage.query({"email": "wangwu@test.com"})
         assert len(results) == 0
         
         # 测试组合条件（一个索引字段 + 一个非索引字段）
-        results = storage.find({
+        results = storage.query({
             "email": "zhangsan@test.com",  # 索引字段
             "name": "张三"  # 非索引字段
         })
@@ -177,7 +170,7 @@ class TestSimpleStorageData:
         assert results[0].name == "张三"
         
         # 测试组合条件不匹配的情况
-        results = storage.find({
+        results = storage.query({
             "email": "zhangsan@test.com",  # 索引字段
             "name": "李四"  # 非索引字段,不匹配
         })
@@ -189,7 +182,7 @@ class TestSimpleStorageData:
             data_dir=str(tmp_path),
             filename="test.json",
             data_class=StorageData,
-            indexes=[]
+            index_config={}
         )
 
         # 准备测试数据
@@ -199,12 +192,9 @@ class TestSimpleStorageData:
         storage.set(test_data1, "owner1")
         storage.set(test_data2, "owner2")
 
-        # 验证确实没有索引
-        assert not storage._index._indexes
-
         # 测试单个属性查找
         with pytest.warns(UserWarning):  # 使用 UserWarning 而不是 RuntimeWarning
-            result = storage.find({"email": "zhangsan@test.com"})
+            result = storage.query({"email": "zhangsan@test.com"})
             assert len(result) == 1
             assert result[0].email == "zhangsan@test.com"
 
@@ -214,14 +204,14 @@ class TestSimpleStorageData:
             data_dir=str(tmp_path),
             filename="test_indexed.json",
             data_class=StorageData,
-            indexes=["email"]
+            index_config={"email": IndexType.HASH}
         )
 
         storage_without_index = JiaoziCache.create_with_json_storage(
             data_dir=str(tmp_path),
             filename="test_no_index.json",
             data_class=StorageData,
-            indexes=[]
+            index_config={}
         )
 
         # 准备测试数据
@@ -236,12 +226,12 @@ class TestSimpleStorageData:
 
         # 测试性能
         start_time = time.time()
-        result_with_index = storage_with_index.find({"email": "user99@test.com"})
+        result_with_index = storage_with_index.query({"email": "user99@test.com"})
         index_time = time.time() - start_time
 
         start_time = time.time()
         with pytest.warns(UserWarning):  # 使用 UserWarning
-            result_without_index = storage_without_index.find({"email": "user99@test.com"})
+            result_without_index = storage_without_index.query({"email": "user99@test.com"})
         scan_time = time.time() - start_time
 
         # 验证结果

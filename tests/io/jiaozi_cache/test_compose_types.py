@@ -7,7 +7,7 @@ from datetime import datetime
 import pytest
 import logging
 
-from illufly.io import JiaoziCache
+from illufly.io import JiaoziCache, IndexType
 
 @dataclass
 class AgentConfig:
@@ -167,12 +167,12 @@ class TestFileConfigStoreCompositeTypes:
         store.set(test_data, "user1")
         
         # 测试基于模型的查找
-        results = store.find({"model": "gpt-4"})
+        results = store.query({"model": "gpt-4"})
         assert len(results) == 1
         assert list(results)[0]["agent2"].name == "agent2"
         
         # 测试基于参数的查找
-        results = store.find({
+        results = store.query({
             "parameters": lambda p: p.get("temperature", 0) > 0.8
         })
         assert len(results) == 1

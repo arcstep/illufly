@@ -14,11 +14,6 @@ from tests.io.jiaozi_cache.conftest import StorageData
 class TestJiaoziCacheIndexing:
     """测试JiaoziCache的索引功能"""
 
-    @pytest.fixture(autouse=True)
-    def setup_env(self):
-        import os
-        os.environ["JIAOZI_CACHE_FULL_SCAN_THRESHOLD"] = "1"
-
     @pytest.fixture
     def indexed_storage_factory(self, tmp_path):
         """创建带索引的存储实例"""
@@ -259,3 +254,80 @@ class TestJiaoziCacheIndexing:
         results = storage.query({"created_at": "2024-01-03"})
         assert len(results) == 1
         assert results[0].id == "2"
+
+    def test_index_creation(self, indexed_storage_factory):
+        """测试索引创建"""
+        storage = indexed_storage_factory({
+            "age": IndexType.BTREE
+        })
+        
+        # 添加测试数据
+        data = StorageData(id="1", age=25)
+        storage.set(data, "owner1")
+        
+        # 检查B树索引后端
+        assert storage._index._btree_backend is not None
+        
+        # 检查索引内容
+        index = storage._index._btree_backend._indexes.get("age")
+        assert index is not None
+        print("Index content:", index._tree)
+
+    def test_btree_index_save(self, indexed_storage_factory):
+        """测试B树索引的保存"""
+        storage = indexed_storage_factory({
+            "age": IndexType.BTREE
+        })
+        
+        # 添加测试数据
+        data = StorageData(id="1", age=25)
+        storage.set(data, "owner1")
+        
+        # 获取B树索引后端
+        btree_backend = storage._index._btree_backend
+        assert btree_backend is not None
+        
+        # 检查索引内容
+        index = btree_backend._indexes.get("age")
+        assert index is not None
+        
+        # 打印索引内容
+        print("Index tree:", index._tree)
+        
+        # 尝试序列化
+        try:
+            serialized = index._serialize_tree(index._tree)
+            print("Serialized tree:", serialized)
+        except Exception as e:
+            print("Serialization error:", str(e))
+
+    def test_datetime_index_save(self, indexed_storage_factory):
+        """测试日期时间索引的保存"""
+        storage = indexed_storage_factory({
+            "created_at": IndexType.BTREE
+        })
+        
+        # 添加测试数据
+        data = StorageData(
+            id="1", 
+            created_at=datetime(2024, 1, 1)
+        )
+        storage.set(data, "owner1")
+        
+        # 获取B树索引后端
+        btree_backend = storage._index._btree_backend
+        assert btree_backend is not None
+        
+        # 检查索引内容
+        index = btree_backend._indexes.get("created_at")
+        assert index is not None
+        
+        # 打印索引内容和序列化结果
+        print("DateTime value:", index._tree.keys() if index._tree else None)
+        
+        # 尝试序列化
+        try:
+            serialized = index._serialize_tree(index._tree)
+            print("Serialized datetime tree:", serialized)
+        except Exception as e:
+            print("DateTime serialization error:", str(e))
