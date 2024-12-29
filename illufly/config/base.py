@@ -73,6 +73,16 @@ def get_env(key: str=None):
         "FASTAPI_ALGORITHM": "HS256",
         "REFRESH_TOKEN_EXPIRE_DAYS": 30,
         "ACCESS_TOKEN_EXPIRE_MINUTES": 15,
+
+        # Logging
+        "LOG_LEVEL": "INFO",
+        "LOG_DIR": os.path.join(FIXED_TEMP_DIR, "__LOGS__"),
+        "LOG_FILE_MAX_BYTES": 10 * 1024 * 1024,
+        "LOG_FILE_BACKUP_COUNT": 10,
+        "LOG_FORMAT": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        "LOG_DATE_FORMAT": "%Y-%m-%d %H:%M:%S",
+        "LOG_ENCODING": "utf-8",
+        "LOG_MIN_FREE_SPACE": 100 * 1024 * 1024,
     }
     if key:
         if key not in default_values:
