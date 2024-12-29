@@ -84,6 +84,10 @@ def get_env(key: str=None):
         "LOG_DATE_FORMAT": "%Y-%m-%d %H:%M:%S",
         "LOG_ENCODING": "utf-8",
         "LOG_MIN_FREE_SPACE": 100 * 1024 * 1024,
+
+        # JiaoziCache
+        "JIAOZI_BTREE_LRU_MAX_CACHE_SIZE": 1000,
+        "JIAOZI_INDEX_FIELD_MAX_TAGS": 20,
     }
     if key:
         if key not in default_values:

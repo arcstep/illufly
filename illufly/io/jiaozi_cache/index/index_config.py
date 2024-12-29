@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class IndexUpdateStrategy(str, Enum):
     """索引更新策略"""
@@ -17,6 +17,11 @@ class IndexConfig(BaseModel):
     - JSON 序列化
     - 模型继承
     """
+    model_config = ConfigDict(
+        use_enum_values=True,
+        frozen=True,  # 使配置不可变
+        validate_assignment=True
+    )
     
     update_strategy: IndexUpdateStrategy = Field(
         default=IndexUpdateStrategy.SYNC,
@@ -44,7 +49,4 @@ class IndexConfig(BaseModel):
         default=100,
         ge=0,
         description="错误阈值"
-    )
-    
-    class Config:
-        use_enum_values = True 
+    ) 

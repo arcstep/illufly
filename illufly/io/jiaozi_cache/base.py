@@ -15,7 +15,7 @@ import logging
 from ...config import get_env
 from .store import StorageBackend, JSONFileStorageBackend
 from .index import IndexBackend, CompositeIndexBackend, IndexType, IndexConfig
-from .cache import LRUCacheBackend
+from .cache import LRUCacheBackend, CacheBackend
 
 @dataclass
 class SubsetConfig:

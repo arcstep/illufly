@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ....config import get_env
 from .index_backend import IndexBackend
-from .config import IndexConfig
+from .index_config import IndexConfig
 
 class HashIndexBackend(IndexBackend):
     """基于哈希表的索引实现
@@ -29,7 +29,7 @@ class HashIndexBackend(IndexBackend):
         field_types: Dict[str, Any] = None,
         config: Optional[IndexConfig] = None,
         data_dir: str = None,
-        filename: str = None,
+        segment: str = None,
         logger: Optional[logging.Logger] = None
     ):
         """初始化哈希索引后端
@@ -38,17 +38,17 @@ class HashIndexBackend(IndexBackend):
             field_types: 字段类型约束
             config: 索引配置
             data_dir: 索引文件存储目录（可选）
-            filename: 索引文件名（可选）
+            segment: 索引文件名（可选）
         """
         super().__init__(field_types=field_types, config=config)
         self._indexes = defaultdict(lambda: defaultdict(list))
         self._data_dir = Path(data_dir) if data_dir else get_env("ILLUFLY_JIAOZI_CACHE_DIR")
-        self._filename = filename
+        self._segment = segment or "index.json"
         
         self.logger = logger or logging.getLogger(__name__)
-        self.logger.info("初始化哈希索引后端: data_dir=%s, filename=%s", data_dir, filename)
+        self.logger.info("初始化哈希索引后端: data_dir=%s, segment=%s", data_dir, segment)
         
-        if data_dir and filename:
+        if data_dir and segment:
             self._load_indexes()
 
     def update_index(self, data: Any, owner_id: str) -> None:
@@ -206,7 +206,7 @@ class HashIndexBackend(IndexBackend):
 
     def _save_indexes(self) -> None:
         """保存索引到文件"""
-        if not (self._data_dir and self._filename):
+        if not (self._data_dir and self._segment):
             self.logger.debug("未配置存储路径，跳过索引保存")
             return
 
@@ -247,7 +247,8 @@ class HashIndexBackend(IndexBackend):
 
     def _get_index_path(self) -> Optional[Path]:
         """获取索引文件路径"""
-        if not (self._data_dir and self._filename):
+        if not (self._data_dir and self._segment):
             return None
-        return self._data_dir / ".indexes" / self._filename
+        return self._data_dir / ".indexes" / self._segment
+
 

@@ -3,10 +3,11 @@ from pathlib import Path
 import json
 import logging
 from datetime import datetime
+from functools import lru_cache
 
 from ....config import get_env
 from .index_backend import IndexBackend
-from .config import IndexConfig
+from .index_config import IndexConfig
 
 class BTreeNode:
     """B树节点
@@ -49,7 +50,7 @@ class BTreeIndexBackend(IndexBackend):
         field_types: Dict[str, Any] = None,
         config: Optional[IndexConfig] = None,
         data_dir: str = None,
-        filename: str = None,
+        segment: str = None,
         order: int = 4,
         logger: Optional[logging.Logger] = None
     ):
@@ -59,18 +60,18 @@ class BTreeIndexBackend(IndexBackend):
             field_types: 字段类型约束
             config: 索引配置
             data_dir: 索引文件存储目录（可选）
-            filename: 索引文件名（可选）
+            segment: 索引文件名（可选）
             order: B树的阶，默认为4
         """
         super().__init__(field_types=field_types, config=config)
         self.logger = logger or logging.getLogger(__name__)
-        self.logger.info("初始化B树索引后端: order=%d, data_dir=%s, filename=%s", order, data_dir, filename)
+        self.logger.info("初始化B树索引后端: order=%d, data_dir=%s, segment=%s", order, data_dir, segment)
         
         self._order = order
         self._trees = {}
         self._null_values = defaultdict(set)
         self._data_dir = Path(data_dir) if data_dir else get_env("ILLUFLY_JIAOZI_CACHE_STORE_DIR")
-        self._filename = filename
+        self._segment = segment or "index.json"
         
         # 为每个字段创建B树
         self.logger.debug("开始为字段创建B树")
@@ -78,9 +79,17 @@ class BTreeIndexBackend(IndexBackend):
             self.logger.debug("为字段 %s 创建B树", field)
             self._trees[field] = BTreeNode(leaf=True)
         
-        if self._data_dir and filename:
+        if self._data_dir and segment:
             self.logger.debug("尝试从文件加载索引")
             self._load_indexes()
+        
+        self._setup_cache()
+
+    def _setup_cache(self) -> None:
+        """初始化带缓存的搜索方法"""
+        MAX_CACHE_SIZE = get_env("JIAOZI_BTREE_LRU_MAX_CACHE_SIZE")
+        self._cached_search = lru_cache(maxsize=MAX_CACHE_SIZE)(self._search_btree)
+        self.logger.debug("已启用B树搜索缓存，最大缓存数：%d", MAX_CACHE_SIZE)
 
     def update_index(self, data: Any, owner_id: str) -> None:
         """更新索引
@@ -89,6 +98,10 @@ class BTreeIndexBackend(IndexBackend):
         """
         self.logger.debug("开始更新索引: owner_id=%s", owner_id)
         try:
+            # 在更新前清除缓存
+            self._cached_search.cache_clear()
+            self.logger.debug("已清除B树搜索缓存")
+            
             # 移除旧索引
             self.logger.debug("移除旧索引: owner_id=%s", owner_id)
             self.remove_from_index(owner_id)
@@ -241,7 +254,8 @@ class BTreeIndexBackend(IndexBackend):
                 return list(self._null_values[field])
             
             index_key = self.convert_to_index_key(value, field)
-            result = self._search_btree(self._trees[field], index_key)
+            # 使用缓存版本的搜索
+            result = self._cached_search(self._trees[field], index_key)
             self._update_stats("queries")
             self.logger.debug("查找完成,找到 %d 条结果", len(result))
             return result
@@ -281,6 +295,10 @@ class BTreeIndexBackend(IndexBackend):
             owner_id: 数据所有者ID
         """
         self.logger.debug("开始移除索引: owner_id=%s", owner_id)
+        # 在删除前清除缓存
+        self._cached_search.cache_clear()
+        self.logger.debug("已清除B树搜索缓存")
+        
         # 从空值集合中移除
         for field, null_set in self._null_values.items():
             if owner_id in null_set:
@@ -377,7 +395,7 @@ class BTreeIndexBackend(IndexBackend):
 
     def _save_indexes(self) -> None:
         """保存索引到文件"""
-        if not (self._data_dir and self._filename):
+        if not (self._data_dir and self._segment):
             self.logger.debug("未配置存储路径,跳过保存")
             return
 
@@ -465,9 +483,9 @@ class BTreeIndexBackend(IndexBackend):
 
     def _get_index_path(self) -> Optional[Path]:
         """获取索引文件路径"""
-        if not (self._data_dir and self._filename):
+        if not (self._data_dir and self._segment):
             return None
-        return self._data_dir / ".indexes" / f"{self._filename}.btree"
+        return self._data_dir / ".indexes" / f"{self._segment}.btree"
 
     def has_index(self, field: str) -> bool:
         """检查字段是否已建立索引"""
