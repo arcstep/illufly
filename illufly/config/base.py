@@ -17,6 +17,7 @@ def get_env(key: str=None):
         # 文件夹配置
         "ILLUFLY_TEMP_DIR": FIXED_TEMP_DIR,
         "ILLUFLY_CONFIG_STORE_DIR": "__USERS__",
+        "ILLUFLY_JIAOZI_CACHE_DIR": "__USERS__",
         "ILLUFLY_DOCS": "__DOCS__", # 从这个目录自动加载 RAG 资料，为避免误将不必要的资料做 RAG，因此需要设置为 __DOCS__
         "ILLUFLY_RESOURCE": "./", # 根据这个媒体文件夹上传文件，因此需要设置为当前目录
         "ILLUFLY_LOCAL_FILE_MEMORY": os.path.join(FIXED_TEMP_DIR, "LOCAL_FILE_MEMORY"), # LocalFileMemory 记忆存储目录

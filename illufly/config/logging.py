@@ -1,3 +1,29 @@
+"""日志配置模块
+
+用法示例:
+    # 1. 使用默认logger
+    from illufly.config import logger
+    
+    logger.debug("调试信息")
+    logger.info("普通信息") 
+    logger.warning("警告信息")
+    logger.error("错误信息")
+    logger.critical("严重错误")
+    
+    # 2. 获取模块专属logger
+    import logging
+    logger = logging.getLogger(__name__)  # 将自动添加模块路径前缀
+    
+    # 例如在 illufly.io.storage 模块中:
+    logger.info("存储模块信息")  # 输出会带有 [illufly.io.storage] 前缀
+
+注意:
+    1. 默认日志级别和输出格式由环境变量控制
+    2. 日志会同时输出到控制台和文件
+    3. error级别以上的日志会额外写入error.log
+    4. 建议在具体业务模块中使用第2种方式创建logger,方便定位日志来源
+"""
+
 import os
 import logging
 import logging.handlers
@@ -100,20 +126,6 @@ def setup_logging():
         getattr(logging, config['LOG_LEVEL'].upper())
     )
 
-# 使用示例
-if __name__ == "__main__":
-    # 设置环境变量（通常在部署时设置）
-    """
-    export ILLUFLY_LOG_LEVEL=DEBUG
-    export ILLUFLY_LOG_DIR=/var/log/illufly
-    export ILLUFLY_LOG_FILE_MAX_BYTES=20971520  # 20MB
-    export ILLUFLY_LOG_FILE_BACKUP_COUNT=10
-    export ILLUFLY_LOG_MIN_FREE_SPACE=104857600  # 100MB
-    """
-    
-    setup_logging()
-    logger = logging.getLogger(__name__)
-    
-    logger.debug("Debug message")
-    logger.info("Info message")
-    logger.error("Error message") 
+# 初始化日志系统并导出默认logger
+setup_logging()
+logger = logging.getLogger('illufly')

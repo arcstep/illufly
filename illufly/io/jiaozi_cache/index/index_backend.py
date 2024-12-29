@@ -1,6 +1,7 @@
 from typing import Dict, Any, List, Optional, Callable, Type, Union
 from abc import ABC, abstractmethod
 import logging
+import time
 
 from .config import IndexConfig
 
@@ -25,15 +26,22 @@ class IndexBackend(ABC):
         _stats (Dict): 性能统计数据
     """
 
-    def __init__(self, 
-                 field_types: Dict[str, Any] = None,
-                 config: Optional[IndexConfig] = None):
+    def __init__(
+        self, 
+        field_types: Dict[str, Any] = None,
+        config: Optional[IndexConfig] = None,
+        logger: Optional[logging.Logger] = None
+    ):
         """初始化索引后端
         
         Args:
             field_types: 字段类型约束
             config: 索引配置
+            logger: 日志记录器
         """
+        self.logger = logger or logging.getLogger(self.__name__)
+        self.logger.info("初始化索引后端")
+        
         self._field_types = field_types or {}
         self._config = config or IndexConfig()
         self._field_types = {}
@@ -47,23 +55,29 @@ class IndexBackend(ABC):
         }
         
         if field_types:
+            self.logger.debug("开始验证字段类型约束")
             if not isinstance(field_types, dict):
+                self.logger.error("field_types 必须是字典类型")
                 raise ValueError("field_types 必须是字典类型")
             
             for key, type_spec in field_types.items():
                 if not isinstance(key, str):
+                    self.logger.error("字段名必须是字符串类型: %s", key)
                     raise ValueError("字段名必须是字符串类型")
                 if not (isinstance(type_spec, type) or 
                        isinstance(type_spec, list) or 
                        type_spec is Any or
                        hasattr(type_spec, 'to_index_key')):
+                    self.logger.error("字段 %s 的类型规范无效", key)
                     raise ValueError(f"字段 {key} 的类型规范无效")
                 
                 if isinstance(type_spec, list):
                     if not all(isinstance(t, type) for t in type_spec):
+                        self.logger.error("字段 %s 的类型列表包含无效类型", key)
                         raise ValueError(f"字段 {key} 的类型列表包含无效类型")
             
             self._field_types = field_types
+            self.logger.debug("字段类型约束验证完成: %s", self._field_types)
 
     def is_field_type_valid(self, field: str, value: Any) -> bool:
         """验证字段值是否符合类型约束
@@ -81,6 +95,7 @@ class IndexBackend(ABC):
         Returns:
             bool: 值是否符合类型约束
         """
+        self.logger.debug("验证字段类型: field=%s, value=%s", field, value)
         if field not in self._field_types:
             return True
             
@@ -92,10 +107,18 @@ class IndexBackend(ABC):
             
         # 如果是类型列表，检查值是否匹配其中任一类型
         if isinstance(type_spec, list):
-            return any(isinstance(value, t) for t in type_spec)
+            valid = any(isinstance(value, t) for t in type_spec)
+            if not valid:
+                self.logger.warning("字段值不符合类型列表约束: field=%s, value=%s, types=%s", 
+                                  field, value, type_spec)
+            return valid
             
         # 单一类型的情况
-        return isinstance(value, type_spec)
+        valid = isinstance(value, type_spec)
+        if not valid:
+            self.logger.warning("字段值不符合类型约束: field=%s, value=%s, type=%s",
+                              field, value, type_spec)
+        return valid
 
     def _get_value_by_path(self, data: Any, field: str) -> Optional[Any]:
         """从数据对象中提取指定路径的值
@@ -113,6 +136,7 @@ class IndexBackend(ABC):
         Returns:
             Optional[Any]: 提取的值，如果路径无效则返回None
         """
+        self.logger.debug("提取字段值: field=%s", field)
         # 使用缓存的路径分割
         if field not in self._path_cache:
             self._path_cache[field] = field.split('.')
@@ -128,10 +152,14 @@ class IndexBackend(ABC):
                 elif hasattr(current, part):
                     current = getattr(current, part)
                 else:
+                    self.logger.debug("字段路径无效: field=%s, part=%s", field, part)
                     return None
                 
-            return list(current) if isinstance(current, (list, tuple, set)) else current
-        except (KeyError, IndexError, AttributeError, ValueError):
+            result = list(current) if isinstance(current, (list, tuple, set)) else current
+            self.logger.debug("字段值提取成功: field=%s, value=%s", field, result)
+            return result
+        except (KeyError, IndexError, AttributeError, ValueError) as e:
+            self.logger.debug("字段值提取失败: field=%s, error=%s", field, str(e))
             return None
 
     def convert_to_index_key(self, value: Any, field: str = None) -> str:
@@ -152,25 +180,36 @@ class IndexBackend(ABC):
         Returns:
             str: 生成的索引键
         """
+        self.logger.debug("转换索引键: value=%s, field=%s", value, field)
         if value is None:
             return ""
             
         # 支持自定义索引键生成
         if hasattr(value, "to_index_key"):
-            return value.to_index_key()
+            key = value.to_index_key()
+            self.logger.debug("使用自定义索引键生成: key=%s", key)
+            return key
             
         # 使用缓存的哈希值
         if hasattr(value, "__hash__") and value.__hash__ is not None:
-            return str(hash(value))
+            key = str(hash(value))
+            self.logger.debug("使用哈希值作为索引键: key=%s", key)
+            return key
             
         if isinstance(value, dict):
-            return ".".join(f"{k}.{self.convert_to_index_key(v)}" 
+            key = ".".join(f"{k}.{self.convert_to_index_key(v)}" 
                           for k, v in sorted(value.items()))
+            self.logger.debug("字典转换为索引键: key=%s", key)
+            return key
             
         if isinstance(value, (list, tuple)):
-            return ".".join(self.convert_to_index_key(item) for item in value)
+            key = ".".join(self.convert_to_index_key(item) for item in value)
+            self.logger.debug("列表/元组转换为索引键: key=%s", key)
+            return key
             
-        return str(value)
+        key = str(value)
+        self.logger.debug("转换为字符串索引键: key=%s", key)
+        return key
 
     @abstractmethod
     def update_index(self, data: Any, owner_id: str) -> None:
@@ -221,15 +260,18 @@ class IndexBackend(ABC):
         Raises:
             RuntimeError: 当重建过程失败时
         """
+        self.logger.info("开始重建索引")
         self._stats["last_rebuild"] = time.time()
         pass
 
     def get_stats(self) -> Dict[str, Any]:
         """获取索引统计信息"""
+        self.logger.debug("获取统计信息: %s", self._stats)
         return self._stats.copy()
 
     def clear_stats(self) -> None:
         """清除统计信息"""
+        self.logger.info("清除统计信息")
         self._stats.update({
             "updates": 0,
             "queries": 0,
@@ -241,6 +283,7 @@ class IndexBackend(ABC):
         """更新统计信息"""
         if self._config.enable_stats:
             self._stats[stat_name] = self._stats.get(stat_name, 0) + 1
+            self.logger.debug("更新统计信息: %s=%d", stat_name, self._stats[stat_name])
 
     @abstractmethod
     def get_index_size(self) -> int:
