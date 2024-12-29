@@ -437,3 +437,260 @@ def test_update_operations(btree):
     assert btree.query("==", 50) == []
     assert btree.query("==", 60) == ["record1"]
 
+def test_composite_key_comparison(btree):
+    """详细测试复合键的比较逻辑"""
+    print("\n=== 开始测试复合键比较逻辑 ===")
+    
+    # 创建测试数据
+    data = [
+        ((1, datetime(2024, 1, 1)), "task1"),
+        ((1, datetime(2024, 1, 2)), "task2"),
+        ((2, datetime(2024, 1, 1)), "task3"),
+        ((2, datetime(2024, 1, 2)), "task4"),
+    ]
+    
+    # 添加数据并打印树结构
+    for key, owner_id in data:
+        btree.add(key, owner_id)
+        print(f"\n添加 {key} -> {owner_id} 后的树结构:")
+        print(btree._debug_print_tree())
+    
+    # 测试各种范围查询
+    test_cases = [
+        {
+            'start': (1, datetime(2024, 1, 1)),
+            'end': (2, datetime(2024, 1, 1)),
+            'op': "[]",
+            'expected': {"task1", "task3"}
+        },
+        {
+            'start': (1, datetime(2024, 1, 1)),
+            'end': (1, datetime(2024, 1, 2)),
+            'op': "[]",
+            'expected': {"task1", "task2"}
+        },
+        {
+            'start': (1, datetime(2024, 1, 2)),
+            'end': (2, datetime(2024, 1, 1)),
+            'op': "[]",
+            'expected': {"task2", "task3"}
+        }
+    ]
+    
+    for case in test_cases:
+        print(f"\n测试范围查询: {case['op']} {case['start']} to {case['end']}")
+        result = set(btree.query(case['op'], case['start'], case['end']))
+        print(f"期望结果: {case['expected']}")
+        print(f"实际结果: {result}")
+        assert result == case['expected']
+        
+    # 测试单个复合键的比较
+    test_pairs = [
+        (
+            (1, datetime(2024, 1, 1)),
+            (1, datetime(2024, 1, 2)),
+            -1  # 期望结果
+        ),
+        (
+            (1, datetime(2024, 1, 2)),
+            (2, datetime(2024, 1, 1)),
+            -1
+        ),
+        (
+            (2, datetime(2024, 1, 1)),
+            (2, datetime(2024, 1, 1)),
+            0
+        )
+    ]
+    
+    print("\n测试复合键比较:")
+    for x, y, expected in test_pairs:
+        result = btree._safe_compare(x, y)
+        print(f"比较 {x} 和 {y}: 期望 {expected}, 实际 {result}")
+        assert result == expected
+
+def test_composite_key_queries_detailed(btree):
+    """详细测试复合键的边界情况"""
+    print("\n=== 开始测试复合键边界情况 ===")
+    
+    # 测试数据
+    test_data = [
+        ((1, datetime(2024, 1, 1)), "task1"),
+        ((1, datetime(2024, 1, 2)), "task2"),
+        ((2, datetime(2024, 1, 1)), "task3"),
+        ((2, datetime(2024, 1, 2)), "task4"),
+    ]
+    
+    # 添加数据时打印详细信息
+    for key, owner_id in test_data:
+        print(f"\n添加键值对: {key} -> {owner_id}")
+        btree.add(key, owner_id)
+        print("当前树结构:")
+        print(btree._debug_print_tree())
+        
+    # 测试边界情况
+    test_cases = [
+        {
+            'desc': "精确边界",
+            'start': (1, datetime(2024, 1, 1)),
+            'end': (2, datetime(2024, 1, 1)),
+            'op': "[]",
+            'expected': {"task1", "task3"}
+        },
+        {
+            'desc': "跨优先级边界",
+            'start': (1, datetime(2024, 1, 2)),
+            'end': (2, datetime(2024, 1, 1)),
+            'op': "[]",
+            'expected': {"task2", "task3"}
+        },
+        {
+            'desc': "同优先级时间范围",
+            'start': (1, datetime(2024, 1, 1)),
+            'end': (1, datetime(2024, 1, 2)),
+            'op': "[]",
+            'expected': {"task1", "task2"}
+        },
+        {
+            'desc': "开区间测试",
+            'start': (1, datetime(2024, 1, 1)),
+            'end': (2, datetime(2024, 1, 1)),
+            'op': "()",
+            'expected': {"task2"}
+        },
+        {
+            'desc': "左闭右开测试",
+            'start': (1, datetime(2024, 1, 1)),
+            'end': (2, datetime(2024, 1, 1)),
+            'op': "[)",
+            'expected': {"task1", "task2"}
+        },
+        {
+            'desc': "左开右闭测试",
+            'start': (1, datetime(2024, 1, 1)),
+            'end': (2, datetime(2024, 1, 1)),
+            'op': "(]",
+            'expected': {"task3"}
+        }
+    ]
+    
+    for case in test_cases:
+        print(f"\n测试用例: {case['desc']}")
+        print(f"范围: {case['op']} {case['start']} -> {case['end']}")
+        
+        # 打印比较过程
+        print("\n比较过程:")
+        for key in btree._tree.keys:
+            start_cmp = btree._safe_compare(key, case['start'])
+            end_cmp = btree._safe_compare(key, case['end'])
+            print(f"键 {key}:")
+            print(f"  与起始值比较: {start_cmp}")
+            print(f"  与结束值比较: {end_cmp}")
+        
+        result = set(btree.query(case['op'], case['start'], case['end']))
+        print(f"\n期望结果: {case['expected']}")
+        print(f"实际结果: {result}")
+        assert result == case['expected']
+
+def test_edge_cases_detailed(btree):
+    """详细测试边界值处理"""
+    print("\n=== 开始测试边界值处理 ===")
+    
+    # 测试数据
+    edge_cases = [
+        (float('-inf'), "minus_inf", "负无穷"),
+        (float('inf'), "plus_inf", "正无穷"),
+        (None, "null_value", "空值"),
+        ("", "empty_string", "空字符串"),
+        (0, "zero", "零值")
+    ]
+    
+    # 添加数据并验证
+    for value, owner_id, desc in edge_cases:
+        print(f"\n添加{desc}: {value} -> {owner_id}")
+        btree.add(value, owner_id)
+        print("当前树结构:")
+        print(btree._debug_print_tree())
+        
+        # 验证添加后的查询
+        result = btree.query("==", value)
+        print(f"查询结果: {result}")
+        assert owner_id in result
+    
+    # 测试特殊值的范围查询
+    range_tests = [
+        {
+            'desc': "包含负无穷的范围",
+            'start': float('-inf'),
+            'end': 0,
+            'expected': {"minus_inf", "zero"}
+        },
+        {
+            'desc': "包含正无穷的范围",
+            'start': 0,
+            'end': float('inf'),
+            'expected': {"zero", "plus_inf"}
+        },
+        {
+            'desc': "空值处理",
+            'start': None,
+            'end': "",
+            'expected': {"null_value", "empty_string"}
+        }
+    ]
+    
+    for test in range_tests:
+        print(f"\n测试: {test['desc']}")
+        print(f"范围: [{test['start']}, {test['end']}]")
+        result = set(btree.query("[]", test['start'], test['end']))
+        print(f"期望结果: {test['expected']}")
+        print(f"实际结果: {result}")
+        assert result == test['expected']
+
+def test_large_dataset_performance_detailed(btree):
+    """详细的大数据集性能测试"""
+    print("\n=== 开始详细性能测试 ===")
+    
+    import time
+    from statistics import mean, median
+    
+    # 测试参数
+    n = 1000
+    batch_size = 100
+    query_samples = 10
+    
+    # 生成测试数据
+    data = [(i, f"item{i}") for i in range(n)]
+    
+    # 批量插入性能
+    batch_times = []
+    for i in range(0, n, batch_size):
+        batch = data[i:i+batch_size]
+        start_time = time.time()
+        for value, owner_id in batch:
+            btree.add(value, owner_id)
+        batch_time = time.time() - start_time
+        batch_times.append(batch_time)
+        print(f"批次 {i//batch_size + 1}: 插入 {batch_size} 条数据用时 {batch_time:.4f}秒")
+    
+    # 查询性能
+    query_times = []
+    for i in range(query_samples):
+        start = n//4 * i // query_samples
+        end = n//2 * (i + 1) // query_samples
+        start_time = time.time()
+        result = btree.query("[]", start, end)
+        query_time = time.time() - start_time
+        query_times.append(query_time)
+        print(f"查询 [{start}, {end}] 用时: {query_time:.4f}秒")
+    
+    # 输出性能统计
+    print("\n性能统计:")
+    print(f"插入性能:")
+    print(f"  总时间: {sum(batch_times):.4f}秒")
+    print(f"  平均每批: {mean(batch_times):.4f}秒")
+    print(f"  中位数: {median(batch_times):.4f}秒")
+    print(f"查询性能:")
+    print(f"  平均: {mean(query_times):.4f}秒")
+    print(f"  中位数: {median(query_times):.4f}秒")
+

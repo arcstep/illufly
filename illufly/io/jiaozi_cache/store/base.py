@@ -1,0 +1,35 @@
+import json
+import threading
+from pathlib import Path
+from typing import Any, Optional, List, Dict
+from datetime import datetime
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
+
+class DateTimeEncoder(json.JSONEncoder):
+    """处理datetime、集合类型和自定义对象的JSON编码器"""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, (set, frozenset)):
+            return list(obj)  # 将集合类型转换为列表
+        if hasattr(obj, 'to_dict') and callable(obj.to_dict):
+            return obj.to_dict()
+        return super().default(obj)
+
+class StorageBackend(ABC):
+    @abstractmethod
+    def get(self, owner_id: str) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    def set(self, owner_id: str, data: Any) -> None:
+        pass
+
+    @abstractmethod
+    def delete(self, owner_id: str) -> bool:
+        pass
+
+    @abstractmethod
+    def list_owners(self) -> List[str]:
+        pass

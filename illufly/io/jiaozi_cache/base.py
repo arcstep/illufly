@@ -1,5 +1,5 @@
 from typing import Dict, Any, Optional, List, Callable, Type, Union, Tuple
-from dataclasses import is_dataclass, asdict
+from dataclasses import is_dataclass, asdict, dataclass
 from datetime import datetime
 from contextlib import contextmanager
 from typing import get_origin, get_args
@@ -14,8 +14,15 @@ import logging
 
 from ...config import get_env
 from .store import StorageBackend, JSONFileStorageBackend
-from .index import IndexBackend, HashIndexBackend, CompositeIndexBackend, IndexType, COMPARE_OPS, RANGE_OPS
+from .index import IndexBackend, CompositeIndexBackend, IndexType, IndexConfig
 from .cache import LRUCacheBackend
+
+@dataclass
+class SubsetConfig:
+    """子数据集配置"""
+    name: str                     # 子数据集名称
+    data_class: Type             # 数据类型
+    index_types: Dict[str, str]  # 索引配置
 
 class JiaoziCache():
     """
@@ -26,19 +33,20 @@ class JiaoziCache():
     def __init__(
         self,
         data_class: Type,
-        index_config: Optional[Dict[str, IndexType]] = None,
-        cache_backend: Optional[LRUCacheBackend] = None,
+        segment: str,          # 新增：数据类型标识(profile/tokens等)
+        cache_backend: Optional[CacheBackend] = None,
         storage_backend: Optional[StorageBackend] = None,
         index_backend: Optional[IndexBackend] = None,
-        serializer: Optional[Callable[[Any], Dict[str, Any]]] = None,
-        deserializer: Optional[Callable[[Dict[str, Any]], Any]] = None,
+        serializer: Optional[Callable] = None,
+        deserializer: Optional[Callable] = None,
         logger: Optional[logging.Logger] = None
     ):
         """初始化 JiaoziCache
         
         Args:
             data_class: 数据类型类
-            index_config: 索引配置字典
+            segment: 数据类型标识(profile/tokens等)
+            index_types: 字段索引类型映射
             cache_backend: 缓存后端
             storage_backend: 存储后端
             index_backend: 索引后端
@@ -48,26 +56,33 @@ class JiaoziCache():
         """
         self.logger = logger or logging.getLogger(__name__)
         self._data_class = data_class
-
-        # 初始化序列化器
-        self._init_serializers(serializer, deserializer)
+        self._segment = segment
+        self._base_dir = Path(get_env("ILLUFLY_CONFIG_STORE_DIR"))
         
-        # 初始化缓存后端
+        # 子数据集配置和实例
+        self._subset_configs: Dict[str, SubsetConfig] = {}
+        self._subsets: Dict[str, Dict[str, 'JiaoziCache']] = {}
+        
+        # 初始化其他组件（保持原有逻辑）
+        self._init_serializers(serializer, deserializer)
         self._cache = cache_backend or LRUCacheBackend(1000)
         
-        # 初始化存储后端
         if storage_backend is None:
-            raise ValueError("storage_backend is required")
+            storage_backend = JSONFileStorageBackend(
+                base_dir=self._base_dir,
+                segment=segment
+            )
         self._storage = storage_backend
         
-        # 初始化索引后端
-        if index_backend is None and index_config:
-            raise ValueError("index_backend is required when index_config is specified")
+        if index_backend is None and index_types:
+            index_backend = CompositeIndexBackend(
+                field_types=field_types,
+                index_types=index_types,
+                base_dir=self._base_dir,
+                segment=segment,
+                config=IndexConfig(cache_size=1000),
+            )
         self._index = index_backend
-
-        # 验证索引字段
-        if index_config:
-            self._validate_index_fields(index_config.keys())
 
     def _init_serializers(self, serializer, deserializer):
         """初始化序列化器"""
@@ -99,19 +114,99 @@ class JiaoziCache():
 
     def _validate_index_fields(self, indexes: List[str]) -> None:
         """验证索引字段的有效性"""
-        if hasattr(self._data_class, "model_fields"):
-            valid_fields = self._data_class.model_fields.keys()
-        elif hasattr(self._data_class, "__fields__"):
-            valid_fields = self._data_class.__fields__.keys()
-        elif isinstance(self._data_class, type) and issubclass(self._data_class, dict):
-            return  # 字典类型不验证字段
-        else:
-            valid_fields = {name for name in dir(self._data_class) 
-                          if not name.startswith("_")}
+        logger = logging.getLogger(__name__)
+        logger.debug(f"验证索引字段: {indexes}")
+        logger.debug(f"数据类: {self._data_class}")
         
-        invalid_fields = set(indexes) - set(valid_fields)
+        # 对于字典类型，我们需要检查值类型的字段
+        origin = get_origin(self._data_class)
+        if origin in (dict, Dict):
+            value_type = get_args(self._data_class)[1]
+            logger.debug(f"字典值类型: {value_type}")
+            
+            # 始终使用 _get_nested_fields
+            valid_fields = self._get_nested_fields(value_type)
+            logger.debug(f"有效字段: {valid_fields}")
+            
+            # 处理嵌套字段
+            nested_fields = {}
+            for field, field_type in valid_fields.items():
+                nested_fields[field] = field_type
+                # 处理字典类型字段
+                origin = get_origin(field_type)
+                if origin in (dict, Dict):
+                    # 对于字典类型字段，允许任意子字段
+                    logger.debug(f"字段 {field} 是字典类型: {field_type}")
+                    nested_fields[field] = field_type
+                    # 如果在索引中使用了这个字段的子字段，也认为是有效的
+                    for index in indexes:
+                        if index.startswith(f"{field}."):
+                            nested_fields[index] = get_args(field_type)[1]
+            
+            valid_fields = nested_fields
+            logger.debug(f"处理后的有效字段: {valid_fields}")
+        else:
+            valid_fields = self._get_nested_fields(self._data_class)
+        
+        # 验证每个索引字段
+        invalid_fields = set()
+        for field in indexes:
+            if field in valid_fields:
+                continue
+            
+            # 检查是否是嵌套字段
+            if '.' in field:
+                base_field = field.split('.')[0]
+                if base_field in valid_fields:
+                    base_type = valid_fields[base_field]
+                    # 检查基础字段是否是字典类型
+                    origin = get_origin(base_type)
+                    if origin in (dict, Dict):
+                        continue
+            
+            invalid_fields.add(field)
+            logger.debug(f"无效字段: {field}")
+        
         if invalid_fields:
             raise ValueError(f"无效的索引字段: {', '.join(invalid_fields)}")
+
+    def _get_nested_fields(self, cls: Type) -> Dict[str, Type]:
+        """获取类的所有字段，包括嵌套字段"""
+        fields = {}
+        
+        if hasattr(cls, "model_fields"):
+            # Pydantic v2
+            for field_name, field in cls.model_fields.items():
+                fields[field_name] = field.annotation
+        elif hasattr(cls, "__fields__"):
+            # Pydantic v1
+            for field_name, field in cls.__fields__.items():
+                fields[field_name] = field.type_
+        elif hasattr(cls, "__annotations__"):
+            # 标准类型注解
+            fields.update(cls.__annotations__)
+        elif hasattr(cls, "to_dict"):
+            # 通过 to_dict 方法推断字段
+            try:
+                instance = cls() if hasattr(cls, "__new__") else None
+                if instance:
+                    sample_dict = instance.to_dict()
+                    for field_name, value in sample_dict.items():
+                        fields[field_name] = type(value)
+                else:
+                    # 从方法签名获取字段
+                    init_params = inspect.signature(cls.__init__).parameters
+                    for name, param in init_params.items():
+                        if name != 'self':
+                            annotation = param.annotation
+                            if annotation != inspect.Parameter.empty:
+                                fields[name] = annotation
+                            else:
+                                fields[name] = Any
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"无法从 to_dict 推断字段: {e}")
+        
+        return fields
 
     def get(self, owner_id: str) -> Optional[Any]:
         """获取指定所有者的数据"""
@@ -163,39 +258,42 @@ class JiaoziCache():
         return result
 
     def query(self, conditions: Dict[str, Any]) -> List[Any]:
-        """查询满足条件的数据"""
-        if not self._index:
-            return self._full_scan(conditions)
+        """查询满足条件的数据
+        
+        支持新的索引查询接口，但保持原有的查询逻辑
+        """
+        if not conditions:
+            return []
             
         owner_ids = set()
         first_condition = True
         
         for field, condition in conditions.items():
-            if not self._index.has_index(field):
+            if not self._index or not self._index.has_index(field):
                 continue
                 
-            # 推断字段类型
-            field_type = self._infer_field_type(field)
-            
-            current_ids = set()
+            # 处理不同类型的查询条件
             if isinstance(condition, tuple):
                 op, *values = condition
-                # 转换查询值类型
-                if field_type:
-                    values = [self._convert_value(v, field_type) for v in values]
-                current_ids = set(self._index.query(field, op, *values))
+                current_ids = self._index.query(field, op, *values)
             else:
-                # 转换等值查询的值
-                if field_type:
-                    condition = self._convert_value(condition, field_type)
-                current_ids = set(self._index.find_with_index(field, condition))
-            
+                current_ids = self._index.find_with_index(field, condition)
+                
+            # 合并结果集
             if first_condition:
-                owner_ids = current_ids
+                owner_ids = set(current_ids)
                 first_condition = False
             else:
-                owner_ids &= current_ids
+                owner_ids &= set(current_ids)
                 
+            if not owner_ids:
+                return []
+                
+        # 如果没有使用索引，执行全表扫描
+        if first_condition:
+            return self._full_scan(conditions)
+            
+        # 获取并验证结果
         results = []
         for owner_id in owner_ids:
             data = self.get(owner_id)
@@ -223,7 +321,7 @@ class JiaoziCache():
             if owner_ids:
                 return self.get(owner_ids[0])
         
-        # 如果没有索引或没有找到，进行全表扫描
+        # 果没有索引或没有找到，进行全表扫描
         for owner_id in self._storage.list_owners():
             data = self.get(owner_id)
             if data and self._index._get_value_by_path(data, field) == value:
@@ -273,7 +371,7 @@ class JiaoziCache():
             
             if isinstance(condition, tuple):
                 op, *values = condition
-                # 转换查询值类��
+                # 转换查询值类型
                 values = [self._convert_value(v, field_type) for v in values]
                 
                 if op in COMPARE_OPS:
@@ -385,84 +483,38 @@ class JiaoziCache():
     @classmethod
     def create_with_json_storage(
         cls,
-        data_dir: str,
-        filename: str,
+        segment: str,          # 修改：添加 segment 参数
         data_class: Type,
-        index_config: Optional[Dict[str, IndexType]] = None,
+        index_types: Optional[Dict[str, str]] = None,
         cache_size: int = 1000,
         serializer: Optional[Callable] = None,
         deserializer: Optional[Callable] = None,
         logger: Optional[logging.Logger] = None
     ) -> 'JiaoziCache':
-        """创建基于JSON存储的缓存实例
-        
-        Args:
-            data_dir: 数据目录路径
-            filename: 文件名
-            data_class: 数据类型类
-            index_config: 索引配置
-            cache_size: 缓存大小
-            serializer: 自定义序列化函数
-            deserializer: 自定义反序列化函数
-            logger: 日志记录器
-        """
-        logger = logger or logging.getLogger(__name__)
+        """创建基于JSON存储的缓存实例"""
+        base_dir = Path(get_env("ILLUFLY_CONFIG_STORE_DIR"))
         
         # 创建存储后端
         storage_backend = JSONFileStorageBackend(
-            data_dir=data_dir,
-            filename=filename,
-            logger=logger
+            base_dir=base_dir,
+            segment=segment
         )
         
         # 创建索引后端
         index_backend = None
-        if index_config:
-            # 收集字段类型信息
-            field_types = {}
-            
-            # 从类型注解中获取字段类型
-            if hasattr(data_class, '__annotations__'):
-                annotations = data_class.__annotations__
-                for field in index_config:
-                    # 处理嵌套字段
-                    parts = field.split('.')
-                    current_type = data_class
-                    current_field = field
-                    
-                    try:
-                        for part in parts:
-                            if not hasattr(current_type, '__annotations__'):
-                                raise ValueError(f"类型 {current_type.__name__} 没有类型注解")
-                            current_field = part
-                            current_type = current_type.__annotations__[part]
-                        
-                        # 处理泛型类型
-                        origin = get_origin(current_type)
-                        if origin is not None:
-                            args = get_args(current_type)
-                            if args:
-                                current_type = args[0]  # 使用第一个类型参数
-                        
-                        field_types[field] = current_type
-                        logger.debug(f"字段 {field} 的类型为 {current_type}")
-                        
-                    except (AttributeError, KeyError) as e:
-                        raise ValueError(f"无法获取字段 {current_field} 的类型: {e}")
-            
-            # 创建组合索引后端
+        if index_types:
             index_backend = CompositeIndexBackend(
-                data_dir=data_dir,
-                filename=filename,
-                index_config=index_config,
-                field_types=field_types,
-                logger=logger
+                field_types=cls._get_field_types(data_class),
+                config=IndexConfig(cache_size=cache_size),
+                index_types=index_types,
+                base_dir=base_dir,
+                segment=segment
             )
-            logger.debug(f"创建索引后端，配置: {index_config}，字段类型: {field_types}")
         
         return cls(
             data_class=data_class,
-            index_config=index_config,
+            segment=segment,
+            index_types=index_types,
             cache_backend=LRUCacheBackend(cache_size),
             storage_backend=storage_backend,
             index_backend=index_backend,
@@ -509,7 +561,7 @@ class JiaoziCache():
         self._index.rebuild_indexes(data_iterator)
 
     def _convert_to_type(self, value: Any, target_type: Type) -> Any:
-        """将值转换为目标类型"""
+        """值转换为目标类型"""
         if target_type is datetime:
             if isinstance(value, str):
                 try:
@@ -556,3 +608,66 @@ class JiaoziCache():
                 except ValueError:
                     pass
         return value
+
+    def get_index_stats(self) -> Optional[Dict[str, Any]]:
+        """获取索引统计信息（新增方法）"""
+        if not self._index:
+            return None
+        return self._index.get_stats()
+
+    # 新增子数据集相关方法
+    def register_subset(
+        self,
+        subset_name: str,
+        data_class: Type,
+        index_types: Optional[Dict[str, str]] = None
+    ) -> None:
+        """注册子数据集配置"""
+        self._subset_configs[subset_name] = SubsetConfig(
+            name=subset_name,
+            data_class=data_class,
+            index_types=index_types
+        )
+
+    def get_subset(
+        self,
+        owner_id: str,
+        subset_name: str
+    ) -> 'JiaoziCache':
+        """获取子数据集实例"""
+        if subset_name not in self._subset_configs:
+            raise ValueError(f"未注册的子数据集: {subset_name}")
+            
+        # 延迟创建子数据集实例
+        if subset_name not in self._subsets:
+            self._subsets[subset_name] = {}
+            
+        if owner_id not in self._subsets[subset_name]:
+            config = self._subset_configs[subset_name]
+            
+            # 创建子数据集专用的存储后端
+            storage = JSONFileStorageBackend(
+                base_dir=self._base_dir / owner_id / subset_name
+            )
+            
+            # 创建子数据集专用的索引后端
+            index = None
+            if config.index_types:
+                index = CompositeIndexBackend(
+                    field_types=self._get_field_types(config.data_class),
+                    config=IndexConfig(cache_size=1000),
+                    index_types=config.index_types,
+                    base_dir=self._base_dir / owner_id / "indexes",
+                    segment=subset_name
+                )
+            
+            # 创建子数据集实例
+            self._subsets[subset_name][owner_id] = JiaoziCache(
+                data_class=config.data_class,
+                segment=subset_name,
+                index_types=config.index_types,
+                storage_backend=storage,
+                index_backend=index
+            )
+            
+        return self._subsets[subset_name][owner_id]
