@@ -4,7 +4,7 @@ import threading
 import atexit
 import time
 from pathlib import Path
-from typing import Any, Optional, List, Dict, Type, Generic, TypeVar
+from typing import Any, Optional, List, Dict, Type, Generic, TypeVar, Set
 from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
@@ -28,7 +28,7 @@ class JSONEncoder(json.JSONEncoder):
             (datetime, date): lambda x: {"__type__": "datetime", "value": x.isoformat()},
             Decimal: lambda x: {"__type__": "decimal", "value": str(x)},
             UUID: lambda x: {"__type__": "uuid", "value": str(x)},
-            Enum: lambda x: {"__type__": "enum", "class": x.__class__.__name__, "value": x.value},
+            Enum: lambda x: {"__type__": "enum", "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}", "value": obj.value, "name": obj.name},
             Path: lambda x: {"__type__": "path", "value": str(x)}
         }
         
@@ -41,7 +41,7 @@ class JSONEncoder(json.JSONEncoder):
         if BaseModel and isinstance(obj, BaseModel):
             return {
                 "__type__": "pydantic",
-                "class": obj.__class__.__name__, 
+                "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}", 
                 "value": obj.model_dump()
             }
         
@@ -64,13 +64,16 @@ class JSONEncoder(json.JSONEncoder):
         if hasattr(obj, '__dict__'):
             return {
                 "__type__": "object", 
-                "class": obj.__class__.__name__,
+                "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}",
                 "value": obj.__dict__
             }
             
-        # 添加元组处理
+        # 添加元组和集合处理
         if isinstance(obj, tuple):
             return {"__type__": "tuple", "value": list(obj)}
+            
+        if isinstance(obj, set):
+            return {"__type__": "set", "value": list(obj)}
             
         # 尝试直接序列化
         try:
@@ -102,27 +105,30 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
         segment: Optional[str] = None,
         flush_interval: int = 60,
         flush_threshold: int = 1000,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
+        max_time_samples: int = 1000
     ):
         self.logger = logger or logging.getLogger(__name__)
-        self._data_dir = Path(data_dir) if data_dir else get_env("ILLUFLY_JIAOZI_CACHE_STORE_DIR")
+        self._data_dir = Path(data_dir) if data_dir else Path(get_env("ILLUFLY_JIAOZI_CACHE_STORE_DIR"))
         self._segment = segment or "data.json"
         
         # 写缓冲相关
-        self._memory_buffer = {}
-        self._dirty_owners = set()
+        self._memory_buffer: Dict[str, Optional[T]] = {}
+        self._dirty_owners: Set[str] = set()
         self._modify_count = 0
         self._last_flush_time = time.time()
-        self._flush_interval = flush_interval
-        self._flush_threshold = flush_threshold
+        self._flush_interval = max(1, flush_interval)  # 确保最小间隔为1秒
+        self._flush_threshold = max(1, flush_threshold)  # 确保最小阈值为1
         
         # 线程安全
         self._buffer_lock = threading.RLock()
-        self._flush_timer = None
+        self._flush_timer: Optional[threading.Timer] = None
         self._should_stop = False
         self._is_flushing = False
         
         self._flush_count = 0
+        self._write_times: List[float] = []
+        self._max_time_samples = max(100, max_time_samples)  # 确保最小样本数为100
         
         self.logger.info(
             "初始化存储后端: dir=%s, segment=%s, interval=%d, threshold=%d",
@@ -154,10 +160,8 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
                 "decimal": lambda x: Decimal(x),
                 "uuid": lambda x: UUID(x),
                 "path": lambda x: Path(x),
-                "enum": lambda x: x,
-                "pydantic": lambda x: x,
-                "custom": lambda x: x,
-                "object": lambda x: x
+                "set": lambda x: set(x),
+                "tuple": lambda x: tuple(x)
             }
             
             def object_hook(obj: Dict) -> Any:
@@ -167,14 +171,19 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
                 obj_type = obj["__type__"]
                 value = obj["value"]
                 
-                if obj_type in ("dataclass", "custom"):
-                    module_path, class_name = obj["class"].rsplit('.', 1)
+                if obj_type in type_handlers:
+                    return type_handlers[obj_type](value)
+                
+                if obj_type in ("dataclass", "custom", "pydantic", "object"):
                     try:
+                        module_path, class_name = obj["class"].rsplit('.', 1)
                         import importlib
                         module = importlib.import_module(module_path)
                         cls = getattr(module, class_name)
-                        if hasattr(cls, '__dataclass_fields__'):
-                            return cls(**value)
+                        
+                        if obj_type == "pydantic" and issubclass(cls, BaseModel):
+                            return cls.model_validate(value)
+                            
                         return cls(**value)
                     except (ImportError, AttributeError) as e:
                         self.logger.warning(
@@ -183,23 +192,14 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
                         )
                         return value
                 
-                if obj_type == "tuple":
-                    return tuple(value)
-                
-                handler = type_handlers.get(obj_type)
-                if handler:
-                    return handler(value)
-                
                 if obj_type == "enum":
-                    # 获取枚举类
-                    module_path, class_name = obj["class"].rsplit('.', 1)
                     try:
+                        module_path, class_name = obj["class"].rsplit('.', 1)
                         import importlib
                         module = importlib.import_module(module_path)
                         enum_class = getattr(module, class_name)
-                        # 尝试通过名称恢复枚举值
                         return enum_class[obj["name"]]
-                    except (ImportError, AttributeError) as e:
+                    except (ImportError, AttributeError, KeyError) as e:
                         self.logger.warning(
                             "无法恢复枚举类型 %s: %s，返回原始值", 
                             obj["class"], e
@@ -255,31 +255,48 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
             
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                return json.load(f).get(key)
+                data = self._deserialize(f.read())
+                return data.get(key)
         except Exception as e:
             self.logger.error("读取文件失败: key=%s, error=%s", key, e)
             return None
 
     def set(self, key: str, value: T) -> None:
-        """设置数据"""
-        if value is None:
-            self.logger.debug("跳过空数据写入: key=%s", key)
-            return
+        """写入数据到缓冲区"""
+        if not isinstance(key, str):
+            raise TypeError("键必须是字符串类型")
             
+        if not key:
+            raise ValueError("键不能为空")
+            
+        # 先尝试序列化，确保数据可以被保存
         try:
-            self._serialize(value)
+            self._serialize({"test": value})
         except JSONSerializationError as e:
-            self.logger.error("数据序列化验证失败: %s", e)
+            self.logger.error(f"数据无法序列化: key={key}, error={e}")
             raise
-
+        
+        start_time = time.perf_counter()
+        
         with self._buffer_lock:
-            self._memory_buffer[key] = value
-            self._dirty_owners.add(key)
-            self._modify_count += 1
-            
-            if (self._modify_count >= self._flush_threshold or 
-                time.time() - self._last_flush_time >= self._flush_interval):
-                self._flush_to_disk()
+            try:
+                self._memory_buffer[key] = value
+                self._dirty_owners.add(key)
+                self._modify_count += 1
+                
+                # 记录写入时间
+                write_time = time.perf_counter() - start_time
+                if len(self._write_times) >= self._max_time_samples:
+                    self._write_times.pop(0)
+                self._write_times.append(write_time)
+                
+                # 检查是否需要刷新
+                if len(self._dirty_owners) >= self._flush_threshold:
+                    self._flush_to_disk()
+                    
+            except Exception as e:
+                self.logger.error(f"写入错误: key={key}, error={e}")
+                raise
 
     def delete(self, key: str) -> bool:
         """删除数据"""
@@ -320,11 +337,17 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
                     else:
                         current_data[key] = value
                 
+                # 创建临时文件
+                temp_file = file_path.with_suffix('.tmp')
                 try:
-                    with open(file_path, 'w', encoding='utf-8') as f:
+                    with open(temp_file, 'w', encoding='utf-8') as f:
                         f.write(self._serialize(current_data))
+                    # 原子性地替换文件
+                    temp_file.replace(file_path)
                 except Exception as e:
                     self.logger.error("写入文件失败: %s", e)
+                    if temp_file.exists():
+                        temp_file.unlink()
                     raise
                 
                 self._dirty_owners.clear()
@@ -378,14 +401,19 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
         self.close()
 
     def get_metrics(self) -> Dict[str, Any]:
-        """获取性能指标"""
+        """获取写缓冲区性能指标"""
         with self._buffer_lock:
             return {
                 "buffer_size": len(self._memory_buffer),
-                "dirty_count": len(self._dirty_owners),
-                "modify_count": self._modify_count,
+                "flush_threshold": self._flush_threshold,
+                "flush_count": self._flush_count,
                 "last_flush": self._last_flush_time,
-                "flush_count": self._flush_count
+                "pending_writes": len(self._dirty_owners),
+                "total_writes": self._modify_count,
+                "avg_write_time": (
+                    sum(self._write_times) / len(self._write_times) * 1000  # 转换为毫秒
+                    if self._write_times else 0.0
+                )
             }
 
     def get_from_buffer(self, key: str) -> Optional[T]:

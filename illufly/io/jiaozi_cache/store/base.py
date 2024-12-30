@@ -33,3 +33,11 @@ class StorageBackend(ABC):
     @abstractmethod
     def list_owners(self) -> List[str]:
         pass
+
+    @abstractmethod
+    def clear(self) -> None:
+        pass
+
+    @abstractmethod
+    def close(self) -> None:
+        pass

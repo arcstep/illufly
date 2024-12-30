@@ -391,6 +391,107 @@ class TestWriteBufferedJSONStorage:
         file_path = Path(storage._data_dir) / "test.json"
         assert not file_path.exists() or file_path.stat().st_size == 0
 
+    def test_write_buffer_read_priority(self, storage):
+        """测试写缓冲区的读取优先级"""
+        
+        # 1. 首次写入数据到磁盘并加载到读缓存
+        initial_data = {"value": 1}
+        storage.set("test_key", initial_data)
+        storage._storage._flush_to_disk()  # 强制刷新到磁盘
+        
+        # 确认数据在读缓存中
+        first_read = storage.get("test_key")
+        assert first_read == initial_data
+        assert storage._cache.get("test_key") == initial_data
+        
+        # 2. 写入新数据（此时在写缓冲中）
+        updated_data = {"value": 2}
+        storage.set("test_key", updated_data)
+        
+        # 3. 验证读取返回写缓冲中的新数据
+        result = storage.get("test_key")
+        assert result == updated_data
+        # 读缓存中仍然是旧数据
+        assert storage._cache.get("test_key") == initial_data
+        
+        # 4. 刷新到磁盘后，读缓存应该更新
+        storage._storage._flush_to_disk()
+        result_after_flush = storage.get("test_key")
+        assert result_after_flush == updated_data
+        assert storage._cache.get("test_key") == updated_data
+
+    def test_write_buffer_multiple_updates(self, storage):
+        """测试写缓冲区的多次更新场景"""
+        
+        # 1. 初始数据
+        storage.set("key", {"value": 1})
+        storage._storage._flush_to_disk()
+        
+        # 2. 快速多次更新
+        storage.set("key", {"value": 2})
+        storage.set("key", {"value": 3})
+        storage.set("key", {"value": 4})
+        
+        # 3. 验证始终能读取到最新值
+        assert storage.get("key") == {"value": 4}
+        
+        # 4. 验证写缓冲区的值
+        buffer_value = storage._storage.get_from_buffer("key")
+        assert buffer_value == {"value": 4}
+
+    def test_concurrent_read_write(self, storage):
+        """测试并发读写场景下的数据一致性"""
+        import threading
+        import time
+        
+        # 用于存储读取结果的字典
+        results = {}
+        
+        def writer():
+            for i in range(5):
+                storage.set("concurrent_key", {"value": i})
+                time.sleep(0.01)  # 模拟写入延迟
+                
+        def reader():
+            for i in range(10):
+                value = storage.get("concurrent_key")
+                if value:
+                    results[f"read_{i}"] = value["value"]
+                time.sleep(0.005)  # 模拟读取延迟
+        
+        # 启动读写线程
+        write_thread = threading.Thread(target=writer)
+        read_thread = threading.Thread(target=reader)
+        
+        write_thread.start()
+        read_thread.start()
+        
+        write_thread.join()
+        read_thread.join()
+        
+        # 验证读取的值都是有效的（0-4之间）
+        for value in results.values():
+            assert 0 <= value <= 4
+
+    def test_write_buffer_overflow(self, storage):
+        """测试写缓冲区溢出时的读取行为"""
+        
+        # 1. 写入足够多的数据触发缓冲区溢出
+        for i in range(storage._storage._flush_threshold + 1):
+            storage.set(f"key_{i}", {"value": i})
+        
+        # 2. 再次写入并读取
+        test_key = "test_overflow"
+        storage.set(test_key, {"value": "overflow"})
+        
+        # 3. 验证数据一致性
+        result = storage.get(test_key)
+        assert result == {"value": "overflow"}
+        
+        # 4. 验证缓冲区状态
+        metrics = storage.get_metrics()
+        assert metrics["write_buffer"]["size"] > 0
+
     @classmethod
     def teardown_class(cls):
         """测试类结束时的清理工作"""

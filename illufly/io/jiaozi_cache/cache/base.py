@@ -12,12 +12,12 @@ class CacheBackend(ABC):
         pass
     
     @abstractmethod
-    def put(self, key: str, value: Any) -> None:
+    def set(self, key: str, value: Any) -> None:
         """存入缓存值"""
         pass
     
     @abstractmethod
-    def remove(self, key: str) -> None:
+    def delete(self, key: str) -> None:
         """移除缓存项"""
         pass
     
