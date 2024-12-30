@@ -2,7 +2,9 @@ from .block import EventBlock, EndBlock, NewLineBlock, ResponseBlock
 from .document import Document, convert_to_documents_list
 
 from .jiaozi_cache import JiaoziCache
-from .jiaozi_cache.index import IndexType
+from .jiaozi_cache.index import IndexType, IndexConfig, IndexBackend, BTreeIndexBackend, HashIndexBackend
+from .jiaozi_cache.cache import CacheBackend, LRUCacheBackend
+from .jiaozi_cache.store import JSONSerializationError, CachedJSONStorage, WriteBufferedJSONStorage, StorageStrategy, TimeSeriesGranularity
 from .handlers import log, alog, usage, async_usage
 from .history import BaseMemoryHistory, LocalFileMemoryHistory
 from .history import BaseEventsHistory, LocalFileEventsHistory
@@ -25,4 +27,11 @@ __all__ = [
     "LocalFileKnowledgeDB",
     "ConfigStoreProtocol",
     "JiaoziCache",
+    "IndexType",
+    "IndexConfig",
+    "IndexBackend",
+    "BTreeIndexBackend",
+    "HashIndexBackend",
+    "CacheBackend",
+    "LRUCacheBackend",
 ]

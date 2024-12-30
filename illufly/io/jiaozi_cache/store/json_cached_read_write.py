@@ -167,42 +167,42 @@ class CachedJSONStorage(StorageBackend, Generic[T]):
         self._invalidate_method_cache()
 
     @lru_cache(maxsize=1)
-    def list_owners(self) -> List[str]:
-        """列出所有所有者
+    def list_keys(self) -> List[str]:
+        """列出所有键
         使用lru_cache装饰器缓存结果，直到写入操作发生
         """
-        return self._storage.list_owners()
+        return self._storage.list_keys()
 
     def _invalidate_method_cache(self):
         """在写入操作后使方法缓存失效"""
-        self.list_owners.cache_clear()
+        self.list_keys.cache_clear()
         self._last_write_timestamp = time.time()
 
-    def get(self, owner_id: str) -> Optional[T]:
+    def get(self, key: str) -> Optional[T]:
         """获取数据，使用方法级缓存
         只有在数据未被修改的情况下才返回缓存结果
         """
         # 先检查LRU缓存
-        value = self._cache.get(owner_id)
+        value = self._cache.get(key)
         if value is not None:
             return value
 
         # 从存储读取
-        value = self._storage.get(owner_id)
+        value = self._storage.get(key)
         if value is not None:
-            self._cache.set(owner_id, value)
+            self._cache.set(key, value)
         return value
 
-    def set(self, owner_id: str, value: T) -> None:
+    def set(self, key: str, value: T) -> None:
         """写入数据并更新缓存"""
-        self._storage.set(owner_id, value)
-        self._cache.set(owner_id, value)
+        self._storage.set(key, value)
+        self._cache.set(key, value)
         self._invalidate_method_cache()
 
-    def delete(self, owner_id: str) -> None:
+    def delete(self, key: str) -> None:
         """删除数据并更新缓存"""
-        self._storage.delete(owner_id)
-        self._cache.delete(owner_id)
+        self._storage.delete(key)
+        self._cache.delete(key)
         self._invalidate_method_cache()
 
 

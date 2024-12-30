@@ -19,19 +19,19 @@ class DateTimeEncoder(json.JSONEncoder):
 
 class StorageBackend(ABC):
     @abstractmethod
-    def get(self, owner_id: str) -> Optional[Any]:
+    def get(self, key: str) -> Optional[Any]:
         pass
 
     @abstractmethod
-    def set(self, owner_id: str, data: Any) -> None:
+    def set(self, key: str, data: Any) -> None:
         pass
 
     @abstractmethod
-    def delete(self, owner_id: str) -> bool:
+    def delete(self, key: str) -> bool:
         pass
 
     @abstractmethod
-    def list_owners(self) -> List[str]:
+    def list_keys(self) -> List[str]:
         pass
 
     @abstractmethod

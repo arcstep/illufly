@@ -31,7 +31,7 @@ class Indexable(Protocol):
             ...     def to_index_key(self) -> str:
             ...         return f"{self.name}_{self.age}"
         """
-        ...
+        pass
 
 class IndexBackend(ABC):
     """索引后端基类

@@ -15,7 +15,7 @@ class BTreeNode:
     Attributes:
         leaf (bool): 是否是叶子节点
         keys (List[str]): 键列表（已排序）
-        values (Dict[str, List[str]]): 键到owner_id列表的映射
+        values (Dict[str, List[str]]): 键到key列表的映射
         children (List[BTreeNode]): 子节点列表
     """
     __slots__ = ['leaf', 'keys', 'values', 'children']
@@ -42,7 +42,7 @@ class BTreeIndexBackend(IndexBackend):
     Attributes:
         _order (int): B树的阶
         _trees (Dict[str, BTreeNode]): 字段到B树根节点的映射
-        _null_values (Dict[str, set]): 存储每个字段的空值owner_id
+        _null_values (Dict[str, set]): 存储每个字段的空值key
     """
     
     def __init__(
@@ -91,20 +91,20 @@ class BTreeIndexBackend(IndexBackend):
         self._cached_search = lru_cache(maxsize=MAX_CACHE_SIZE)(self._search_btree)
         self.logger.debug("已启用B树搜索缓存，最大缓存数：%d", MAX_CACHE_SIZE)
 
-    def update_index(self, data: Any, owner_id: str) -> None:
+    def update_index(self, data: Any, key: str) -> None:
         """更新索引
         
         根据配置的更新策略处理索引更新
         """
-        self.logger.debug("开始更新索引: owner_id=%s", owner_id)
+        self.logger.debug("开始更新索引: key=%s", key)
         try:
             # 在更新前清除缓存
             self._cached_search.cache_clear()
             self.logger.debug("已清除B树搜索缓存")
             
             # 移除旧索引
-            self.logger.debug("移除旧索引: owner_id=%s", owner_id)
-            self.remove_from_index(owner_id)
+            self.logger.debug("移除旧索引: key=%s", key)
+            self.remove_from_index(key)
             
             # 根据更新策略处理
             if self._config.update_strategy == "async":
@@ -121,12 +121,12 @@ class BTreeIndexBackend(IndexBackend):
                     value = self._get_value_by_path(data, field)
                     if value is None:
                         self.logger.debug("字段 %s 值为空,添加到空值集合", field)
-                        self._null_values[field].add(owner_id)
+                        self._null_values[field].add(key)
                         continue
                         
                     self.logger.debug("更新字段 %s 的索引,值=%s", field, value)
                     index_key = self.convert_to_index_key(value, field)
-                    self._insert(field, index_key, owner_id)
+                    self._insert(field, index_key, key)
             
             self._stats["updates"] += 1
             
@@ -139,15 +139,14 @@ class BTreeIndexBackend(IndexBackend):
             self.logger.error("更新索引失败: %s", e, exc_info=True)
             raise
 
-    def _insert_to_btree(self, field: str, key: str, owner_id: str) -> None:
+    def _insert_to_btree(self, field: str, key: str) -> None:
         """向B树插入键值对
         
         Args:
             field: 字段名
             key: 索引键
-            owner_id: 数据所有者ID
         """
-        self.logger.debug("向B树插入键值对: field=%s, key=%s, owner_id=%s", field, key, owner_id)
+        self.logger.debug("向B树插入键值对: field=%s, key=%s", field, key)
         tree = self._trees[field]
         
         # 如果根节点已满，需要分裂
@@ -159,7 +158,7 @@ class BTreeIndexBackend(IndexBackend):
             self._trees[field] = new_root
             tree = new_root
         
-        self._insert_non_full(tree, key, owner_id)
+        self._insert_non_full(tree, key, key)
 
     def _split_child(self, parent: BTreeNode, index: int) -> None:
         """分裂子节点
@@ -196,15 +195,14 @@ class BTreeIndexBackend(IndexBackend):
         parent.children.insert(index + 1, new_node)
         self.logger.debug("节点分裂完成")
 
-    def _insert_non_full(self, node: BTreeNode, key: str, owner_id: str) -> None:
+    def _insert_non_full(self, node: BTreeNode, key: str) -> None:
         """向非满节点插入键值对
         
         Args:
             node: 目标节点
             key: 索引键
-            owner_id: 数据所有者ID
         """
-        self.logger.debug("向非满节点插入: key=%s, owner_id=%s", key, owner_id)
+        self.logger.debug("向非满节点插入: key=%s", key)
         i = len(node.keys) - 1
         
         if node.leaf:
@@ -215,7 +213,7 @@ class BTreeIndexBackend(IndexBackend):
             
             # 插入键和值
             node.keys.insert(i, key)
-            node.values[key] = [owner_id]
+            node.values[key] = [key]
             self.logger.debug("在叶子节点插入完成: position=%d", i)
         else:
             # 找到合适的子节点
@@ -230,7 +228,7 @@ class BTreeIndexBackend(IndexBackend):
                 if key > node.keys[i]:
                     i += 1
             
-            self._insert_non_full(node.children[i], key, owner_id)
+            self._insert_non_full(node.children[i], key, key)
 
     def find_with_index(self, field: str, value: Any) -> List[str]:
         """使用索引查找数据
@@ -271,7 +269,7 @@ class BTreeIndexBackend(IndexBackend):
             key: 要搜索的键
             
         Returns:
-            List[str]: 匹配的owner_id列表
+            List[str]: 匹配的key列表
         """
         self.logger.debug("在B树节点中搜索: key=%s", key)
         i = 0
@@ -288,44 +286,44 @@ class BTreeIndexBackend(IndexBackend):
             
         return self._search_btree(node.children[i], key)
 
-    def remove_from_index(self, owner_id: str) -> None:
+    def remove_from_index(self, key: str) -> None:
         """删除指定所有者的所有索引
         
         Args:
-            owner_id: 数据所有者ID
+            key: 数据所有者ID
         """
-        self.logger.debug("开始移除索引: owner_id=%s", owner_id)
+        self.logger.debug("开始移除索引: key=%s", key)
         # 在删除前清除缓存
         self._cached_search.cache_clear()
         self.logger.debug("已清除B树搜索缓存")
         
         # 从空值集合中移除
         for field, null_set in self._null_values.items():
-            if owner_id in null_set:
+            if key in null_set:
                 self.logger.debug("从字段 %s 的空值集合中移除", field)
-                null_set.discard(owner_id)
+                null_set.discard(key)
         
         # 从B树中移除
         for field, tree in self._trees.items():
             self.logger.debug("从字段 %s 的B树中移除", field)
-            self._remove_from_btree(tree, owner_id)
+            self._remove_from_btree(tree, key)
         
         self._save_indexes()
         self.logger.debug("索引移除完成")
 
-    def _remove_from_btree(self, node: BTreeNode, owner_id: str) -> None:
-        """从B树节点中移除owner_id
+    def _remove_from_btree(self, node: BTreeNode, key: str) -> None:
+        """从B树节点中移除key
         
         Args:
             node: 当前节点
-            owner_id: 要移除的owner_id
+            key: 要移除的key
         """
-        self.logger.debug("从节点中移除owner_id: %s", owner_id)
+        self.logger.debug("从节点中移除key: %s", key)
         empty_keys = []
         for key in node.keys:
-            if owner_id in node.values[key]:
+            if key in node.values[key]:
                 self.logger.debug("从键 %s 的值列表中移除", key)
-                node.values[key].remove(owner_id)
+                node.values[key].remove(key)
                 if not node.values[key]:
                     empty_keys.append(key)
         
@@ -339,13 +337,13 @@ class BTreeIndexBackend(IndexBackend):
         # 递归处理子节点
         if not node.leaf:
             for child in node.children:
-                self._remove_from_btree(child, owner_id)
+                self._remove_from_btree(child, key)
 
     def rebuild_indexes(self, data_iterator: Callable[[], List[tuple[str, Any]]]) -> None:
         """重建所有索引
         
         Args:
-            data_iterator: 返回(owner_id, data)元组列表的迭代器
+            data_iterator: 返回(key, data)元组列表的迭代器
         """
         self.logger.info("开始重建索引")
         # 重置所有B树
@@ -354,9 +352,9 @@ class BTreeIndexBackend(IndexBackend):
         
         # 重建索引
         count = 0
-        for owner_id, item in data_iterator():
-            self.logger.debug("重建数据项索引: owner_id=%s", owner_id)
-            self.update_index(item, owner_id)
+        for key, item in data_iterator():
+            self.logger.debug("重建数据项索引: key=%s", key)
+            self.update_index(item, key)
             count += 1
         
         self._save_indexes()

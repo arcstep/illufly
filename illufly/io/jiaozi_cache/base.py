@@ -226,31 +226,31 @@ class JiaoziCache():
         self.logger.debug(f"获取到的字段: {fields}")
         return fields
 
-    def get(self, owner_id: str) -> Optional[Any]:
+    def get(self, key: str) -> Optional[Any]:
         """获取指定所有者的数据"""
-        self.logger.debug(f"获取数据: owner_id={owner_id}")
+        self.logger.debug(f"获取数据: key={key}")
         
         # 先从缓存获取
-        cached_data = self._cache.get(owner_id)
+        cached_data = self._cache.get(key)
         if cached_data is not None:
             self.logger.debug("缓存命中")
             return cached_data
         
         # 缓存未命中,从存储后端获取
         self.logger.debug("缓存未命中，从存储后端获取")
-        data = self._storage.get(owner_id)
+        data = self._storage.get(key)
         if data is not None:
             deserialized_data = self._deserializer(data)
-            self._cache.put(owner_id, deserialized_data)
+            self._cache.put(key, deserialized_data)
             self.logger.debug("数据已加载并缓存")
             return deserialized_data
             
         self.logger.debug("数据不存在")
         return None
 
-    def set(self, value: Any, owner_id: str) -> None:
+    def set(self, value: Any, key: str) -> None:
         """设置数据"""
-        self.logger.debug(f"设置数据: owner_id={owner_id}")
+        self.logger.debug(f"设置数据: key={key}")
         
         if value is None:
             self.logger.warning("尝试设置空值，操作已忽略")
@@ -258,40 +258,40 @@ class JiaoziCache():
             
         # 序列化并保存数据
         serialized_data = self._serializer(value)
-        self._storage.set(owner_id, serialized_data)
+        self._storage.set(key, serialized_data)
         self.logger.debug("数据已保存到存储后端")
         
         # 更新缓存
-        self._cache.put(owner_id, value)
+        self._cache.put(key, value)
         self.logger.debug("缓存已更新")
         
         # 更新索引
         if self._index is not None:
-            self._index.update_index(value, owner_id)
+            self._index.update_index(value, key)
             self.logger.debug("索引已更新")
 
-    def delete(self, owner_id: str) -> bool:
+    def delete(self, key: str) -> bool:
         """删除数据"""
-        self.logger.debug(f"删除数据: owner_id={owner_id}")
+        self.logger.debug(f"删除数据: key={key}")
         
         # 获取原有数据用于更新索引
-        old_value = self.get(owner_id)
+        old_value = self.get(key)
         
         # 删除存储的数据
-        result = self._storage.delete(owner_id)
+        result = self._storage.delete(key)
         
         if result:
-            self.logger.info(f"成功删除数据: owner_id={owner_id}")
+            self.logger.info(f"成功删除数据: key={key}")
             # 清除缓存
-            self._cache.remove(owner_id)
+            self._cache.remove(key)
             self.logger.debug("缓存已清除")
             
             # 更新索引
             if old_value is not None and self._index is not None:
-                self._index.remove_from_index(owner_id)
+                self._index.remove_from_index(key)
                 self.logger.debug("索引已更新")
         else:
-            self.logger.warning(f"删除数据失败: owner_id={owner_id}")
+            self.logger.warning(f"删除数据失败: key={key}")
         
         return result
 
@@ -306,7 +306,7 @@ class JiaoziCache():
             self.logger.warning("查询条件为空")
             return []
             
-        owner_ids = set()
+        keys = set()
         first_condition = True
         
         for field, condition in conditions.items():
@@ -325,12 +325,12 @@ class JiaoziCache():
                 
             # 合并结果集
             if first_condition:
-                owner_ids = set(current_ids)
+                keys = set(current_ids)
                 first_condition = False
             else:
-                owner_ids &= set(current_ids)
+                keys &= set(current_ids)
                 
-            if not owner_ids:
+            if not keys:
                 self.logger.debug("查询结果为空")
                 return []
                 
@@ -341,8 +341,8 @@ class JiaoziCache():
             
         # 获取并验证结果
         results = []
-        for owner_id in owner_ids:
-            data = self.get(owner_id)
+        for key in keys:
+            data = self.get(key)
             if data and self._match_conditions(data, conditions):
                 results.append(data)
                 
@@ -356,8 +356,8 @@ class JiaoziCache():
         warnings.warn("执行全表扫描，这可能会影响性能", UserWarning)
         
         results = []
-        for owner_id in self._storage.list_owners():
-            data = self.get(owner_id)
+        for key in self._storage.list_keys():
+            data = self.get(key)
             if data and self._match_conditions(data, conditions):
                 results.append(data)
                 
@@ -369,15 +369,15 @@ class JiaoziCache():
         self.logger.debug(f"查找单条数据: {field}={value}")
         
         if self._index and self._index.has_index(field):
-            owner_ids = self._index.find_with_index(field, value)
-            if owner_ids:
+            keys = self._index.find_with_index(field, value)
+            if keys:
                 self.logger.debug("通过索引找到匹配记录")
-                return self.get(owner_ids[0])
+                return self.get(keys[0])
         
         # 如果没有索引或没有找到，进行全表扫描
         self.logger.warning(f"字段 {field} 没有索引，执行全表扫描")
-        for owner_id in self._storage.list_owners():
-            data = self.get(owner_id)
+        for key in self._storage.list_keys():
+            data = self.get(key)
             if data and self._index._get_value_by_path(data, field) == value:
                 return data
                 
@@ -416,10 +416,10 @@ class JiaoziCache():
         self.logger.debug("获取缓存统计信息")
         return self._cache.get_stats()
 
-    def list_owners(self) -> List[str]:
+    def list_keys(self) -> List[str]:
         """列出所有的所有者ID"""
         self.logger.debug("获取所有所有者ID列表")
-        return self._storage.list_owners()
+        return self._storage.list_keys()
 
     def _match_conditions(self, data: Any, conditions: Dict[str, Any]) -> bool:
         """检查数据是否匹配所有条件"""
@@ -659,10 +659,10 @@ class JiaoziCache():
         
         def data_iterator():
             results = []
-            for owner_id in self._storage.list_owners():
-                data = self.get(owner_id)
+            for key in self._storage.list_keys():
+                data = self.get(key)
                 if data:
-                    results.append((owner_id, data))
+                    results.append((key, data))
             return results
         
         self._index.rebuild_indexes(data_iterator)
@@ -697,8 +697,8 @@ class JiaoziCache():
         """推断字段的数据类型"""
         self.logger.debug(f"开始推断字段类型: {field}")
         # 从已有数据中推类型
-        for owner_id in self._storage.list_owners():
-            data = self.get(owner_id)
+        for key in self._storage.list_keys():
+            data = self.get(key)
             if data:
                 value = IndexBackend._get_value_by_path(data, field)
                 if value is not None:
@@ -763,11 +763,11 @@ class JiaoziCache():
 
     def get_subset(
         self,
-        owner_id: str,
+        key: str,
         subset_name: str
     ) -> 'JiaoziCache':
         """获取子数据集实例"""
-        self.logger.debug(f"获取子数据集: owner={owner_id}, name={subset_name}")
+        self.logger.debug(f"获取子数据集: key={key}, name={subset_name}")
         
         if subset_name not in self._subset_configs:
             self.logger.error(f"未注册的子数据集: {subset_name}")
@@ -778,13 +778,13 @@ class JiaoziCache():
             self.logger.debug(f"初始化子数据集字典: {subset_name}")
             self._subsets[subset_name] = {}
             
-        if owner_id not in self._subsets[subset_name]:
-            self.logger.info(f"创建子数据集实例: owner={owner_id}, name={subset_name}")
+        if key not in self._subsets[subset_name]:
+            self.logger.info(f"创建子数据集实例: key={key}, name={subset_name}")
             config = self._subset_configs[subset_name]
             
             # 创建子数据集专用的存储后端
             storage = BufferedJSONFileStorageBackend(
-                base_dir=self._base_dir / owner_id / subset_name
+                base_dir=self._base_dir / key / subset_name
             )
             
             # 创建子数据集专用的索引后端
@@ -795,18 +795,18 @@ class JiaoziCache():
                     field_types=self._get_field_types(config.data_class),
                     config=IndexConfig(cache_size=1000),
                     index_types=config.index_types,
-                    base_dir=self._base_dir / owner_id / "indexes",
+                    base_dir=self._base_dir / key / "indexes",
                     segment=subset_name
                 )
             
             # 创建子数据集实例
-            self._subsets[subset_name][owner_id] = JiaoziCache(
+            self._subsets[subset_name][key] = JiaoziCache(
                 data_class=config.data_class,
                 segment=subset_name,
                 index_types=config.index_types,
                 storage_backend=storage,
                 index_backend=index
             )
-            self.logger.info(f"子数据集实例创建完成: owner={owner_id}, name={subset_name}")
+            self.logger.info(f"子数据集实例创建完成: key={key}, name={subset_name}")
             
-        return self._subsets[subset_name][owner_id]
+        return self._subsets[subset_name][key]

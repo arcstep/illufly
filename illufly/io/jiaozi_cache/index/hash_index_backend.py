@@ -18,18 +18,20 @@ class HashIndexBackend(IndexBackend):
         config: Optional[IndexConfig] = None,
         data_dir: str = None,
         segment: str = None,
-        logger: Optional[logging.Logger] = None,
+        cache_size: int = None,
         flush_interval: Optional[int] = None,
-        flush_threshold: Optional[int] = None
+        flush_threshold: Optional[int] = None,
+        logger: Optional[logging.Logger] = None,
     ):
         """初始化哈希索引后端"""
         super().__init__(field_types=field_types, config=config)
         self._indexes = defaultdict(lambda: defaultdict(list))
         
         # 使用带缓冲的存储后端
-        self._writer = CachedJSONStorage(
+        self._storage = CachedJSONStorage(
             data_dir=data_dir,
             segment=segment or "index.json",
+            cache_size=cache_size or 100000,
             flush_interval=flush_interval,
             flush_threshold=flush_threshold,
             logger=logger
@@ -208,7 +210,7 @@ class HashIndexBackend(IndexBackend):
                 'types': {field: str(t) for field, t in self._field_types.items()},
                 'indexes': dict(self._indexes)
             }
-            self._writer.set('.indexes', data)
+            self._storage.set('.indexes', data)
             
         except Exception as e:
             self.logger.error("保存索引失败: %s", e)
@@ -217,7 +219,7 @@ class HashIndexBackend(IndexBackend):
     def _load_indexes(self) -> None:
         """从存储后端加载索引"""
         try:
-            data = self._writer.get('.indexes')
+            data = self._storage.get('.indexes')
             if data:
                 self._indexes = defaultdict(lambda: defaultdict(list))
                 for field, field_index in data.get('indexes', {}).items():
