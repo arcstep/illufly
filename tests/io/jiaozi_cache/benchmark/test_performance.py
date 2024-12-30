@@ -66,17 +66,17 @@ class PerformanceTester:
                 self.results["cache_miss_times"].append(duration)
 
     def generate_report(self) -> str:
-        report = ["性能测试报告", "=" * 50]
+        report = ["\n性能测试报告", "=" * 50]
         
         # 1. 写入性能
         write_times = self.results["write_times"]
         report.extend([
             "\n写入性能:",
-            f"总写入操作: {len(write_times)}",
-            f"平均写入时间: {mean(write_times)*1000:.3f}ms",
-            f"中位数写入时间: {median(write_times)*1000:.3f}ms",
-            f"最快写入: {min(write_times)*1000:.3f}ms",
-            f"最慢写入: {max(write_times)*1000:.3f}ms"
+            f"- 总写入操作: {len(write_times)}",
+            f"- 平均写入时间: {mean(write_times)*1000:.3f}ms",
+            f"- 中位数写入时间: {median(write_times)*1000:.3f}ms",
+            f"- 最快写入: {min(write_times)*1000:.3f}ms",
+            f"- 最慢写入: {max(write_times)*1000:.3f}ms"
         ])
 
         # 2. 读取性能
@@ -88,25 +88,25 @@ class PerformanceTester:
             hit_rate = len(hits) / total_reads * 100
             report.extend([
                 "\n读取性能:",
-                f"总读取操作: {total_reads}",
-                f"缓存命中率: {hit_rate:.1f}%",
-                f"缓存命中平均时间: {mean(hits)*1000:.3f}ms",
-                f"缓存未命中平均时间: {mean(misses)*1000:.3f}ms" if misses else "无缓存未命中"
+                f"- 总读取操作: {total_reads}",
+                f"- 缓存命中率: {hit_rate:.1f}%",
+                f"- 缓存命中平均时间: {mean(hits)*1000:.3f}ms",
+                f"- 缓存未命中平均时间: {mean(misses)*1000:.3f}ms" if misses else "无缓存未命中"
             ])
 
         # 3. 缓存效果
         if misses:
             speedup = mean(misses) / mean(hits)
-            report.append(f"\n缓存加速比: {speedup:.1f}x")
+            report.append(f"\n- 缓存读取加速比: {speedup:.1f}x")
 
         # 4. 内存使用
         metrics = self.storage.get_metrics()
         report.extend([
             "\n资源使用:",
-            f"读缓存大小: {metrics['read_cache']['size']}",
-            f"写缓冲大小: {metrics['write_buffer']['size']}",
-            f"读缓存命中次数: {metrics['read_cache']['hits']}",
-            f"读缓存未命中次数: {metrics['read_cache']['misses']}"
+            f"- 读缓存大小: {metrics['read_cache']['size']}",
+            f"- 写缓冲大小: {metrics['write_buffer']['size']}",
+            f"- 读缓存命中次数: {metrics['read_cache']['hits']}",
+            f"- 读缓存未命中次数: {metrics['read_cache']['misses']}"
         ])
 
         return "\n".join(report)
@@ -128,9 +128,6 @@ def test_performance(tmp_path):
         tester.run_benchmark(num_operations=1000)
         
         # 打印详细报告
-        print("\n" + "="*50)
-        print("性能测试报告")
-        print("="*50)
         print(tester.generate_report())
         print("\n" + "="*50)
         
