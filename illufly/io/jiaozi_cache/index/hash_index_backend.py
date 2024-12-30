@@ -7,7 +7,7 @@ from pathlib import Path
 from ....config import get_env
 from .index_backend import IndexBackend
 from .index_config import IndexConfig
-from ..store.json_file import BufferedJSONFileStorageBackend
+from ..store import CachedJSONStorage
 
 class HashIndexBackend(IndexBackend):
     """基于哈希表的索引实现"""
@@ -19,15 +19,15 @@ class HashIndexBackend(IndexBackend):
         data_dir: str = None,
         segment: str = None,
         logger: Optional[logging.Logger] = None,
-        flush_interval: int = 60,
-        flush_threshold: int = 1000
+        flush_interval: Optional[int] = None,
+        flush_threshold: Optional[int] = None
     ):
         """初始化哈希索引后端"""
         super().__init__(field_types=field_types, config=config)
         self._indexes = defaultdict(lambda: defaultdict(list))
         
         # 使用带缓冲的存储后端
-        self._writer = BufferedJSONFileStorageBackend(
+        self._writer = CachedJSONStorage(
             data_dir=data_dir,
             segment=segment or "index.json",
             flush_interval=flush_interval,

@@ -4,24 +4,21 @@ import threading
 import atexit
 import time
 from pathlib import Path
-from typing import Any, Optional, List, Dict, Type
+from typing import Any, Optional, List, Dict, Type, Generic, TypeVar
 from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
 from uuid import UUID
-try:
-    from pydantic import BaseModel
-except ImportError:
-    BaseModel = None
+from pydantic import BaseModel
 
 from .base import StorageBackend
 from ....config import get_env
 
+T = TypeVar('T')
 
 class JSONSerializationError(Exception):
     """JSON序列化错误"""
     pass
-
 
 class JSONEncoder(json.JSONEncoder):
     """自定义JSON编码器"""
@@ -82,16 +79,30 @@ class JSONEncoder(json.JSONEncoder):
             raise JSONSerializationError(f"无法序列化类型 {type(obj).__name__}: {e}")
 
 
-class BufferedJSONFileStorageBackend(StorageBackend):
-    """带写缓冲的JSON文件存储后端"""
+class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
+    """带写缓冲的JSON文件存储后端
+    
+    特性：
+    1. 支持写缓冲和批量刷新
+    2. 线程安全
+    3. 自动类型序列化
+    4. 支持复杂数据类型
+    5. 泛型类型支持
+    6. 可监控的性能指标
+    
+    适用场景：
+    1. 需要高性能写入
+    2. 处理复杂数据类型
+    3. 作为组合对象使用
+    """
     
     def __init__(
-        self, 
-        data_dir: str = None, 
-        segment: str = None,
+        self,
+        data_dir: Optional[str] = None,
+        segment: Optional[str] = None,
         flush_interval: int = 60,
         flush_threshold: int = 1000,
-        logger = None
+        logger: Optional[logging.Logger] = None
     ):
         self.logger = logger or logging.getLogger(__name__)
         self._data_dir = Path(data_dir) if data_dir else get_env("ILLUFLY_JIAOZI_CACHE_STORE_DIR")
@@ -110,6 +121,8 @@ class BufferedJSONFileStorageBackend(StorageBackend):
         self._flush_timer = None
         self._should_stop = False
         self._is_flushing = False
+        
+        self._flush_count = 0
         
         self.logger.info(
             "初始化存储后端: dir=%s, segment=%s, interval=%d, threshold=%d",
@@ -226,14 +239,14 @@ class BufferedJSONFileStorageBackend(StorageBackend):
             )
             return sorted(all_owners)
 
-    def get(self, owner_id: str) -> Optional[Any]:
-        """获取数据，优先从内存缓冲区读取"""
+    def get(self, key: str) -> Optional[T]:
+        """获取数据"""
         with self._buffer_lock:
-            if owner_id in self._memory_buffer:
-                value = self._memory_buffer[owner_id]
+            if key in self._memory_buffer:
+                value = self._memory_buffer[key]
                 if value is None:
                     return None
-                self.logger.debug("从内存缓冲区读取: owner_id=%s", owner_id)
+                self.logger.debug("从内存缓冲区读取: key=%s", key)
                 return value
         
         file_path = self._data_dir / self._segment
@@ -242,38 +255,38 @@ class BufferedJSONFileStorageBackend(StorageBackend):
             
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                return json.load(f).get(owner_id)
+                return json.load(f).get(key)
         except Exception as e:
-            self.logger.error("读取文件失败: owner_id=%s, error=%s", owner_id, e)
+            self.logger.error("读取文件失败: key=%s, error=%s", key, e)
             return None
 
-    def set(self, owner_id: str, data: Any) -> None:
-        """写入数据到内存缓冲区"""
-        if data is None:
-            self.logger.debug("跳过空数据写入: owner_id=%s", owner_id)
+    def set(self, key: str, value: T) -> None:
+        """设置数据"""
+        if value is None:
+            self.logger.debug("跳过空数据写入: key=%s", key)
             return
             
         try:
-            self._serialize(data)
+            self._serialize(value)
         except JSONSerializationError as e:
             self.logger.error("数据序列化验证失败: %s", e)
             raise
 
         with self._buffer_lock:
-            self._memory_buffer[owner_id] = data
-            self._dirty_owners.add(owner_id)
+            self._memory_buffer[key] = value
+            self._dirty_owners.add(key)
             self._modify_count += 1
             
             if (self._modify_count >= self._flush_threshold or 
                 time.time() - self._last_flush_time >= self._flush_interval):
                 self._flush_to_disk()
 
-    def delete(self, owner_id: str) -> bool:
+    def delete(self, key: str) -> bool:
         """删除数据"""
         with self._buffer_lock:
-            if owner_id in self._memory_buffer or self.get(owner_id) is not None:
-                self._memory_buffer[owner_id] = None
-                self._dirty_owners.add(owner_id)
+            if key in self._memory_buffer or self.get(key) is not None:
+                self._memory_buffer[key] = None
+                self._dirty_owners.add(key)
                 self._modify_count += 1
                 return True
             return False
@@ -300,12 +313,12 @@ class BufferedJSONFileStorageBackend(StorageBackend):
                     except Exception as e:
                         self.logger.error("读取文件失败: %s", e)
                 
-                for owner_id in self._dirty_owners:
-                    value = self._memory_buffer.get(owner_id)
+                for key in self._dirty_owners:
+                    value = self._memory_buffer.get(key)
                     if value is None:
-                        current_data.pop(owner_id, None)
+                        current_data.pop(key, None)
                     else:
-                        current_data[owner_id] = value
+                        current_data[key] = value
                 
                 try:
                     with open(file_path, 'w', encoding='utf-8') as f:
@@ -317,6 +330,7 @@ class BufferedJSONFileStorageBackend(StorageBackend):
                 self._dirty_owners.clear()
                 self._modify_count = 0
                 self._last_flush_time = time.time()
+                self._flush_count += 1
                 
         finally:
             self._is_flushing = False
@@ -356,3 +370,42 @@ class BufferedJSONFileStorageBackend(StorageBackend):
         if self._flush_timer:
             self._flush_timer.cancel()
         self._flush_to_disk()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """获取性能指标"""
+        with self._buffer_lock:
+            return {
+                "buffer_size": len(self._memory_buffer),
+                "dirty_count": len(self._dirty_owners),
+                "modify_count": self._modify_count,
+                "last_flush": self._last_flush_time,
+                "flush_count": self._flush_count
+            }
+
+    def get_from_buffer(self, key: str) -> Optional[T]:
+        """从写缓冲区读取数据"""
+        with self._buffer_lock:
+            return self._memory_buffer.get(key)
+
+    def invalidate_key(self, key: str) -> None:
+        """使指定键的缓存失效"""
+        with self._buffer_lock:
+            self._memory_buffer.pop(key, None)
+
+    def clear(self) -> None:
+        """清空所有数据"""
+        with self._buffer_lock:
+            self._memory_buffer.clear()
+            self._dirty_owners.clear()
+            self._modify_count = 0
+            
+        # 清空文件
+        file_path = self._data_dir / self._segment
+        if file_path.exists():
+            file_path.unlink()  # 删除文件

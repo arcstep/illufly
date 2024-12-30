@@ -13,7 +13,7 @@ import threading
 import logging
 
 from ...config import get_env
-from .store import StorageBackend, BufferedJSONFileStorageBackend
+from .store import StorageBackend, WriteBufferedJSONStorage
 from .index import IndexBackend, CompositeIndexBackend, IndexType, IndexConfig
 from .cache import LRUCacheBackend, CacheBackend
 

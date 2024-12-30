@@ -17,7 +17,6 @@ def get_env(key: str=None):
         # 文件夹配置
         "ILLUFLY_TEMP_DIR": FIXED_TEMP_DIR,
         "ILLUFLY_CONFIG_STORE_DIR": "__USERS__",
-        "ILLUFLY_JIAOZI_CACHE_DIR": "__USERS__",
         "ILLUFLY_DOCS": "__DOCS__", # 从这个目录自动加载 RAG 资料，为避免误将不必要的资料做 RAG，因此需要设置为 __DOCS__
         "ILLUFLY_RESOURCE": "./", # 根据这个媒体文件夹上传文件，因此需要设置为当前目录
         "ILLUFLY_LOCAL_FILE_MEMORY": os.path.join(FIXED_TEMP_DIR, "LOCAL_FILE_MEMORY"), # LocalFileMemory 记忆存储目录
@@ -88,6 +87,11 @@ def get_env(key: str=None):
         # JiaoziCache
         "JIAOZI_BTREE_LRU_MAX_CACHE_SIZE": 1000,
         "JIAOZI_INDEX_FIELD_MAX_TAGS": 20,
+        "JIAOZI_CACHE_STORE_DIR": os.path.join(FIXED_TEMP_DIR, "JIAOZI_CACHE"),  # 存储根目录
+        "JIAOZI_CACHE_READ_SIZE": 1000,      # 读缓存大小
+        "JIAOZI_CACHE_WRITE_SIZE": 1000,     # 写缓冲大小
+        "JIAOZI_CACHE_FLUSH_INTERVAL": 60,   # 刷新间隔（秒）
+        "JIAOZI_CACHE_FLUSH_THRESHOLD": 1000, # 刷新阈值
     }
     if key:
         if key not in default_values:
