@@ -13,7 +13,7 @@ import threading
 import logging
 
 from ...config import get_env
-from .store import StorageBackend, JSONFileStorageBackend
+from .store import StorageBackend, BufferedJSONFileStorageBackend
 from .index import IndexBackend, CompositeIndexBackend, IndexType, IndexConfig
 from .cache import LRUCacheBackend, CacheBackend
 
@@ -71,7 +71,7 @@ class JiaoziCache():
         self.logger.info(f"初始化缓存后端: {self._cache.__class__.__name__}")
         
         if storage_backend is None:
-            storage_backend = JSONFileStorageBackend(
+            storage_backend = BufferedJSONFileStorageBackend(
                 base_dir=self._base_dir,
                 segment=segment
             )
@@ -589,7 +589,7 @@ class JiaoziCache():
         base_dir = Path(get_env("ILLUFLY_CONFIG_STORE_DIR"))
         
         # 创建存储后端
-        storage_backend = JSONFileStorageBackend(
+        storage_backend = BufferedJSONFileStorageBackend(
             base_dir=base_dir,
             segment=segment
         )
@@ -783,7 +783,7 @@ class JiaoziCache():
             config = self._subset_configs[subset_name]
             
             # 创建子数据集专用的存储后端
-            storage = JSONFileStorageBackend(
+            storage = BufferedJSONFileStorageBackend(
                 base_dir=self._base_dir / owner_id / subset_name
             )
             
