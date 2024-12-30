@@ -4,12 +4,14 @@ import threading
 import atexit
 import time
 from pathlib import Path
-from typing import Any, Optional, List, Dict, Type, Generic, TypeVar, Set
+from typing import Any, Optional, List, Dict, Type, Generic, TypeVar, Set, Union, Callable
 from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 from pydantic import BaseModel
+import hashlib
+import shutil
 
 from .base import StorageBackend
 from ....config import get_env
@@ -81,6 +83,31 @@ class JSONEncoder(json.JSONEncoder):
         except Exception as e:
             raise JSONSerializationError(f"无法序列化类型 {type(obj).__name__}: {e}")
 
+class TimeSeriesGranularity(Enum):
+    """时间序列粒度"""
+    YEARLY = "yearly"    # 按年
+    MONTHLY = "monthly"  # 按月
+    DAILY = "daily"      # 按天
+    HOURLY = "hourly"    # 按小时
+
+    def get_path_parts(self, now: datetime) -> list[str]:
+        """获取时间分区的路径部分"""
+        if self == TimeSeriesGranularity.YEARLY:
+            return [f"{now.year}"]
+        elif self == TimeSeriesGranularity.MONTHLY:
+            return [f"{now.year}", f"{now.month:02d}"]
+        elif self == TimeSeriesGranularity.DAILY:
+            return [f"{now.year}", f"{now.month:02d}", f"{now.day:02d}"]
+        elif self == TimeSeriesGranularity.HOURLY:
+            return [f"{now.year}", f"{now.month:02d}", f"{now.day:02d}", f"{now.hour:02d}"]
+        return ["default"]
+
+class StorageStrategy(Enum):
+    """存储策略"""
+    INDIVIDUAL = -1      # 每个key一个目录
+    SINGLE = 1          # 所有key存在一个文件
+    SHARED = 100        # 默认分散到100个文件
+    TIME_SERIES = "time" # 按时间序列
 
 class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
     """带写缓冲的JSON文件存储后端
@@ -101,24 +128,28 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
     
     def __init__(
         self,
-        data_dir: Optional[str] = None,
-        segment: Optional[str] = None,
-        flush_interval: int = 60,
-        flush_threshold: int = 1000,
-        logger: Optional[logging.Logger] = None,
-        max_time_samples: int = 1000
+        data_dir: str,
+        segment: str,
+        flush_threshold: int = None,
+        flush_interval: int = None,
+        strategy: StorageStrategy = StorageStrategy.INDIVIDUAL,
+        time_granularity: TimeSeriesGranularity = TimeSeriesGranularity.MONTHLY,
+        partition_count: Optional[int] = None,
     ):
-        self.logger = logger or logging.getLogger(__name__)
-        self._data_dir = Path(data_dir) if data_dir else Path(get_env("ILLUFLY_JIAOZI_CACHE_STORE_DIR"))
-        self._segment = segment or "data.json"
-        
-        # 写缓冲相关
-        self._memory_buffer: Dict[str, Optional[T]] = {}
-        self._dirty_owners: Set[str] = set()
+        self.logger = logging.getLogger(__name__)
+        self._data_dir = Path(data_dir)
+        self._segment = segment.replace('.json', '')
+        self._strategy = strategy
+        self._flush_threshold = flush_threshold if flush_threshold is not None else int(get_env("JIAOZI_CACHE_FLUSH_THRESHOLD"))
+        self._flush_interval = flush_interval if flush_interval is not None else int(get_env("JIAOZI_CACHE_FLUSH_INTERVAL"))
+        self._time_granularity = time_granularity
+        self._partition_count = partition_count or (
+            strategy.value if isinstance(strategy.value, int) else 100
+        )
+        self._memory_buffer: Dict[str, T] = {}
+        self._dirty_keys = set()
         self._modify_count = 0
         self._last_flush_time = time.time()
-        self._flush_interval = max(1, flush_interval)  # 确保最小间隔为1秒
-        self._flush_threshold = max(1, flush_threshold)  # 确保最小阈值为1
         
         # 线程安全
         self._buffer_lock = threading.RLock()
@@ -128,11 +159,10 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
         
         self._flush_count = 0
         self._write_times: List[float] = []
-        self._max_time_samples = max(100, max_time_samples)  # 确保最小样本数为100
         
         self.logger.info(
-            "初始化存储后端: dir=%s, segment=%s, interval=%d, threshold=%d",
-            self._data_dir, self._segment, flush_interval, flush_threshold
+            "初始化存储后端: dir=%s, segment=%s, strategy=%s, threshold=%d, interval=%d",
+            self._data_dir, self._segment, self._strategy, self._flush_threshold, self._flush_interval
         )
         
         try:
@@ -212,151 +242,238 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
         except Exception as e:
             raise JSONSerializationError(f"反序列化失败: {e}")
 
-    def list_owners(self) -> List[str]:
-        """列出所有数据所有者ID"""
-        with self._buffer_lock:
-            memory_owners = set(self._memory_buffer.keys())
-            file_owners = set()
-            
-            file_path = self._data_dir / self._segment
-            if file_path.exists():
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        file_owners = set(json.load(f).keys())
-                except Exception as e:
-                    self.logger.error("读取文件失败: %s", e)
-            
-            deleted_owners = {
-                owner_id for owner_id, value in self._memory_buffer.items() 
-                if value is None
-            }
-            
-            all_owners = (memory_owners | file_owners) - deleted_owners
-            
-            self.logger.debug(
-                "列出所有owner: memory=%d, file=%d, total=%d", 
-                len(memory_owners), len(file_owners), len(all_owners)
-            )
-            return sorted(all_owners)
-
-    def get(self, key: str) -> Optional[T]:
-        """获取数据"""
-        with self._buffer_lock:
-            if key in self._memory_buffer:
-                value = self._memory_buffer[key]
-                if value is None:
-                    return None
-                self.logger.debug("从内存缓冲区读取: key=%s", key)
-                return value
+    def list_keys(self) -> List[str]:
+        """列出所有的键"""
+        keys = set()
         
-        file_path = self._data_dir / self._segment
-        if not file_path.exists():
-            return None
+        if self._strategy == StorageStrategy.INDIVIDUAL:
+            if self._data_dir.exists():
+                return [d.name for d in self._data_dir.iterdir() if d.is_dir()]
+        
+        pattern = f"{self._segment}*.json"
+        if self._strategy == StorageStrategy.TIME_SERIES:
+            for json_file in self._data_dir.rglob(pattern):
+                if json_file.is_file():
+                    with json_file.open('r') as f:
+                        data = json.load(f)
+                        keys.update(data.keys())
+        elif self._strategy == StorageStrategy.SHARED:
+            for subdir in range(self._partition_count // 10 + 1):
+                path = self._data_dir / str(subdir)
+                if path.exists():
+                    for json_file in path.glob(pattern):
+                        if json_file.is_file():
+                            with json_file.open('r') as f:
+                                data = json.load(f)
+                                keys.update(data.keys())
+        else:  # SINGLE
+            path = self._data_dir / f"{self._segment}.json"
+            if path.exists():
+                with path.open('r') as f:
+                    data = json.load(f)
+                    keys.update(data.keys())
+                    
+        return list(keys)
+
+    def _get_time_based_path(self) -> Path:
+        """获取基于时间的存储路径"""
+        now = datetime.now()
+        path_parts = self._time_granularity.get_path_parts(now)
+        
+        # 构建目录路径
+        path = self._data_dir
+        for part in path_parts[:-1]:  # 除最后一个部分外都作为目录
+            path = path / part
             
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = self._deserialize(f.read())
-                return data.get(key)
-        except Exception as e:
-            self.logger.error("读取文件失败: key=%s, error=%s", key, e)
-            return None
+        # 确保目录存在
+        path.mkdir(parents=True, exist_ok=True)
+        
+        # 构建文件名，包含完整时间信息
+        if self._time_granularity == TimeSeriesGranularity.YEARLY:
+            filename = f"{self._segment}_{path_parts[0]}.json"
+        elif self._time_granularity == TimeSeriesGranularity.MONTHLY:
+            filename = f"{self._segment}_{path_parts[0]}_{path_parts[1]}.json"
+        elif self._time_granularity == TimeSeriesGranularity.DAILY:
+            filename = f"{self._segment}_{path_parts[0]}_{path_parts[1]}_{path_parts[2]}.json"
+        elif self._time_granularity == TimeSeriesGranularity.HOURLY:
+            filename = f"{self._segment}_{path_parts[0]}_{path_parts[1]}_{path_parts[2]}_{path_parts[3]}.json"
+        else:
+            filename = f"{self._segment}.json"
+            
+        return path / filename
+
+    def _get_shared_path(self, key: str) -> Path:
+        """获取基于哈希分片的存储路径"""
+        hash_value = hashlib.md5(key.encode()).hexdigest()
+        partition = int(hash_value, 16) % self._partition_count
+        
+        # 创建子目录以避免单一目录下文件过多
+        if self._partition_count > 10:
+            subdir = str(partition // 10)
+            path = self._data_dir / subdir
+            path.mkdir(parents=True, exist_ok=True)
+            # 文件名包含完整分片信息
+            return path / f"{self._segment}_partition_{subdir}_{partition}.json"
+        
+        return self._data_dir / f"{self._segment}_partition_{partition}.json"
+
+    def _get_storage_path(self, key: str) -> Path:
+        """获取存储路径
+        
+        Args:
+            key: 数据的键
+            
+        Returns:
+            Path: 存储路径
+            
+        Note:
+            - INDIVIDUAL: data_dir/{key}/{segment}.json
+            - SINGLE: data_dir/{segment}.json
+            - SHARED: data_dir/{partition_group}/{segment}_partition_{group}_{partition}.json
+            - TIME_SERIES: data_dir/{year}/{month}/{segment}_{year}_{month}_{day}.json
+        """
+        if self._strategy == StorageStrategy.INDIVIDUAL:
+            path = self._data_dir / key
+            path.mkdir(parents=True, exist_ok=True)
+            return path / f"{self._segment}.json"
+            
+        if self._strategy == StorageStrategy.SINGLE:
+            return self._data_dir / f"{self._segment}.json"
+            
+        if self._strategy == StorageStrategy.TIME_SERIES:
+            return self._get_time_based_path()
+            
+        return self._get_shared_path(key)
 
     def set(self, key: str, value: T) -> None:
         """写入数据到缓冲区"""
-        if not isinstance(key, str):
-            raise TypeError("键必须是字符串类型")
-            
-        if not key:
-            raise ValueError("键不能为空")
-            
-        # 先尝试序列化，确保数据可以被保存
-        try:
-            self._serialize({"test": value})
-        except JSONSerializationError as e:
-            self.logger.error(f"数据无法序列化: key={key}, error={e}")
-            raise
-        
-        start_time = time.perf_counter()
-        
         with self._buffer_lock:
-            try:
-                self._memory_buffer[key] = value
-                self._dirty_owners.add(key)
-                self._modify_count += 1
-                
-                # 记录写入时间
-                write_time = time.perf_counter() - start_time
-                if len(self._write_times) >= self._max_time_samples:
-                    self._write_times.pop(0)
-                self._write_times.append(write_time)
-                
-                # 检查是否需要刷新
-                if len(self._dirty_owners) >= self._flush_threshold:
-                    self._flush_to_disk()
-                    
-            except Exception as e:
-                self.logger.error(f"写入错误: key={key}, error={e}")
-                raise
+            self._memory_buffer[key] = value
+            self._dirty_keys.add(key)
+            self._modify_count += 1  # 记录写入次数
+            
+            if len(self._dirty_keys) >= self._flush_threshold:
+                self.flush()
 
-    def delete(self, key: str) -> bool:
+    def get(self, key: str) -> Optional[T]:
+        """读取数据"""
+        # 先检查缓冲区
+        with self._buffer_lock:
+            if key in self._memory_buffer:
+                return self._memory_buffer[key]
+        
+        # 从文件读取（文件系统操作不需要持有内存锁）
+        path = self._get_storage_path(key)
+        if not path.exists():
+            return None
+            
+        try:
+            with path.open('r') as f:
+                data = json.load(f)
+                if self._strategy == StorageStrategy.INDIVIDUAL:
+                    return self._deserialize(json.dumps(data))  # 确保类型恢复
+                else:
+                    value = data.get(key)
+                    return self._deserialize(json.dumps(value)) if value is not None else None
+        except Exception as e:
+            self.logger.error(f"读取数据失败: {e}")
+            return None
+
+    def delete(self, key: str) -> None:
         """删除数据"""
         with self._buffer_lock:
-            if key in self._memory_buffer or self.get(key) is not None:
-                self._memory_buffer[key] = None
-                self._dirty_owners.add(key)
-                self._modify_count += 1
-                return True
-            return False
-
-    def _flush_to_disk(self):
-        """将缓冲区数据写入磁盘"""
-        if self._is_flushing:
-            return
+            if key in self._memory_buffer:
+                del self._memory_buffer[key]
+                self._dirty_keys.discard(key)
+                self._modify_count += 1  # 删除也计入修改次数
             
-        try:
-            self._is_flushing = True
-            
-            with self._buffer_lock:
-                if not self._dirty_owners:
-                    return
+            path = self._get_storage_path(key)
+            if not path.exists():
+                return
+                
+            try:
+                if self._strategy == StorageStrategy.INDIVIDUAL:
+                    shutil.rmtree(path.parent)
+                else:
+                    with path.open('r') as f:
+                        data = json.load(f)
                     
-                file_path = self._data_dir / self._segment
-                current_data = {}
+                    if key in data:
+                        del data[key]
+                        
+                        if data:
+                            with path.open('w') as f:
+                                json.dump(data, f, ensure_ascii=False, indent=2)
+                        else:
+                            path.unlink()
+            except Exception as e:
+                self.logger.error(f"删除数据失败: {e}")
+
+    def _flush_to_disk(self) -> None:
+        """将缓冲区数据写入磁盘的内部方法"""
+        with self._buffer_lock:
+            if not self._dirty_keys or self._is_flushing:
+                return
                 
-                if file_path.exists():
+            self._is_flushing = True
+            try:
+                self.flush()
+            finally:
+                self._is_flushing = False
+
+    def flush(self) -> None:
+        """将缓冲区数据写入磁盘"""
+        with self._buffer_lock:
+            if not self._dirty_keys:
+                return
+
+            start_time = time.time()
+            try:
+                file_data: Dict[Path, Dict] = {}
+                
+                for key in self._dirty_keys:
+                    path = self._get_storage_path(key)
+                    
                     try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            current_data = self._deserialize(f.read())
-                    except Exception as e:
-                        self.logger.error("读取文件失败: %s", e)
+                        if self._strategy == StorageStrategy.INDIVIDUAL:
+                            path.parent.mkdir(parents=True, exist_ok=True)
+                            with path.open('w', encoding='utf-8') as f:
+                                json.dump(self._memory_buffer[key], f, ensure_ascii=False, indent=2)
+                        else:
+                            if path not in file_data:
+                                file_data[path] = {}
+                                if path.exists():
+                                    with path.open('r', encoding='utf-8') as f:
+                                        file_data[path] = json.load(f)
+                            file_data[path][key] = self._memory_buffer[key]
+                    except TypeError as e:
+                        raise JSONSerializationError(f"Failed to serialize data for key '{key}': {e}")
                 
-                for key in self._dirty_owners:
-                    value = self._memory_buffer.get(key)
-                    if value is None:
-                        current_data.pop(key, None)
-                    else:
-                        current_data[key] = value
+                # 写入共享文件
+                for path, data in file_data.items():
+                    try:
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        with path.open('w', encoding='utf-8') as f:
+                            json.dump(data, f, ensure_ascii=False, indent=2)
+                    except TypeError as e:
+                        raise JSONSerializationError(f"Failed to serialize data for path '{path}': {e}")
                 
-                # 创建临时文件
-                temp_file = file_path.with_suffix('.tmp')
-                try:
-                    with open(temp_file, 'w', encoding='utf-8') as f:
-                        f.write(self._serialize(current_data))
-                    # 原子性地替换文件
-                    temp_file.replace(file_path)
-                except Exception as e:
-                    self.logger.error("写入文件失败: %s", e)
-                    if temp_file.exists():
-                        temp_file.unlink()
-                    raise
+                # 更新性能指标
+                flush_time = time.time() - start_time
+                self._write_times.append(flush_time)
+                if len(self._write_times) > 1000:
+                    self._write_times = self._write_times[-1000:]
                 
-                self._dirty_owners.clear()
-                self._modify_count = 0
-                self._last_flush_time = time.time()
                 self._flush_count += 1
+                self._last_flush_time = time.time()
                 
-        finally:
-            self._is_flushing = False
+                # 清空缓冲区
+                self._memory_buffer.clear()
+                self._dirty_keys.clear()
+                
+            except Exception as e:
+                self.logger.error(f"Flush failed: {e}")
+                raise
 
     def _start_flush_timer(self):
         """启动定时刷新计时器"""
@@ -380,19 +497,24 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
         self._flush_timer.daemon = True
         self._flush_timer.start()
 
-    def _flush_on_exit(self):
-        """程序退出时的清理工作"""
-        self._should_stop = True
-        if self._flush_timer:
-            self._flush_timer.cancel()
-        self._flush_to_disk()
+    def _flush_on_exit(self) -> None:
+        """退出时的清理函数"""
+        try:
+            self.close()
+        except Exception as e:
+            # atexit阶段的错误只记录日志
+            self.logger.error(f"Failed to flush data on exit: {e}")
 
-    def close(self):
-        """关闭存储后端"""
-        self._should_stop = True
-        if self._flush_timer:
-            self._flush_timer.cancel()
-        self._flush_to_disk()
+    def close(self) -> None:
+        """关闭存储，确保数据写入磁盘"""
+        try:
+            if self._dirty_keys:  # 只在有未保存数据时尝试写入
+                self.flush()
+        except Exception as e:
+            self.logger.error(f"Failed to flush data on close: {e}")
+        finally:
+            self._memory_buffer.clear()
+            self._dirty_keys.clear()
 
     def __enter__(self):
         return self
@@ -405,10 +527,11 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
         with self._buffer_lock:
             return {
                 "buffer_size": len(self._memory_buffer),
+                "dirty_count": len(self._dirty_keys), 
                 "flush_threshold": self._flush_threshold,
                 "flush_count": self._flush_count,
                 "last_flush": self._last_flush_time,
-                "pending_writes": len(self._dirty_owners),
+                "pending_writes": len(self._dirty_keys),
                 "total_writes": self._modify_count,
                 "avg_write_time": (
                     sum(self._write_times) / len(self._write_times) * 1000  # 转换为毫秒
@@ -430,10 +553,20 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
         """清空所有数据"""
         with self._buffer_lock:
             self._memory_buffer.clear()
-            self._dirty_owners.clear()
-            self._modify_count = 0
+            self._dirty_keys.clear()
             
-        # 清空文件
-        file_path = self._data_dir / self._segment
-        if file_path.exists():
-            file_path.unlink()  # 删除文件
+            try:
+                if self._strategy == StorageStrategy.INDIVIDUAL:
+                    # 删除所有子目录
+                    if self._data_dir.exists():
+                        shutil.rmtree(self._data_dir)
+                        self._data_dir.mkdir(parents=True)
+                else:
+                    pattern = f"{self._segment}*.json"
+                    # 递归删除所有相关文件
+                    for json_file in self._data_dir.rglob(pattern):
+                        if json_file.is_file():
+                            json_file.unlink()
+            except Exception as e:
+                self.logger.error(f"清空数据失败: {e}")
+                raise

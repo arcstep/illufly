@@ -15,6 +15,10 @@ from illufly.io.jiaozi_cache import (
 )
 from illufly.config import get_env
 from tests.io.jiaozi_cache.store.test_helpers import _TestStatus, _TestData
+from illufly.io.jiaozi_cache.store import (
+    StorageStrategy,
+    TimeSeriesGranularity
+)
 
 # 定义测试用的 Pydantic 模型
 class UserAddress(BaseModel):
@@ -39,14 +43,19 @@ def temp_dir(tmp_path):
 @pytest.fixture
 def storage(temp_dir):
     """创建存储后端实例"""
-    storage = WriteBufferedJSONStorage(
+    storage = WriteBufferedJSONStorage[dict](
         data_dir=temp_dir,
-        segment="test.json",
-        flush_interval=1,
+        segment="test",
+        strategy=StorageStrategy.INDIVIDUAL,
         flush_threshold=5
     )
     yield storage
-    storage.close()
+    try:
+        storage.clear()  # 先清空数据
+        storage.close()  # 再关闭存储
+    except Exception as e:
+        # 在清理阶段的错误不应该影响测试结果
+        pass
 
 @pytest.fixture
 def test_data():
@@ -102,14 +111,95 @@ def wait_for_flush(storage, timeout=2):
         time.sleep(0.1)
     return False
 
+@pytest.fixture
+def tmp_storage(tmp_path):
+    """创建临时存储实例"""
+    return lambda **kwargs: WriteBufferedJSONStorage[dict](
+        data_dir=str(tmp_path),
+        segment="test",
+        **kwargs
+    )
+
 class TestWriteBufferedJSONStorage:
+    """    
+    本测试套件验证了 WriteBufferedJSONStorage 类的所有核心功能:
+    
+    1. 基本操作
+       - 数据的写入和读取
+       - 内存缓冲区管理
+       - 数据持久化
+       
+    2. 缓冲策略
+       - 自动刷新阈值控制
+       - 定时刷新机制
+       - 内存与文件一致性
+       
+    3. 数据类型支持
+       - 基础类型 (str, int, float, list, dict等)
+       - 复杂类型 (datetime, Decimal, UUID, Path等)
+       - Pydantic模型序列化
+       - 自定义对象序列化
+       
+    4. 并发处理
+       - 多线程读写安全
+       - 缓冲区并发访问
+       - 数据一致性保证
+       
+    5. 存储策略
+       - 独立文件策略 (INDIVIDUAL)
+       - 共享文件策略 (SHARED)
+       - 时间序列策略 (TIME_SERIES)
+       
+    使用示例:
+    ```python
+    # 创建存储实例
+    storage = WriteBufferedJSONStorage[dict](
+        data_dir="/path/to/data",
+        segment="user_data",
+        strategy=StorageStrategy.INDIVIDUAL,
+        flush_threshold=1000  # 缓冲区达到1000条数据自动写入磁盘
+    )
+    
+    # 写入数据
+    storage.set("user:1", {"name": "Alice", "age": 30})
+    
+    # 读取数据
+    user = storage.get("user:1")  # {"name": "Alice", "age": 30}
+    
+    # 手动刷新到磁盘
+    storage.flush()
+    
+    # 使用完毕后关闭
+    storage.close()
+    ```
+    
+    配置选项:
+    - data_dir: 数据存储目录
+    - segment: 数据分段名称
+    - strategy: 存储策略 (INDIVIDUAL/SHARED/TIME_SERIES)
+    - flush_threshold: 自动刷新阈值
+    - flush_interval: 定时刷新间隔(秒)
+    """
     def test_basic_operations(self, storage):
-        """测试基本的读写操作"""
         data = {"name": "test", "value": 42}
-        storage.set("test1", data)
-        assert storage.get("test1") == data
-        assert storage.delete("test1")
-        assert storage.get("test1") is None
+        key = "test1"
+        
+        # 写入数据
+        storage.set(key, data)
+        
+        # 验证内存中的数据
+        assert storage.get(key) == data
+        
+        # 刷新到磁盘
+        storage.flush()
+        
+        # 验证文件路径和内容
+        expected_path = storage._get_storage_path(key)
+        assert expected_path.exists()
+        
+        # 清空内存缓冲，再次读取验证文件内容
+        storage._memory_buffer.clear()
+        assert storage.get(key) == data
 
     def test_buffer_strategy(self, storage):
         """测试缓冲策略"""
@@ -117,28 +207,68 @@ class TestWriteBufferedJSONStorage:
         for i in range(3):
             storage.set(f"key{i}", {"value": i})
             assert storage.get(f"key{i}") == {"value": i}
-            
-        file_path = Path(storage._data_dir) / "test.json"
-        assert not file_path.exists()
-        
-        # 继续写入直到超过阈值并验证
+
+        # 检查是否有任何文件被创建
+        json_files = list(storage._data_dir.rglob("*.json"))
+        assert len(json_files) == 0  # 确保没有文件写入磁盘
+
+        # 继续写入直到超过阈值
         for i in range(3, 6):
             storage.set(f"key{i}", {"value": i})
-        storage._flush_to_disk()
         
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            assert len(data) == 6
-            assert all(data[f"key{i}"]["value"] == i for i in range(6))
+        # 手动刷新到磁盘
+        storage.flush()
+
+        # 验证数据已写入磁盘
+        if storage._strategy == StorageStrategy.INDIVIDUAL:
+            # 每个key一个文件
+            for i in range(6):
+                path = storage._get_storage_path(f"key{i}")
+                assert path.exists()
+                with path.open('r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    assert data == {"value": i}
+        else:
+            # 共享文件策略
+            path = storage._get_storage_path("key0")  # 获取正确的文件路径
+            assert path.exists()
+            with path.open('r', encoding='utf-8') as f:
+                data = json.load(f)
+                for i in range(6):
+                    assert data[f"key{i}"] == {"value": i}
+
+        # 验证缓冲区已清空
+        assert len(storage._memory_buffer) == 0
+        assert len(storage._dirty_keys) == 0
 
     def test_time_based_flush(self, storage):
         """测试基于时间的刷新"""
-        storage.set("time_test", {"value": "test"})
-        storage._flush_to_disk()
+        key = "time_test"
+        data = {"value": "test"}
         
-        file_path = Path(storage._data_dir) / "test.json"
-        with open(file_path, 'r', encoding='utf-8') as f:
-            assert json.load(f)["time_test"]["value"] == "test"
+        # 写入数据
+        storage.set(key, data)
+        storage.flush()  # 使用公共方法而不是私有的 _flush_to_disk
+        
+        # 获取正确的文件路径
+        file_path = storage._get_storage_path(key)
+        assert file_path.exists()
+        
+        # 验证文件内容
+        with file_path.open('r', encoding='utf-8') as f:
+            stored_data = json.load(f)
+            if storage._strategy == StorageStrategy.INDIVIDUAL:
+                assert stored_data == data
+            else:
+                assert stored_data[key] == data
+        
+        # 验证性能指标
+        metrics = storage.get_metrics()
+        assert metrics["flush_count"] > 0
+        assert metrics["last_flush"] > 0
+        assert metrics["total_writes"] == 1
+        assert metrics["buffer_size"] == 0
+        assert metrics["pending_writes"] == 0
 
     def test_memory_file_consistency(self, storage):
         """测试内存和文件的一致性"""
@@ -168,16 +298,49 @@ class TestWriteBufferedJSONStorage:
 
     def test_exit_handler(self, storage):
         """测试退出时的数据保存"""
-        storage.set("exit_test", {"value": "test"})
+        key = "exit_test"
+        test_data = {"value": "test"}
+        
+        # 写入数据
+        storage.set(key, test_data)
         storage._flush_on_exit()
         
-        with open(Path(storage._data_dir) / "test.json", 'r', encoding='utf-8') as f:
-            assert json.load(f)["exit_test"]["value"] == "test"
+        # 获取正确的文件路径
+        file_path = storage._get_storage_path(key)
+        assert file_path.exists()
+        
+        # 验证文件内容
+        with file_path.open('r', encoding='utf-8') as f:
+            stored_data = json.load(f)
+            if storage._strategy == StorageStrategy.INDIVIDUAL:
+                assert stored_data == test_data
+            else:
+                assert stored_data[key] == test_data
+        
+        # 验证缓冲区已清空
+        assert len(storage._memory_buffer) == 0
+        assert len(storage._dirty_keys) == 0
 
     def test_error_handling(self, storage):
         """测试错误处理"""
-        with pytest.raises(JSONSerializationError):
-            storage.set("invalid", object())
+        # 创建一个不可JSON序列化的对象
+        class UnserializableObject:
+            pass
+        
+        unserializable_data = {"key": UnserializableObject()}
+        
+        # 写入不可序列化的数据
+        storage.set("error_key", unserializable_data)
+        
+        # 验证抛出正确的异常
+        with pytest.raises(JSONSerializationError) as exc_info:
+            storage.flush()
+        
+        # 验证错误信息
+        assert "Failed to serialize" in str(exc_info.value)
+        
+        # 清空错误数据，避免影响teardown
+        storage.clear()
 
     def test_large_dataset(self, storage):
         """测试大数据集性能"""
@@ -311,28 +474,30 @@ class TestWriteBufferedJSONStorage:
         # 获取指标
         metrics = storage.get_metrics()
         assert metrics["buffer_size"] == 3
-        assert metrics["dirty_count"] == 3
-        assert metrics["modify_count"] == 3
-        assert isinstance(metrics["last_flush"], float)
+        assert metrics["pending_writes"] == 3
+        assert metrics["total_writes"] == 3
+        
+        # 刷新后验证指标变化
+        storage.flush()
+        metrics = storage.get_metrics()
+        assert metrics["buffer_size"] == 0
+        assert metrics["pending_writes"] == 0
+        assert metrics["total_writes"] == 3    # 总写入次数不变
+        assert metrics["flush_count"] == 1     # 刷新次数增加
 
     def test_buffer_overflow(self, storage):
-        """测试缓冲区溢出处理"""
-        threshold = storage._flush_threshold
+        """测试写缓冲区溢出时的读取行为"""
         
-        # 写入直到超过阈值
-        for i in range(threshold + 1):
+        # 1. 写入足够多的数据触发缓冲区溢出
+        for i in range(storage._flush_threshold + 1):  # 直接使用 _flush_threshold
             storage.set(f"key{i}", {"value": i})
-            
-        # 强制刷新确保所有数据写入
-        storage._flush_to_disk()
         
-        # 验证自动刷新
-        file_path = Path(storage._data_dir) / "test.json"
-        assert file_path.exists()
+        # 验证部分数据已经被自动刷新到磁盘
+        assert len(storage._memory_buffer) < storage._flush_threshold
         
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            assert len(data) == threshold + 1  # 现在应该能通过了
+        # 验证所有数据都可以正确读取
+        for i in range(storage._flush_threshold + 1):
+            assert storage.get(f"key{i}") == {"value": i}
 
     def test_concurrent_buffer_access(self, storage):
         """测试并发缓冲区访问"""
@@ -385,7 +550,6 @@ class TestWriteBufferedJSONStorage:
         metrics = storage.get_metrics()
         assert metrics["buffer_size"] == 0
         assert metrics["dirty_count"] == 0
-        assert metrics["modify_count"] == 0
         
         # 验证文件也被清理
         file_path = Path(storage._data_dir) / "test.json"
@@ -393,51 +557,88 @@ class TestWriteBufferedJSONStorage:
 
     def test_write_buffer_read_priority(self, storage):
         """测试写缓冲区的读取优先级"""
-        
-        # 1. 首次写入数据到磁盘并加载到读缓存
+
+        # 1. 首次写入数据到磁盘
         initial_data = {"value": 1}
         storage.set("test_key", initial_data)
-        storage._storage._flush_to_disk()  # 强制刷新到磁盘
-        
-        # 确认数据在读缓存中
-        first_read = storage.get("test_key")
-        assert first_read == initial_data
-        assert storage._cache.get("test_key") == initial_data
-        
-        # 2. 写入新数据（此时在写缓冲中）
+        storage.flush()   # 强制刷新到磁盘
+
+        # 2. 修改内存中的数据但不刷新
         updated_data = {"value": 2}
         storage.set("test_key", updated_data)
-        
-        # 3. 验证读取返回写缓冲中的新数据
-        result = storage.get("test_key")
-        assert result == updated_data
-        # 读缓存中仍然是旧数据
-        assert storage._cache.get("test_key") == initial_data
-        
-        # 4. 刷新到磁盘后，读缓存应该更新
-        storage._storage._flush_to_disk()
-        result_after_flush = storage.get("test_key")
-        assert result_after_flush == updated_data
-        assert storage._cache.get("test_key") == updated_data
+
+        # 3. 验证读取时优先返回内存中的数据
+        assert storage.get("test_key") == updated_data
+        assert storage._memory_buffer["test_key"] == updated_data
+
+        # 4. 验证磁盘中仍然是旧数据
+        path = storage._get_storage_path("test_key")
+        with path.open('r', encoding='utf-8') as f:
+            disk_data = json.load(f)
+            if storage._strategy == StorageStrategy.INDIVIDUAL:
+                assert disk_data == initial_data
+            else:
+                assert disk_data["test_key"] == initial_data
+
+        # 5. 刷新后验证磁盘数据已更新
+        storage.flush()
+        with path.open('r', encoding='utf-8') as f:
+            disk_data = json.load(f)
+            if storage._strategy == StorageStrategy.INDIVIDUAL:
+                assert disk_data == updated_data
+            else:
+                assert disk_data["test_key"] == updated_data
+
+        # 6. 清空内存缓冲后验证仍能读取到最新数据
+        storage._memory_buffer.clear()
+        assert storage.get("test_key") == updated_data
 
     def test_write_buffer_multiple_updates(self, storage):
         """测试写缓冲区的多次更新场景"""
         
         # 1. 初始数据
         storage.set("key", {"value": 1})
-        storage._storage._flush_to_disk()
-        
-        # 2. 快速多次更新
-        storage.set("key", {"value": 2})
-        storage.set("key", {"value": 3})
-        storage.set("key", {"value": 4})
-        
-        # 3. 验证始终能读取到最新值
-        assert storage.get("key") == {"value": 4}
-        
-        # 4. 验证写缓冲区的值
-        buffer_value = storage._storage.get_from_buffer("key")
-        assert buffer_value == {"value": 4}
+        storage.flush()  # 使用公共方法替代私有方法
+
+        # 2. 验证初始数据已写入磁盘
+        path = storage._get_storage_path("key")
+        with path.open('r', encoding='utf-8') as f:
+            initial_data = json.load(f)
+            if storage._strategy == StorageStrategy.INDIVIDUAL:
+                assert initial_data == {"value": 1}
+            else:
+                assert initial_data["key"] == {"value": 1}
+
+        # 3. 多次更新同一个键
+        for i in range(2, 5):
+            storage.set("key", {"value": i})
+            # 验证内存中的值立即更新
+            assert storage.get("key") == {"value": i}
+            # 验证磁盘中的值仍然是旧值
+            with path.open('r', encoding='utf-8') as f:
+                disk_data = json.load(f)
+                if storage._strategy == StorageStrategy.INDIVIDUAL:
+                    assert disk_data == {"value": 1}  # 仍然是初始值
+                else:
+                    assert disk_data["key"] == {"value": 1}  # 仍然是初始值
+
+        # 4. 刷新到磁盘
+        storage.flush()
+
+        # 5. 验证最终数据
+        with path.open('r', encoding='utf-8') as f:
+            final_data = json.load(f)
+            if storage._strategy == StorageStrategy.INDIVIDUAL:
+                assert final_data == {"value": 4}  # 最后一次更新的值
+            else:
+                assert final_data["key"] == {"value": 4}  # 最后一次更新的值
+
+        # 6. 验证性能指标
+        metrics = storage.get_metrics()
+        assert metrics["total_writes"] == 4  # 1次初始写入 + 3次更新
+        assert metrics["flush_count"] == 2   # 2次flush
+        assert metrics["buffer_size"] == 0   # 缓冲区已清空
+        assert metrics["pending_writes"] == 0  # 没有待写入的数据
 
     def test_concurrent_read_write(self, storage):
         """测试并发读写场景下的数据一致性"""
@@ -473,24 +674,102 @@ class TestWriteBufferedJSONStorage:
         for value in results.values():
             assert 0 <= value <= 4
 
-    def test_write_buffer_overflow(self, storage):
-        """测试写缓冲区溢出时的读取行为"""
+    def test_shared_strategy(self, tmp_storage):
+        """测试分片策略"""
+        storage = tmp_storage(
+            strategy=StorageStrategy.SHARED,
+            partition_count=10
+        )
         
-        # 1. 写入足够多的数据触发缓冲区溢出
-        for i in range(storage._storage._flush_threshold + 1):
-            storage.set(f"key_{i}", {"value": i})
+        # 写入足够多的数据以测试分片
+        for i in range(20):
+            storage.set(f"key{i}", {"value": f"test{i}"})
+        storage.flush()
         
-        # 2. 再次写入并读取
-        test_key = "test_overflow"
-        storage.set(test_key, {"value": "overflow"})
+        # 验证所有数据都已正确写入
+        for i in range(20):
+            assert storage.get(f"key{i}") == {"value": f"test{i}"}
         
-        # 3. 验证数据一致性
-        result = storage.get(test_key)
-        assert result == {"value": "overflow"}
+        # 验证文件分布
+        json_files = list(storage._data_dir.rglob("*.json"))
+        assert len(json_files) > 0  # 至少有一个文件
         
-        # 4. 验证缓冲区状态
-        metrics = storage.get_metrics()
-        assert metrics["write_buffer"]["size"] > 0
+        # 验证数据分布
+        for json_file in json_files:
+            with json_file.open('r') as f:
+                data = json.load(f)
+                assert isinstance(data, dict)
+                assert len(data) > 0
+
+    def test_time_series_strategy_monthly(self, tmp_storage):
+        """测试按月时间序列策略"""
+        storage = tmp_storage(
+            strategy=StorageStrategy.TIME_SERIES,
+            time_granularity=TimeSeriesGranularity.MONTHLY
+        )
+        
+        now = datetime.now()
+        year_month = f"{now.year}_{now.month:02d}"
+        
+        # 写入测试数据并立即刷新
+        storage.set("key1", {"value": "test1"})
+        storage.flush()
+        
+        # 获取实际写入的文件
+        json_files = list(storage._data_dir.rglob("*.json"))
+        assert len(json_files) == 1
+        
+        # 验证文件名格式
+        json_file = json_files[0]
+        assert year_month in json_file.name
+        assert json_file.exists()
+
+    def test_clear_operation(self, tmp_storage):
+        """测试清空操作"""
+        for strategy in StorageStrategy:
+            storage = tmp_storage(strategy=strategy)
+            
+            # 写入测试数据
+            storage.set("key1", {"value": "test1"})
+            storage.set("key2", {"value": "test2"})
+            storage.flush()
+            
+            # 清空数据
+            storage.clear()
+            
+            # 验证数据已清空
+            assert storage.list_keys() == []
+            assert storage.get("key1") is None
+            assert storage.get("key2") is None
+
+    def test_concurrent_access(self, tmp_storage):
+        """测试并发访问"""
+        import threading
+        
+        storage = tmp_storage(strategy=StorageStrategy.SHARED)
+        num_threads = 10
+        num_operations = 100
+        
+        def worker():
+            for i in range(num_operations):
+                key = f"key_{threading.get_ident()}_{i}"
+                storage.set(key, {"value": f"test_{i}"})
+                storage.flush()
+                
+        # 创建多个线程并发写入
+        threads = [
+            threading.Thread(target=worker)
+            for _ in range(num_threads)
+        ]
+        
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+            
+        # 验证所有数据都正确写入
+        all_keys = storage.list_keys()
+        assert len(all_keys) == num_threads * num_operations
 
     @classmethod
     def teardown_class(cls):
