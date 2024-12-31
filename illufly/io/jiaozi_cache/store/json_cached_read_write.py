@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from ....config import get_env
 from ..cache import LRUCacheBackend, CacheEvent
-from .json_buffered_write import WriteBufferedJSONStorage
+from .json_buffered_write import WriteBufferedJSONStorage, StorageStrategy, TimeSeriesGranularity
 from .base import StorageBackend
 from functools import lru_cache
 import time
@@ -38,6 +38,9 @@ class CachedJSONStorage(StorageBackend, Generic[T]):
         cache_size: Optional[int] = None,
         flush_interval: Optional[int] = None,
         flush_threshold: Optional[int] = None,
+        strategy: StorageStrategy = StorageStrategy.INDIVIDUAL,
+        time_granularity: TimeSeriesGranularity = TimeSeriesGranularity.MONTHLY,
+        partition_count: Optional[int] = None,
         logger: Optional[logging.Logger] = None
     ):
         self.logger = logger or logging.getLogger(__name__)
@@ -54,6 +57,9 @@ class CachedJSONStorage(StorageBackend, Generic[T]):
             segment=segment,
             flush_interval=self._flush_interval,
             flush_threshold=self._flush_threshold,
+            strategy=strategy,
+            time_granularity=time_granularity,
+            partition_count=partition_count,
             logger=logger
         )
         
@@ -205,9 +211,12 @@ class CachedJSONStorage(StorageBackend, Generic[T]):
         self._cache.delete(key)
         self._invalidate_method_cache()
 
-
     def clear(self) -> None:
         """清空所有缓存和存储"""
         self._cache.clear()
         self._storage.clear()
         self._invalidate_method_cache()
+
+    def flush(self) -> None:
+        """强制将缓存中的数据写入磁盘"""
+        self._storage.flush()

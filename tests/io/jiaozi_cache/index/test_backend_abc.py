@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Callable, Optional
 from unittest import mock
 from illufly.io.jiaozi_cache.index import IndexBackend, IndexConfig, Indexable
 from pydantic import BaseModel, ConfigDict
+from collections import defaultdict
 
 @dataclass
 class IndexableObject:
@@ -57,69 +58,164 @@ class User(BaseModel):
         str_strip_whitespace=True
     )
 
-class TestIndexBackend(IndexBackend):
-    """测试用的索引后端实现
-    
-    提供一个简单的基于内存的索引实现,用于测试 IndexBackend 的核心功能。
-    使用字典存储数据,支持基本的增删改查操作。
-    """
+class MockIndexBackend(IndexBackend):
+    """用于测试的索引后端实现"""
     def __init__(self, field_types: Dict[str, Any] = None, config: IndexConfig = None):
-        super().__init__(field_types=field_types, config=config)
-        self._data = {}  # 用于测试的简单存储
-
-    def find_with_index(self, field: str, value: Any) -> List[str]:
-        """使用索引查找"""
-        self._update_stats("queries")
-        result = []
-        
-        # 先转换查询值
-        query_value, error = self.prepare_query_value(field, value)
-        if error:
-            self.logger.warning(f"查询值验证失败: {error}")
-            return []
+        # 设置默认的字段类型
+        if field_types is None:
+            field_types = {
+                "int_field": int,
+                "float_field": float,
+                "decimal_field": Decimal,
+                "bool_field": bool,
+                "datetime_field": datetime,
+                "str_field": str,
+                "tags": List[str],
+            }
             
-        for owner_id, data in self._data.items():
-            # 提取被索引的值
-            indexed_value, _ = self.extract_and_convert_value(data, field)
-            if indexed_value is None:
-                continue
-                
-            # 如果是 Pydantic 模型，转换为字典进行比较
-            if isinstance(query_value, BaseModel):
-                query_dict = query_value.model_dump()
-                if isinstance(indexed_value, dict) and indexed_value == query_dict:
-                    result.append(owner_id)
-            # 否则直接比较值
-            elif indexed_value == query_value:
-                result.append(owner_id)
-                
-        return result
+        super().__init__(field_types=field_types, config=config)
+        self._data = {}  # 存储原始数据
+        self._indexes = defaultdict(lambda: defaultdict(set))  # 字段索引
+
+    def find_with_tag(self, field: str, tag: str) -> List[str]:
+        """实现标签查询"""
+        return sorted(self._indexes[field].get(tag, set()))
+
+    def find_with_value(self, field: str, value: Any) -> List[str]:
+        """实现常规值查询"""
+        return sorted(self._indexes[field].get(str(value), set()))
+
+    def find_with_root_object(self, model: BaseModel) -> List[str]:
+        """实现根对象查询"""
+        query_json = model.model_dump_json()
+        return [
+            owner_id for owner_id, data in self._data.items()
+            if isinstance(data, BaseModel) and data.model_dump_json() == query_json
+        ]
+
+    def is_field_type_valid(self, field: str, value: Any) -> bool:
+        """验证字段值是否符合类型约束"""
+        if field not in self._field_types:
+            return False
+            
+        expected_type = self._field_types[field]
+        
+        # 处理标签列表的元素
+        if (hasattr(expected_type, '__origin__') and 
+            expected_type.__origin__ in (list, List)):
+            element_type = expected_type.__args__[0]
+            return isinstance(value, element_type)
+            
+        # 处理可索引对象
+        if isinstance(value, Indexable):
+            return True
+            
+        # 处理 Pydantic 模型
+        if isinstance(expected_type, type) and issubclass(expected_type, BaseModel):
+            if isinstance(value, str):  # 已转换为索引键
+                return True
+            return isinstance(value, expected_type)
+            
+        # 处理基本类型
+        return isinstance(value, expected_type)
+
+    def add_to_index(self, field: str, value: Any, owner_id: str) -> None:
+        """添加单个索引项"""
+        # 获取原始值
+        if isinstance(value, Indexable):
+            index_value = value.to_index_key()
+        elif isinstance(value, BaseModel):
+            if hasattr(value, 'to_index_key'):
+                index_value = value.to_index_key()
+            else:
+                index_value = str(hash(value.model_dump_json()))
+        else:
+            index_value = str(value)
+            
+        # 验证类型
+        if not self.is_field_type_valid(field, value):
+            self.logger.warning("字段类型不匹配: %s = %s", field, value)
+            return
+            
+        self._indexes[field][index_value].add(owner_id)
 
     def update_index(self, data: Any, owner_id: str) -> None:
         """更新索引"""
         self._update_stats("updates")
-        self._data[owner_id] = data
+        
+        try:
+            # 存储原始数据
+            self._data[owner_id] = data
+            
+            # 为每个字段创建索引
+            for field in self._field_types:
+                value, _ = self.extract_and_convert_value(data, field)
+                if value is None:
+                    continue
+                    
+                # 处理标签列表
+                if isinstance(value, list):
+                    for item in value:
+                        self.add_to_index(field, item, owner_id)
+                else:
+                    self.add_to_index(field, value, owner_id)
+                    
+        except Exception as e:
+            self.logger.error("更新索引失败: owner_id=%s, error=%s", owner_id, e)
+            raise RuntimeError(f"更新索引失败: {e}")
 
     def remove_from_index(self, owner_id: str) -> None:
         """从索引中移除"""
         if owner_id in self._data:
+            # 从所有字段索引中移除
+            for field_index in self._indexes.values():
+                for value_set in field_index.values():
+                    value_set.discard(owner_id)
+            # 移除原始数据
             del self._data[owner_id]
 
-    def has_index(self, field: str) -> bool:
-        """检查字段是否已建立索引"""
-        return field in self._field_types
-    
-    def rebuild_indexes(self, data_iterator: Callable[[], List[tuple[str, Any]]]) -> None:
-        """重建所有索引数据"""
-        pass
+    def clear_indexes(self) -> None:
+        """清空索引"""
+        self._data.clear()
+        self._indexes.clear()
+
+    def get_field_index_size(self, field: str) -> int:
+        """获取字段索引大小"""
+        return sum(len(value_set) for value_set in self._indexes[field].values())
 
     def get_index_size(self) -> int:
         """获取索引大小"""
         return len(self._data)
 
     def get_index_memory_usage(self) -> int:
-        """获取索引内存使用量（字节）"""
-        return sum(len(str(data).encode()) for data in self._data.values())
+        """获取索引内存使用量"""
+        return (
+            sum(len(str(data).encode()) for data in self._data.values()) +
+            sum(
+                len(field.encode()) + 
+                sum(len(str(value).encode()) + len(owner_ids) * 36  # 假设 owner_id 平均 36 字节
+                    for value, owner_ids in field_index.items())
+                for field, field_index in self._indexes.items()
+            )
+        )
+
+    def has_index(self, field: str) -> bool:
+        """检查字段是否已建立索引"""
+        return field in self._field_types
+
+    def load_indexes(self) -> None:
+        """加载索引（测试实现）"""
+        pass
+
+    def save_indexes(self) -> None:
+        """保存索引（测试实现）"""
+        pass
+
+    def rebuild_indexes(self) -> None:
+        """重建索引"""
+        self.clear_indexes()
+        for owner_id, data in data_iterator():
+            self.update_index(data, owner_id)
 
 class TestFieldPathValidation:
     """字段路径验证测试
@@ -141,7 +237,7 @@ class TestFieldPathValidation:
     ])
     def test_valid_field_paths(self, field_types):
         """测试有效的字段路径格式"""
-        backend = TestIndexBackend(field_types=field_types)
+        backend = MockIndexBackend(field_types=field_types)
         assert backend._field_types == field_types
 
     @pytest.mark.parametrize("field_types", [
@@ -154,7 +250,11 @@ class TestFieldPathValidation:
     def test_invalid_field_paths(self, field_types):
         """测试无效的字段路径格式"""
         with pytest.raises(ValueError):
-            TestIndexBackend(field_types=field_types)
+            MockIndexBackend(field_types=field_types)
+
+    @pytest.fixture
+    def backend(self):
+        return MockIndexBackend()
 
 class TestPrepareQueryValue:
     """查询值准备和转换测试
@@ -169,18 +269,7 @@ class TestPrepareQueryValue:
     
     @pytest.fixture
     def backend(self):
-        field_types = {
-            "str_field": str,
-            "int_field": int,
-            "float_field": float,
-            "decimal_field": Decimal,
-            "bool_field": bool,
-            "datetime_field": datetime,
-            "list_field": list,
-            "custom_field": CustomType,
-            "any_field": Any,
-        }
-        return TestIndexBackend(field_types=field_types)
+        return MockIndexBackend()
 
     @pytest.mark.parametrize("field,value,expected", [
         ("int_field", "123", 123),
@@ -241,7 +330,7 @@ class TestExtractAndConvert:
             "posts[0].title": str,
             "deep.nested[0].field[1]": str,
         }
-        return TestIndexBackend(field_types=field_types)
+        return MockIndexBackend(field_types=field_types)
 
     @pytest.mark.parametrize("data,field_path,expected_value", [
         (
@@ -331,7 +420,7 @@ class TestPydanticSupport:
             "tags": List[str],  # 标签列表类型
             "dict_tags": List[str]  # 添加字典标签字段的类型定义
         }
-        return TestIndexBackend(field_types=field_types)
+        return MockIndexBackend(field_types=field_types)
 
     def test_pydantic_model_extraction(self, backend):
         """测试 Pydantic 模型值提取"""
@@ -429,7 +518,7 @@ class TestPydanticSupport:
         
         # 测试环境变量配置
         with mock.patch.dict(os.environ, {'JIAOZI_INDEX_FIELD_MAX_TAGS': '5'}):
-            backend_with_limit = TestIndexBackend(field_types={
+            backend_with_limit = MockIndexBackend(field_types={
                 "tags": List[str],
                 "dict_tags": List[str]  # 添加 dict_tags 字段类型
             })
@@ -459,7 +548,7 @@ class TestTagSupport:
             "obj_tags": List[str],       # 对象标签字段
             "nested.tags": List[str]     # 嵌套标签字段
         }
-        return TestIndexBackend(field_types=field_types)
+        return MockIndexBackend(field_types=field_types)
 
     def test_tag_value_extraction(self, backend):
         """测试标签值提取 - 应该将标签列表转换为多个独立的索引值"""
@@ -526,3 +615,69 @@ class TestTagSupport:
             value, error = backend.prepare_query_value("tags", query)
             assert error is not None, f"应该拒绝无效的标签查询值: {query}"
             assert value is None, f"无效的标签查询值应返回 None: {query}"
+
+class TestFindWithIndex:
+    """查询功能测试"""
+    
+    @pytest.fixture
+    def backend(self):
+        return MockIndexBackend(field_types={
+            "name": str,
+            "age": int,
+            "tags": List[str],
+            "address": Address,
+            ".": User
+        })
+
+    def test_tag_query(self, backend):
+        """测试标签查询"""
+        # 准备测试数据
+        user1 = User(name="Alice", age=25, tags=["python", "web"])
+        user2 = User(name="Bob", age=30, tags=["python", "db"])
+        
+        backend.update_index(user1, "user1")
+        backend.update_index(user2, "user2")
+        
+        # 执行查询
+        results = backend.find_with_index("tags", "python")
+        assert set(results) == {"user1", "user2"}
+        
+        results = backend.find_with_index("tags", "web")
+        assert results == ["user1"]
+
+    def test_value_query(self, backend):
+        """测试常规值查询"""
+        user1 = User(name="Alice", age=25)
+        user2 = User(name="Bob", age=30)
+        
+        backend.update_index(user1, "user1")
+        backend.update_index(user2, "user2")
+        
+        results = backend.find_with_index("name", "Alice")
+        assert results == ["user1"]
+        
+        results = backend.find_with_index("age", 30)
+        assert results == ["user2"]
+
+    def test_root_object_query(self, backend):
+        """测试根对象查询"""
+        user = User(
+            name="Alice",
+            age=25,
+            address=Address(street="123 Main St", city="Boston")
+        )
+        
+        backend.update_index(user, "user1")
+        
+        # 使用相同的对象查询
+        results = backend.find_with_index(".", user)
+        assert results == ["user1"]
+        
+        # 使用不同实例但内容相同的对象查询
+        query_user = User(
+            name="Alice",
+            age=25,
+            address=Address(street="123 Main St", city="Boston")
+        )
+        results = backend.find_with_index(".", query_user)
+        assert results == ["user1"]

@@ -6,6 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel
 from collections.abc import Sequence
 from collections import defaultdict
+import re
 
 from ....config import get_env
 from .index_config import IndexConfig
@@ -54,10 +55,35 @@ class IndexBackend(ABC):
        - 使用方括号 [n] 表示列表索引访问
        - 单个点号（.）表示对象本身
        
-    4. 类型约束：
-       - 通过 field_types 字典定义每个字段的类型
-       - 支持嵌套结构的类型检查
-       - 对标签列表进行元素类型一致性检查
+    子类实现要求：
+    
+    1. 必须实现的核心方法：
+       - add_to_index: 添加单个索引项
+       - remove_from_index: 删除指定所有者的所有索引
+       - find_with_tag: 标签查询
+       - find_with_value: 值查询
+       - find_with_root_object: 根对象查询
+       
+    2. 可选实现的方法：
+       - save_indexes: 持久化存储（如果需要）
+       - load_indexes: 加载持久化数据（如果需要）
+       - clear_indexes: 清空索引（如果支持）
+       - rebuild_indexes: 重建索引（如果支持）
+       
+    3. 性能统计方法：
+       - get_index_size: 获取索引大小
+       - get_index_memory_usage: 获取内存使用量
+       
+    4. 辅助方法（基类已实现）：
+       - convert_to_index_key: 转换索引键
+       - is_field_type_valid: 类型检查
+       - extract_value_from_path: 路径访问
+       
+    注意事项：
+    1. 子类可以根据自身特点选择合适的存储结构
+    2. 不要求子类必须支持所有索引目标类型
+    3. 可以根据实际需求简化或扩展路径语法
+    4. 持久化方案由子类自行决定
     """
 
     # 添加类变量定义最大嵌套深度
@@ -122,7 +148,7 @@ class IndexBackend(ABC):
             if '[' in part:
                 # 检查方括号内是否为数字
                 array_parts = part.split('[')
-                if not array_parts[0]:  # 防止 [0]field 这样的格式
+                if not array_parts[0]:  # 防止 [0]field_path 这样的格式
                     raise ValueError(f"字段路径 '{field_path}' 格式无效：数组索引前必须有字段名")
                 for array_part in array_parts[1:]:
                     if not array_part.endswith(']'):
@@ -188,171 +214,205 @@ class IndexBackend(ABC):
             
         return parts
 
-    def extract_and_convert_value(self, data: Any, field_path: str) -> Tuple[Optional[Any], List[Union[str, int]]]:
-        """从数据对象中提取并转换字段值"""
+    def extract_and_convert_value(self, data: Any, field_path: str) -> Tuple[Any, List[str]]:
+        """提取并转换字段值"""
+        if data is None:
+            return None, []
+        
+        # 处理根对象查询
         if field_path == ".":
             return data, ["."]
-            
-        path_parts = self._parse_field_path(field_path)
         
-        if len(path_parts) > self.MAX_NESTING_DEPTH:
-            self.logger.error("访问路径 {} 超过最大深度 {}".format(field_path, self.MAX_NESTING_DEPTH))
-            return None, path_parts
+        # 解析路径，支持数组索引
+        parts = []
+        current = data
         
-        try:
-            value = data
-            for part in path_parts:
-                if isinstance(value, BaseModel):
-                    try:
-                        value = getattr(value, str(part))
-                    except AttributeError:
-                        self.logger.debug(f"Pydantic模型中不存在字段: {part}")
-                        return None, path_parts
-                elif isinstance(value, dict):
-                    try:
-                        value = value[part]
-                    except KeyError:
-                        self.logger.debug(f"字典中不存在键: {part}")
-                        return None, path_parts
-                elif isinstance(value, (list, tuple)) and isinstance(part, int):
-                    try:
-                        value = value[part]
-                    except IndexError:
-                        self.logger.debug(f"列表索引越界: {part}")
-                        return None, path_parts
-                elif hasattr(value, part):
-                    value = getattr(value, part)
+        # 分割路径，处理数组索引
+        for part in field_path.split('.'):
+            # 处理数组索引 [n]
+            if '[' in part and ']' in part:
+                base = part[:part.index('[')]
+                if base:
+                    parts.append(base)
+                    
+                # 提取所有索引
+                indices = re.findall(r'\[(\d+)\]', part)
+                if not indices:
+                    return None, parts
+                    
+                # 逐个应用索引
+                try:
+                    if base:
+                        if isinstance(current, dict):
+                            current = current[base]
+                        elif isinstance(current, BaseModel):
+                            current = getattr(current, base)
+                        else:
+                            return None, parts
+                            
+                    for idx in indices:
+                        idx = int(idx)
+                        parts.append(f"[{idx}]")
+                        if not isinstance(current, (list, tuple)) or idx >= len(current):
+                            return None, parts
+                        current = current[idx]
+                except (IndexError, KeyError, AttributeError, ValueError):
+                    return None, parts
+            else:
+                parts.append(part)
+                try:
+                    if isinstance(current, dict):
+                        if part not in current:
+                            return None, parts
+                        current = current[part]
+                    elif isinstance(current, BaseModel):
+                        current = getattr(current, part)
+                    elif hasattr(current, part):
+                        current = getattr(current, part)
+                    else:
+                        return None, parts
+                except (KeyError, AttributeError):
+                    return None, parts
+                
+        # 处理可索引对象
+        if isinstance(current, Indexable):
+            return current.to_index_key(), parts
+        
+        # 处理标签列表
+        field_type = self._field_types.get(field_path)
+        if field_type and hasattr(field_type, '__origin__') and field_type.__origin__ in (list, List):
+            if not isinstance(current, (list, tuple)) or not current:
+                return None, parts
+                
+            # 验证标签列表的元素类型
+            element_type = field_type.__args__[0]
+            if not all(isinstance(tag, element_type) for tag in current):
+                return None, parts
+                
+            # 过滤和清理标签
+            tags = []
+            for tag in current[:self.MAX_TAGS]:  # 限制标签数量
+                if isinstance(tag, str):
+                    tag = tag.strip()
+                    if tag:
+                        tags.append(tag)
                 else:
-                    self.logger.debug(f"无法访问路径: {field_path}, 当前部分: {part}")
-                    return None, path_parts
-
-            # 首先检查是否是标签列表字段
-            field_type = self._field_types.get(field_path)
-            
-            self.logger.info("正在处理字段 {}: 值类型 = {}, 字段类型 = {}".format(
-                field_path, type(value).__name__, field_type
-            ))
-            
-            # 标签列表处理
-            if field_type and hasattr(field_type, '__origin__'):
-                self.logger.info("字段 {} 的类型信息: origin = {}, args = {}".format(
-                    field_path, 
-                    field_type.__origin__,
-                    getattr(field_type, '__args__', None)
-                ))
-                
-                if (field_type.__origin__ in (list, List) and 
-                    len(field_type.__args__) == 1 and 
-                    field_type.__args__[0] is str and
-                    isinstance(value, (list, tuple))):
-                    
-                    # 检查所有元素是否都是字符串
-                    if not all(isinstance(tag, str) for tag in value):
-                        self.logger.warning("标签列表包含非字符串元素")
-                        return None, path_parts
-                        
-                    # 过滤并限制标签数量
-                    valid_tags = [tag.strip() for tag in value if tag.strip()]
-                    if not valid_tags:
-                        self.logger.warning("标签列表中没有有效的标签")
-                        return None, path_parts
-                        
-                    if len(valid_tags) > self.MAX_TAGS:
-                        self.logger.warning(
-                            "标签数量超过限制：当前 {} 个，限制 {} 个，将截取前 {} 个标签".format(
-                                len(valid_tags), self.MAX_TAGS, self.MAX_TAGS
-                            )
-                        )
-                        valid_tags = valid_tags[:self.MAX_TAGS]
-                        
-                    self.logger.info("成功处理标签列表，返回 {} 个有效标签".format(len(valid_tags)))
-                    return valid_tags, path_parts
-                    
-            # 验证其他类型
-            if not self.is_field_type_valid(field_path, value):
-                self.logger.warning("字段值类型不匹配：{} = {}".format(field_path, value))
-                return None, path_parts
-                
-            # 处理可索引对象
-            if hasattr(value, 'to_index_key'):
-                return value.to_index_key(), path_parts
-            
-            # 检查最终值是否为复杂类型
-            if isinstance(value, (dict, list, tuple)):
-                self.logger.error("不支持的复杂类型：{}，需要实现 Indexable 协议".format(
-                    type(value).__name__
-                ))
-                return None, path_parts
-            
-            return value, path_parts
-            
-        except Exception as e:
-            self.logger.error("值提取失败：{} - {}".format(field_path, str(e)))
-            return None, path_parts
+                    tags.append(tag)
+            return tags if tags else None, parts
+        
+        # 拒绝未实现 Indexable 的复杂类型
+        if isinstance(current, (dict, list)) and not isinstance(current, Indexable):
+            return None, parts
+        
+        # 确保返回的值与字段类型匹配
+        if field_type and not isinstance(current, field_type):
+            try:
+                current = field_type(current)
+            except (ValueError, TypeError):
+                self.logger.warning(
+                    "字段类型转换失败: path=%s, value=%s, expected_type=%s",
+                    field_path, current, field_type.__name__
+                )
+                return None, parts
+        
+        return current, parts
 
     def convert_to_index_key(self, value: Any, field_path: str = None) -> Optional[str]:
-        """将值转换为索引键"""
+        """将值转换为索引键
+        
+        Args:
+            value: 要转换的值
+            field_path: 字段路径
+            
+        Returns:
+            Optional[str]: 索引键，如果无法转换则返回 None
+        """
         if value is None:
             return None
-        
+            
         # 处理可索引对象
-        if hasattr(value, 'to_index_key'):
+        if isinstance(value, Indexable):
             return value.to_index_key()
-        
+            
         # 处理 Pydantic 模型
         if isinstance(value, BaseModel):
             return str(hash(value.model_dump_json()))
-        
+            
         # 处理基本类型
-        if isinstance(value, (str, int, float, bool)):
+        try:
             return str(value)
-        
-        # 对于其他复杂类型，拒绝处理
-        if isinstance(value, (dict, list, tuple)):
-            self.logger.error(
-                f"不支持的复杂类型作为索引值： {type(value).__name__}，"
-                f"请实现 Indexable 协议以自定义索引键生成"
-            )
+        except Exception as e:
+            self.logger.error("无法转换为索引键: %s", e)
             return None
-        
-        return str(value)
 
     def is_field_type_valid(self, field_path: str, value: Any) -> bool:
-        """验证字段值类型是否匹配"""
-        field_type = self._field_types.get(field_path)
-        if not field_type:
-            return True
-        
-        # 处理标签列表类型
-        if hasattr(field_type, '__origin__') and field_type.__origin__ in (list, List):
-            if not isinstance(value, (list, tuple)):
-                return False
-            # 对于标签列表，我们只需要验证它是列表类型
-            # 具体的元素验证在 extract_and_convert_value 中处理
-            return True
-        
-        return isinstance(value, field_type)
-
-    @abstractmethod
-    def update_index(self, data: Any, owner_id: str) -> None:
-        """更新索引
+        """验证字段值是否符合类型约束
         
         Args:
-            data: 要索引的数据对象
-            owner_id: 数据所有者ID
+            field_path: 字段路径
+            value: 字段值
             
-        Raises:
-            ValueError: 当数据不符合类型约束时
-            IndexError: 当索引更新失败时
+        Returns:
+            bool: 是否符合类型约束
         """
-        pass
+        if field_path not in self._field_types:
+            return False
+            
+        expected_type = self._field_types[field_path]
+        
+        # 处理标签列表
+        if (hasattr(expected_type, '__origin__') and 
+            expected_type.__origin__ in (list, List)):
+            if not isinstance(value, (list, tuple)):
+                return False
+            element_type = expected_type.__args__[0]
+            return all(isinstance(item, element_type) for item in value)
+            
+        # 处理可索引对象
+        if isinstance(value, Indexable):
+            return True
+            
+        # 处理 Pydantic 模型
+        if isinstance(expected_type, type) and issubclass(expected_type, BaseModel):
+            return isinstance(value, expected_type)
+            
+        # 处理基本类型
+        return isinstance(value, expected_type)
 
-    @abstractmethod 
-    def remove_from_index(self, owner_id: str) -> None:
-        pass
+    def extract_value_from_path(self, data: Any, path_parts: List[Union[str, int]]) -> Any:
+        """从复杂结构中提取值
+        
+        Args:
+            data: 数据对象
+            path_parts: 路径部分列表
+            
+        Returns:
+            Any: 提取的值
+        """
+        value = data
+        for part in path_parts:
+            if isinstance(value, BaseModel):
+                try:
+                    value = getattr(value, str(part))
+                except AttributeError:
+                    return None
+            elif isinstance(value, dict):
+                try:
+                    value = value[part]
+                except KeyError:
+                    return None
+            elif isinstance(value, (list, tuple)) and isinstance(part, int):
+                try:
+                    value = value[part]
+                except IndexError:
+                    return None
+            elif hasattr(value, part):
+                value = getattr(value, part)
+            else:
+                return None
+        return value
 
-    @abstractmethod
-    def find_with_index(self, field: str, value: Any) -> List[str]:
+    def find_with_index(self, field_path: str, value: Any) -> List[str]:
         """使用索引查找匹配的对象
         
         支持两种查询模式：
@@ -360,73 +420,47 @@ class IndexBackend(ABC):
         2. 值匹配：直接比较字段值与查询值
         
         Args:
-            field: 字段路径
+            field_path: 字段路径
             value: 查询值
             
         Returns:
             List[str]: 匹配对象的 ID 列表
-        """
-        self._update_stats("queries")
-        result = set()
-        
-        # 处理标签列表查询
-        field_type = self._field_types.get(field)
-        if field_type and hasattr(field_type, '__origin__') and field_type.__origin__ in (list, List):
-            element_type = field_type.__args__[0]
-            if isinstance(value, element_type):
-                for owner_id, data in self._data.items():
-                    tags, _ = self.extract_and_convert_value(data, field)
-                    if tags and value in tags:
-                        result.add(owner_id)
-                return list(result)
-        
-        # 常规查询
-        query_value, error = self.prepare_query_value(field, value)
-        if error:
-            self.logger.warning(f"查询值验证失败: {error}")
-            return []
-            
-        # 如果是根对象查询，使用 model_dump_json 进行比较
-        if field == "." and isinstance(query_value, BaseModel):
-            query_json = query_value.model_dump_json()
-            for owner_id, data in self._data.items():
-                if isinstance(data, BaseModel) and data.model_dump_json() == query_json:
-                    result.add(owner_id)
-            return list(result)
-            
-        for owner_id, data in self._data.items():
-            indexed_value, _ = self.extract_and_convert_value(data, field)
-            if indexed_value == query_value:
-                result.add(owner_id)
-            
-        return list(result)
-    
-    @abstractmethod
-    def has_index(self, field: str) -> bool:
-        pass
-    
-    @abstractmethod
-    def rebuild_indexes(self, data_iterator: Callable[[], List[tuple[str, Any]]]) -> None:
-        """重建所有索引
-        
-        Args:
-            data_iterator: 返回(owner_id, data)元组列表的迭代器
             
         Raises:
-            RuntimeError: 当重建过程失败时
+            ValueError: 当查询值类型不匹配时
         """
-        self.logger.info("开始重建索引")
-        self._stats["last_rebuild"] = time.time()
-        pass
+        self._update_stats("queries")
+        
+        try:
+            # 处理标签查询
+            field_type = self._field_types.get(field_path)
+            if field_type and hasattr(field_type, '__origin__') and field_type.__origin__ in (list, List):
+                element_type = field_type.__args__[0]
+                if isinstance(value, element_type):
+                    return self.find_with_tag(field_path, value)
+            
+            # 处理根对象查询
+            if field_path == "." and isinstance(value, BaseModel):
+                return self.find_with_root_object(value)
+                
+            # 处理常规查询
+            return self.find_with_value(field_path, value)
+            
+        except Exception as e:
+            self.logger.error("查询执行失败: field_path=%s, value=%s, error=%s", 
+                          field_path, value, str(e))
+            return []
 
     def get_stats(self) -> Dict[str, Any]:
-        """获取索引统计信息"""
-        self.logger.debug("获取统计信息: %s", self._stats)
+        """获取索引统计信息
+        
+        Returns:
+            Dict[str, Any]: 包含各项统计数据的字典
+        """
         return self._stats.copy()
 
     def clear_stats(self) -> None:
         """清除统计信息"""
-        self.logger.info("清除统计信息")
         self._stats.update({
             "updates": 0,
             "queries": 0,
@@ -439,16 +473,6 @@ class IndexBackend(ABC):
         if self._config.enable_stats:
             self._stats[stat_name] = self._stats.get(stat_name, 0) + 1
             self.logger.debug("更新统计信息: %s=%d", stat_name, self._stats[stat_name])
-
-    @abstractmethod
-    def get_index_size(self) -> int:
-        """获取索引大小"""
-        pass
-
-    @abstractmethod
-    def get_index_memory_usage(self) -> int:
-        """获取索引内存使用量（字节）"""
-        pass
 
     def prepare_query_value(self, field_path: str, query_value: Any) -> Tuple[Optional[Any], Optional[str]]:
         """准备查询值，确保类型匹配
@@ -530,3 +554,241 @@ class IndexBackend(ABC):
             
         except Exception as e:
             return None, f"类型转换失败: {str(e)}"
+
+    def _make_index_key(self, field_path: str, value: Any) -> str:
+        """生成索引键
+        
+        Args:
+            field_path: 字段名
+            value: 字段值
+            
+        Returns:
+            str: 索引键，格式为 "idx:{field_path}:{value}"
+        """
+        return f"idx:{field_path}:{value}"
+        
+    def _parse_index_key(self, key: str) -> Tuple[str, str]:
+        """解析索引键
+        
+        Args:
+            key: 索引键
+            
+        Returns:
+            Tuple[str, str]: (field_path, value)
+        """
+        _, field_path, value = key.split(":", 2)
+        return field_path, value
+
+    def _make_field_key(self, field_path: str) -> str:
+        """生成字段元数据键
+        
+        Args:
+            field_path: 字段名
+            
+        Returns:
+            str: 字段键，格式为 "field_path:{field_path}"
+        """
+        return f"field_path:{field_path}"
+
+    def prepare_for_storage(self, data: Any) -> Any:
+        """准备数据用于存储
+        
+        将复杂对象转换为可序列化的格式。处理顺序：
+        1. None 值直接返回
+        2. Pydantic 模型使用 model_dump()
+        3. 数据类使用 asdict()
+        4. 具有 to_dict() 方法的对象调用该方法
+        5. 具有 __dict__ 属性的对象转换为字典
+        6. 列表和字典递归处理其元素
+        7. 其他类型直接返回
+        
+        Args:
+            data: 要转换的数据
+            
+        Returns:
+            转换后的可序列化数据
+            
+        Examples:
+            >>> backend = SomeIndexBackend()
+            >>> user = User(name="Alice", age=25)
+            >>> serializable = backend.prepare_for_storage(user)
+            >>> storage.set("user1", serializable)
+        """
+        if data is None:
+            return None
+            
+        # Pydantic 模型
+        if isinstance(data, BaseModel):
+            return data.model_dump()
+            
+        # 数据类
+        if hasattr(data, '__dataclass_fields__'):
+            from dataclasses import asdict
+            return asdict(data)
+            
+        # 自定义序列化方法
+        if hasattr(data, 'to_dict'):
+            return data.to_dict()
+            
+        # 普通对象
+        if hasattr(data, '__dict__'):
+            return data.__dict__
+            
+        # 递归处理容器类型
+        if isinstance(data, list):
+            return [self.prepare_for_storage(item) for item in data]
+        if isinstance(data, dict):
+            return {
+                str(k): self.prepare_for_storage(v) 
+                for k, v in data.items()
+            }
+            
+        # 其他类型直接返回
+        return data
+
+    # -------- 必须实现的核心方法 --------
+    @abstractmethod
+    def update_index(self, data: Any, key: str) -> None:
+        """更新索引
+        
+        Args:
+            data: 要索引的数据对象
+            key: 数据键
+            
+        Raises:
+            ValueError: 当数据不符合类型约束时
+            RuntimeError: 当索引更新失败时
+        """
+        pass
+
+    @abstractmethod 
+    def remove_from_index(self, key: str) -> None:
+        """删除指定所有者的所有索引
+        
+        Args:
+            key: 数据键
+            
+        Raises:
+            RuntimeError: 当删除失败时
+        """
+        pass
+
+    @abstractmethod
+    def find_with_tag(self, field_path: str, tag: str) -> List[str]:
+        """标签查询实现
+        
+        Args:
+            field_path: 标签字段名
+            tag: 标签值
+            
+        Returns:
+            List[str]: 包含指定标签的对象ID列表
+        """
+        pass
+
+    @abstractmethod
+    def find_with_value(self, field_path: str, value: Any) -> List[str]:
+        """常规值查询实现
+        
+        Args:
+            field_path: 字段名
+            value: 查询值
+            
+        Returns:
+            List[str]: 匹配的对象ID列表
+        """
+        pass
+
+    @abstractmethod
+    def find_with_root_object(self, model: BaseModel) -> List[str]:
+        """根对象查询实现
+        
+        Args:
+            model: Pydantic模型对象
+            
+        Returns:
+            List[str]: 匹配的对象ID列表
+        """
+        pass
+
+    @abstractmethod
+    def add_to_index(self, field_path: str, value: Any, key: str) -> None:
+        """添加单个索引项
+        
+        Args:
+            field_path: 字段名
+            value: 索引值
+            key: 所有者ID
+            
+        Raises:
+            ValueError: 当字段类型不匹配时
+            RuntimeError: 当添加失败时
+        """
+        pass
+
+    @abstractmethod
+    def has_index(self, field_path: str) -> bool:
+        """检查字段是否已建立索引
+        
+        Args:
+            field_path: 字段名
+            
+        Returns:
+            bool: 是否存在索引
+        """
+        pass
+
+    @abstractmethod
+    def get_index_size(self) -> int:
+        """获取索引大小"""
+        pass
+
+    @abstractmethod
+    def get_index_memory_usage(self) -> int:
+        """获取索引内存使用量（字节）"""
+        pass
+
+    @abstractmethod
+    def get_field_index_size(self, field_path: str) -> int:
+        """获取指定字段的索引大小
+        
+        Args:
+            field_path: 字段名
+            
+        Returns:
+            int: 该字段的索引项数量
+        """
+        pass
+
+    # -------- 可选实现的方法 --------
+    def save_indexes(self) -> None:
+        """保存索引到持久化存储
+        
+        Raises:
+            RuntimeError: 当保存失败时
+        """
+        pass
+        
+    def load_indexes(self) -> None:
+        """从持久化存储加载索引
+        
+        Raises:
+            RuntimeError: 当加载失败时
+        """
+        pass
+        
+    def clear_indexes(self) -> None:
+        """清空所有索引
+        
+        Raises:
+            RuntimeError: 当操作失败时
+        """
+        pass
+
+    def rebuild_indexes(self) -> None:
+        """重建所有索引
+        
+        Raises:
+            RuntimeError: 当重建失败时
+        """
+        pass

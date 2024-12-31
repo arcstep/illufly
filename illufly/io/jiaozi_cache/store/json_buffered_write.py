@@ -135,8 +135,9 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
         strategy: StorageStrategy = StorageStrategy.INDIVIDUAL,
         time_granularity: TimeSeriesGranularity = TimeSeriesGranularity.MONTHLY,
         partition_count: Optional[int] = None,
+        logger: logging.Logger = None,
     ):
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(__name__)
         self._data_dir = Path(data_dir)
         self._segment = segment.replace('.json', '')
         self._strategy = strategy
@@ -438,7 +439,14 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
                         if self._strategy == StorageStrategy.INDIVIDUAL:
                             path.parent.mkdir(parents=True, exist_ok=True)
                             with path.open('w', encoding='utf-8') as f:
-                                json.dump(self._memory_buffer[key], f, ensure_ascii=False, indent=2)
+                                # 使用自定义编码器
+                                json.dump(
+                                    self._memory_buffer[key], 
+                                    f, 
+                                    cls=JSONEncoder,  # 使用自定义编码器
+                                    ensure_ascii=False, 
+                                    indent=2
+                                )
                         else:
                             if path not in file_data:
                                 file_data[path] = {}
@@ -454,7 +462,14 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
                     try:
                         path.parent.mkdir(parents=True, exist_ok=True)
                         with path.open('w', encoding='utf-8') as f:
-                            json.dump(data, f, ensure_ascii=False, indent=2)
+                            # 使用自定义编码器
+                            json.dump(
+                                data, 
+                                f, 
+                                cls=JSONEncoder,  # 使用自定义编码器
+                                ensure_ascii=False, 
+                                indent=2
+                            )
                     except TypeError as e:
                         raise JSONSerializationError(f"Failed to serialize data for path '{path}': {e}")
                 
