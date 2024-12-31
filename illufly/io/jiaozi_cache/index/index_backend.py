@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from collections.abc import Sequence
 from collections import defaultdict
 import re
+import decimal
 
 from ....config import get_env
 from .index_config import IndexConfig
@@ -34,60 +35,204 @@ class Indexable(Protocol):
         """
         pass
 
+class IndexError(Exception):
+    """索引操作异常"""
+    pass
+
 class IndexBackend(ABC):
     """索引后端基类
     
     本类实现了对各种数据类型的索引支持，遵循以下设计原则：
     
     1. 索引目标支持：
-       - 简单对象（str, int, float, bool 等基本类型）
-       - 字典、列表、元组等复杂结构（仅用于路径访问）
-       - Pydantic 模型
-       - 实现了 Indexable 协议的自定义对象
-       
-    2. 索引值要求：
-       - 仅接受简单类型的属性值作为索引
-       - 特例1：实现了 Indexable 协议的对象可以自定义索引键生成
-       - 特例2：类型一致的列表可以作为标签集合使用
-       
-    3. 路径语法：
-       - 使用点号（.）分隔的路径表示属性访问
-       - 使用方括号 [n] 表示列表索引访问
-       - 单个点号（.）表示对象本身
-       
-    子类实现要求：
-    
-    1. 必须实现的核心方法：
-       - add_to_index: 添加单个索引项
-       - remove_from_index: 删除指定所有者的所有索引
-       - find_with_tag: 标签查询
-       - find_with_value: 值查询
-       - find_with_root_object: 根对象查询
-       
-    2. 可选实现的方法：
-       - save_indexes: 持久化存储（如果需要）
-       - load_indexes: 加载持久化数据（如果需要）
-       - clear_indexes: 清空索引（如果支持）
-       - rebuild_indexes: 重建索引（如果支持）
-       
-    3. 性能统计方法：
-       - get_index_size: 获取索引大小
-       - get_index_memory_usage: 获取内存使用量
-       
-    4. 辅助方法（基类已实现）：
-       - convert_to_index_key: 转换索引键
-       - is_field_type_valid: 类型检查
-       - extract_value_from_path: 路径访问
-       
-    注意事项：
-    1. 子类可以根据自身特点选择合适的存储结构
-    2. 不要求子类必须支持所有索引目标类型
-    3. 可以根据实际需求简化或扩展路径语法
-    4. 持久化方案由子类自行决定
-    """
+        - 简单对象：str, int, float, bool, datetime, Decimal 等基本类型
+        - 复杂结构：
+            - 字典：通过点号访问嵌套字段
+            - 列表/元组：通过数字索引访问元素
+            - Pydantic 模型：直接访问属性
+            - 实现了 Indexable 协议的自定义对象
+        - Pydantic 模型：
+            - 支持作为根对象索引
+            - 支持作为字段值索引
+            - 支持嵌套模型的字段索引
+            - 支持模型字段的类型验证
 
-    # 添加类变量定义最大嵌套深度
-    MAX_NESTING_DEPTH = 5
+    2. 索引值要求：
+        - 常规索引值：
+        - 仅接受简单类型作为索引值：str, int, float, bool, datetime, Decimal
+        - 复杂对象必须通过 Indexable 协议自定义索引值生成
+        - 支持单值查询和多值查询（AND/OR 模式）
+        - Pydantic 模型：
+            - 作为根对象时：
+            - 使用 model_dump_json() 序列化后的 JSON 字符串进行精确匹配
+            - 要求查询模型与索引模型的字段值完全相同
+            - 不支持部分字段匹配，部分匹配请使用字段路径查询
+            - 作为字段值时：
+            - 同样使用序列化 JSON 进行匹配
+            - 建议使用具体字段路径进行查询，而不是整个模型对象
+        - 标签索引值：
+            - 字段类型必须声明为 List[str]
+            - 每个标签必须是非空字符串
+            - 支持单个或多个标签查询（AND/OR 模式）
+
+    3. 索引路径语法：
+        - 基本语法：使用点号（.）分隔嵌套属性
+        - 字典访问：
+            - "user.name" -> user["name"]
+            - "user.address.city" -> user["address"]["city"]
+        - 列表访问：
+            - "items.0" -> items[0]
+            - "items.0.name" -> items[0]["name"]
+        - 特殊路径：
+            - "." -> 根对象
+            - "tags" -> 直接字段
+        - Pydantic 模型访问：
+            - 根对象：
+                "." -> 整个模型对象
+            - 直接字段：
+                "name" -> model.name
+                "age" -> model.age
+            - 嵌套模型：
+                "address.city" -> model.address.city
+                "address.location.latitude" -> model.address.location.latitude
+            - 模型列表：
+                "items.0.name" -> model.items[0].name
+                "addresses.1.city" -> model.addresses[1].city
+            - 复杂嵌套：
+                "company.departments.0.employees.1.address.city" ->
+                model.company.departments[0].employees[1].address.city
+
+    4. 查询示例：
+        - 根对象完全匹配：
+        ```python
+        # 索引时
+        user1 = User(name="Alice", age=25)
+        backend.update_index(user1, "user1")
+        
+        # 查询时
+        query = User(name="Alice", age=25)  # 必须完全相同
+        results = backend.find_with_root_object(query)  # 返回 ["user1"]
+        
+        # 部分字段不同则无法匹配
+        query2 = User(name="Alice", age=26)
+        results = backend.find_with_root_object(query2)  # 返回 []
+        ```
+        
+        - 推荐使用字段路径查询：
+        ```python
+        # 按名字查询
+        results = backend.find_with_values("name", "Alice")
+        
+        # 按年龄范围查询
+        results = backend.find_with_values("age", [25, 26, 27])
+        
+        # 按地址城市查询
+        results = backend.find_with_values("address.city", "Beijing")
+        ```
+
+    5. 标签语法：
+        - 字段定义：必须声明为 List[str] 类型
+        - 标签值要求：
+            - 必须是非空字符串
+            - 会自动去除首尾空白字符
+            - 忽略空字符串和非字符串值
+        - 查询语法：
+            - 单标签：find_with_tags("tags", "python")
+            - 多标签 OR：find_with_tags("tags", ["python", "web"])
+            - 多标签 AND：find_with_tags("tags", ["python", "web"], match_all=True)
+
+    6. 查询方法说明：
+        常规索引查询：
+        - find_with_values(field: str, values: Union[Any, List[Any]], match_all: bool = False) -> List[str]
+            支持单值或多值查询：
+            - 单值：find_with_values("age", 25)
+            - 多值 OR：find_with_values("age", [25, 30])  # 匹配25或30
+            - 多值 AND：find_with_values("age", [25, 30], match_all=True)  # 同时匹配25和30
+
+        标签查询：
+        - find_with_tags(field: str, tags: Union[str, List[str]], match_all: bool = False) -> List[str]
+            支持单个或多个标签查询：
+            - 单标签：find_with_tags("tags", "python")
+            - 多标签 OR：find_with_tags("tags", ["python", "web"])  # 包含python或web
+            - 多标签 AND：find_with_tags("tags", ["python", "web"], match_all=True)  # 同时包含python和web
+
+        根对象查询：
+            - find_with_root_object(model: BaseModel) -> List[str]
+            使用完整的模型对象进行精确匹配
+
+    7. 子类实现要求：
+        (1) 必须实现的抽象方法：
+        
+        索引管理：
+        - _add_to_index(field: str, value: Any, key: str) -> None
+            将对象ID添加到指定字段和值的索引中
+        
+        - remove_from_index(field: str, value: Any, key: str) -> None
+            从指定字段和值的索引中移除对象ID
+        
+        - rebuild_index(data: Dict[str, Any]) -> None
+            重建整个索引，通常在数据恢复或迁移时使用
+        
+        - clear_index() -> None
+            清空所有索引数据
+
+        查询相关：
+        - _find_with_single_value(field: str, value: Any) -> Set[str]
+            用于基础值查询，返回匹配的对象ID集合
+            - 用于支持 find_with_values 方法
+            - 必须处理字段类型转换和验证
+            - 返回结果无需排序
+        
+        - _find_with_single_tag(field: str, tag: str) -> Set[str]
+            用于基础标签查询，返回匹配的对象ID集合
+            - 用于支持 find_with_tags 方法
+            - 必须验证标签字段类型
+            - 返回结果无需排序
+        
+        - find_with_root_object(model: BaseModel) -> List[str]
+            用于根对象查询，返回完全匹配的对象ID列表
+            - 必须处理模型对象的序列化和比较
+            - 返回的列表应当有序
+        
+        存储相关：
+        - flush() -> None
+            将内存中的索引变更持久化到存储
+        
+        - close() -> None
+            关闭索引后端，确保数据已保存
+        
+        (2) 可选重写的方法：
+        - prepare_query_value(field: str, value: Any) -> Tuple[Any, Optional[str]]
+            自定义查询值处理，返回(处理后的值, 错误信息)
+        
+        - has_index(field: str) -> bool
+            检查字段是否已建立索引
+        
+        - extract_and_convert_value(data: Any, field: str) -> Tuple[Any, Optional[str]]
+            从数据中提取并转换索引值
+        
+        - get_stats() -> Dict[str, int]
+            获取索引统计信息
+        
+        - clear_stats() -> None
+            清除统计信息
+        
+        (3) 可选生命周期相关方法：
+        - __init__(field_types: Dict[str, Any] = None, config: IndexConfig = None)
+            初始化索引后端，设置字段类型和配置
+        
+        - __enter__() -> IndexBackend
+            上下文管理器入口
+        
+        - __exit__(exc_type, exc_val, exc_tb) -> None
+            上下文管理器出口，确保资源正确释放
+    
+    7. 统计支持：
+        - updates: 索引更新次数
+        - queries: 查询执行次数
+        - cache_hits: 缓存命中次数
+        - cache_misses: 缓存未命中次数
+    """
 
     def __init__(
         self, 
@@ -114,53 +259,214 @@ class IndexBackend(ABC):
         }
         
         # 验证字段路径格式
-        self._validate_field_paths()
+        if field_types:
+            self.validate_field_paths()
 
         # 从环境变量读取标签数量限制
         self.MAX_TAGS = int(get_env('JIAOZI_INDEX_FIELD_MAX_TAGS'))
 
-    def _validate_field_paths(self) -> None:
+    # 标签管理接口
+    def add_tags(self, field: str, tags: List[str], key: str) -> None:
+        """添加标签"""
+        if not self.has_index(field):
+            raise KeyError(f"字段 {field} 未定义索引")
+            
+        field_type = self._field_types.get(field)
+        self.logger.debug("Adding tags: field=%s, tags=%s, key=%s, field_type=%s", 
+                       field, tags, key, field_type)
+        
+        if not (hasattr(field_type, '__origin__') and 
+                field_type.__origin__ in (list, List) and 
+                field_type.__args__[0] == str):
+            raise TypeError(f"字段 {field} 不是标签类型")
+            
+        for tag in tags:
+            if not isinstance(tag, str) or not tag.strip():
+                self.logger.debug("Skipping invalid tag: %s", tag)
+                continue
+            cleaned_tag = tag.strip()
+            self.logger.debug("Adding single tag: %s", cleaned_tag)
+            self.add_to_index(field, cleaned_tag, key)
+
+    def remove_tags(self, field: str, tags: List[str], key: str) -> None:
+        """移除标签
+        
+        Args:
+            field: 标签字段名
+            tags: 标签列表
+            key: 对象ID
+            
+        Raises:
+            KeyError: 当字段未定义为标签索引时
+            TypeError: 当字段类型不是 List[str] 时
+        """
+        if not self.has_index(field):
+            raise KeyError(f"字段 {field} 未定义索引")
+            
+        field_type = self._field_types.get(field)
+        if not (hasattr(field_type, '__origin__') and 
+                field_type.__origin__ in (list, List) and 
+                field_type.__args__[0] == str):
+            raise TypeError(f"字段 {field} 不是标签类型")
+            
+        for tag in tags:
+            if not isinstance(tag, str) or not tag.strip():
+                continue
+            # 从索引中移除标签
+            self.remove_from_index(field, tag.strip(), key)
+
+    def _validate_field_index(self, field: str) -> None:
+        """验证字段是否已定义索引
+        
+        Args:
+            field: 字段名
+            
+        Raises:
+            KeyError: 字段未定义索引
+        """
+        if not self.has_index(field):
+            raise KeyError(f"字段 {field} 未定义索引")
+
+    def _validate_key(self, key: str) -> None:
+        """验证文档ID"""
+        if not key:
+            raise ValueError("数据键不能为空")
+
+    def _validate_field_value(self, field: str, value: Any) -> Any:
+        """验证字段值"""
+        self.logger.debug("Validating field value: field=%s, value=%s (type=%s)",
+                       field, value, type(value))
+        
+        if value is None:
+            raise ValueError(f"字段值不能为 None")
+        
+        expected_type = self._field_types[field]
+        self.logger.debug("Expected type: %s", expected_type)
+        
+        # 处理标签字段（List[str]）
+        if (hasattr(expected_type, '__origin__') and 
+            expected_type.__origin__ in (list, List) and 
+            expected_type.__args__[0] == str):
+            # 标签字段：直接验证字符串类型
+            if not isinstance(value, str):
+                raise TypeError("添加的标签必须是字符串类型")
+            return value.strip()
+        
+        # 处理布尔类型
+        if expected_type == bool and isinstance(value, str):
+            if value.lower() in ('true', 'yes', '1', 'on'):
+                return True
+            if value.lower() in ('false', '0', 'no', 'off'):
+                return False
+            raise TypeError("类型不匹配：无效的布尔值")
+        
+        # 处理 Decimal 类型
+        if expected_type == Decimal:
+            try:
+                return Decimal(str(value))
+            except (decimal.InvalidOperation, TypeError):
+                raise TypeError(f"类型不匹配：无法将 {value} 转换为 Decimal 类型")
+            
+        # 处理 datetime 类型
+        if expected_type == datetime:
+            try:
+                if isinstance(value, str):
+                    # 尝试多种日期格式
+                    for fmt in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
+                        try:
+                            return datetime.strptime(value, fmt)
+                        except ValueError:
+                            continue
+                raise ValueError
+            except ValueError:
+                raise TypeError(f"类型不匹配：无法将 {value} 转换为 datetime 类型")
+        
+        # 其他类型：尝试转换
+        try:
+            converted = expected_type(value)
+            self.logger.debug("Converted value: %s (type=%s)", converted, type(converted))
+            return converted
+        except (ValueError, TypeError):
+            raise TypeError(f"类型不匹配：无法将 {value} 转换为 {expected_type.__name__} 类型")
+
+    def validate_field_paths(self) -> None:
         """验证字段路径格式的有效性"""
         for field_path in self._field_types:
-            try:
-                # 测试路径解析
-                self._validate_field_path(field_path)
-            except ValueError as e:
-                self.logger.error(f"无效的字段路径格式: {field_path}")
-                raise ValueError(f"无效的字段路径格式 '{field_path}': {str(e)}")
+            self._validate_field_path(field_path)
 
     def _validate_field_path(self, field_path: str) -> None:
         """验证字段路径格式"""
         if not field_path:
-            raise ValueError("字段路径不能为空")
+            raise ValueError("无效的字段路径格式: 字段名不能为空")
+        
+        # 检查路径长度限制
+        if len(field_path.split('.')) > 5:  # 最大嵌套深度为5
+            raise ValueError("无效的字段路径格式: 路径嵌套层级过深")
+        
+        # 检查起始和结尾字符
+        if field_path.startswith('.'):
+            raise ValueError("无效的字段路径格式: 路径不能以点号开始")
+        if field_path.endswith('.'):
+            raise ValueError("无效的字段路径格式: 路径不能以点号结束")
+        if field_path.startswith('['):
+            raise ValueError("无效的字段路径格式: 路径不能以数组索引开始")
             
-        # 检查无效字符
-        if field_path.startswith('[') or field_path.endswith('['):
-            raise ValueError(f"字段路径 '{field_path}' 格式无效：不能以 [ 开头或结尾")
-            
-        # 检查括号匹配
-        if field_path.count('[') != field_path.count(']'):
-            raise ValueError(f"字段路径 '{field_path}' 中的方括号不匹配")
+        # 检查连续点号
+        if '..' in field_path:
+            raise ValueError("无效的字段路径格式: 连续的点号无效")
             
         # 检查数组索引格式
         parts = field_path.split('.')
         for part in parts:
             if '[' in part:
-                # 检查方括号内是否为数字
+                # 检查基本格式
+                if not part.endswith(']'):
+                    raise ValueError("无效的字段路径格式: 未闭合的数组索引")
+                    
+                # 检查点号和数组索引的组合
+                if part.startswith('.'):
+                    raise ValueError("无效的字段路径格式: 数组索引前不能有点号")
+                if part.endswith('.]'):
+                    raise ValueError("无效的字段路径格式: 数组索引后不能直接跟点号")
+                    
+                # 解析和验证索引
                 array_parts = part.split('[')
-                if not array_parts[0]:  # 防止 [0]field_path 这样的格式
-                    raise ValueError(f"字段路径 '{field_path}' 格式无效：数组索引前必须有字段名")
+                field_name = array_parts[0]
+                
+                # 验证字段名
+                if not field_name:
+                    raise ValueError("无效的字段路径格式: 数组索引前必须有字段名")
+                if not field_name.isidentifier():
+                    raise ValueError("无效的字段路径格式: 字段名包含无效字符")
+                    
+                # 验证所有索引
                 for array_part in array_parts[1:]:
                     if not array_part.endswith(']'):
-                        raise ValueError(f"字段路径 '{field_path}' 中的数组索引格式无效")
+                        raise ValueError("无效的字段路径格式: 未闭合的数组索引")
+                        
+                    index_str = array_part[:-1]
                     try:
-                        int(array_part[:-1])
-                    except ValueError:
-                        raise ValueError(f"字段路径 '{field_path}' 中的数组索引必须是整数")
-                    
-        # 检查连续点号
-        if '..' in field_path:
-            raise ValueError(f"字段路径 '{field_path}' 包含连续的点号")
+                        index = int(index_str)
+                        if index < 0:
+                            raise ValueError("无效的字段路径格式: 数组索引不能为负数")
+                        if index > 999999:  # 设置合理的上限
+                            raise ValueError("无效的字段路径格式: 数组索引超出范围")
+                        if index_str.startswith('0') and len(index_str) > 1:
+                            raise ValueError("无效的字段路径格式: 数组索引不能有前导零")
+                    except ValueError as e:
+                        if "invalid literal for int()" in str(e):
+                            raise ValueError("无效的字段路径格式: 数组索引必须是数字")
+                        raise
+            else:
+                # 验证普通字段名
+                if not part.isidentifier():
+                    raise ValueError("无效的字段路径格式: 字段名包含无效字符")
+                if part[0].isdigit():
+                    raise ValueError("无效的字段路径格式: 字段名不能以数字开始")
+                if ' ' in part:
+                    raise ValueError("无效的字段路径格式: 字段名不能包含空格")
+                if not all(c.isalnum() or c == '_' for c in part):
+                    raise ValueError("无效的字段路径格式: 字段名只能包含字母、数字和下划线")
 
     def _parse_field_path(self, path: str) -> List[Union[str, int]]:
         """解析字段路径为访问序列
@@ -412,81 +718,153 @@ class IndexBackend(ABC):
                 return None
         return value
 
-    def find_with_index(self, field_path: str, value: Any) -> List[str]:
-        """使用索引查找匹配的对象
-        
-        支持两种查询模式：
-        1. 标签查询：当字段类型为标签列表时，查找包含指定标签的对象
-        2. 值匹配：直接比较字段值与查询值
+    def find_with_root_object(self, model: BaseModel) -> List[str]:
+        """根对象查询实现
         
         Args:
-            field_path: 字段路径
-            value: 查询值
+            model: Pydantic模型对象
             
         Returns:
-            List[str]: 匹配对象的 ID 列表
+            List[str]: 匹配的对象ID列表
+        """
+        pass
+    def add_to_index(self, field: str, value: Any, key: str) -> None:
+        """添加索引值，支持单值或值列表
+        
+        Args:
+            field: 字段名
+            value: 单个值或值列表
+            key: 数据键
+        """
+        # 检查字段索引是否存在
+        self._validate_field_index(field)
+        self._validate_key(key)
+        self.logger.debug("Adding to index: field=%s, value=%s (type=%s), key=%s", 
+                       field, value, type(value), key)
+        
+        # 统一转换为列表处理
+        value_list = value if isinstance(value, (list, set)) else [value]
+        
+        # 处理每个值
+        for single_value in value_list:
+            # 转换并验证值
+            converted_value = self._validate_field_value(field, single_value)
+            self.logger.debug("Processing value: %s -> %s", single_value, converted_value)
+            if converted_value is not None:
+                self._add_to_index(field, converted_value, key)
+
+    @abstractmethod
+    def _add_to_index(self, field_path: str, value: Any, key: str) -> None:
+        """添加单个索引项
+        
+        Args:
+            field_path: 字段名
+            value: 索引值
+            key: 数据键
             
         Raises:
-            ValueError: 当查询值类型不匹配时
+            ValueError: 当字段类型不匹配时
+            RuntimeError: 当添加失败时
         """
-        self._update_stats("queries")
-        
-        try:
-            # 处理标签查询
-            field_type = self._field_types.get(field_path)
-            if field_type and hasattr(field_type, '__origin__') and field_type.__origin__ in (list, List):
-                element_type = field_type.__args__[0]
-                if isinstance(value, element_type):
-                    return self.find_with_tag(field_path, value)
-            
-            # 处理根对象查询
-            if field_path == "." and isinstance(value, BaseModel):
-                return self.find_with_root_object(value)
-                
-            # 处理常规查询
-            return self.find_with_value(field_path, value)
-            
-        except Exception as e:
-            self.logger.error("查询执行失败: field_path=%s, value=%s, error=%s", 
-                          field_path, value, str(e))
-            return []
+        pass
 
-    def get_stats(self) -> Dict[str, Any]:
-        """获取索引统计信息
+    def has_index(self, field_path: str) -> bool:
+        """检查字段是否已建立索引
         
+        Args:
+            field_path: 字段名
+            
         Returns:
-            Dict[str, Any]: 包含各项统计数据的字典
+            bool: 是否存在索引
         """
-        return self._stats.copy()
+        pass
 
-    def clear_stats(self) -> None:
-        """清除统计信息"""
-        self._stats.update({
-            "updates": 0,
-            "queries": 0,
-            "cache_hits": 0,
-            "cache_misses": 0
-        })
+    def get_index_size(self) -> int:
+        """获取索引大小"""
+        pass
 
-    def _update_stats(self, stat_name: str) -> None:
-        """更新统计信息"""
-        if self._config.enable_stats:
-            self._stats[stat_name] = self._stats.get(stat_name, 0) + 1
-            self.logger.debug("更新统计信息: %s=%d", stat_name, self._stats[stat_name])
+    def get_index_memory_usage(self) -> int:
+        """获取索引内存使用量（字节）"""
+        pass
+
+    def get_field_index_size(self, field_path: str) -> int:
+        """获取指定字段的索引大小
+        
+        Args:
+            field_path: 字段名
+            
+        Returns:
+            int: 该字段的索引项数量
+        """
+        pass
+
+    def save_indexes(self) -> None:
+        """保存索引到持久化存储
+        
+        Raises:
+            RuntimeError: 当保存失败时
+        """
+        pass
+        
+    def load_indexes(self) -> None:
+        """从持久化存储加载索引
+        
+        Raises:
+            RuntimeError: 当加载失败时
+        """
+        pass
+        
+    def clear_indexes(self) -> None:
+        """清空所有索引
+        
+        Raises:
+            RuntimeError: 当操作失败时
+        """
+        pass
+
+    def rebuild_indexes(self) -> None:
+        """重建所有索引
+        
+        Raises:
+            RuntimeError: 当重建失败时
+        """
+        pass
+
+    def update_index(self, data: Any, key: str) -> None:
+        """更新索引
+        
+        Args:
+            data: 要索引的数据对象
+            key: 数据键
+            
+        Raises:
+            ValueError: 当数据不符合类型约束时
+            RuntimeError: 当索引更新失败时
+        """
+        pass
+
+    def remove_from_index(self, key: str) -> None:
+        """删除指定数据项的所有索引
+        
+        Args:
+            key: 数据键
+            
+        Raises:
+            RuntimeError: 当删除失败时
+        """
+        pass
 
     def prepare_query_value(self, field_path: str, query_value: Any) -> Tuple[Optional[Any], Optional[str]]:
-        """准备查询值，确保类型匹配
+        """准备查询值"""
+        self.logger.debug("prepare_query_value called with: field=%s, value=%s (type=%s)", 
+                       field_path, query_value, type(query_value))
         
-        特殊处理：
-        - 标签字段：只接受非空字符串作为查询值
-        - 可索引对象：调用其 to_index_key() 方法
-        - 基本类型：支持字符串到目标类型的转换
-        """
         if field_path not in self._field_types:
-            self.logger.warning(f"字段 {field_path} 未定义类型约束")
+            self.logger.warning("字段 %s 未定义类型约束", field_path)
             return query_value, None
             
         target_type = self._field_types[field_path]
+        self.logger.debug("Target type: %s", target_type)
         
         # 处理标签字段
         if hasattr(target_type, '__origin__') and target_type.__origin__ in (list, List):
@@ -646,149 +1024,117 @@ class IndexBackend(ABC):
         # 其他类型直接返回
         return data
 
-    # -------- 必须实现的核心方法 --------
     @abstractmethod
-    def update_index(self, data: Any, key: str) -> None:
-        """更新索引
-        
-        Args:
-            data: 要索引的数据对象
-            key: 数据键
-            
-        Raises:
-            ValueError: 当数据不符合类型约束时
-            RuntimeError: 当索引更新失败时
-        """
-        pass
-
-    @abstractmethod 
-    def remove_from_index(self, key: str) -> None:
-        """删除指定所有者的所有索引
-        
-        Args:
-            key: 数据键
-            
-        Raises:
-            RuntimeError: 当删除失败时
-        """
+    def _find_with_single_value(self, field: str, value: Any) -> Set[str]:
+        """单值查询实现（内部方法）"""
         pass
 
     @abstractmethod
-    def find_with_tag(self, field_path: str, tag: str) -> List[str]:
-        """标签查询实现
+    def _find_with_single_tag(self, field: str, tag: str) -> Set[str]:
+        """单个标签查询实现（内部方法）"""
+        pass
+    def find_with_tags(self, field: str, tags: Union[str, List[str]], match_all: bool = False) -> List[str]:
+        """使用标签查询
         
         Args:
-            field_path: 标签字段名
-            tag: 标签值
+            field: 标签字段名
+            tags: 标签或标签列表
+            match_all: 是否要求匹配所有标签
             
         Returns:
-            List[str]: 包含指定标签的对象ID列表
+            匹配的文档ID列表
         """
-        pass
+        # 增加查询统计
+        if self._config.enable_stats:
+            self._stats["queries"] += 1
 
-    @abstractmethod
-    def find_with_value(self, field_path: str, value: Any) -> List[str]:
-        """常规值查询实现
+        # 验证字段类型
+        field_type = self._field_types.get(field)
+        if not (hasattr(field_type, '__origin__') and 
+                field_type.__origin__ in (list, List) and 
+                field_type.__args__[0] == str):
+            raise TypeError("查询的标签必须是字符串类型")
+        
+        # 标准化标签列表
+        if isinstance(tags, str):
+            tag_list = [tags]
+        else:
+            tag_list = tags
+        
+        # 过滤并验证标签
+        valid_tags = []
+        for tag in tag_list:
+            if tag is None or not isinstance(tag, str):
+                continue
+            tag = tag.strip()
+            if tag:  # 忽略空字符串
+                valid_tags.append(tag)
+        
+        if not valid_tags:  # 如果没有有效标签，返回空列表
+            return []
+        
+        # 执行标签查询
+        final_result = set()
+        for tag in valid_tags:
+            result = self._find_with_single_tag(field, tag)
+            if not final_result:
+                final_result = result
+            elif match_all:
+                final_result &= result  # AND 操作
+            else:
+                final_result |= result  # OR 操作
+        
+        return sorted(final_result)
+
+    def find_with_values(self, field: str, values: Union[Any, List[Any]], match_all: bool = False) -> List[str]:
+        """多值查询实现
         
         Args:
-            field_path: 字段名
-            value: 查询值
-            
+            field: 字段名
+            values: 单个值或值列表
+            match_all: 是否要求匹配所有值
+                - True: 返回同时匹配所有值的对象（AND）
+                - False: 返回匹配任意值的对象（OR）
+                
         Returns:
             List[str]: 匹配的对象ID列表
-        """
-        pass
-
-    @abstractmethod
-    def find_with_root_object(self, model: BaseModel) -> List[str]:
-        """根对象查询实现
-        
-        Args:
-            model: Pydantic模型对象
-            
-        Returns:
-            List[str]: 匹配的对象ID列表
-        """
-        pass
-
-    @abstractmethod
-    def add_to_index(self, field_path: str, value: Any, key: str) -> None:
-        """添加单个索引项
-        
-        Args:
-            field_path: 字段名
-            value: 索引值
-            key: 所有者ID
             
         Raises:
-            ValueError: 当字段类型不匹配时
-            RuntimeError: 当添加失败时
+            KeyError: 当字段未定义索引时
+            TypeError: 当字段值类型不匹配时
         """
-        pass
-
-    @abstractmethod
-    def has_index(self, field_path: str) -> bool:
-        """检查字段是否已建立索引
+        self._validate_field_index(field)
+        self._update_stats("queries")
         
-        Args:
-            field_path: 字段名
+        if not self.has_index(field):
+            raise KeyError(f"字段 {field} 未定义索引")
             
-        Returns:
-            bool: 是否存在索引
-        """
-        pass
-
-    @abstractmethod
-    def get_index_size(self) -> int:
-        """获取索引大小"""
-        pass
-
-    @abstractmethod
-    def get_index_memory_usage(self) -> int:
-        """获取索引内存使用量（字节）"""
-        pass
-
-    @abstractmethod
-    def get_field_index_size(self, field_path: str) -> int:
-        """获取指定字段的索引大小
+        # 统一转换为列表处理
+        value_list = values if isinstance(values, list) else [values]
+        self.logger.debug("查询值列表: %s", value_list)
         
-        Args:
-            field_path: 字段名
+        # 不捕获 TypeError，让它向上传播
+        results = []
+        for value in value_list:
+            converted_value = self._validate_field_value(field, value)
+            if converted_value is None:
+                continue
+                
+            prepared_value, error = self.prepare_query_value(field, converted_value)
+            if error:
+                raise TypeError(error)
+                
+            if prepared_value is None:
+                continue
+                
+            keys = self._find_with_single_value(field, prepared_value)
+            if keys:
+                results.append(keys)
+        
+        if not results:
+            return []
             
-        Returns:
-            int: 该字段的索引项数量
-        """
-        pass
+        # 根据匹配模式合并结果
+        final_result = set.intersection(*results) if match_all else set.union(*results)
+        return sorted(final_result)
 
-    # -------- 可选实现的方法 --------
-    def save_indexes(self) -> None:
-        """保存索引到持久化存储
-        
-        Raises:
-            RuntimeError: 当保存失败时
-        """
-        pass
-        
-    def load_indexes(self) -> None:
-        """从持久化存储加载索引
-        
-        Raises:
-            RuntimeError: 当加载失败时
-        """
-        pass
-        
-    def clear_indexes(self) -> None:
-        """清空所有索引
-        
-        Raises:
-            RuntimeError: 当操作失败时
-        """
-        pass
-
-    def rebuild_indexes(self) -> None:
-        """重建所有索引
-        
-        Raises:
-            RuntimeError: 当重建失败时
-        """
-        pass

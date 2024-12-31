@@ -311,10 +311,24 @@ class HashIndexBackend(IndexBackend):
         # 删除索引路径记录
         self._storage.delete(index_key)
 
-    def find_with_tag(self, field_path: str, tag: str) -> List[str]:
-        """实现标签查询"""
-        index_key = self._make_index_key(field_path, str(tag))
-        return self._storage.get(index_key) or []
+    def find_with_tag(self, field: str, tag: str) -> List[str]:
+        """标签查询实现
+        
+        Args:
+            field: 标签字段名
+            tag: 标签值
+            
+        Returns:
+            List[str]: 匹配的对象ID列表
+        """
+        self.logger.debug(f"执行标签查询: field={field}, tag={tag}")
+        index_path = f"{field}:{tag}"
+        reverse_key = self._get_reverse_key(index_path)
+        keys = self._storage.get(reverse_key)
+        
+        if keys is None:
+            return []
+        return list(keys) if isinstance(keys, (list, set)) else [keys]
 
     def find_with_value(self, field_path: str, value: Any) -> List[str]:
         """实现常规值查询"""
@@ -402,13 +416,18 @@ class HashIndexBackend(IndexBackend):
 
     def update_index(self, data: Any, key: str) -> None:
         """更新索引"""
+        self.logger.debug(f"开始更新索引: key={key}, data类型={type(data)}, data={data}")
+        self.logger.debug(f"字段类型映射: {self._field_types}")
+        
         # 1. 获取旧的索引路径
         index_key = self._get_index_key(key)
         old_paths = self._storage.get(index_key) or []
+        self.logger.debug(f"旧的索引路径: {old_paths}")
         
         # 2. 从反向索引中删除旧的关联
         for path in old_paths:
             reverse_key = self._get_reverse_key(path)
+            self.logger.debug(f"清理反向索引: {reverse_key}")
             keys = self._storage.get(reverse_key)
             if keys:
                 if isinstance(keys, (list, set)):
@@ -424,30 +443,101 @@ class HashIndexBackend(IndexBackend):
         self._storage.delete(index_key)
         
         # 4. 创建新的索引
+        new_paths = []
         for field_path in self._field_types.keys():
-            value, _ = self.extract_and_convert_value(data, field_path)
-            if value is not None:
-                self.add_to_index(field_path, value, key)
+            self.logger.debug(f"处理字段: {field_path}")
+            try:
+                value, path_parts = self.extract_and_convert_value(data, field_path)
+                self.logger.debug(f"提取的值: {value}, 路径部分: {path_parts}, 值类型: {type(value) if value is not None else None}")
+                
+                if value is not None:
+                    # 生成索引路径
+                    index_path = f"{field_path}:{value}"
+                    new_paths.append(index_path)
+                    self.logger.debug(f"添加索引路径: {index_path}")
+                    
+                    # 更新反向索引
+                    reverse_key = self._get_reverse_key(index_path)
+                    existing_keys = self._storage.get(reverse_key) or set()
+                    if not isinstance(existing_keys, (list, set)):
+                        existing_keys = {existing_keys}
+                    existing_keys.add(key)
+                    self._storage.set(reverse_key, existing_keys)
+                    self.logger.debug(f"更新反向索引: {reverse_key} -> {existing_keys}")
+            except Exception as e:
+                self.logger.error(f"处理字段 {field_path} 时出错: {e}", exc_info=True)
+        
+        # 5. 保存正向索引
+        if new_paths:
+            self._storage.set(index_key, new_paths)
+            self.logger.debug(f"保存正向索引: {index_key} -> {new_paths}")
+        
+        # 6. 强制刷新存储
+        self._storage.flush()
+        self.logger.debug("索引更新完成")
 
     def find_with_index(self, field: str, value: Any) -> List[str]:
         """通过索引查找数据"""
-        field_type = self._field_types.get(field)
-        if field_type is None:
+        self.logger.debug(f"开始查找: field={field}, value={value}, value类型={type(value)}")
+        
+        # 1. 准备查询值
+        prepared_value, error = self.prepare_query_value(field, value)
+        if error:
+            self.logger.warning(f"查询值无效: {error}")
             return []
-            
-        # 生成索引路径
-        if isinstance(value, Indexable):
-            index_path = f"{field}:{value.to_index_key()}"
-        elif field_type == List[str] and isinstance(value, str):
-            index_path = f"{field}:{value}"
-        else:
-            index_path = f"{field}:{value}"
-            
-        # 从反向索引中获取键列表
+        
+        if prepared_value is None:
+            self.logger.warning(f"查询值为空")
+            return []
+        
+        # 2. 生成索引路径
+        index_path = f"{field}:{prepared_value}"
+        self.logger.debug(f"查找索引路径: {index_path}")
+        
+        # 3. 从反向索引中获取键列表
         reverse_key = self._get_reverse_key(index_path)
+        self.logger.debug(f"查找反向索引键: {reverse_key}")
+        
         keys = self._storage.get(reverse_key)
+        self.logger.debug(f"查找结果: {keys}")
+        
         if keys is None:
             return []
         return list(keys) if isinstance(keys, (list, set)) else [keys]
+
+    def remove_from_index(self, field: str, value: str, owner_id: str) -> None:
+        """从索引中移除特定值
+        
+        Args:
+            field: 字段名
+            value: 要移除的值
+            owner_id: 对象ID
+        """
+        self.logger.debug(f"从索引移除: field={field}, value={value}, owner_id={owner_id}")
+        
+        # 1. 从反向索引中移除
+        index_path = f"{field}:{value}"
+        reverse_key = self._get_reverse_key(index_path)
+        keys = self._storage.get(reverse_key)
+        if keys:
+            if isinstance(keys, (list, set)):
+                keys = set(keys) - {owner_id}
+                if keys:
+                    self._storage.set(reverse_key, keys)
+                else:
+                    self._storage.delete(reverse_key)
+            elif keys == owner_id:
+                self._storage.delete(reverse_key)
+        
+        # 2. 更新正向索引
+        index_key = self._get_index_key(owner_id)
+        paths = self._storage.get(index_key)
+        if paths:
+            if isinstance(paths, list):
+                paths = [p for p in paths if not p.startswith(f"{field}:{value}")]
+                if paths:
+                    self._storage.set(index_key, paths)
+                else:
+                    self._storage.delete(index_key)
 
 
