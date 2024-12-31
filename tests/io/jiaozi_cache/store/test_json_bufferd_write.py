@@ -989,6 +989,163 @@ class TestWriteBufferedJSONStorage:
         storage.flush()
         assert storage.get(key) == {"value": "3"}
 
+    def test_extended_data_types(self, storage):
+        """测试扩展的数据类型支持"""
+        test_data = {
+            # 数值类型
+            "complex": complex(1, 2),
+            "decimal": Decimal("3.14159"),
+            
+            # 集合类型
+            "set": {"a", "b", "c"},
+            "frozenset": frozenset(["x", "y", "z"]),
+            "tuple": (1, "test", 3.14),
+            
+            # 二进制类型
+            "bytes": b"hello world",
+            "bytearray": bytearray(b"test data"),
+            "memoryview": memoryview(b"view test"),
+            
+            # 其他类型
+            "range": range(1, 10, 2),
+            "path": Path("/test/path"),
+            "uuid": UUID("550e8400-e29b-41d4-a716-446655440000"),
+            
+            # 嵌套结构
+            "nested": {
+                "set_in_dict": {"nested", "set", "test"},
+                "tuple_in_list": [(1, 2), (3, 4)],
+                "mixed": {
+                    "bytes": b"nested bytes",
+                    "range": range(5),
+                    "complex": complex(3, 4)
+                }
+            }
+        }
+        
+        # 写入数据
+        storage.set("test_types", test_data)
+        storage.flush()
+        
+        # 读取并验证
+        loaded_data = storage.get("test_types")
+        assert loaded_data is not None
+        
+        # 验证各种类型
+        assert loaded_data["complex"] == complex(1, 2)
+        assert loaded_data["decimal"] == Decimal("3.14159")
+        
+        # 集合类型
+        assert loaded_data["set"] == {"a", "b", "c"}
+        assert loaded_data["frozenset"] == frozenset(["x", "y", "z"])
+        assert loaded_data["tuple"] == (1, "test", 3.14)
+        
+        # 二进制类型
+        assert loaded_data["bytes"] == b"hello world"
+        assert loaded_data["bytearray"] == bytearray(b"test data")
+        assert bytes(loaded_data["memoryview"]) == b"view test"
+        
+        # 其他类型
+        assert loaded_data["range"] == range(1, 10, 2)
+        assert loaded_data["path"] == Path("/test/path")
+        assert loaded_data["uuid"] == UUID("550e8400-e29b-41d4-a716-446655440000")
+        
+        # 嵌套结构
+        assert loaded_data["nested"]["set_in_dict"] == {"nested", "set", "test"}
+        assert loaded_data["nested"]["tuple_in_list"] == [(1, 2), (3, 4)]
+        assert loaded_data["nested"]["mixed"]["bytes"] == b"nested bytes"
+        assert loaded_data["nested"]["mixed"]["range"] == range(5)
+        assert loaded_data["nested"]["mixed"]["complex"] == complex(3, 4)
+
+    def test_collection_modifications(self, storage):
+        """测试集合类型的修改操作"""
+        # 初始数据
+        data = {
+            "set": {"a", "b", "c"},
+            "list_of_sets": [{"x", "y"}, {"1", "2"}],
+            "dict_of_sets": {
+                "set1": {"p", "q"},
+                "set2": {"m", "n"}
+            }
+        }
+        
+        # 写入初始数据
+        storage.set("collections", data)
+        storage.flush()
+        
+        # 修改数据
+        loaded = storage.get("collections")
+        loaded["set"].add("d")
+        loaded["list_of_sets"][0].add("z")
+        loaded["dict_of_sets"]["set1"].add("r")
+        
+        # 保存修改
+        storage.set("collections", loaded)
+        storage.flush()
+        
+        # 验证修改
+        final = storage.get("collections")
+        assert final["set"] == {"a", "b", "c", "d"}
+        assert final["list_of_sets"][0] == {"x", "y", "z"}
+        assert final["dict_of_sets"]["set1"] == {"p", "q", "r"}
+
+    def test_binary_data_operations(self, storage):
+        """测试二进制数据操作"""
+        # 测试不同大小的二进制数据
+        binary_data = {
+            "small": b"Hello World",
+            "medium": bytes([i % 256 for i in range(1000)]),
+            "large": bytes([i % 256 for i in range(10000)]),
+            "mixed": {
+                "bytes": b"test",
+                "bytearray": bytearray(b"test array"),
+                "view": memoryview(b"test view")
+            }
+        }
+        
+        # 写入数据
+        storage.set("binary", binary_data)
+        storage.flush()
+        
+        # 读取并验证
+        loaded = storage.get("binary")
+        assert loaded["small"] == b"Hello World"
+        assert len(loaded["medium"]) == 1000
+        assert len(loaded["large"]) == 10000
+        assert loaded["mixed"]["bytes"] == b"test"
+        assert loaded["mixed"]["bytearray"] == bytearray(b"test array")
+        assert bytes(loaded["mixed"]["view"]) == b"test view"
+
+    def test_numeric_precision(self, storage):
+        """测试数值精度"""
+        numbers = {
+            "complex": [
+                complex(1.23456789, -9.87654321),
+                complex(1e-10, 1e10)
+            ],
+            "decimal": [
+                Decimal("3.141592653589793238462643383279"),
+                Decimal("1.234567890123456789"),
+                Decimal("9999999999999999999999999999.99999999999999999999")
+            ]
+        }
+        
+        # 写入数据
+        storage.set("numbers", numbers)
+        storage.flush()
+        
+        # 读取并验证
+        loaded = storage.get("numbers")
+        
+        # 验证复数
+        for i, c in enumerate(numbers["complex"]):
+            assert abs(loaded["complex"][i].real - c.real) < 1e-10
+            assert abs(loaded["complex"][i].imag - c.imag) < 1e-10
+        
+        # 验证高精度小数
+        for i, d in enumerate(numbers["decimal"]):
+            assert loaded["decimal"][i] == d
+
     @classmethod
     def teardown_class(cls):
         """测试类结束时的清理工作"""

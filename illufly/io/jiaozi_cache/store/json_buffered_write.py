@@ -24,33 +24,69 @@ class JSONSerializationError(Exception):
 
 class JSONEncoder(json.JSONEncoder):
     """自定义JSON编码器"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.logger = logging.getLogger(__name__)
+
     def default(self, obj: Any) -> Any:
-        logger = logging.getLogger('illufly.io.jiaozi_cache.store.json_buffered_write')
-        logger.debug(f"尝试编码对象: {type(obj)}")
+        """处理非JSON标准类型的对象"""
+        if isinstance(obj, tuple):
+            self.logger.debug(f"处理 tuple 对象: {obj}")
+            return {"__type__": "tuple", "value": list(obj)}
         
-        # 处理常见的内置类型
+        # 基础类型处理器
         type_handlers = {
+            # 日期时间类型
             (datetime, date): lambda x: {"__type__": "datetime", "value": x.isoformat()},
+            
+            # 数值类型
             Decimal: lambda x: {"__type__": "decimal", "value": str(x)},
+            complex: lambda x: {"__type__": "complex", "value": [x.real, x.imag]},
+            
+            # 标识符类型
             UUID: lambda x: {"__type__": "uuid", "value": str(x)},
-            Enum: lambda x: {
+            
+            # 路径类型
+            Path: lambda x: {
+                "__type__": "path",
+                "class": f"{x.__class__.__module__}.{x.__class__.__name__}",
+                "value": str(x)
+            },
+            
+            # 集合类型
+            set: lambda x: {"__type__": "set", "value": list(x)},
+            frozenset: lambda x: {"__type__": "frozenset", "value": list(x)},
+            
+            # 特殊类型
+            bytes: lambda x: {"__type__": "bytes", "value": x.hex()},
+            bytearray: lambda x: {"__type__": "bytearray", "value": bytes(x).hex()},
+            memoryview: lambda x: {"__type__": "memoryview", "value": bytes(x).hex()},
+            range: lambda x: {"__type__": "range", "value": [x.start, x.stop, x.step]},
+        }
+        
+        # 检查类型是否在处理器中
+        for type_key, handler in type_handlers.items():
+            if isinstance(type_key, tuple):
+                if isinstance(obj, type_key):
+                    self.logger.debug(f"使用内置类型处理器: {type(obj)}")
+                    return handler(obj)
+            elif isinstance(obj, type_key):
+                self.logger.debug(f"使用内置类型处理器: {type(obj)}")
+                return handler(obj)
+        
+        # 枚举类型特殊处理
+        if isinstance(obj, Enum):
+            self.logger.debug("处理枚举类型")
+            return {
                 "__type__": "enum",
                 "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}",
                 "value": obj.value,
                 "name": obj.name
-            },
-            Path: lambda x: {"__type__": "path", "value": str(x)}
-        }
-        
-        # 检查内置类型
-        for types, handler in type_handlers.items():
-            if isinstance(obj, types):
-                logger.debug(f"使用内置类型处理器: {types}")
-                return handler(obj)
-        
+            }
+            
         # 检查是否为 Pydantic 模型
         if hasattr(obj, '__class__') and hasattr(obj.__class__, 'model_dump'):
-            logger.debug("处理 Pydantic 模型")
+            self.logger.debug("处理 Pydantic 模型")
             return {
                 "__type__": "model",
                 "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}",
@@ -59,7 +95,7 @@ class JSONEncoder(json.JSONEncoder):
             
         # 检查是否为 dataclass
         if hasattr(obj, '__class__') and hasattr(obj.__class__, '__dataclass_fields__'):
-            logger.debug("处理 dataclass")
+            self.logger.debug("处理 dataclass")
             from dataclasses import asdict
             try:
                 return {
@@ -68,17 +104,17 @@ class JSONEncoder(json.JSONEncoder):
                     "value": asdict(obj)
                 }
             except Exception as e:
-                logger.error(f"dataclass 序列化失败: {e}")
+                self.logger.error(f"dataclass 序列化失败: {e}")
                 raise JSONSerializationError(f"dataclass 序列化失败: {e}")
-            
-        # 尝试使用 __dict__ 序列化，但要更严格的检查
+        
+        # 尝试使用 __dict__ 序列化
         if hasattr(obj, '__dict__'):
-            logger.debug("尝试使用 __dict__ 序列化")
+            self.logger.debug("尝试使用 __dict__ 序列化")
             try:
                 dict_value = obj.__dict__
                 # 空字典不算作可序列化
                 if not dict_value:
-                    logger.error(f"对象的 __dict__ 为空: {type(obj)}")
+                    self.logger.error(f"对象的 __dict__ 为空: {type(obj)}")
                     raise JSONSerializationError(f"对象的 __dict__ 为空: {type(obj)}")
                     
                 # 尝试序列化，确保所有字段都可序列化
@@ -94,10 +130,10 @@ class JSONEncoder(json.JSONEncoder):
                     "value": dict_value
                 }
             except Exception as e:
-                logger.error(f"__dict__ 序列化失败: {e}")
+                self.logger.error(f"__dict__ 序列化失败: {e}")
                 raise JSONSerializationError(f"对象的 __dict__ 不可序列化: {e}")
         
-        logger.error(f"无法序列化类型: {type(obj)}")
+        self.logger.error(f"无法序列化类型: {type(obj)}")
         raise JSONSerializationError(f"无法序列化类型 {type(obj).__name__}")
 
 class TimeSeriesGranularity(Enum):
@@ -197,74 +233,170 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
 
     def _serialize(self, data: Any) -> str:
         """序列化数据为JSON字符串"""
-        self.logger.debug(f"尝试序列化数据: {type(data)}")
         try:
-            result = json.dumps(data, cls=JSONEncoder, ensure_ascii=False, indent=2)
-            self.logger.debug("序列化成功")
-            return result
+            # 预处理，确保 tuple 被正确标记
+            def preprocess(obj):
+                if isinstance(obj, tuple):
+                    return {"__type__": "tuple", "value": list(obj)}
+                elif isinstance(obj, dict):
+                    return {k: preprocess(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [preprocess(x) for x in obj]
+                return obj
+            
+            processed_data = preprocess(data)
+            return json.dumps(processed_data, cls=JSONEncoder, ensure_ascii=False, indent=2)
         except Exception as e:
-            self.logger.error(f"序列化失败: {e}")
             raise JSONSerializationError(f"序列化失败: {e}")
 
     def _deserialize(self, json_str: str) -> Any:
         """反序列化JSON字符串为Python对象"""
         try:
-            type_handlers = {
-                "datetime": lambda x: datetime.fromisoformat(x),
-                "decimal": lambda x: Decimal(x),
-                "uuid": lambda x: UUID(x),
-                "path": lambda x: Path(x),
-                "set": lambda x: set(x),
-                "tuple": lambda x: tuple(x)
-            }
-            
             def object_hook(obj: Dict) -> Any:
+                if not isinstance(obj, dict):
+                    return obj
+                    
                 if "__type__" not in obj:
+                    self.logger.debug(f"无类型标记的对象: {obj}")
                     return obj
                     
                 obj_type = obj["__type__"]
                 value = obj["value"]
+                self.logger.debug(f"反序列化类型 {obj_type}: {value}")
                 
-                if obj_type in type_handlers:
-                    return type_handlers[obj_type](value)
+                type_handlers = {
+                    # 保持所有现有的类型处理器不变
+                    "datetime": lambda x: datetime.fromisoformat(x),
+                    "decimal": lambda x: Decimal(x),
+                    "complex": lambda x: complex(x[0], x[1]),
+                    "uuid": lambda x: UUID(x),
+                    "path": lambda x: self._deserialize_path(obj),
+                    "set": lambda x: set(x),
+                    "frozenset": lambda x: frozenset(x),
+                    "tuple": lambda x: tuple(x),
+                    "bytes": lambda x: bytes.fromhex(x),
+                    "bytearray": lambda x: bytearray.fromhex(x),
+                    "memoryview": lambda x: memoryview(bytes.fromhex(x)),
+                    "range": lambda x: range(x[0], x[1], x[2]),
+                }
                 
-                if obj_type in ("dataclass", "custom", "pydantic", "object"):
-                    try:
-                        module_path, class_name = obj["class"].rsplit('.', 1)
-                        import importlib
-                        module = importlib.import_module(module_path)
-                        cls = getattr(module, class_name)
-                        
-                        if obj_type == "pydantic" and issubclass(cls, BaseModel):
-                            return cls.model_validate(value)
-                            
-                        return cls(**value)
-                    except (ImportError, AttributeError) as e:
-                        self.logger.warning(
-                            "无法恢复类型 %s: %s，返回原始值", 
-                            obj["class"], e
-                        )
-                        return value
+                handler = type_handlers.get(obj_type)
+                if handler:
+                    return handler(value)
                 
+                # 处理复杂类型
                 if obj_type == "enum":
-                    try:
-                        module_path, class_name = obj["class"].rsplit('.', 1)
-                        import importlib
-                        module = importlib.import_module(module_path)
-                        enum_class = getattr(module, class_name)
-                        return enum_class[obj["name"]]
-                    except (ImportError, AttributeError, KeyError) as e:
-                        self.logger.warning(
-                            "无法恢复枚举类型 %s: %s，返回原始值", 
-                            obj["class"], e
-                        )
-                        return obj["value"]
+                    return self._deserialize_enum(obj)
+                elif obj_type == "model":
+                    return self._deserialize_model(obj)
+                elif obj_type == "dataclass":
+                    return self._deserialize_dataclass(obj)
+                elif obj_type == "object":
+                    return self._deserialize_object(obj)
                 
                 return obj
-                
+
             return json.loads(json_str, object_hook=object_hook)
         except Exception as e:
+            self.logger.error(f"反序列化失败: {e}")
             raise JSONSerializationError(f"反序列化失败: {e}")
+
+    def _deserialize_enum(self, obj: Dict[str, Any]) -> Any:
+        """反序列化枚举类型"""
+        try:
+            module_path, class_name = obj["class"].rsplit('.', 1)
+            import importlib
+            module = importlib.import_module(module_path)
+            enum_class = getattr(module, class_name)
+            return enum_class[obj["name"]]
+        except (ImportError, AttributeError, KeyError) as e:
+            self.logger.warning(
+                "无法恢复枚举类型 %s: %s，返回原始值", 
+                obj["class"], e
+            )
+            return obj["value"]
+
+    def _deserialize_model(self, obj: Dict[str, Any]) -> Any:
+        """反序列化 Pydantic 模型"""
+        try:
+            module_path, class_name = obj["class"].rsplit('.', 1)
+            import importlib
+            module = importlib.import_module(module_path)
+            cls = getattr(module, class_name)
+            if issubclass(cls, BaseModel):
+                return cls.model_validate(obj["value"])
+            return cls(**obj["value"])
+        except Exception as e:
+            self.logger.warning(
+                "无法恢复模型 %s: %s，返回原始值", 
+                obj["class"], e
+            )
+            return obj["value"]
+
+    def _deserialize_dataclass(self, obj: Dict[str, Any]) -> Any:
+        """反序列化 dataclass"""
+        try:
+            module_path, class_name = obj["class"].rsplit('.', 1)
+            import importlib
+            module = importlib.import_module(module_path)
+            cls = getattr(module, class_name)
+            return cls(**obj["value"])
+        except Exception as e:
+            self.logger.warning(
+                "无法恢复 dataclass %s: %s，返回原始值", 
+                obj["class"], e
+            )
+            return obj["value"]
+
+    def _deserialize_object(self, obj: Dict[str, Any]) -> Any:
+        """反序列化普通对象"""
+        try:
+            module_path, class_name = obj["class"].rsplit('.', 1)
+            import importlib
+            module = importlib.import_module(module_path)
+            cls = getattr(module, class_name)
+            instance = cls()
+            for k, v in obj["value"].items():
+                setattr(instance, k, v)
+            return instance
+        except Exception as e:
+            self.logger.warning(
+                "无法恢复对象 %s: %s，返回原始值", 
+                obj["class"], e
+            )
+            return obj["value"]
+
+    def _deserialize_path(self, obj: Dict[str, Any]) -> Path:
+        """反序列化 Path 对象
+        
+        Args:
+            obj: 包含路径信息的字典，格式为:
+                {
+                    "__type__": "path",
+                    "class": "pathlib.PosixPath",
+                    "value": "/test/path"
+                }
+                
+        Returns:
+            Path: 反序列化后的 Path 对象
+        """
+        try:
+            path_str = obj["value"]
+            self.logger.debug(f"反序列化路径: {path_str}")
+            
+            # 根据类名选择正确的 Path 类
+            class_name = obj["class"]
+            if class_name == "pathlib.PosixPath":
+                return Path(path_str)
+            elif class_name == "pathlib.WindowsPath":
+                return WindowsPath(path_str)
+            else:
+                self.logger.warning(f"未知的路径类型 {class_name}，使用默认 Path")
+                return Path(path_str)
+            
+        except Exception as e:
+            self.logger.error(f"路径反序列化失败: {e}")
+            raise JSONSerializationError(f"路径反序列化失败: {e}")
 
     def list_keys(self) -> List[str]:
         """列出所有的键"""
@@ -390,29 +522,36 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
             if len(self._dirty_keys) >= self._flush_threshold:
                 self.logger.debug("达到刷新阈值，执行刷新操作")
                 self.flush()
+                # 在刷新后不需要重置 _modify_count，因为 flush() 已经重置了
             
             self.logger.debug(f"键 {key} 写入完成")
 
     def get(self, key: str) -> Optional[T]:
         """读取数据"""
-        # 先检查是否被标记为删除
         with self._buffer_lock:
             if key in self._deleted_keys:
+                # self.logger.debug(f"键 {key} 在删除标记中")
                 return None
             if key in self._memory_buffer:
+                # self.logger.debug(f"从内存缓冲区读取键 {key}")
                 return self._memory_buffer[key]
         
-        # 从文件读取
         path = self._get_storage_path(key)
+        # self.logger.debug(f"尝试从文件读取: {path}")
         if not path.exists():
+            self.logger.debug(f"文件不存在: {path}")
             return None
-            
+        
         try:
-            with path.open('r') as f:
-                data = json.load(f)
+            with path.open('r', encoding='utf-8') as f:
                 if self._strategy == StorageStrategy.INDIVIDUAL:
-                    return self._deserialize(json.dumps(data))  # 确保类型恢复
+                    json_str = f.read()
+                    # self.logger.debug(f"读取到的文件内容: {json_str}")
+                    result = self._deserialize(json_str)
+                    # self.logger.debug(f"反序列化结果: {result}")
+                    return result
                 else:
+                    data = json.load(f)
                     value = data.get(key)
                     return self._deserialize(json.dumps(value)) if value is not None else None
         except Exception as e:
@@ -445,36 +584,45 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
     def flush(self) -> None:
         """将缓冲区数据写入磁盘"""
         with self._buffer_lock:
+            # self.logger.debug(f"开始刷新操作: dirty_keys={self._dirty_keys}, buffer_keys={list(self._memory_buffer.keys())}")
             if not (self._dirty_keys or self._deleted_keys):
+                # self.logger.debug("没有需要刷新的数据")
                 return
 
-            start_time = time.time()
+            self._is_flushing = True
             try:
                 # 1. 处理需要写入的数据
-                file_data: Dict[Path, Dict] = {}
-                for key in self._dirty_keys:
-                    if key in self._memory_buffer:  # 确保键存在
-                        path = self._get_storage_path(key)
-                        try:
-                            if self._strategy == StorageStrategy.INDIVIDUAL:
+                if self._strategy == StorageStrategy.INDIVIDUAL:
+                    # self.logger.debug("使用 INDIVIDUAL 策略刷新")
+                    for key in self._dirty_keys:
+                        if key in self._memory_buffer:  # 确保键存在
+                            path = self._get_storage_path(key)
+                            # self.logger.debug(f"处理键 {key}, 写入路径: {path}")
+                            try:
                                 path.parent.mkdir(parents=True, exist_ok=True)
                                 with path.open('w', encoding='utf-8') as f:
-                                    json.dump(
-                                        self._memory_buffer[key],
-                                        f,
-                                        cls=JSONEncoder,
-                                        ensure_ascii=False,
-                                        indent=2
-                                    )
-                            else:
-                                if path not in file_data:
+                                    data = self._memory_buffer[key]
+                                    json_str = self._serialize(data)
+                                    # self.logger.debug(f"序列化数据: {json_str}")
+                                    f.write(json_str)
+                                    # self.logger.debug(f"文件写入成功: {path}")
+                            except Exception as e:
+                                self.logger.error(f"写入文件失败: {path}, 错误: {e}")
+                                raise
+                else:
+                    # 对于非 INDIVIDUAL 策略，先收集要写入的数据
+                    file_data = {}  # 在这里定义 file_data
+                    for key in self._dirty_keys:
+                        if key in self._memory_buffer:
+                            path = self._get_storage_path(key)
+                            if path not in file_data:
+                                # 如果文件已存在，先读取现有数据
+                                if path.exists():
+                                    with path.open('r', encoding='utf-8') as f:
+                                        file_data[path] = json.load(f)
+                                else:
                                     file_data[path] = {}
-                                    if path.exists():
-                                        with path.open('r', encoding='utf-8') as f:
-                                            file_data[path] = json.load(f)
-                                file_data[path][key] = self._memory_buffer[key]
-                        except Exception as e:
-                            raise JSONSerializationError(f"Failed to serialize data for key '{key}': {e}")
+                            file_data[path][key] = self._memory_buffer[key]
 
                 # 2. 处理需要删除的数据
                 for key in self._deleted_keys:
@@ -498,29 +646,26 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
                                     path.unlink()
 
                 # 3. 写入共享文件
-                for path, data in file_data.items():
-                    if data:  # 只写入非空数据
-                        path.parent.mkdir(parents=True, exist_ok=True)
-                        with path.open('w', encoding='utf-8') as f:
-                            json.dump(data, f, cls=JSONEncoder, ensure_ascii=False, indent=2)
+                if not self._strategy == StorageStrategy.INDIVIDUAL and file_data:
+                    for path, data in file_data.items():
+                        if data:  # 只写入非空数据
+                            path.parent.mkdir(parents=True, exist_ok=True)
+                            with path.open('w', encoding='utf-8') as f:
+                                json.dump(data, f, cls=JSONEncoder, ensure_ascii=False, indent=2)
 
-                # 更新性能指标
-                flush_time = time.time() - start_time
-                self._write_times.append(flush_time)
-                if len(self._write_times) > 1000:
-                    self._write_times = self._write_times[-1000:]
-
-                self._flush_count += 1
-                self._last_flush_time = time.time()
-
-                # 清空缓冲区
-                self._memory_buffer.clear()
+                # 更新状态
                 self._dirty_keys.clear()
                 self._deleted_keys.clear()
+                self._memory_buffer.clear()  # 清空内存缓冲区
+                self._flush_count += 1
+                self._last_flush_time = time.time()
+                self.logger.debug("刷新操作完成")
 
             except Exception as e:
-                self.logger.error(f"Flush failed: {e}")
+                self.logger.error(f"刷新失败: {e}")
                 raise
+            finally:
+                self._is_flushing = False
 
     def _start_flush_timer(self):
         """启动定时刷新计时器"""
