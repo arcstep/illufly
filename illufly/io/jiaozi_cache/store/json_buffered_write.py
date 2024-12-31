@@ -25,63 +25,80 @@ class JSONSerializationError(Exception):
 class JSONEncoder(json.JSONEncoder):
     """自定义JSON编码器"""
     def default(self, obj: Any) -> Any:
+        logger = logging.getLogger('illufly.io.jiaozi_cache.store.json_buffered_write')
+        logger.debug(f"尝试编码对象: {type(obj)}")
+        
         # 处理常见的内置类型
         type_handlers = {
             (datetime, date): lambda x: {"__type__": "datetime", "value": x.isoformat()},
             Decimal: lambda x: {"__type__": "decimal", "value": str(x)},
             UUID: lambda x: {"__type__": "uuid", "value": str(x)},
-            Enum: lambda x: {"__type__": "enum", "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}", "value": obj.value, "name": obj.name},
+            Enum: lambda x: {
+                "__type__": "enum",
+                "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}",
+                "value": obj.value,
+                "name": obj.name
+            },
             Path: lambda x: {"__type__": "path", "value": str(x)}
         }
         
         # 检查内置类型
         for types, handler in type_handlers.items():
             if isinstance(obj, types):
+                logger.debug(f"使用内置类型处理器: {types}")
                 return handler(obj)
-                
-        # 处理Pydantic模型
-        if BaseModel and isinstance(obj, BaseModel):
+        
+        # 检查是否为 Pydantic 模型
+        if hasattr(obj, '__class__') and hasattr(obj.__class__, 'model_dump'):
+            logger.debug("处理 Pydantic 模型")
             return {
-                "__type__": "pydantic",
-                "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}", 
+                "__type__": "model",
+                "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}",
                 "value": obj.model_dump()
             }
-        
-        # 处理 dataclass
-        if hasattr(obj, '__dataclass_fields__'):
-            return {
-                "__type__": "dataclass",
-                "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}",
-                "value": {k: getattr(obj, k) for k in obj.__dataclass_fields__}
-            }
             
-        # 处理带 to_dict 方法的对象
-        if hasattr(obj, 'to_dict'):
-            return {
-                "__type__": "custom",
-                "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}",
-                "value": obj.to_dict()
-            }
+        # 检查是否为 dataclass
+        if hasattr(obj, '__class__') and hasattr(obj.__class__, '__dataclass_fields__'):
+            logger.debug("处理 dataclass")
+            from dataclasses import asdict
+            try:
+                return {
+                    "__type__": "dataclass",
+                    "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}",
+                    "value": asdict(obj)
+                }
+            except Exception as e:
+                logger.error(f"dataclass 序列化失败: {e}")
+                raise JSONSerializationError(f"dataclass 序列化失败: {e}")
             
+        # 尝试使用 __dict__ 序列化，但要更严格的检查
         if hasattr(obj, '__dict__'):
-            return {
-                "__type__": "object", 
-                "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}",
-                "value": obj.__dict__
-            }
-            
-        # 添加元组和集合处理
-        if isinstance(obj, tuple):
-            return {"__type__": "tuple", "value": list(obj)}
-            
-        if isinstance(obj, set):
-            return {"__type__": "set", "value": list(obj)}
-            
-        # 尝试直接序列化
-        try:
-            return super().default(obj)
-        except Exception as e:
-            raise JSONSerializationError(f"无法序列化类型 {type(obj).__name__}: {e}")
+            logger.debug("尝试使用 __dict__ 序列化")
+            try:
+                dict_value = obj.__dict__
+                # 空字典不算作可序列化
+                if not dict_value:
+                    logger.error(f"对象的 __dict__ 为空: {type(obj)}")
+                    raise JSONSerializationError(f"对象的 __dict__ 为空: {type(obj)}")
+                    
+                # 尝试序列化，确保所有字段都可序列化
+                serialized = json.dumps(dict_value, cls=JSONEncoder)
+                deserialized = json.loads(serialized)
+                # 确保序列化后的数据与原始数据结构一致
+                if not isinstance(deserialized, dict) or deserialized != dict_value:
+                    raise JSONSerializationError("序列化结果与原始数据不一致")
+                    
+                return {
+                    "__type__": "object",
+                    "class": f"{obj.__class__.__module__}.{obj.__class__.__name__}",
+                    "value": dict_value
+                }
+            except Exception as e:
+                logger.error(f"__dict__ 序列化失败: {e}")
+                raise JSONSerializationError(f"对象的 __dict__ 不可序列化: {e}")
+        
+        logger.error(f"无法序列化类型: {type(obj)}")
+        raise JSONSerializationError(f"无法序列化类型 {type(obj).__name__}")
 
 class TimeSeriesGranularity(Enum):
     """时间序列粒度"""
@@ -161,6 +178,8 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
         self._flush_count = 0
         self._write_times: List[float] = []
         
+        self._deleted_keys = set()  # 新增删除标记集合
+        
         self.logger.info(
             "初始化存储后端: dir=%s, segment=%s, strategy=%s, threshold=%d, interval=%d",
             self._data_dir, self._segment, self._strategy, self._flush_threshold, self._flush_interval
@@ -178,9 +197,13 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
 
     def _serialize(self, data: Any) -> str:
         """序列化数据为JSON字符串"""
+        self.logger.debug(f"尝试序列化数据: {type(data)}")
         try:
-            return json.dumps(data, cls=JSONEncoder, ensure_ascii=False, indent=2)
+            result = json.dumps(data, cls=JSONEncoder, ensure_ascii=False, indent=2)
+            self.logger.debug("序列化成功")
+            return result
         except Exception as e:
+            self.logger.error(f"序列化失败: {e}")
             raise JSONSerializationError(f"序列化失败: {e}")
 
     def _deserialize(self, json_str: str) -> Any:
@@ -348,22 +371,38 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
 
     def set(self, key: str, value: T) -> None:
         """写入数据到缓冲区"""
+        self.logger.debug(f"开始写入键 {key} 的数据")
         with self._buffer_lock:
+            # 先尝试序列化，验证数据是否可序列化
+            try:
+                self.logger.debug("执行序列化检查")
+                self._serialize(value)
+            except Exception as e:
+                self.logger.error(f"写入键 {key} 失败: {e}")
+                raise JSONSerializationError(f"Failed to serialize data for key '{key}': {e}")
+            
+            self.logger.debug("序列化检查通过，写入缓冲区")
             self._memory_buffer[key] = value
             self._dirty_keys.add(key)
-            self._modify_count += 1  # 记录写入次数
+            self._deleted_keys.discard(key)
+            self._modify_count += 1
             
             if len(self._dirty_keys) >= self._flush_threshold:
+                self.logger.debug("达到刷新阈值，执行刷新操作")
                 self.flush()
+            
+            self.logger.debug(f"键 {key} 写入完成")
 
     def get(self, key: str) -> Optional[T]:
         """读取数据"""
-        # 先检查缓冲区
+        # 先检查是否被标记为删除
         with self._buffer_lock:
+            if key in self._deleted_keys:
+                return None
             if key in self._memory_buffer:
                 return self._memory_buffer[key]
         
-        # 从文件读取（文件系统操作不需要持有内存锁）
+        # 从文件读取
         path = self._get_storage_path(key)
         if not path.exists():
             return None
@@ -383,32 +422,13 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
     def delete(self, key: str) -> None:
         """删除数据"""
         with self._buffer_lock:
-            if key in self._memory_buffer:
-                del self._memory_buffer[key]
-                self._dirty_keys.discard(key)
-                self._modify_count += 1  # 删除也计入修改次数
-            
-            path = self._get_storage_path(key)
-            if not path.exists():
-                return
-                
-            try:
-                if self._strategy == StorageStrategy.INDIVIDUAL:
-                    shutil.rmtree(path.parent)
-                else:
-                    with path.open('r') as f:
-                        data = json.load(f)
-                    
-                    if key in data:
-                        del data[key]
-                        
-                        if data:
-                            with path.open('w') as f:
-                                json.dump(data, f, ensure_ascii=False, indent=2)
-                        else:
-                            path.unlink()
-            except Exception as e:
-                self.logger.error(f"删除数据失败: {e}")
+            # 从缓冲区移除
+            self._memory_buffer.pop(key, None)
+            # 从脏数据集合中移除
+            self._dirty_keys.discard(key)
+            # 添加到删除标记集合
+            self._deleted_keys.add(key)
+            self._modify_count += 1
 
     def _flush_to_disk(self) -> None:
         """将缓冲区数据写入磁盘的内部方法"""
@@ -425,67 +445,79 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
     def flush(self) -> None:
         """将缓冲区数据写入磁盘"""
         with self._buffer_lock:
-            if not self._dirty_keys:
+            if not (self._dirty_keys or self._deleted_keys):
                 return
 
             start_time = time.time()
             try:
+                # 1. 处理需要写入的数据
                 file_data: Dict[Path, Dict] = {}
-                
                 for key in self._dirty_keys:
+                    if key in self._memory_buffer:  # 确保键存在
+                        path = self._get_storage_path(key)
+                        try:
+                            if self._strategy == StorageStrategy.INDIVIDUAL:
+                                path.parent.mkdir(parents=True, exist_ok=True)
+                                with path.open('w', encoding='utf-8') as f:
+                                    json.dump(
+                                        self._memory_buffer[key],
+                                        f,
+                                        cls=JSONEncoder,
+                                        ensure_ascii=False,
+                                        indent=2
+                                    )
+                            else:
+                                if path not in file_data:
+                                    file_data[path] = {}
+                                    if path.exists():
+                                        with path.open('r', encoding='utf-8') as f:
+                                            file_data[path] = json.load(f)
+                                file_data[path][key] = self._memory_buffer[key]
+                        except Exception as e:
+                            raise JSONSerializationError(f"Failed to serialize data for key '{key}': {e}")
+
+                # 2. 处理需要删除的数据
+                for key in self._deleted_keys:
                     path = self._get_storage_path(key)
-                    
-                    try:
+                    if path.exists():
                         if self._strategy == StorageStrategy.INDIVIDUAL:
-                            path.parent.mkdir(parents=True, exist_ok=True)
-                            with path.open('w', encoding='utf-8') as f:
-                                # 使用自定义编码器
-                                json.dump(
-                                    self._memory_buffer[key], 
-                                    f, 
-                                    cls=JSONEncoder,  # 使用自定义编码器
-                                    ensure_ascii=False, 
-                                    indent=2
-                                )
+                            if path.exists():
+                                path.unlink()
+                            if path.parent.exists() and not any(path.parent.iterdir()):
+                                path.parent.rmdir()
                         else:
-                            if path not in file_data:
-                                file_data[path] = {}
-                                if path.exists():
-                                    with path.open('r', encoding='utf-8') as f:
-                                        file_data[path] = json.load(f)
-                            file_data[path][key] = self._memory_buffer[key]
-                    except TypeError as e:
-                        raise JSONSerializationError(f"Failed to serialize data for key '{key}': {e}")
-                
-                # 写入共享文件
+                            if path in file_data:
+                                file_data[path].pop(key, None)
+                            elif path.exists():
+                                with path.open('r', encoding='utf-8') as f:
+                                    data = json.load(f)
+                                data.pop(key, None)
+                                if data:
+                                    file_data[path] = data
+                                else:
+                                    path.unlink()
+
+                # 3. 写入共享文件
                 for path, data in file_data.items():
-                    try:
+                    if data:  # 只写入非空数据
                         path.parent.mkdir(parents=True, exist_ok=True)
                         with path.open('w', encoding='utf-8') as f:
-                            # 使用自定义编码器
-                            json.dump(
-                                data, 
-                                f, 
-                                cls=JSONEncoder,  # 使用自定义编码器
-                                ensure_ascii=False, 
-                                indent=2
-                            )
-                    except TypeError as e:
-                        raise JSONSerializationError(f"Failed to serialize data for path '{path}': {e}")
-                
+                            json.dump(data, f, cls=JSONEncoder, ensure_ascii=False, indent=2)
+
                 # 更新性能指标
                 flush_time = time.time() - start_time
                 self._write_times.append(flush_time)
                 if len(self._write_times) > 1000:
                     self._write_times = self._write_times[-1000:]
-                
+
                 self._flush_count += 1
                 self._last_flush_time = time.time()
-                
+
                 # 清空缓冲区
                 self._memory_buffer.clear()
                 self._dirty_keys.clear()
-                
+                self._deleted_keys.clear()
+
             except Exception as e:
                 self.logger.error(f"Flush failed: {e}")
                 raise

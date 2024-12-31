@@ -8,6 +8,7 @@ from datetime import datetime, date
 from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel
+import logging
 
 from illufly.io.jiaozi_cache import (
     WriteBufferedJSONStorage,
@@ -35,6 +36,21 @@ class UserProfile(BaseModel):
     addresses: List[UserAddress]
     is_active: bool = True
     
+@pytest.fixture(autouse=True)
+def setup_logging():
+    """设置测试时的日志级别"""
+    logger = logging.getLogger('illufly.io.jiaozi_cache.store.json_buffered_write')
+    logger.setLevel(logging.DEBUG)
+    # 添加控制台处理器
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    yield
+    # 清理处理器
+    logger.handlers.clear()
+
 @pytest.fixture
 def temp_dir(tmp_path):
     """创建临时目录"""
@@ -323,24 +339,73 @@ class TestWriteBufferedJSONStorage:
 
     def test_error_handling(self, storage):
         """测试错误处理"""
+        logger = logging.getLogger('illufly.io.jiaozi_cache.store.json_buffered_write')
+        
         # 创建一个不可JSON序列化的对象
         class UnserializableObject:
             pass
         
         unserializable_data = {"key": UnserializableObject()}
+        logger.debug(f"尝试序列化数据: {unserializable_data}")
         
-        # 写入不可序列化的数据
-        storage.set("error_key", unserializable_data)
-        
-        # 验证抛出正确的异常
+        # 方案1: 在set时就检查序列化
         with pytest.raises(JSONSerializationError) as exc_info:
-            storage.flush()
+            logger.debug("开始执行 set 操作")
+            storage.set("error_key", unserializable_data)
+            logger.debug("set 操作完成")
         
-        # 验证错误信息
+        logger.debug(f"捕获到的异常信息: {exc_info.value if 'value' in dir(exc_info) else '无异常'}")
         assert "Failed to serialize" in str(exc_info.value)
+        
+        # 方案2: 或者在flush时检查序列化
+        # storage.set("error_key", unserializable_data)
+        # with pytest.raises(JSONSerializationError) as exc_info:
+        #     storage.flush()
+        # assert "Failed to serialize" in str(exc_info.value)
+        
+        # 验证错误数据未被存储
+        assert storage.get("error_key") is None
         
         # 清空错误数据，避免影响teardown
         storage.clear()
+
+    def test_error_handling_complex_data(self, storage):
+        """测试复杂数据结构的错误处理"""
+        # 测试嵌套的不可序列化对象
+        class UnserializableObject:
+            pass
+        
+        test_cases = [
+            # 嵌套在列表中
+            {"key": "list_test", "value": [1, UnserializableObject(), 3]},
+            # 嵌套在字典中
+            {"key": "dict_test", "value": {"normal": "value", "bad": UnserializableObject()}},
+            # 多层嵌套
+            {"key": "nested_test", "value": {"a": [{"b": UnserializableObject()}]}}
+        ]
+        
+        for test_case in test_cases:
+            with pytest.raises(JSONSerializationError) as exc_info:
+                storage.set(test_case["key"], test_case["value"])
+            assert "Failed to serialize" in str(exc_info.value)
+            assert storage.get(test_case["key"]) is None
+
+    def test_error_handling_partial_failure(self, storage):
+        """测试部分失败的情况"""
+        # 先写入一些正常数据
+        valid_data = {"key": "value"}
+        storage.set("valid_key", valid_data)
+        
+        # 尝试写入不可序列化的数据
+        class UnserializableObject:
+            pass
+        
+        with pytest.raises(JSONSerializationError):
+            storage.set("invalid_key", {"bad": UnserializableObject()})
+        
+        # 验证之前的有效数据不受影响
+        assert storage.get("valid_key") == valid_data
+        assert storage.get("invalid_key") is None
 
     def test_large_dataset(self, storage):
         """测试大数据集性能"""
@@ -770,6 +835,159 @@ class TestWriteBufferedJSONStorage:
         # 验证所有数据都正确写入
         all_keys = storage.list_keys()
         assert len(all_keys) == num_threads * num_operations
+
+    def test_delete_then_set(self, storage):
+        """测试先删除后写入的情况"""
+        key = "test_key"
+        initial_data = {"value": "initial"}
+        updated_data = {"value": "updated"}
+        
+        # 1. 先写入初始数据并刷新到磁盘
+        storage.set(key, initial_data)
+        storage.flush()
+        
+        # 2. 删除数据
+        storage.delete(key)
+        assert storage.get(key) is None  # 确认删除成功
+        
+        # 3. 重新写入新数据
+        storage.set(key, updated_data)
+        assert storage.get(key) == updated_data  # 应该能读取到新数据
+        
+        # 4. 刷新到磁盘后再次验证
+        storage.flush()
+        assert storage.get(key) == updated_data  # 刷新后应该仍能读取到新数据
+
+    def test_set_then_delete(self, storage):
+        """测试先修改后删除的情况"""
+        key = "test_key"
+        initial_data = {"value": "initial"}
+        updated_data = {"value": "updated"}
+        
+        # 1. 写入初始数据并刷新
+        storage.set(key, initial_data)
+        storage.flush()
+        
+        # 2. 修改数据但不刷新
+        storage.set(key, updated_data)
+        assert storage.get(key) == updated_data  # 确认修改生效
+        
+        # 3. 删除数据
+        storage.delete(key)
+        assert storage.get(key) is None  # 应该读不到数据
+        
+        # 4. 刷新到磁盘后再次验证
+        storage.flush()
+        assert storage.get(key) is None  # 刷新后仍应该读不到数据
+
+    def test_multiple_operations_sequence(self, storage):
+        """测试复杂的操作序列"""
+        key = "test_key"
+        data_sequence = [
+            {"value": "first"},
+            {"value": "second"},
+            {"value": "third"}
+        ]
+        
+        # 1. 写入初始数据
+        storage.set(key, data_sequence[0])
+        assert storage.get(key) == data_sequence[0]
+        
+        # 2. 删除数据
+        storage.delete(key)
+        assert storage.get(key) is None
+        
+        # 3. 写入新数据
+        storage.set(key, data_sequence[1])
+        assert storage.get(key) == data_sequence[1]
+        
+        # 4. 再次删除
+        storage.delete(key)
+        assert storage.get(key) is None
+        
+        # 5. 最后写入数据并刷新
+        storage.set(key, data_sequence[2])
+        storage.flush()
+        assert storage.get(key) == data_sequence[2]
+        
+        # 6. 清空内存缓冲后验证磁盘数据
+        storage._memory_buffer.clear()
+        assert storage.get(key) == data_sequence[2]
+
+    def test_concurrent_delete_set_operations(self, storage):
+        """测试并发的删除和写入操作"""
+        import threading
+        import time
+        
+        keys = [f"key_{i}" for i in range(5)]
+        operation_complete = threading.Event()
+        
+        def writer():
+            for key in keys:
+                storage.set(key, {"value": "initial"})
+                time.sleep(0.01)  # 模拟操作延迟
+                
+        def deleter():
+            # 等待部分写入完成
+            time.sleep(0.02)
+            for key in keys:
+                storage.delete(key)
+                time.sleep(0.01)
+                # 删除后立即写入新值
+                storage.set(key, {"value": "after_delete"})
+                
+        # 启动写入和删除线程
+        write_thread = threading.Thread(target=writer)
+        delete_thread = threading.Thread(target=deleter)
+        
+        write_thread.start()
+        delete_thread.start()
+        
+        write_thread.join()
+        delete_thread.join()
+        
+        # 验证最终状态
+        storage.flush()  # 确保所有操作都已写入磁盘
+        
+        for key in keys:
+            value = storage.get(key)
+            assert value is not None
+            assert value["value"] == "after_delete"
+
+    def test_delete_nonexistent_then_set(self, storage):
+        """测试删除不存在的键后再写入"""
+        key = "nonexistent_key"
+        
+        # 1. 删除不存在的键
+        storage.delete(key)
+        assert storage.get(key) is None
+        
+        # 2. 写入数据
+        data = {"value": "new"}
+        storage.set(key, data)
+        assert storage.get(key) == data
+        
+        # 3. 刷新并验证
+        storage.flush()
+        assert storage.get(key) == data
+
+    def test_rapid_set_delete_set(self, storage):
+        """测试快速的写入-删除-写入序列"""
+        key = "test_key"
+        
+        # 快速执行一系列操作
+        storage.set(key, {"value": "1"})
+        storage.delete(key)
+        storage.set(key, {"value": "2"})
+        storage.delete(key)
+        storage.set(key, {"value": "3"})
+        
+        # 验证最终状态
+        assert storage.get(key) == {"value": "3"}
+        
+        # 刷新后再次验证
+        storage.flush()
+        assert storage.get(key) == {"value": "3"}
 
     @classmethod
     def teardown_class(cls):
