@@ -179,6 +179,10 @@ class CachedJSONStorage(StorageBackend, Generic[T]):
         """
         return self._storage.list_keys()
 
+    def data_iterator(self) -> Iterator[Tuple[str, Any]]:
+        """迭代所有数据"""
+        return self._storage.data_iterator()
+
     def _invalidate_method_cache(self):
         """在写入操作后使方法缓存失效"""
         self.list_keys.cache_clear()

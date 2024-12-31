@@ -4,7 +4,7 @@ import threading
 import atexit
 import time
 from pathlib import Path
-from typing import Any, Optional, List, Dict, Type, Generic, TypeVar, Set, Union, Callable
+from typing import Any, Optional, List, Dict, Type, Generic, TypeVar, Set, Union, Callable, Iterator, Tuple
 from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
@@ -400,6 +400,11 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
 
     def list_keys(self) -> List[str]:
         """列出所有的键"""
+
+        # 先刷新缓冲区确保数据一致性
+        self.flush()
+
+        # 收集所有字段中的键
         keys = set()
         
         if self._strategy == StorageStrategy.INDIVIDUAL:
@@ -430,6 +435,58 @@ class WriteBufferedJSONStorage(StorageBackend, Generic[T]):
                     keys.update(data.keys())
                     
         return list(keys)
+
+    def data_iterator(self) -> Iterator[Tuple[str, Dict[str, Any]]]:
+        """返回索引数据迭代器
+        
+        Yields:
+            (key, field_values) 元组，其中：
+            - key: 文档ID
+            - field_values: 字段值字典，格式为 {field: value_set}
+                    value_set 是该文档在该字段上的所有索引值集合
+        """
+        # 先刷新缓冲区确保数据一致性
+        self.flush()
+        
+        pattern = f"{self._segment}*.json"
+        
+        if self._strategy == StorageStrategy.INDIVIDUAL:
+            if self._data_dir.exists():
+                for doc_dir in self._data_dir.iterdir():
+                    if doc_dir.is_dir():
+                        key = doc_dir.name
+                        data_file = doc_dir / f"{self._segment}.json"
+                        if data_file.exists():
+                            with data_file.open('r') as f:
+                                data = json.load(f)
+                                yield key, data
+                                
+        elif self._strategy == StorageStrategy.TIME_SERIES:
+            for json_file in self._data_dir.rglob(pattern):
+                if json_file.is_file():
+                    with json_file.open('r') as f:
+                        data = json.load(f)
+                        for key, values in data.items():
+                            yield key, values
+                            
+        elif self._strategy == StorageStrategy.SHARED:
+            for subdir in range(self._partition_count // 10 + 1):
+                path = self._data_dir / str(subdir)
+                if path.exists():
+                    for json_file in path.glob(pattern):
+                        if json_file.is_file():
+                            with json_file.open('r') as f:
+                                data = json.load(f)
+                                for key, values in data.items():
+                                    yield key, values
+                                    
+        else:  # SINGLE
+            path = self._data_dir / f"{self._segment}.json"
+            if path.exists():
+                with path.open('r') as f:
+                    data = json.load(f)
+                    for key, values in data.items():
+                        yield key, values
 
     def _get_time_based_path(self) -> Path:
         """获取基于时间的存储路径"""
