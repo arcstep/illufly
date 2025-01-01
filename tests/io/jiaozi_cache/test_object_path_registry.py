@@ -14,6 +14,11 @@ from illufly.io.jiaozi_cache import (
     PathTypeError,
     PathType
 )
+import logging
+
+# 配置日志
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # 测试用的类型定义
 class SimpleModel(BaseModel):
@@ -422,3 +427,210 @@ def test_namespace_management(manager):
     with pytest.raises(KeyError) as exc_info:
         manager.unregister_namespace("NonExistent")
     assert "命名空间 'NonExistent' 不存在" in str(exc_info.value)
+
+def test_list_str_path_registration(manager):
+    """测试 List[str] 类型的路径注册和访问"""
+    class TagContainer(BaseModel):
+        tags: List[str]
+        
+    container = TagContainer(tags=["tag1", "tag2"])
+    manager.register_object(container, namespace="TagContainer")
+    
+    # 测试整个列表的访问
+    tags_value, path_info = manager.extract_and_convert_value(container, "tags", namespace="TagContainer")
+    logger.info("提取的标签列表: value=%s, type=%s, path_info=%s", 
+                tags_value, type(tags_value), 
+                {'type_name': path_info.type_name, 'path_type': path_info.path_type})
+    assert isinstance(tags_value, list)
+    assert tags_value == ["tag1", "tag2"]
+    
+    # 测试单个元素的访问
+    tag_value, path_info = manager.extract_and_convert_value(container, "tags[0]", namespace="TagContainer")
+    logger.info("提取的单个标签: value=%s, type=%s, path_info=%s", 
+                tag_value, type(tag_value),
+                {'type_name': path_info.type_name, 'path_type': path_info.path_type})
+    assert isinstance(tag_value, str)
+    assert tag_value == "tag1"
+
+def test_list_type_handling(manager):
+    """测试各种列表类型的处理"""
+    class ComplexContainer(BaseModel):
+        # 基本列表类型
+        str_list: List[str]
+        int_list: List[int]
+        float_list: List[float]
+        
+        # 空列表
+        empty_list: List[str] = []
+        
+        # 嵌套列表
+        nested_list: List[List[int]]
+        
+        # 带默认值的列表
+        default_list: List[str] = ["default"]
+        
+        # 标签列表
+        tags: List[str]
+        
+        # 可选列表
+        optional_list: Optional[List[str]] = None
+
+    container = ComplexContainer(
+        str_list=["a", "b", "c"],
+        int_list=[1, 2, 3],
+        float_list=[1.1, 2.2, 3.3],
+        nested_list=[[1, 2], [3, 4]],
+        tags=["tag1", "tag2", "tag3"],
+        optional_list=None
+    )
+    
+    manager.register_object(container, namespace="ComplexContainer", path_configs={
+        "tags": {"is_tag_list": True, "max_tags": 2}
+    })
+    
+    # 测试基本列表访问
+    str_list, info = manager.extract_and_convert_value(container, "str_list", namespace="ComplexContainer")
+    assert isinstance(str_list, list)
+    assert info.type_name == "List[str]"
+    
+    # 测试列表元素访问
+    str_item, info = manager.extract_and_convert_value(container, "str_list[0]", namespace="ComplexContainer")
+    assert isinstance(str_item, str)
+    assert info.type_name == "str"
+    
+    # 测试空列表
+    empty_list, info = manager.extract_and_convert_value(container, "empty_list", namespace="ComplexContainer")
+    assert empty_list == []
+    assert info.type_name == "List[str]"
+    
+    # 测试嵌套列表
+    nested_list, info = manager.extract_and_convert_value(container, "nested_list[0]", namespace="ComplexContainer")
+    assert isinstance(nested_list, list)
+    assert info.type_name == "List[int]"
+    
+    # 测试标签列表截断
+    tags, info = manager.extract_and_convert_value(container, "tags", namespace="ComplexContainer")
+    assert len(tags) == 2
+    assert tags == ["tag1", "tag2"]
+    
+    # 测试可选列表
+    optional_list, info = manager.extract_and_convert_value(container, "optional_list", namespace="ComplexContainer")
+    assert optional_list is None
+
+def test_invalid_list_access(manager):
+    """测试无效的列表访问"""
+    class ListContainer(BaseModel):
+        items: List[str]
+    
+    container = ListContainer(items=["a", "b", "c"])
+    manager.register_object(container, namespace="ListContainer")
+    
+    # 测试越界访问
+    with pytest.raises(PathValidationError):
+        manager.extract_and_convert_value(container, "items[10]", namespace="ListContainer")
+    
+    # 测试无效索引
+    with pytest.raises(PathValidationError):
+        manager.extract_and_convert_value(container, "items[abc]", namespace="ListContainer")
+    
+    # 测试多重索引
+    with pytest.raises(PathValidationError):
+        manager.extract_and_convert_value(container, "items[0][1]", namespace="ListContainer")
+
+def test_nested_structure_handling(manager):
+    """测试嵌套结构的处理"""
+    class Inner(BaseModel):
+        value: str
+        numbers: List[int]
+    
+    class Outer(BaseModel):
+        name: str
+        inner: Inner
+        inner_list: List[Inner]
+    
+    inner = Inner(value="test", numbers=[1, 2, 3])
+    outer = Outer(
+        name="outer",
+        inner=inner,
+        inner_list=[
+            Inner(value="one", numbers=[1]),
+            Inner(value="two", numbers=[2])
+        ]
+    )
+    
+    manager.register_object(outer, namespace="Nested")
+    
+    # 测试嵌套对象访问
+    inner_value, info = manager.extract_and_convert_value(outer, "inner.value", namespace="Nested")
+    assert inner_value == "test"
+    assert info.type_name == "str"
+    
+    # 测试嵌套列表访问
+    inner_list_value, info = manager.extract_and_convert_value(outer, "inner_list[0].value", namespace="Nested")
+    assert inner_list_value == "one"
+    assert info.type_name == "str"
+    
+    # 测试嵌套列表中的列表访问
+    numbers, info = manager.extract_and_convert_value(outer, "inner_list[1].numbers", namespace="Nested")
+    assert numbers == [2]
+    assert info.type_name == "List[int]"
+
+def test_deeply_nested_list_types(manager):
+    """测试深层嵌套的列表类型"""
+    class DeepListContainer(BaseModel):
+        # 基本列表
+        simple_list: List[str]
+        
+        # 二层嵌套
+        nested_list: List[List[int]]
+        
+        # 三层嵌套
+        deep_list: List[List[List[str]]]
+        
+        # 混合嵌套
+        mixed_list: List[List[List[int]]]
+        
+        # 带默认值的嵌套列表
+        default_nested: List[List[str]] = [["a", "b"], ["c", "d"]]
+
+    container = DeepListContainer(
+        simple_list=["a", "b", "c"],
+        nested_list=[[1, 2], [3, 4]],
+        deep_list=[[["a", "b"], ["c"]], [["d"]], []],
+        mixed_list=[[[1, 2]], [[3, 4], [5, 6]], []]
+    )
+    
+    manager.register_object(container, namespace="deep")
+    
+    # 测试类型名称
+    simple_list, info = manager.extract_and_convert_value(container, "simple_list", namespace="deep")
+    assert info.type_name == "List[str]"
+    
+    nested_list, info = manager.extract_and_convert_value(container, "nested_list", namespace="deep")
+    assert info.type_name == "List[List[int]]"
+    
+    deep_list, info = manager.extract_and_convert_value(container, "deep_list", namespace="deep")
+    assert info.type_name == "List[List[List[str]]]"
+    
+    # 测试列表元素访问
+    nested_element, info = manager.extract_and_convert_value(container, "nested_list[0]", namespace="deep")
+    assert info.type_name == "List[int]"
+    assert nested_element == [1, 2]
+    
+    deep_element, info = manager.extract_and_convert_value(container, "deep_list[0][0]", namespace="deep")
+    assert info.type_name == "List[str]"
+    assert deep_element == ["a", "b"]
+    
+    deepest_element, info = manager.extract_and_convert_value(container, "deep_list[0][0][0]", namespace="deep")
+    assert info.type_name == "str"
+    assert deepest_element == "a"
+    
+    # 测试空列表
+    empty_list, info = manager.extract_and_convert_value(container, "deep_list[2]", namespace="deep")
+    assert info.type_name == "List[List[str]]"
+    assert empty_list == []
+    
+    # 测试带默认值的嵌套列表
+    default_nested, info = manager.extract_and_convert_value(container, "default_nested", namespace="deep")
+    assert info.type_name == "List[List[str]]"
+    assert default_nested == [["a", "b"], ["c", "d"]]

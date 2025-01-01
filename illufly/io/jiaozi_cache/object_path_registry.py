@@ -350,6 +350,20 @@ class ObjectPathRegistry:
         elif isinstance(obj, dict):
             self._register_dict_structure(obj, "", namespace, path_configs)
 
+    def _get_nested_list_type_name(self, field_type: Any) -> str:
+        """递归获取嵌套列表的类型名称"""
+        origin = get_origin(field_type)
+        if origin not in (list, List):
+            return getattr(field_type, '__name__', str(field_type))
+        
+        args = get_args(field_type)
+        if not args:
+            return "List[Any]"
+        
+        element_type = args[0]
+        inner_type_name = self._get_nested_list_type_name(element_type)
+        return f"List[{inner_type_name}]"
+
     def _register_model_fields(self,
                              model: Union[Type[BaseModel], BaseModel],
                              parent_path: str,
@@ -378,11 +392,6 @@ class ObjectPathRegistry:
             field_path = f"{parent_path}.{field_name}" if parent_path else field_name
             field_config = path_configs.get(field_name, {})
             field_type = field.annotation
-            logger.info("处理字段 %s: 原始类型=%s, origin=%s, args=%s", 
-                       field_name, 
-                       field_type,
-                       get_origin(field_type),
-                       get_args(field_type))
             
             # 处理嵌套模型
             if isinstance(field_type, type) and issubclass(field_type, BaseModel):
@@ -393,22 +402,16 @@ class ObjectPathRegistry:
                     field_config.get('nested', {})
                 )
             else:
-                # 处理基本类型
-                path_type = self._get_path_type(field_type)
-                
                 # 获取类型名称
                 if field_config.get('type_name'):
                     type_name = field_config['type_name']
                 else:
-                    origin = get_origin(field_type)
-                    if origin in (list, List):
-                        args = get_args(field_type)
-                        element_type = args[0] if args else 'Any'
-                        type_name = f"List[{getattr(element_type, '__name__', str(element_type))}]"
-                    else:
-                        type_name = getattr(field_type, '__name__', str(field_type))
+                    type_name = self._get_nested_list_type_name(field_type)
                 
                 logger.info("字段 %s: 最终类型名称=%s", field_name, type_name)
+                
+                # 确定路径类型
+                path_type = self._get_path_type(field_type)
                 
                 # 处理标签列表
                 is_tag_list = field_config.get('is_tag_list', False)
@@ -416,7 +419,7 @@ class ObjectPathRegistry:
                     if not (get_origin(field_type) in (list, List) and get_args(field_type)[0] == str):
                         raise PathValidationError(f"标签列表字段 '{field_path}' 的元素类型必须是字符串")
                     path_type = PathType.INDEXABLE
-                
+
                 self.register_path(
                     path=field_path,
                     type_name=type_name,
@@ -497,10 +500,29 @@ class ObjectPathRegistry:
                 nested_config = config.get("nested", {})
                 self._register_dict_fields(value, field_path, namespace, nested_config)
 
+    def _extract_inner_type(self, type_name: str, access_depth: int) -> str:
+        """从嵌套类型名称中提取内部类型
+        
+        Args:
+            type_name: 类型名称，如 "List[List[str]]"
+            access_depth: 访问深度，如 "list[0][1]" 的深度为 2
+            
+        Returns:
+            内部类型名称
+        """
+        if not type_name.startswith('List['):
+            return type_name
+        
+        current_type = type_name
+        for _ in range(access_depth):
+            if not current_type.startswith('List['):
+                break
+            current_type = current_type[5:-1]  # 移除 "List[" 和 "]"
+        
+        return current_type
+
     def extract_and_convert_value(self, obj: Any, path: str, namespace: str, type_name: str = None) -> Tuple[Any, PathTypeInfo]:
         """提取并转换路径值"""
-        logger.info("开始处理路径 '%s', 命名空间: %s", path, namespace)
-        
         if namespace not in self._path_types:
             raise PathNotFoundError(f"找不到命名空间 '{namespace}'", "", namespace)
         
@@ -517,84 +539,86 @@ class ObjectPathRegistry:
         })
         
         try:
+            # 检查是否尝试对非列表类型使用索引访问
+            if '[' in path:
+                type_name = path_info.type_name.lower()
+                if not (type_name.startswith(('list[', 'dict[', 'tuple[')) or type_name in ('list', 'dict', 'tuple')):
+                    raise PathTypeError(
+                        f"无法对类型 {path_info.type_name} 使用数组索引",
+                        expected_type="list/tuple/dict",
+                        actual_type=path_info.type_name
+                    )
+            
             value = self._get_value_from_path(obj, path)
             logger.info("提取的原始值: %s (%s)", value, type(value).__name__)
-        except ValueError as e:
-            raise PathValidationError(f"无效的数组索引: {str(e)}")
-        except PathValidationError as e:
-            raise e
+            
+            # 类型转换
+            if path_info.type_name == 'float' and isinstance(value, int):
+                value = float(value)
+            elif path_info.type_name == 'int' and isinstance(value, str):
+                try:
+                    value = int(value)
+                except ValueError:
+                    raise PathTypeError(f"无法将字符串转换为整数", "int", "str")
+            
+            # 检查结构类型访问
+            if path_info.path_type == PathType.STRUCTURAL and not '[' in path:
+                raise PathTypeError(f"不能直接访问结构类型", "indexable", "structural")
+            
+        except PathValidationError:
+            raise
+        except PathTypeError:
+            raise
         except (AttributeError, KeyError, IndexError) as e:
             raise PathValidationError(f"无法访问路径 '{path}': {str(e)}")
 
-        if type_name is not None:
-            logger.info("使用提供的类型名称: %s", type_name)
-            path_info = PathTypeInfo(
-                path=path_info.path,
-                type_name=type_name,
-                path_type=path_info.path_type,
-                type_metadata=path_info.type_metadata,
-                is_tag_list=path_info.is_tag_list,
-                max_tags=path_info.max_tags,
-                description=path_info.description
-            )
-
-        # 检查结构类型
-        if path_info.path_type == PathType.STRUCTURAL:
-            raise PathTypeError(
-                "期望类型为 indexable，实际类型为 structural",
-                "indexable",
-                "structural"
-            )
-
         # 处理列表元素访问
-        if '[' in path and (path_info.type_name.startswith('List[') or path_info.type_name == 'list'):
-            element_type = path_info.type_name[5:-1] if path_info.type_name.startswith('List[') else 'Any'
-            logger.info("处理列表元素访问, 元素类型=%s", element_type)
-            return value, PathTypeInfo(
-                path=path_info.path,
-                type_name=element_type,
-                path_type=path_info.path_type,
-                type_metadata=path_info.type_metadata,
-                is_tag_list=path_info.is_tag_list,
-                max_tags=path_info.max_tags,
-                description=path_info.description
-            )
+        if '[' in path:
+            if path_info.type_name.startswith('List['):
+                # 计算访问深度
+                access_depth = len(re.findall(r'\[([^\]]*)\]', path))
+                inner_type = self._extract_inner_type(path_info.type_name, access_depth)
+                logger.info("处理列表元素访问, 元素类型=%s", inner_type)
+                
+                # 如果还有点号访问，说明是访问结构体的字段
+                if '.' in path:
+                    field_path = path.split('.')[-1]
+                    if isinstance(value, BaseModel):
+                        field_info = value.model_fields.get(field_path)
+                        if field_info:
+                            field_type = field_info.annotation
+                            if hasattr(field_type, 'model_fields'):
+                                inner_type = field_type.__name__
+                            elif get_origin(field_type) in (list, List):
+                                args = get_args(field_type)
+                                if args:
+                                    inner_type = f"List[{args[0].__name__}]"
+                        else:
+                            inner_type = getattr(field_type, '__name__', str(field_type))
+                    elif isinstance(value, str):
+                        inner_type = 'str'
+                    elif isinstance(value, list):
+                        # 如果值是列表，尝试从第一个元素推断类型
+                        if value and isinstance(value[0], int):
+                            inner_type = 'List[int]'
+                        elif value and isinstance(value[0], str):
+                            inner_type = 'List[str]'
+                
+                return value, PathTypeInfo(
+                    path=path_info.path,
+                    type_name=inner_type,
+                    path_type=PathType.INDEXABLE,
+                    type_metadata=path_info.type_metadata,
+                    is_tag_list=False,
+                    max_tags=path_info.max_tags,
+                    description=path_info.description
+                )
 
-        # 类型转换
-        try:
-            if path_info.type_name.startswith("List[") or path_info.type_name == "list":
-                logger.info("处理列表类型, 当前值: %s, 类型: %s", value, type(value))
-                if not isinstance(value, list):
-                    raise PathTypeError(
-                        "类型不匹配",
-                        path_info.type_name,
-                        type(value).__name__
-                    )
-                # 处理标签列表
-                if path_info.is_tag_list:
-                    logger.info("处理标签列表, 当前长度=%d, 最大标签数=%d", len(value), path_info.max_tags)
-                    if len(value) > path_info.max_tags:
-                        value = value[:path_info.max_tags]
-                        logger.info("标签列表已截断至 %d 个元素: %s", path_info.max_tags, value)
-            elif path_info.type_name == "float":
-                value = float(value)
-            elif path_info.type_name == "int":
-                value = int(value)
-            elif path_info.type_name == "str":
-                value = str(value)
-            elif path_info.type_name == "bool":
-                if isinstance(value, str):
-                    value = value.lower() in ('true', '1', 'yes', 'on')
-                else:
-                    value = bool(value)
-            
-            logger.info("转换后的值: %s, 类型: %s", value, type(value))
-        except (ValueError, TypeError) as e:
-            raise PathTypeError(
-                f"类型转换失败: {str(e)}",
-                path_info.type_name,
-                type(value).__name__
-            )
+        # 处理标签列表
+        if path_info.is_tag_list and isinstance(value, list):
+            if len(value) > path_info.max_tags:
+                value = value[:path_info.max_tags]
+                logger.info("标签列表已截断至 %d 个元素", path_info.max_tags)
 
         return value, path_info
 
@@ -610,37 +634,33 @@ class ObjectPathRegistry:
             for part in parts:
                 if '[' in part:
                     # 处理数组索引
-                    name, index = part[:-1].split('[')
-                    if name:
+                    base = part[:part.index('[')]
+                    indices = re.findall(r'\[([^\]]*)\]', part)
+                    
+                    # 先获取基础属性
+                    if base:
                         if isinstance(current, dict):
-                            current = current[name]
+                            current = current[base]
                         else:
-                            current = getattr(current, name)
-                    if index == '*':
-                        continue
-                    # 检查是否可索引
-                    if not isinstance(current, (list, tuple)):
-                        raise PathTypeError(
-                            f"对象不支持索引访问",
-                            "list/tuple",
-                            type(current).__name__
-                        )
-                    try:
-                        index = int(index)
-                    except ValueError:
-                        raise PathValidationError(f"无效的数组索引: {index}")
-                    try:
-                        current = current[index]
-                    except IndexError:
-                        raise PathValidationError(f"索引 {index} 超出范围")
+                            current = getattr(current, base)
+                    
+                    # 依次处理所有索引
+                    for idx in indices:
+                        try:
+                            index = int(idx)
+                            if not isinstance(current, (list, tuple)):
+                                raise PathValidationError(
+                                    f"无法对类型 {type(current).__name__} 使用数组索引"
+                                )
+                            if not (0 <= index < len(current)):
+                                raise PathValidationError(f"索引 {index} 超出范围")
+                            current = current[index]
+                        except ValueError:
+                            raise PathValidationError(f"无效的数组索引: {idx}")
                 else:
                     if isinstance(current, dict):
-                        if part not in current:
-                            raise KeyError(part)
                         current = current[part]
                     else:
-                        if not hasattr(current, part):
-                            raise AttributeError(part)
                         current = getattr(current, part)
         except (AttributeError, KeyError) as e:
             raise PathNotFoundError(f"找不到路径 '{path}'", str(e), "")
