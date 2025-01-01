@@ -286,7 +286,7 @@ class IndexBackend(ABC):
                 continue
             cleaned_tag = tag.strip()
             self.logger.debug("Adding single tag: %s", cleaned_tag)
-            self.add_to_index(field, cleaned_tag, key)
+            self.add_to_index(field, self._get_tag_name(cleaned_tag), key)
 
     def remove_tags(self, field: str, tags: List[str], key: str) -> None:
         """移除标签
@@ -313,7 +313,12 @@ class IndexBackend(ABC):
             if not isinstance(tag, str) or not tag.strip():
                 continue
             # 从索引中移除标签
-            self.remove_from_index(field, tag.strip(), key)
+            cleaned_tag = tag.strip()
+            self.remove_from_index(field, self._get_tag_name(cleaned_tag), key)
+
+    def _get_tag_name(self, tag: str) -> str:
+        """获取标签名称"""
+        return f"tag[{tag}]"
 
     def _validate_field_index(self, field: str) -> None:
         """验证字段是否已定义索引
@@ -1029,10 +1034,13 @@ class IndexBackend(ABC):
         """单值查询实现（内部方法）"""
         pass
 
-    @abstractmethod
-    def _find_with_single_tag(self, field: str, tag: str) -> Set[str]:
-        """单个标签查询实现（内部方法）"""
-        pass
+    def _find_with_single_tag(self, field_path: str, tag: str) -> Set[str]:
+        """单个标签查询实现"""
+        cleaned_tag = tag.strip()
+        if not cleaned_tag:
+            return set()
+        return self._find_with_single_value(field_path, self._get_tag_name(cleaned_tag))
+
     def find_with_tags(self, field: str, tags: Union[str, List[str]], match_all: bool = False) -> List[str]:
         """使用标签查询
         
@@ -1104,7 +1112,6 @@ class IndexBackend(ABC):
             TypeError: 当字段值类型不匹配时
         """
         self._validate_field_index(field)
-        self._update_stats("queries")
         
         if not self.has_index(field):
             raise KeyError(f"字段 {field} 未定义索引")

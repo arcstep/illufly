@@ -40,7 +40,7 @@ class HashIndexBackend(IndexBackend):
     )
     
     # 查询所有活跃用户
-    active_users = user_index.find_with_index("status", "active")
+    active_users = user_index.find_with_values("status", "active")
     # 返回: ["user_001", "user_002"]
     ```
     
@@ -69,7 +69,7 @@ class HashIndexBackend(IndexBackend):
     )
     
     # 查找所有 5G 手机
-    phones_5g = product_index.find_with_index("tags", "5G")
+    phones_5g = product_index.find_with_tags("tags", "5G")
     # 返回包含 "5G" 标签的所有商品
     ```
     
@@ -105,7 +105,7 @@ class HashIndexBackend(IndexBackend):
     )
     
     # 查找特定城市的所有地址
-    shanghai_addresses = address_index.find_with_index("address.city", "Shanghai")
+    shanghai_addresses = address_index.find_with_values("address.city", "Shanghai")
     # 返回: ["addr_001", "addr_002"]
     ```
     
@@ -122,7 +122,7 @@ class HashIndexBackend(IndexBackend):
     # 3. 在 reverse@status:inactive 中添加 user_001
     
     # 此时查询活跃用户
-    active_users = user_index.find_with_index("status", "active")
+    active_users = user_index.find_with_values("status", "active")
     # 返回: ["user_002"]  # user_001 已经不在活跃列表中
     ```
     
@@ -205,7 +205,7 @@ class HashIndexBackend(IndexBackend):
             self.logger.error("加载字段类型信息失败: %s", e)
             raise RuntimeError(f"加载字段类型信息失败: {e}")
 
-    def add_to_index(self, field: str, value: Any, key: str) -> None:
+    def _add_to_index(self, field_path: str, value: Any, key: str) -> None:
         """添加索引项
         
         Args:
@@ -216,21 +216,12 @@ class HashIndexBackend(IndexBackend):
         if value is None:
             return
             
-        # 处理列表类型
-        if isinstance(value, list):
-            for item in value:
-                if item is not None:
-                    index_path = f"{field}:{item}"
-                    self._add_to_index_path(index_path, key)
-            return
-            
-        # 处理可索引对象和其他类型
         if isinstance(value, Indexable):
-            index_path = f"{field}:{value.to_index_key()}"
+            _index_path = f"{field_path}:{value.to_index_key()}"
         else:
-            index_path = f"{field}:{value}"
+            _index_path = f"{field_path}:{value}"
             
-        self._add_to_index_path(index_path, key)
+        self._add_to_index_path(_index_path, key)
 
     def _add_to_index_path(self, index_path: str, key: str) -> None:
         """添加单个索引路径，同时维护正向和反向索引
@@ -287,13 +278,18 @@ class HashIndexBackend(IndexBackend):
         return len(values)
 
     def remove_from_index(self, key: str) -> None:
-        """从索引中删除指定键的所有索引项"""
+        """
+        从索引中删除指定键的所有索引项
+
+        在键值存储中，一个「键值对」代表了唯一的键和可能有多属性的对象值，
+        那么索引的目的是为了根据对象的属性值来查询对象，因此每个被索引的键可以建立多个索引路径，
+        在删除时就应当删除所有这些索引路径。
+        """
         index_key = self._get_index_key(key)
         paths = self._storage.get(index_key)
         if not paths:
             return
-            
-        # 删除所有索引路径
+        
         for path in paths:
             value = self._storage.get(path)
             if value is None:
@@ -311,26 +307,7 @@ class HashIndexBackend(IndexBackend):
         # 删除索引路径记录
         self._storage.delete(index_key)
 
-    def find_with_tag(self, field: str, tag: str) -> List[str]:
-        """标签查询实现
-        
-        Args:
-            field: 标签字段名
-            tag: 标签值
-            
-        Returns:
-            List[str]: 匹配的对象ID列表
-        """
-        self.logger.debug(f"执行标签查询: field={field}, tag={tag}")
-        index_path = f"{field}:{tag}"
-        reverse_key = self._get_reverse_key(index_path)
-        keys = self._storage.get(reverse_key)
-        
-        if keys is None:
-            return []
-        return list(keys) if isinstance(keys, (list, set)) else [keys]
-
-    def find_with_value(self, field_path: str, value: Any) -> List[str]:
+    def _find_with_single_value(self, field_path: str, value: Any) -> Set[str]:
         """实现常规值查询"""
         index_key = self._make_index_key(field_path, str(value))
         return self._storage.get(index_key) or []
@@ -377,7 +354,7 @@ class HashIndexBackend(IndexBackend):
         # 直接返回存储后端的内存使用量
         return self._storage.get_memory_usage()
 
-    def rebuild_indexes(self, data_iterator: Callable[[], List[tuple[str, Any]]]) -> None:
+    def rebuild_index(self) -> None:
         """重建所有索引"""
         self.logger.info("开始重建索引")
         try:
@@ -386,7 +363,7 @@ class HashIndexBackend(IndexBackend):
             
             # 重建索引
             count = 0
-            for key, data in data_iterator():
+            for key, data in self._storage.data_iterator():
                 # 为每个字段创建索引
                 for field_path in self._field_types:
                     value = self.extract_value_from_path(
@@ -540,4 +517,14 @@ class HashIndexBackend(IndexBackend):
                 else:
                     self._storage.delete(index_key)
 
+    def clear_index(self) -> None:
+        """清空所有索引"""
+        self._storage.clear()
 
+    def flush(self) -> None:
+        """将内存中的索引变更持久化到存储"""
+        self._storage.flush()
+
+    def close(self) -> None:
+        """关闭索引后端，确保数据已保存"""
+        self._storage.close()
