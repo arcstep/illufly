@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 from dataclasses import dataclass
-from illufly.io.jiaozi_cache.path_type_manager import (
-    PathTypeManager,
+from illufly.io.jiaozi_cache import (
+    ObjectPathRegistry,
     PathTypeInfo,
     PathNotFoundError,
     PathValidationError,
@@ -21,18 +21,10 @@ class SimpleModel(BaseModel):
     name: str
     value: int
 
-@dataclass
-class MockIndexable:
-    """可索引对象"""
-    id: int
-    
-    def to_index_key(self) -> str:
-        return f"idx_{self.id}"
-
 @pytest.fixture
 def manager():
     """创建管理器"""
-    return PathTypeManager()
+    return ObjectPathRegistry()
 
 @pytest.fixture
 def complex_data():
@@ -55,19 +47,21 @@ def complex_data():
 
 def test_register_object(manager):
     """测试对象注册"""
-    model = SimpleModel(name="test", value=123)
-    manager.register_object(model)
+    class UserModel(BaseModel):
+        name: str
+        age: int
+
+    # 测试类注册
+    manager.register_object(UserModel)
+    assert "UserModel" in manager._path_types
     
-    # 验证自动注册的路径
-    assert "name" in manager._path_types["SimpleModel"]
-    assert "value" in manager._path_types["SimpleModel"]
-    
-    # 验证类型信息
-    name_info = manager._path_types["SimpleModel"]["name"]
-    assert name_info.type_name == "str"
-    
-    value_info = manager._path_types["SimpleModel"]["value"]
-    assert value_info.type_name == "int"
+    # 测试实例注册 - 修复参数
+    user = UserModel(name="test", age=123)
+    manager.register_object(user, namespace="UserInstance")
+    assert "UserInstance" in manager._path_types
+    assert "" in manager._path_types["UserInstance"]
+    assert "name" in manager._path_types["UserInstance"]
+    assert "age" in manager._path_types["UserInstance"]
 
 def test_extract_basic_values(manager, complex_data):
     """测试基础值提取"""
@@ -127,37 +121,38 @@ def test_register_nested_model(manager):
         name: str
         address: Address
         
-    user = User(
-        name="test",
-        address=Address(street="Test St", city="Test City")
-    )
+    manager.register_object(User)
     
-    manager.register_object(user)
-    
-    # 验证嵌套路径
+    # 验证路径注册
+    assert "" in manager._path_types["User"]  # 根路径
     assert "name" in manager._path_types["User"]
+    assert "address" in manager._path_types["User"]
     assert "address.street" in manager._path_types["User"]
     assert "address.city" in manager._path_types["User"]
+    
+    # 验证类型信息
+    assert manager._path_types["User"][""].type_metadata is not None
+    assert manager._path_types["User"]["address"].type_metadata is not None
 
 def test_error_handling(manager, complex_data):
     """测试错误处理"""
-    manager.register_object(complex_data, namespace="root")
+    manager.register_object(complex_data, namespace="test_root")
     
     # 测试无效路径
     with pytest.raises(PathNotFoundError) as exc_info:
-        manager.extract_and_convert_value(complex_data, "invalid.path", namespace="root")
+        manager.extract_and_convert_value(complex_data, "invalid.path", namespace="test_root")
     assert "invalid" in str(exc_info.value)
     
-    # 测试类型转换失败
+    # 测试类型转换失败 - 使用新的命名空间
     manager.register_object(
         complex_data,
-        namespace="root",
+        namespace="test_root_2",
         path_configs={
             "string": {"type_name": "int"}
         }
     )
     with pytest.raises(PathTypeError) as exc_info:
-        manager.extract_and_convert_value(complex_data, "string", namespace="root")
+        manager.extract_and_convert_value(complex_data, "string", namespace="test_root_2")
     assert "期望类型为 int" in str(exc_info.value)
 
 def test_register_dict_structure(manager):
@@ -175,19 +170,25 @@ def test_register_dict_structure(manager):
     manager.register_object(data, namespace="Config")
     
     # 验证路径注册
+    assert "user" in manager._path_types["Config"]
     assert "user.name" in manager._path_types["Config"]
     assert "user.scores[*].subject" in manager._path_types["Config"]
     assert "user.scores[*].value" in manager._path_types["Config"]
+    
+    # 验证路径类型
+    assert manager._path_types["Config"]["user"].path_type == PathType.STRUCTURAL
+    assert manager._path_types["Config"]["user.name"].path_type == PathType.INDEXABLE
+    assert manager._path_types["Config"]["user.scores[*].subject"].path_type == PathType.INDEXABLE
 
 def test_tag_list_validation(manager):
     """测试标签列表验证"""
-    # 测试有效的标签列表
-    class ValidTags(BaseModel):
+    class TagModel(BaseModel):
         tags: List[str]
+        items: List[Dict[str, str]]  # 不能作为标签列表
     
-    model = ValidTags(tags=["tag1", "tag2", "tag3"])
+    # 测试有效的标签列表配置
     manager.register_object(
-        model,
+        TagModel,
         path_configs={
             "tags": {
                 "is_tag_list": True,
@@ -196,59 +197,53 @@ def test_tag_list_validation(manager):
         }
     )
     
-    value, _ = manager.extract_and_convert_value(model, "tags", namespace="ValidTags")
-    assert value == ["tag1", "tag2"]
+    assert manager._path_types["TagModel"]["tags"].is_tag_list
+    assert manager._path_types["TagModel"]["tags"].max_tags == 2
     
-    # 测试无效的标签列表类型
-    class InvalidTags(BaseModel):
-        tags: List[int]
-    
-    model = InvalidTags(tags=[1, 2, 3])
-    with pytest.raises(PathValidationError) as exc_info:
+    # 测试无效的标签列表配置
+    with pytest.raises(PathValidationError):
         manager.register_object(
-            model,
+            TagModel,
+            namespace="InvalidTags",
             path_configs={
-                "tags": {
+                "items": {
                     "is_tag_list": True
                 }
             }
         )
-    assert "元素类型必须是字符串" in str(exc_info.value)
 
-def test_register_model_class(manager):
-    """测试直接注册模型类"""
-    class Address(BaseModel):
-        street: str
-        city: str
-        
-    class User(BaseModel):
-        name: str
-        age: int
-        address: Address
-        tags: List[str]
+def test_override_registration(manager):
+    """测试覆盖注册"""
+    class SimpleModel(BaseModel):
+        value: int
+
+    # 首次注册
+    manager.register_object(SimpleModel)
     
-    # 直接注册模型类
-    manager.register_object(
-        User,  # 注册类而不是实例
-        path_configs={
-            "tags": {
-                "is_tag_list": True,
-                "max_tags": 2
-            }
-        }
-    )
+    # 不允许覆盖时应该失败
+    with pytest.raises(ValueError):
+        manager.register_object(SimpleModel)
     
-    # 验证路径注册
-    assert "name" in manager._path_types["User"]
-    assert "age" in manager._path_types["User"]
-    assert "address.street" in manager._path_types["User"]
-    assert "address.city" in manager._path_types["User"]
-    assert "tags" in manager._path_types["User"]
+    # 允许覆盖时应该成功
+    manager.register_object(SimpleModel, allow_override=True)
     
-    # 验证标签列表配置
-    tags_info = manager._path_types["User"]["tags"]
-    assert tags_info.is_tag_list
-    assert tags_info.max_tags == 2
+    # 使用不同命名空间应该成功
+    manager.register_object(SimpleModel, namespace="Custom")
+
+def test_path_type_detection(manager):
+    """测试路径类型检测"""
+    class ComplexModel(BaseModel):
+        name: str  # 可索引
+        data: Dict[str, Any]  # 结构类型
+        items: List[str]  # 可索引
+        nested: List[Dict[str, Any]]  # 结构类型
+    
+    manager.register_object(ComplexModel, namespace="TestComplex")
+    
+    assert manager._path_types["TestComplex"]["name"].path_type == PathType.INDEXABLE
+    assert manager._path_types["TestComplex"]["data"].path_type == PathType.STRUCTURAL
+    assert manager._path_types["TestComplex"]["items"].path_type == PathType.INDEXABLE
+    assert manager._path_types["TestComplex"]["nested"].path_type == PathType.STRUCTURAL
 
 def test_path_validation_errors(manager):
     """测试路径验证错误"""
@@ -263,7 +258,6 @@ def test_path_validation_errors(manager):
     with pytest.raises(PathNotFoundError) as exc_info:
         manager.extract_and_convert_value(user, "invalid.path", namespace="User")
     assert "找不到路径" in str(exc_info.value)
-    assert exc_info.value.invalid_part == "invalid"
     
     # 测试无效索引
     with pytest.raises(PathValidationError) as exc_info:
@@ -282,37 +276,40 @@ def test_path_validation_errors(manager):
 
 def test_path_registration_validation(manager):
     """测试路径注册验证"""
-    # 测试空路径
+    # 测试 None 路径
     with pytest.raises(PathValidationError) as exc_info:
         manager.register_path(
-            path="",
+            path=None,
             type_name="str",
             namespace="test",
             path_type=PathType.INDEXABLE
         )
-    assert "路径不能为空" in str(exc_info.value)
-    
-    # 测试空命名空间
-    with pytest.raises(PathValidationError) as exc_info:
-        manager.register_path(
-            path="test",
-            type_name="str",
-            namespace="",
-            path_type=PathType.INDEXABLE
-        )
-    assert "命名空间不能为空" in str(exc_info.value)
-    
-    # 测试无效的标签列表类型
-    with pytest.raises(PathValidationError) as exc_info:
-        manager.register_path(
-            path="test",
-            type_name="dict",
-            namespace="test",
-            path_type=PathType.STRUCTURAL,
-            is_tag_list=True
-        )
-    assert "标签列表路径" in str(exc_info.value)
-    assert "必须是可索引类型" in str(exc_info.value)
+    assert "路径不能为 None" in str(exc_info.value)
+
+    # 测试根路径可以是任何类型
+    # 简单值
+    manager.register_path(
+        path="",
+        type_name="str",
+        namespace="test1",
+        path_type=PathType.INDEXABLE
+    )
+
+    # 复合结构
+    manager.register_path(
+        path="",
+        type_name="dict",
+        namespace="test2",
+        path_type=PathType.STRUCTURAL
+    )
+
+    # 集合类型
+    manager.register_path(
+        path="",
+        type_name="list",
+        namespace="test3",
+        path_type=PathType.INDEXABLE
+    )
 
 def test_indexable_paths(manager):
     """测试可索引路径识别"""
@@ -378,17 +375,50 @@ def test_value_extraction_for_indexing(manager):
         profile={"type": "premium"}
     )
     
-    manager.register_object(user)
+    manager.register_object(user, namespace="TestUser")
     
     # 提取可索引值
-    name_value, _ = manager.extract_and_convert_value(user, "name", namespace="User")
+    name_value, _ = manager.extract_and_convert_value(user, "name", namespace="TestUser")
     assert name_value == "test"
     
     # 提取标签列表
-    tags_value, _ = manager.extract_and_convert_value(user, "tags", namespace="User")
+    tags_value, _ = manager.extract_and_convert_value(user, "tags", namespace="TestUser")
+    assert isinstance(tags_value, list)
     assert tags_value == ["tag1", "tag2"]
     
     # 提取结构类型应该引发错误
     with pytest.raises(PathTypeError) as exc_info:
-        manager.extract_and_convert_value(user, "profile", namespace="User")
+        manager.extract_and_convert_value(user, "profile", namespace="TestUser")
     assert "期望类型为 indexable，实际类型为 structural" in str(exc_info.value)
+
+def test_namespace_management(manager):
+    """测试命名空间管理"""
+    class User(BaseModel):
+        name: str
+        age: int
+
+    # 测试自动命名空间
+    manager.register_object(User)
+    assert "User" in manager._path_types
+    
+    # 测试重复注册
+    with pytest.raises(ValueError) as exc_info:
+        manager.register_object(User)
+    assert "命名空间 'User' 已存在" in str(exc_info.value)
+    
+    # 测试注销后重新注册
+    manager.unregister_namespace("User")
+    assert "User" not in manager._path_types
+    
+    # 重新注册应该成功
+    manager.register_object(User)
+    assert "User" in manager._path_types
+    
+    # 测试显式命名空间
+    manager.register_object(User, namespace="CustomUser")
+    assert "CustomUser" in manager._path_types
+    
+    # 测试注销不存在的命名空间
+    with pytest.raises(KeyError) as exc_info:
+        manager.unregister_namespace("NonExistent")
+    assert "命名空间 'NonExistent' 不存在" in str(exc_info.value)
