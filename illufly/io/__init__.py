@@ -10,7 +10,6 @@ from .jiaozi_cache import (
     WriteBufferedJSONStorage,
     StorageStrategy,
     TimeSeriesGranularity,
-    TypeMetadata,
     SerializationContext
 )
 from .handlers import log, alog, usage, async_usage
