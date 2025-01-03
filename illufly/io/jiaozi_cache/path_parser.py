@@ -37,10 +37,6 @@ class PathSegment:
     is_wildcard: bool = False
     access_method: str = "dot"  # 新增: 记录访问方式 ("dot" 或 "bracket")
 
-class ValueError(ValueError):
-    """路径解析错误"""
-    pass
-
 class PathParser:
     """路径解析器"""
     

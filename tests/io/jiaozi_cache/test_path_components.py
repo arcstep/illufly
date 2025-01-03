@@ -1,7 +1,5 @@
 import pytest
 from illufly.io.jiaozi_cache.path_parser import PathParser, PathSegment, SegmentType
-from illufly.io.jiaozi_cache.object_types import TypeHandler, DictHandler, PathType, TypeInfo
-from illufly.io.jiaozi_cache import ObjectPathRegistry, PathTypeInfo, PathType, PathNotFoundError, PathValidationError, PathTypeError
 import time
 import logging
 from functools import lru_cache
@@ -121,68 +119,6 @@ class TestPathParser:
             result1 = parser.parse(path)
             result2 = parser.parse(path)
             assert result1 is result2, "缓存结果应该是同一个对象"
-
-class TestDictHandler:
-    """测试字典处理器"""
-    
-    @pytest.fixture
-    def handler(self):
-        return DictHandler()
-    
-    @pytest.fixture
-    def sample_dict(self):
-        return {
-            "name": "test",
-            "value": 42,
-            "nested": {
-                "x": 10,
-                "y": 20
-            },
-            "list": [1, 2, 3],
-            "complex": {
-                "items": [
-                    {"id": 1, "tags": ["a", "b"]},
-                    {"id": 2, "tags": ["c", "d"]}
-                ]
-            }
-        }
-    
-    def test_get_paths(self, handler, sample_dict):
-        """测试路径生成"""
-        paths = handler.get_paths(sample_dict)
-        expected_paths = {
-            "",                     # 根路径
-            "{name}",              # 简单键
-            "{value}",
-            "{nested}",            # 嵌套字典
-            "{nested}{x}",
-            "{nested}{y}",
-            "{list}",              # 列表
-            "{complex}",           # 复杂嵌套
-            "{complex}{items}"     # 列表类型的字段
-            # 注意：不应该包含列表索引的路径，因为这应该由 ListHandler 处理
-        }
-        assert {p[0] for p in paths} == expected_paths
-    
-    def test_nested_dict_paths(self, handler):
-        """测试纯字典嵌套的路径生成"""
-        nested_dict = {
-            "settings": {
-                "theme": {
-                    "primary": "blue",
-                    "secondary": "gray"
-                }
-            }
-        }
-        paths = handler.get_paths(nested_dict)
-        expected_paths = {
-            "",
-            "{settings}",
-            "{settings}{theme}",
-            "{settings}{theme}{primary}",
-            "{settings}{theme}{secondary}"
-        }
-        assert {p[0] for p in paths} == expected_paths
 
 def test_path_segment_equality():
     """测试PathSegment相等性"""

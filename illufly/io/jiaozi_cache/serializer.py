@@ -9,9 +9,10 @@ from pathlib import Path
 from pydantic import BaseModel
 from enum import Enum
 from collections import namedtuple, defaultdict, OrderedDict
-from .object_path_registry import ObjectPathRegistry, PathError, PathTypeInfo
 from dataclasses import dataclass, field
 from contextlib import contextmanager
+
+from .object_path_registry import ObjectPathRegistry
 
 class SerializationError(Exception):
     """序列化错误"""
