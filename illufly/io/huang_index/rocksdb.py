@@ -1,24 +1,16 @@
-from typing import Optional, Any, List, Dict, Set, Iterator, Tuple, Union
+from typing import Optional, Any, List, Dict, Set, Iterator, Tuple, Union, Type
 from rocksdict import (
-    Rdict, Options, ColumnFamily, ReadOptions, DBCompressionType,
+    Rdict, Options, ColumnFamily, ReadOptions,
     Cache, BlockBasedOptions, WriteBufferManager
 )
 import msgpack
-import os
 from pathlib import Path
-from enum import Enum
 import re
 
 from ...config import get_env
-
-class KeyPattern(Enum):
-    """键模式枚举"""
-    PREFIX_ID = "prefix:id"  
-    PREFIX_ID_SUFFIX = "prefix:id:suffix"
-    PREFIX_INFIX_ID = "prefix:infix:id"
-    PREFIX_INFIX_ID_SUFFIX = "prefix:infix:id:suffix"
-    PREFIX_PATH_VALUE = "prefix:path:value"
-    PREFIX_INFIX_PATH_VALUE = "prefix:infix:path:value"
+from .patterns import KeyPattern, RocksDBConfig
+from .model import HuangIndexModel
+from .registry import ModelRegistry
 
 class RocksDB:
     """RocksDB存储后端"""
@@ -28,158 +20,59 @@ class RocksDB:
         self._db_path = Path(db_path or get_env("ROCKSDB_BASE_DIR"))
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # 创建缓存
-        block_cache_size = int(get_env("ROCKSDB_BLOCK_CACHE_SIZE")) * 1024 * 1024
-        row_cache_size = int(get_env("ROCKSDB_ROW_CACHE_SIZE")) * 1024 * 1024
-        self._block_cache = Cache(block_cache_size)
-        self._row_cache = Cache(row_cache_size)
+        # 使用 RocksDBConfig 创建默认配置
+        self._config = RocksDBConfig("default")
         
-        # 获取压缩类型
-        compression_map = {
-            'none': DBCompressionType.none(),
-            'snappy': DBCompressionType.snappy(),
-            'lz4': DBCompressionType.lz4(),
-            'zstd': DBCompressionType.zstd(),
-            'bz2': DBCompressionType.bz2(),
-            'lz4hc': DBCompressionType.lz4hc(),
-            'zlib': DBCompressionType.zlib()
-        }
-        compression_type = compression_map.get(
-            get_env("ROCKSDB_DEFAULT_CF_COMPRESSION").lower(),
-            DBCompressionType.lz4()  # 默认使用 lz4
-        )
-        
-        # 默认配置
-        self._default_cf_options = {
-            'compression_type': compression_type,  # 使用配置的压缩类型
-            'write_buffer_size': int(get_env("ROCKSDB_DEFAULT_CF_WRITE_BUFFER_SIZE")) * 1024 * 1024,
-            'max_write_buffer_number': int(get_env("ROCKSDB_DEFAULT_CF_MAX_WRITE_BUFFER_NUMBER")),
-            'min_write_buffer_number': int(get_env("ROCKSDB_MIN_WRITE_BUFFER_NUMBER")),
-            'level0_file_num_compaction_trigger': int(get_env("ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER")),
-            'max_background_jobs': int(get_env("ROCKSDB_MAX_BACKGROUND_JOBS")),
-            'enable_pipelined_write': bool(get_env("ROCKSDB_ENABLE_PIPELINED_WRITE"))  # 直接使用布尔值
-        }
+        # 使用配置对象获取默认选项
+        self._default_cf_options = self._config.default_options
         
         self._collection_configs: Dict[str, Options] = {}
         self._collections: Dict[str, ColumnFamily] = {}
         self._db = self._open_db()
         
-        # 使用 MessagePack 进行序列化
-        self._db.set_dumps(msgpack.packb)
-        self._db.set_loads(msgpack.unpackb)
+        # 修改序列化方法以支持 Pydantic 模型
+        def dumps(obj: Any) -> bytes:
+            if isinstance(obj, HuangIndexModel):
+                return msgpack.packb({
+                    "__model__": obj.__class__.__name__,
+                    "__collection__": obj.__collection__,
+                    "data": obj.model_dump()
+                })
+            return msgpack.packb(obj)
+            
+        def loads(data: bytes) -> Any:
+            obj = msgpack.unpackb(data)
+            if isinstance(obj, dict) and "__model__" in obj:
+                model_class = ModelRegistry.get(obj["__model__"])
+                return model_class(**obj["data"])
+            return obj
+            
+        self._db.set_dumps(dumps)
+        self._db.set_loads(loads)
         
     def _open_db(self) -> Rdict:
         """打开数据库"""
-        opts = self._create_options(self._default_cf_options)
+        opts = self._config.create_options(self._default_cf_options)
         
-        # 创建写缓冲区管理器
-        buffer_size = int(get_env("ROCKSDB_WRITE_BUFFER_SIZE")) * 1024 * 1024
-        write_buffer_manager = WriteBufferManager.new_write_buffer_manager_with_cache(
-            buffer_size, True, self._block_cache
-        )
-        opts.set_write_buffer_manager(write_buffer_manager)
+        # 设置写缓冲区管理器
+        opts.set_write_buffer_manager(self._config.write_buffer_manager)
         
         # 打开数据库
         db = Rdict(str(self._db_path), opts)
         
         # 确保默认列族存在
         if 'default' not in Rdict.list_cf(str(self._db_path)):
-            db.create_cf('default', self._create_options(self._default_cf_options))
+            db.create_cf('default', self._config.create_options(self._default_cf_options))
             
         return db
         
-    def _create_options(self, config: Dict[str, Any]) -> Options:
-        """创建Options对象"""
-        opts = Options()
-        opts.create_if_missing(True)
-        
-        # 处理压缩类型
-        if 'compression_type' in config:
-            compression_map = {
-                'none': DBCompressionType.none(),
-                'snappy': DBCompressionType.snappy(),
-                'lz4': DBCompressionType.lz4(),
-                'zstd': DBCompressionType.zstd(),
-                'bz2': DBCompressionType.bz2(),
-                'lz4hc': DBCompressionType.lz4hc(),
-                'zlib': DBCompressionType.zlib()
-            }
-            compression_type = compression_map.get(
-                config['compression_type'].lower() if isinstance(config['compression_type'], str) else 'lz4',
-                DBCompressionType.lz4()  # 默认使用 lz4
-            )
-            opts.set_compression_type(compression_type)
-        
-        # 基本选项设置
-        if 'write_buffer_size' in config:
-            opts.set_write_buffer_size(config['write_buffer_size'])
-        if 'max_write_buffer_number' in config:
-            opts.set_max_write_buffer_number(config['max_write_buffer_number'])
-        if 'min_write_buffer_number' in config:
-            opts.set_min_write_buffer_number(config['min_write_buffer_number'])
-        if 'level0_file_num_compaction_trigger' in config:
-            opts.set_level_zero_file_num_compaction_trigger(config['level0_file_num_compaction_trigger'])
-        if 'max_background_jobs' in config:
-            opts.set_max_background_jobs(config['max_background_jobs'])
-        if 'enable_pipelined_write' in config:
-            opts.set_enable_pipelined_write(config['enable_pipelined_write'])
-            
-        # 创建 block-based 表选项
-        block_opts = BlockBasedOptions()
-        block_opts.set_block_cache(self._block_cache)
-        block_opts.set_bloom_filter(int(get_env("ROCKSDB_BLOOM_BITS")), True)
-        opts.set_block_based_table_factory(block_opts)
-        
-        return opts
-
     def make_key(self, pattern: KeyPattern, **kwargs) -> str:
-        """构造键
-        
-        Args:
-            pattern: 键模式
-            **kwargs: 键组成部分
-            
-        Returns:
-            构造的键
-            
-        Examples:
-            >>> make_key(KeyPattern.PREFIX_ID, prefix="user", id="123")
-            "user:123"
-            >>> make_key(KeyPattern.PREFIX_INFIX_PATH_VALUE, 
-                        prefix="index", infix="name", path="users", value="zhang")
-            "index:name:users:zhang"
-        """
-        parts = []
-        
-        if pattern == KeyPattern.PREFIX_ID:
-            parts = [kwargs['prefix'], kwargs['id']]
-        elif pattern == KeyPattern.PREFIX_ID_SUFFIX:
-            parts = [kwargs['prefix'], kwargs['id'], kwargs['suffix']]
-        elif pattern == KeyPattern.PREFIX_INFIX_ID:
-            parts = [kwargs['prefix'], kwargs['infix'], kwargs['id']]
-        elif pattern == KeyPattern.PREFIX_INFIX_ID_SUFFIX:
-            parts = [kwargs['prefix'], kwargs['infix'], kwargs['id'], kwargs['suffix']]
-        elif pattern == KeyPattern.PREFIX_PATH_VALUE:
-            parts = [kwargs['prefix'], kwargs['path'], kwargs['value']]
-        elif pattern == KeyPattern.PREFIX_INFIX_PATH_VALUE:
-            parts = [kwargs['prefix'], kwargs['infix'], kwargs['path'], kwargs['value']]
-            
-        return ":".join(str(p).strip(":") for p in parts if p)
+        """构造键"""
+        return KeyPattern.make_key(pattern, **kwargs)
         
     def validate_key(self, key: str) -> bool:
         """验证键是否合法"""
-        if isinstance(key, bytes):
-            key = key.decode()
-            
-        patterns = [
-            r'^[^:]+:[^:]+$',  # prefix:id
-            r'^[^:]+:[^:]+:[^:]+$',  # prefix:id:suffix
-            r'^[^:]+:[^:]+:[^:]+$',  # prefix:infix:id
-            r'^[^:]+:[^:]+:[^:]+:[^:]+$',  # prefix:infix:id:suffix
-            r'^[^:]+:[^:]+:[^:]+$',  # prefix:path:value  
-            r'^[^:]+:[^:]+:[^:]+:[^:]+$'  # prefix:infix:path:value
-        ]
-        return any(re.match(p, key) for p in patterns)
+        return KeyPattern.validate_key(key)
         
     def list_collections(self) -> List[str]:
         """列出所有集合（列族）"""
@@ -188,7 +81,7 @@ class RocksDB:
     def set_collection_options(self, name: str, options: Dict[str, Any]) -> None:
         """设置集合（列族）配置"""
         if name not in self._collections:
-            opts = self._create_options(options)
+            opts = self._config.create_options(options)
             self._collections[name] = self._db.create_column_family(name, opts)
             self._collection_configs[name] = options
         else:
@@ -329,10 +222,8 @@ class RocksDB:
         if hasattr(self, '_db'):
             self._db.close()
             del self._db
-        if hasattr(self, '_block_cache'):
-            del self._block_cache
-        if hasattr(self, '_row_cache'):
-            del self._row_cache
+        if hasattr(self, '_config'):
+            del self._config
         
     def get_statistics(self) -> Dict[str, Any]:
         """获取数据库基本信息"""
@@ -367,6 +258,6 @@ class RocksDB:
                 self._collections[name] = self._db.get_column_family(name)
             else:
                 # 如果集合不存在，创建它
-                opts = self._create_options(self._default_cf_options)
+                opts = self._config.create_options(self._default_cf_options)
                 self._collections[name] = self._db.create_column_family(name, opts)
         return self._collections[name]

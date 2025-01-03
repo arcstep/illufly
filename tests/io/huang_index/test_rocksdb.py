@@ -3,7 +3,13 @@ import tempfile
 import shutil
 from pathlib import Path
 from rocksdict import Options
-from illufly.io.huang_index.rocksdb import RocksDB, KeyPattern
+from illufly.io.huang_index import (
+    RocksDB,
+    KeyPattern,
+    HuangIndexModel,
+    RocksDBConfig,
+    ModelRegistry
+)
 
 class TestRocksDB:
     @pytest.fixture
@@ -162,3 +168,106 @@ class TestRocksDB:
         assert "disk_usage" in stats
         assert "num_entries" in stats
         assert stats["num_entries"] >= 5  # 至少包含我们插入的5条记录
+
+    def test_model_serialization(self, db):
+        """测试模型序列化和存储"""
+        # 创建测试用户
+        user_data = {"name": "张三", "age": 30}
+        db.set("users", "user:123", user_data)
+        
+        # 测试基本数据存储和读取
+        loaded_data = db.get("users", "user:123")
+        assert loaded_data == user_data
+        
+        # 测试 Pydantic 模型
+        class User(HuangIndexModel):
+            __collection__ = "users"
+            __namespace__ = "user"
+            __key_pattern__ = KeyPattern.PREFIX_ID
+            
+            name: str
+            age: int
+            
+        # 注册模型
+        ModelRegistry.register(User)
+        
+        user = User(name="李四", age=25)
+        db.set("users", user.key, user)
+        
+        # 测试模型读取 - 现在应该返回模型实例
+        loaded_user = db.get("users", user.key)
+        assert isinstance(loaded_user, User)  # 修改这里：期望是 User 实例而不是 dict
+        assert loaded_user.name == "李四"
+        assert loaded_user.age == 25
+        
+        # 测试模型数据完整性
+        assert loaded_user.model_dump() == {
+            "name": "李四",
+            "age": 25,
+            "id": loaded_user.id,  # 动态ID
+            "infix": None,
+            "suffix": loaded_user.suffix  # 动态时间戳
+        }
+
+    def test_config_management(self, db):
+        """测试配置管理功能"""
+        # 测试默认配置
+        assert hasattr(db, '_config')
+        assert isinstance(db._config, RocksDBConfig)
+        
+        # 测试自定义配置
+        custom_options = {
+            'write_buffer_size': 32 * 1024 * 1024,
+            'compression_type': 'lz4',
+            'max_write_buffer_number': 3
+        }
+        
+        db.set_collection_options("custom_collection", custom_options)
+        assert "custom_collection" in db.list_collections()
+        
+        # 测试配置应用
+        test_data = {"test": "data"}
+        db.set("custom_collection", "test:1", test_data)
+        loaded_data = db.get("custom_collection", "test:1")
+        assert loaded_data == test_data
+
+    def test_key_pattern_validation(self, db):
+        """测试键模式验证的扩展场景"""
+        # 测试更多键模式
+        complex_keys = [
+            "user:org_123:456",  # PREFIX_INFIX_ID
+            "user:org_123:456:profile",  # PREFIX_INFIX_ID_SUFFIX
+            "index:name:users:zhang",  # PREFIX_INFIX_PATH_VALUE
+        ]
+        
+        for key in complex_keys:
+            assert db.validate_key(key), f"键 {key} 应该有效"
+        
+        # 测试边界情况
+        edge_cases = [
+            "a:b",  # 最短有效键
+            "very_long_prefix:very_long_infix:very_long_id",  # 长键
+        ]
+        
+        for key in edge_cases:
+            assert db.validate_key(key), f"键 {key} 应该有效"
+
+    def test_compression_options(self, db):
+        """测试压缩选项"""
+        # 测试不同压缩类型
+        compression_types = ['none', 'snappy', 'lz4', 'zstd']
+        
+        for comp_type in compression_types:
+            collection_name = f"test_compression_{comp_type}"
+            db.set_collection_options(collection_name, {
+                'compression_type': comp_type,
+                'write_buffer_size': 64 * 1024 * 1024
+            })
+            
+            # 写入测试数据
+            test_data = {"test": "compression" * 100}  # 创建一些可压缩的数据
+            db.set(collection_name, "test:1", test_data)
+            
+            # 验证数据完整性
+            loaded_data = db.get(collection_name, "test:1")
+            assert loaded_data == test_data
