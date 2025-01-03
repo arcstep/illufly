@@ -1,19 +1,71 @@
-from typing import Optional, Any, List, Dict, Set, Iterator, Tuple, Union, Type
-from rocksdict import (
-    Rdict, Options, ColumnFamily, ReadOptions,
-    Cache, BlockBasedOptions, WriteBufferManager
-)
+from typing import Optional, Any, List, Dict, Set, Iterator, Tuple, Union
+from rocksdict import Rdict, Options, ColumnFamily, ReadOptions
 import msgpack
 from pathlib import Path
-import re
 
 from ...config import get_env
 from .patterns import KeyPattern, RocksDBConfig
-from .model import HuangIndexModel
-from .registry import ModelRegistry
 
 class RocksDB:
-    """RocksDB存储后端"""
+    """RocksDB存储后端
+    
+    提供了对RocksDB的基本CRUD操作封装,支持:
+    - 多列族(collection)管理
+    - 键模式验证
+    - 范围查询和前缀扫描
+    - 序列化/反序列化
+    
+    基本用法:
+    ```python
+    # 初始化数据库
+    db = RocksDB("/path/to/db")
+    
+    # 创建集合
+    db.set_collection_options("users", {})
+    
+    # 写入数据
+    db.set("users", "user:1", {"name": "张三", "age": 18})
+    db.set("users", "user:2", {"name": "李四", "age": 20})
+    
+    # 读取数据
+    user = db.get("users", "user:1")
+    
+    # 范围查询示例
+    # 1. 按前缀查询所有用户
+    for key in db.iter_keys("users", prefix="user:"):
+        user = db.get("users", key)
+        print(f"{key}: {user}")
+        
+    # 2. 范围查询年龄20-30的用户
+    for key in db.iter_keys("users", start="user:20", end="user:30"):
+        user = db.get("users", key)
+        print(f"{key}: {user}")
+        
+    # 3. 获取前10个用户
+    for key in db.iter_keys("users", prefix="user:", limit=10):
+        user = db.get("users", key)
+        print(f"{key}: {user}")
+        
+    # 4. 获取第一个和最后一个用户
+    first_user = db.first("users")
+    last_user = db.last("users")
+    
+    # 5. 使用pattern匹配键
+    # 获取所有user:开头的键值对
+    pattern = KeyPattern("user:{id}")
+    all_users = db.all("users", pattern=pattern)
+    
+    # 获取第一个和最后一个匹配pattern的键值对
+    first_user = db.first("users", pattern=pattern)
+    last_user = db.last("users", pattern=pattern)
+    
+    # 删除数据
+    db.delete("users", "user:1")
+    
+    # 关闭数据库
+    db.close()
+    ```
+    """
     
     def __init__(self, db_path: Optional[str] = None):
         """初始化RocksDB"""
@@ -30,25 +82,9 @@ class RocksDB:
         self._collections: Dict[str, ColumnFamily] = {}
         self._db = self._open_db()
         
-        # 修改序列化方法以支持 Pydantic 模型
-        def dumps(obj: Any) -> bytes:
-            if isinstance(obj, HuangIndexModel):
-                return msgpack.packb({
-                    "__model__": obj.__class__.__name__,
-                    "__collection__": obj.__collection__,
-                    "data": obj.model_dump()
-                })
-            return msgpack.packb(obj)
-            
-        def loads(data: bytes) -> Any:
-            obj = msgpack.unpackb(data)
-            if isinstance(obj, dict) and "__model__" in obj:
-                model_class = ModelRegistry.get(obj["__model__"])
-                return model_class(**obj["data"])
-            return obj
-            
-        self._db.set_dumps(dumps)
-        self._db.set_loads(loads)
+        # 设置基础序列化方法
+        self._db.set_dumps(msgpack.packb)
+        self._db.set_loads(msgpack.unpackb)
         
     def _open_db(self) -> Rdict:
         """打开数据库"""
@@ -88,7 +124,18 @@ class RocksDB:
             raise ValueError(f"集合 {name} 已存在")
             
     def get(self, collection: str, key: str) -> Optional[Any]:
-        """获取值"""
+        """获取值
+        
+        Args:
+            collection: 集合名称
+            key: 键名
+            
+        Returns:
+            Optional[Any]: 键对应的值,如果不存在则返回None
+            
+        Raises:
+            ValueError: 键格式非法时抛出
+        """
         if not self.validate_key(key):
             raise ValueError(f"非法键格式: {key}")
             
@@ -97,7 +144,16 @@ class RocksDB:
         return value  # 不需要手动反序列化，rocksdict 会使用我们设置的 msgpack.unpackb
         
     def set(self, collection: str, key: str, value: Any) -> None:
-        """设置值"""
+        """设置值
+        
+        Args:
+            collection: 集合名称
+            key: 键名
+            value: 要存储的值
+            
+        Raises:
+            ValueError: 键格式非法时抛出
+        """
         if not self.validate_key(key):
             raise ValueError(f"非法键格式: {key}")
             
@@ -121,8 +177,10 @@ class RocksDB:
         
         try:
             # 设置起始位置
-            if start:
-                it.seek(start.encode())  # 转换为字节串
+            if prefix:
+                it.seek(prefix.encode())  # 转换为字节串
+            elif start:
+                it.seek(start.encode())
             else:
                 it.seek_to_first()
                 
@@ -131,14 +189,15 @@ class RocksDB:
                 key_bytes = it.key()
                 key = key_bytes.decode() if isinstance(key_bytes, bytes) else key_bytes
                 
+                # 检查前缀匹配
+                if prefix and not key.startswith(prefix):
+                    break
+                    
                 # 检查是否超过结束位置
-                if end and key > end:  # 使用字符串比较
+                if end and key >= end:
                     break
                     
                 if limit and count >= limit:
-                    break
-                    
-                if prefix and not key.startswith(prefix):
                     break
                     
                 if pattern and not self.validate_key(key):
@@ -152,52 +211,41 @@ class RocksDB:
         finally:
             del it
             
-    def first(self, collection: str, pattern: Optional[KeyPattern] = None) -> Optional[Tuple[str, Any]]:
+    def all(self, collection: str, prefix: Optional[str] = None, 
+            start: Optional[str] = None, end: Optional[str] = None) -> List[Tuple[str, Any]]:
+        """获取所有键值对
+        
+        Args:
+            collection: 集合名称
+            prefix: 前缀匹配
+            start: 范围开始
+            end: 范围结束
+        """
+        return [(k, self.get(collection, k)) 
+                for k in self.iter_keys(collection, prefix=prefix, start=start, end=end)]
+        
+    def first(self, collection: str, prefix: Optional[str] = None) -> Optional[Tuple[str, Any]]:
         """获取第一个键值对"""
-        cf = self.get_collection(collection)
-        it = cf.iter()
-        
-        try:
-            it.seek_to_first()
-            while it.valid():
-                key = it.key()
-                if isinstance(key, bytes):
-                    key = key.decode()
-                    
-                if not pattern or self.validate_key(key):
-                    value = it.value()  # 迭代器返回的值已经被 rocksdict 自动反序列化
-                    return key, value
-                it.next()
-        finally:
-            del it
+        for key in self.iter_keys(collection, prefix=prefix, limit=1):
+            return key, self.get(collection, key)
         return None
         
-    def last(self, collection: str, pattern: Optional[KeyPattern] = None) -> Optional[Tuple[str, Any]]:
+    def last(self, collection: str, prefix: Optional[str] = None) -> Optional[Tuple[str, Any]]:
         """获取最后一个键值对"""
-        cf = self.get_collection(collection)
-        it = cf.iter()
-        
-        try:
-            it.seek_to_last()
-            while it.valid():
-                key = it.key()
-                if isinstance(key, bytes):
-                    key = key.decode()
-                    
-                if not pattern or self.validate_key(key):
-                    value = it.value()  # 迭代器返回的值已经被 rocksdict 自动反序列化
-                    return key, value
-                it.prev()
-        finally:
-            del it
+        for key in self.iter_keys(collection, prefix=prefix, reverse=True, limit=1):
+            return key, self.get(collection, key)
         return None
-        
-    def all(self, collection: str, pattern: Optional[KeyPattern] = None) -> List[Tuple[str, Any]]:
-        """获取所有键值对"""
-        return [(k, self.get(collection, k)) for k in self.iter_keys(collection, pattern=pattern)]
         
     def delete(self, collection: str, key: str) -> None:
-        """删除键值对"""
+        """删除键值对
+        
+        Args:
+            collection: 集合名称
+            key: 要删除的键
+            
+        Raises:
+            ValueError: 键格式非法时抛出
+        """
         if not self.validate_key(key):
             raise ValueError(f"非法键格式: {key}")
             
@@ -226,7 +274,31 @@ class RocksDB:
             del self._config
         
     def get_statistics(self) -> Dict[str, Any]:
-        """获取数据库基本信息"""
+        """获取数据库基本信息
+        
+        Returns:
+            Dict[str, Any]: 包含以下统计信息：
+                - disk_usage: 数据库文件占用的磁盘空间（字节）
+                - num_entries: 数据库中的总键值对数量
+                - collections: 列族统计
+                    - {collection_name}: 每个列族的统计
+                        - num_entries: 该列族的键值对数量
+                        - options: 该列族的配置选项
+                - cache: 全局缓存统计
+                    - block_cache: 块缓存统计
+                        - capacity: 配置的容量（字节）
+                        - usage: 当前使用量（字节）
+                        - pinned_usage: 固定内存使用量（字节）
+                    - row_cache: 行缓存统计（同上）
+                - write_buffer: 全局写缓冲区统计
+                    - buffer_size: 缓冲区大小（字节）
+                    - usage: 当前使用量（字节）
+                    - enabled: 是否启用
+                - global_config: 全局配置
+                    - memtable: 内存表配置
+                    - compression: 压缩配置
+                    - performance: 性能相关配置
+        """
         stats = {}
         try:
             # 获取数据库文件大小
@@ -234,15 +306,74 @@ class RocksDB:
             if db_path.exists():
                 stats["disk_usage"] = sum(f.stat().st_size for f in db_path.rglob('*') if f.is_file())
             
-            # 获取所有集合的大致键数量
+            # 按列族统计
+            stats["collections"] = {}
             total_keys = 0
+            
             for collection in self.list_collections():
                 cf = self.get_collection(collection)
-                # 使用 keys() 方法计数
+                # 计算该列族的键数量
                 count = sum(1 for _ in cf.keys())
                 total_keys += count
+                
+                # 获取列族配置
+                cf_config = self._collection_configs.get(collection, self._default_cf_options)
+                
+                # 记录列族统计
+                stats["collections"][collection] = {
+                    "num_entries": count,
+                    "options": {
+                        "compression_type": str(cf_config.get('compression_type', self._config.compression_type)),
+                        "write_buffer_size": cf_config.get('write_buffer_size', self._config.write_buffer_size),
+                        "max_write_buffer_number": cf_config.get('max_write_buffer_number', 
+                                                               self._config.max_write_buffer_number),
+                        "min_write_buffer_number": cf_config.get('min_write_buffer_number',
+                                                               self._config.min_write_buffer_number),
+                        "level0_file_num_compaction_trigger": cf_config.get('level0_file_num_compaction_trigger',
+                                                                          self._config.level0_file_num_compaction_trigger)
+                    }
+                }
             
             stats["num_entries"] = total_keys
+            
+            # 全局缓存统计
+            stats["cache"] = {
+                "block_cache": {
+                    "capacity": self._config.block_cache_size,
+                    "usage": self._config.block_cache.get_usage(),
+                    "pinned_usage": self._config.block_cache.get_pinned_usage()
+                },
+                "row_cache": {
+                    "capacity": self._config.row_cache_size,
+                    "usage": self._config.row_cache.get_usage(),
+                    "pinned_usage": self._config.row_cache.get_pinned_usage()
+                }
+            }
+            
+            # 全局写缓冲区统计
+            write_buffer_manager = self._config.write_buffer_manager
+            stats["write_buffer"] = {
+                "buffer_size": write_buffer_manager.get_buffer_size(),
+                "usage": write_buffer_manager.get_usage(),
+                "enabled": write_buffer_manager.enabled()
+            }
+            
+            # 全局配置
+            stats["global_config"] = {
+                "memtable": {
+                    "write_buffer_size": self._config.write_buffer_size,
+                    "max_write_buffer_number": self._config.max_write_buffer_number,
+                    "min_write_buffer_number": self._config.min_write_buffer_number
+                },
+                "compression": {
+                    "type": str(self._config.compression_type)
+                },
+                "performance": {
+                    "level0_file_num_compaction_trigger": self._config.level0_file_num_compaction_trigger,
+                    "max_background_jobs": self._config.max_background_jobs,
+                    "enable_pipelined_write": self._config.enable_pipelined_write
+                }
+            }
                 
         except Exception as e:
             stats["error"] = str(e)

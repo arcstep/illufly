@@ -1,92 +1,325 @@
-from typing import Optional, Dict, Any, ClassVar, Type
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, Dict, Any, Type, List, Union
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
+from pydantic.fields import PydanticUndefined
 from datetime import datetime
 import uuid
+import json
+import logging
 
 from .patterns import KeyPattern, RocksDBConfig
 
+logger = logging.getLogger(__name__)
+
+class ModelMetadata(BaseModel):
+    """模型元数据（系统表）"""
+    model_id: str  # 模型ID（唯一标识）
+    collection: str  # 集合名称
+    key_pattern: KeyPattern  # 键模式
+    fields: Dict[str, Dict[str, Any]]  # 字段定义
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    @field_serializer('created_at', 'updated_at')
+    def serialize_datetime(self, dt: datetime):
+        return dt.isoformat()
+    
+    @field_serializer('key_pattern')
+    def serialize_key_pattern(self, key_pattern: KeyPattern):
+        return key_pattern.value  # 序列化为枚举值
+    
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True
+    )
+
 class HuangIndexModel(BaseModel):
-    """黄索引基础模型
-    
-    用法示例:
-    ```python
-    class User(HuangIndexModel):
-        __collection__ = "users"
-        __namespace__ = "user"
-        __key_pattern__ = KeyPattern.PREFIX_INFIX_ID
-        __rocksdb_config__ = RocksDBConfig(
-            collection_name="users"
-        )
-        
-        name: str
-        age: int
-        email: Optional[str] = None
-        
-    # 创建用户实例
-    user = User(
-        name="张三",
-        age=30,
-        infix="org_123"  # 组织ID作为中缀
-    )
-    print(user.key)  # 输出: user:org_123:{uuid}
-    ```
-    """
-    
-    # 类级别的元数据配置
-    __collection__: ClassVar[str] = "default"  # 默认集合名
-    __key_pattern__: ClassVar[KeyPattern] = KeyPattern.PREFIX_ID  # 默认键模式
-    __namespace__: ClassVar[str] = "model"  # 默认命名空间
-    __rocksdb_config__: ClassVar[RocksDBConfig] = RocksDBConfig(
-        collection_name="default"
-    )
-    
-    # 实例级别的键结构元数据
+    """黄索引基础模型（可选继承）"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     infix: Optional[str] = None
     suffix: Optional[str] = Field(
         default_factory=lambda: datetime.utcnow().isoformat()
     )
     
-    # Pydantic 配置
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         extra='allow'
     )
+
+class ModelRegistry:
+    """模型注册表"""
+    DEFAULT_CF = "default"  # 默认列族
+    MODELS_META_CF = "__MODELS_META__"  # 元数据专用列族
+    MODEL_KEY_PREFIX = "models"  # 元数据键前缀
     
-    @property
-    def key(self) -> str:
-        """生成存储键"""
-        pattern = self.__key_pattern__
-        parts = []
+    @staticmethod
+    def _resolve_model_id(instance: Optional[BaseModel] = None, 
+                         model_id: Optional[str] = None) -> str:
+        """解析模型ID
         
-        if pattern == KeyPattern.PREFIX_ID:
-            parts = [self.__namespace__, self.id]
-        elif pattern == KeyPattern.PREFIX_ID_SUFFIX:
-            parts = [self.__namespace__, self.id, self.suffix]
-        elif pattern == KeyPattern.PREFIX_INFIX_ID:
-            parts = [self.__namespace__, self.infix, self.id]
-        elif pattern == KeyPattern.PREFIX_INFIX_ID_SUFFIX:
-            parts = [self.__namespace__, self.infix, self.id, self.suffix]
-        elif pattern == KeyPattern.PREFIX_PATH_VALUE:
-            parts = [self.__namespace__, self.infix or "path", self.id]
-        elif pattern == KeyPattern.PREFIX_INFIX_PATH_VALUE:
-            parts = [self.__namespace__, self.infix, "path", self.id]
+        Args:
+            instance: 模型实例
+            model_id: 模型ID
             
-        return ":".join(str(p).strip(":") for p in parts if p)
-    
-    def model_dump_meta(self) -> Dict[str, Any]:
-        """导出元数据"""
-        return {
-            "id": self.id,
-            "infix": self.infix,
-            "suffix": self.suffix,
-            "key": self.key,
-            "collection": self.__collection__,
-            "namespace": self.__namespace__,
-            "key_pattern": self.__key_pattern__.value
-        }
+        Returns:
+            解析后的模型ID
+            
+        Raises:
+            ValueError: 当既没有提供实例也没有提供模型ID时
+        """
+        if instance is not None:
+            return model_id or instance.__class__.__name__
+        if model_id is not None:
+            return model_id
+        raise ValueError("必须提供 instance 或 model_id 其中之一")
+
+    @classmethod
+    def get_model_key(cls, model_id: str, collection: str=None) -> str:
+        """获取模型键"""
+        model_id = model_id or ""
+        collection = collection or cls.DEFAULT_CF
+        return f"{cls.MODEL_KEY_PREFIX}:{collection}:{model_id}"
+
+    @classmethod
+    def register_model(cls, 
+                      model_class: Type[BaseModel], 
+                      model_id: Optional[str] = None,
+                      key_pattern: Optional[KeyPattern] = None,
+                      collection: Optional[str] = None,
+                      db: Optional['RocksDB'] = None,
+                      allow_update: bool = False) -> bool:
+        """注册模型"""
+        if db is None:
+            raise ValueError("必须提供 db 参数")
+            
+        model_id = model_id or model_class.__name__
+        collection = collection or cls.DEFAULT_CF
+        meta_key = cls.get_model_key(model_id, collection)
+        
+        logger.info(f"正在注册模型: {model_id}, 集合: {collection}, 键模式: {key_pattern}")
+        logger.info(f"模型类信息: {model_class.__module__}.{model_class.__qualname__}")
+        
+        # 检查是否已存在
+        existing = db.get(cls.MODELS_META_CF, meta_key)
+        if existing:
+            logger.info(f"发现已存在的模型元数据: {existing}")
+            if not allow_update:
+                raise ValueError(f"模型 {model_id} 在集合 {collection} 中已存在，如需更新请设置 allow_update=True")
+        
+        metadata = ModelMetadata(
+            model_id=model_id,
+            collection=collection,
+            key_pattern=key_pattern or KeyPattern.PREFIX_ID_SUFFIX,
+            fields=cls._get_model_fields(model_class)
+        )
+        
+        # 使用 model_dump 而不是 dict() 来序列化，并添加 model_class
+        metadata_dict = metadata.model_dump(
+            exclude_unset=True,
+            exclude_none=True,
+            mode='json'
+        )
+        metadata_dict['model_class'] = f"{model_class.__module__}.{model_class.__qualname__}"
+        logger.info(f"准备保存模型元数据: {metadata_dict}")
+        
+        db.set(cls.MODELS_META_CF, meta_key, metadata_dict)
+        
+        # 确保注册成功
+        saved_metadata = db.get(cls.MODELS_META_CF, meta_key)
+        if not saved_metadata:
+            logger.error(f"模型 {model_id} 注册失败，无法读取保存的元数据")
+            raise ValueError(f"模型 {model_id} 注册失败")
+        logger.info(f"模型注册成功，保存的元数据: {saved_metadata}")
+        
+        return True
     
     @classmethod
-    def get_rocksdb_config(cls) -> RocksDBConfig:
-        """获取 RocksDB 配置"""
-        return cls.__rocksdb_config__ 
+    def unregister_model(cls,
+                        instance: Optional[BaseModel] = None,
+                        model_id: Optional[str] = None,
+                        collection: Optional[str] = None,
+                        db: Optional['RocksDB'] = None) -> bool:
+        """注销模型"""
+        if db is None:
+            raise ValueError("必须提供 db 参数")
+
+        model_id = cls._resolve_model_id(instance, model_id)
+        collection = collection or cls.DEFAULT_CF
+        meta_key = cls.get_model_key(model_id, collection)
+        
+        if not db.get(cls.MODELS_META_CF, meta_key):
+            raise ValueError(f"模型 {model_id} 在集合 {collection} 中不存在")
+        
+        db.delete(cls.MODELS_META_CF, meta_key)
+        return True
+    
+    @classmethod
+    def update_model(cls,
+                    updates: Dict[str, Any],
+                    instance: Optional[BaseModel] = None,
+                    model_id: Optional[str] = None,
+                    collection: Optional[str] = None,
+                    db: Optional['RocksDB'] = None) -> bool:
+        """更新模型元数据"""
+        if db is None:
+            raise ValueError("必须提供 db 参数")
+
+        model_id = cls._resolve_model_id(instance, model_id)
+        collection = collection or cls.DEFAULT_CF
+        meta_key = cls.get_model_key(model_id, collection)
+        
+        if not db.get(cls.MODELS_META_CF, meta_key):
+            raise ValueError(f"模型 {model_id} 在集合 {collection} 中不存在")
+        
+        metadata = db.get(cls.MODELS_META_CF, meta_key)
+        metadata.update(updates)
+        metadata['updated_at'] = datetime.utcnow().isoformat()
+        
+        db.set(cls.MODELS_META_CF, meta_key, metadata)
+        return True
+    
+    @classmethod
+    def get_model(cls,
+                instance: Optional[BaseModel] = None,
+                model_id: Optional[str] = None,
+                collection: Optional[str] = None,
+                db: Optional['RocksDB'] = None) -> Optional[Dict[str, Any]]:
+        """获取模型元数据"""
+        if db is None:
+            raise ValueError("必须提供 db 参数")
+        
+        model_id = cls._resolve_model_id(instance, model_id)
+        logger.info(f"开始获取模型元数据: model_id={model_id}, collection={collection}")
+        
+        # 如果没有指定集合，尝试在所有集合中查找
+        if collection is None:
+            # 先尝试默认集合
+            meta_key = cls.get_model_key(model_id, cls.DEFAULT_CF)
+            logger.info(f"尝试在默认集合中查找: {meta_key}")
+            metadata = db.get(cls.MODELS_META_CF, meta_key)
+            if metadata:
+                logger.info(f"在默认集合中找到模型: {metadata}")
+                return metadata
+            
+            # 如果在默认集合中找不到，遍历所有集合
+            prefix = f"{cls.MODEL_KEY_PREFIX}:"
+            logger.info(f"在所有集合中查找，前缀: {prefix}")
+            for key in db.iter_keys(cls.MODELS_META_CF, prefix=prefix):
+                if key.endswith(f":{model_id}"):
+                    metadata = db.get(cls.MODELS_META_CF, key)
+                    logger.info(f"在其他集合中找到模型: {key} -> {metadata}")
+                    return metadata
+            logger.info("在所有集合中都未找到模型")
+        else:
+            # 如果指定了集合，直接查找
+            meta_key = cls.get_model_key(model_id, collection)
+            logger.info(f"在指定集合中查找: {meta_key}")
+            metadata = db.get(cls.MODELS_META_CF, meta_key)
+            if metadata:
+                logger.info(f"在指定集合中找到模型: {metadata}")
+            else:
+                logger.info(f"在指定集合中未找到模型")
+            return metadata
+        
+        return None
+    
+    @classmethod
+    def list_models(cls,
+                   collection: Optional[str] = None,
+                   db: Optional['RocksDB'] = None) -> Dict[str, Dict[str, Any]]:
+        """列出所有模型元数据"""
+        if db is None:
+            raise ValueError("必须提供 db 参数")
+            
+        prefix = f"{cls.MODEL_KEY_PREFIX}:"
+        if collection:
+            prefix = f"{prefix}{collection}:"
+        
+        logger.info(f"正在列出模型，前缀: {prefix}")
+        
+        # 添加更多日志
+        logger.info("开始查询所有键...")
+        all_keys = list(db.iter_keys(cls.MODELS_META_CF))
+        logger.info(f"所有键: {all_keys}")
+        
+        models = dict(db.all(cls.MODELS_META_CF, prefix=prefix))
+        
+        logger.info(f"列出的模型总数: {len(models)}")
+        logger.info(f"找到的模型: {models}")
+        return models
+    
+    @classmethod
+    def get_key(cls,
+                instance: BaseModel,
+                model_id: Optional[str] = None,
+                collection: Optional[str] = None,
+                db: Optional['RocksDB'] = None,
+                **kwargs) -> str:
+        """为模型实例生成键"""
+        if db is None:
+            raise ValueError("必须提供 db 参数")
+        
+        model_id = cls._resolve_model_id(instance, model_id)
+        collection = collection or cls.DEFAULT_CF
+        
+        logger.info(f"正在生成键: 模型={model_id}, 集合={collection}, 参数={kwargs}")
+        
+        # 获取模型元数据
+        metadata = cls.get_model(
+            instance=instance,
+            model_id=model_id,
+            collection=collection,
+            db=db
+        )
+        
+        if not metadata:
+            logger.error(f"模型 {model_id} 在集合 {collection} 中未注册")
+            raise ValueError(f"模型 {model_id} 在集合 {collection} 中未注册")
+        
+        logger.info(f"找到模型元数据: {metadata}")
+        
+        # 构建键参数
+        key_args = {
+            'prefix': model_id,
+            'id': getattr(instance, 'id', str(uuid.uuid4())),
+            'infix': kwargs.get('infix', getattr(instance, 'infix', None)),
+            'suffix': kwargs.get('suffix', getattr(instance, 'suffix', None)),
+            'path': kwargs.get('path'),
+            'value': kwargs.get('value')
+        }
+        logger.info(f"键参数: {key_args}")
+        
+        # 如果使用 PREFIX_INFIX_ID_SUFFIX 模式，自动设置 infix
+        if metadata['key_pattern'] == KeyPattern.PREFIX_INFIX_ID_SUFFIX.value:
+            key_args['infix'] = key_args['infix'] or f"age_{instance.age}"
+            logger.info(f"使用 PREFIX_INFIX_ID_SUFFIX 模式，设置 infix={key_args['infix']}")
+        
+        # 生成键
+        key = KeyPattern.make_key(KeyPattern(metadata['key_pattern']), **key_args)
+        logger.info(f"生成的键: {key}")
+        return key
+    
+    @staticmethod
+    def _get_model_fields(model_class: Type[BaseModel]) -> Dict[str, Dict[str, Any]]:
+        """获取模型字段定义"""
+        fields = {}
+        for name, field in model_class.model_fields.items():
+            if name not in ['id', 'infix', 'suffix']:
+                # 使用 field.annotation 来判断字段是否可选
+                is_optional = (
+                    getattr(field.annotation, "__origin__", None) is Optional or
+                    str(field.annotation).startswith("typing.Optional")
+                )
+                
+                # 确保所有值都是可序列化的
+                field_info = {
+                    'type': str(field.annotation),
+                    'required': not is_optional,
+                    'description': field.description or None  # 确保 description 不是 Undefined
+                }
+                
+                # 只有当默认值不是 PydanticUndefined 时才添加
+                if not isinstance(field.default, type(PydanticUndefined)):
+                    field_info['default'] = field.default
+                    
+                fields[name] = field_info
+                
+        return fields 
