@@ -92,6 +92,30 @@ def get_env(key: str=None):
         "JIAOZI_CACHE_WRITE_SIZE": 1000,     # 写缓冲大小
         "JIAOZI_CACHE_FLUSH_INTERVAL": 60,   # 刷新间隔（秒）
         "JIAOZI_CACHE_FLUSH_THRESHOLD": 1000, # 刷新阈值
+
+        # RocksDB数据库配置
+        "ROCKSDB_BASE_DIR": os.path.join(FIXED_TEMP_DIR, "__ROCKSDB_STORE__"),  # 数据库根目录
+        
+        # 全局配置 - 内存相关
+        "ROCKSDB_BLOCK_CACHE_SIZE": 512,      # Block缓存大小(MB)，建议为可用内存的30%
+        "ROCKSDB_ROW_CACHE_SIZE": 128,        # 行缓存大小(MB)，建议为block cache的1/4
+        
+        # 全局配置 - 写入相关
+        "ROCKSDB_WRITE_BUFFER_SIZE": 64,      # 单个memtable大小(MB)
+        "ROCKSDB_MAX_WRITE_BUFFER_NUMBER": 4, # 最大memtable数量
+        "ROCKSDB_MIN_WRITE_BUFFER_NUMBER": 2, # 最小memtable数量
+        "ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER": 4,  # L0文件数量触发合并阈值
+        
+        # 全局配置 - 性能优化
+        "ROCKSDB_COMPRESSION": "lz4",         # 压缩算法(none/snappy/lz4/zstd)
+        "ROCKSDB_BLOOM_BITS": 10,            # 布隆过滤器位数(8-16)
+        "ROCKSDB_MAX_BACKGROUND_JOBS": 4,     # 后台任务线程数
+        "ROCKSDB_ENABLE_PIPELINED_WRITE": True,  # 启用流水线写入
+        
+        # 默认列族配置
+        "ROCKSDB_DEFAULT_CF_WRITE_BUFFER_SIZE": 32,  # 默认列族memtable大小(MB)
+        "ROCKSDB_DEFAULT_CF_MAX_WRITE_BUFFER_NUMBER": 3,  # 默认列族最大memtable数量
+        "ROCKSDB_DEFAULT_CF_COMPRESSION": "lz4",  # 默认列族压缩算法
     }
     if key:
         if key not in default_values:
