@@ -37,14 +37,14 @@ class KeyPattern(Enum):
             
         Returns:
             构造的键
-            
-        Examples:
-            >>> KeyPattern.make_key(KeyPattern.PREFIX_ID, prefix="user", id="123")
-            "user:123"
-            >>> KeyPattern.make_key(KeyPattern.PREFIX_INFIX_PATH_VALUE, 
-                                  prefix="index", infix="name", path="users", value="zhang")
-            "index:name:users:zhang"
         """
+        def sanitize(value: Any) -> str:
+            """清理键值中的非法字符"""
+            if value is None:
+                return ''
+            # 将冒号替换为下划线
+            return str(value).replace(':', '_')
+        
         parts = []
         
         if pattern == cls.PREFIX_ID:
@@ -60,7 +60,9 @@ class KeyPattern(Enum):
         elif pattern == cls.PREFIX_INFIX_PATH_VALUE:
             parts = [kwargs['prefix'], kwargs['infix'], kwargs['path'], kwargs['value']]
             
-        return ":".join(str(p).strip(":") for p in parts if p)
+        # 对每个部分进行清理
+        parts = [sanitize(p) for p in parts]
+        return ":".join(p for p in parts if p)
 
 @dataclass
 class RocksDBConfig:

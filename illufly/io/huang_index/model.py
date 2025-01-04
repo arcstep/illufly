@@ -51,25 +51,16 @@ class ModelRegistry:
     MODEL_KEY_PREFIX = "models"  # 元数据键前缀
     
     @staticmethod
-    def _resolve_model_id(instance: Optional[BaseModel] = None, 
-                         model_id: Optional[str] = None) -> str:
-        """解析模型ID
-        
-        Args:
-            instance: 模型实例
-            model_id: 模型ID
-            
-        Returns:
-            解析后的模型ID
-            
-        Raises:
-            ValueError: 当既没有提供实例也没有提供模型ID时
-        """
-        if instance is not None:
-            return model_id or instance.__class__.__name__
-        if model_id is not None:
+    def _resolve_model_id(
+        model_class: Optional[Type[BaseModel]] = None, 
+        model_id: Optional[str] = None
+    ) -> str:
+        """解析模型ID"""
+        if model_id:
             return model_id
-        raise ValueError("必须提供 instance 或 model_id 其中之一")
+        if model_class:
+            return model_class.__name__
+        raise ValueError("必须提供 model_class 或 model_id 其中之一")
 
     @classmethod
     def get_model_key(cls, model_id: str, collection: str=None) -> str:
@@ -79,19 +70,26 @@ class ModelRegistry:
         return f"{cls.MODEL_KEY_PREFIX}:{collection}:{model_id}"
 
     @classmethod
-    def register_model(cls, 
-                      model_class: Type[BaseModel], 
-                      model_id: Optional[str] = None,
-                      key_pattern: Optional[KeyPattern] = None,
-                      collection: Optional[str] = None,
-                      db: Optional['RocksDB'] = None,
-                      allow_update: bool = False) -> bool:
+    def register_model(
+        cls, 
+        model_class: Type[BaseModel],
+        model_id: Optional[str] = None,
+        key_pattern: Optional[KeyPattern] = None,
+        collection: Optional[str] = None,
+        db: Optional['RocksDB'] = None,
+        allow_update: bool = False
+    ) -> bool:
         """注册模型"""
         if db is None:
             raise ValueError("必须提供 db 参数")
             
-        model_id = model_id or model_class.__name__
+        # 添加集合名验证
+        if collection == "":
+            raise ValueError("集合名不能为空字符串")
+        
         collection = collection or cls.DEFAULT_CF
+        model_id = cls._resolve_model_id(model_class, model_id)
+
         meta_key = cls.get_model_key(model_id, collection)
         
         logger.info(f"正在注册模型: {model_id}, 集合: {collection}, 键模式: {key_pattern}")
@@ -133,7 +131,7 @@ class ModelRegistry:
     
     @classmethod
     def unregister_model(cls,
-                        instance: Optional[BaseModel] = None,
+                        model_class: Optional[Type[BaseModel]] = None,
                         model_id: Optional[str] = None,
                         collection: Optional[str] = None,
                         db: Optional['RocksDB'] = None) -> bool:
@@ -141,7 +139,7 @@ class ModelRegistry:
         if db is None:
             raise ValueError("必须提供 db 参数")
 
-        model_id = cls._resolve_model_id(instance, model_id)
+        model_id = cls._resolve_model_id(model_class, model_id)
         collection = collection or cls.DEFAULT_CF
         meta_key = cls.get_model_key(model_id, collection)
         
@@ -154,7 +152,7 @@ class ModelRegistry:
     @classmethod
     def update_model(cls,
                     updates: Dict[str, Any],
-                    instance: Optional[BaseModel] = None,
+                    model_class: Optional[Type[BaseModel]] = None,
                     model_id: Optional[str] = None,
                     collection: Optional[str] = None,
                     db: Optional['RocksDB'] = None) -> bool:
@@ -162,7 +160,7 @@ class ModelRegistry:
         if db is None:
             raise ValueError("必须提供 db 参数")
 
-        model_id = cls._resolve_model_id(instance, model_id)
+        model_id = cls._resolve_model_id(model_class, model_id)
         collection = collection or cls.DEFAULT_CF
         meta_key = cls.get_model_key(model_id, collection)
         
@@ -178,7 +176,7 @@ class ModelRegistry:
     
     @classmethod
     def get_model(cls,
-                instance: Optional[BaseModel] = None,
+                model_class: Optional[Type[BaseModel]] = None,
                 model_id: Optional[str] = None,
                 collection: Optional[str] = None,
                 db: Optional['RocksDB'] = None) -> Optional[Dict[str, Any]]:
@@ -186,7 +184,7 @@ class ModelRegistry:
         if db is None:
             raise ValueError("必须提供 db 参数")
         
-        model_id = cls._resolve_model_id(instance, model_id)
+        model_id = cls._resolve_model_id(model_class, model_id)
         logger.info(f"开始获取模型元数据: model_id={model_id}, collection={collection}")
         
         # 如果没有指定集合，尝试在所有集合中查找
@@ -257,7 +255,7 @@ class ModelRegistry:
         if db is None:
             raise ValueError("必须提供 db 参数")
         
-        model_id = cls._resolve_model_id(instance, model_id)
+        model_id = cls._resolve_model_id(instance.__class__, model_id)
         collection = collection or cls.DEFAULT_CF
         
         logger.info(f"正在生成键: 模型={model_id}, 集合={collection}, 参数={kwargs}")
@@ -274,28 +272,87 @@ class ModelRegistry:
             logger.error(f"模型 {model_id} 在集合 {collection} 中未注册")
             raise ValueError(f"模型 {model_id} 在集合 {collection} 中未注册")
         
-        logger.info(f"找到模型元数据: {metadata}")
+        # 获取键模式
+        key_pattern = KeyPattern(metadata['key_pattern'])
         
-        # 构建键参数
-        key_args = {
-            'prefix': model_id,
-            'id': getattr(instance, 'id', str(uuid.uuid4())),
-            'infix': kwargs.get('infix', getattr(instance, 'infix', None)),
-            'suffix': kwargs.get('suffix', getattr(instance, 'suffix', None)),
-            'path': kwargs.get('path'),
-            'value': kwargs.get('value')
-        }
-        logger.info(f"键参数: {key_args}")
-        
-        # 如果使用 PREFIX_INFIX_ID_SUFFIX 模式，自动设置 infix
-        if metadata['key_pattern'] == KeyPattern.PREFIX_INFIX_ID_SUFFIX.value:
-            key_args['infix'] = key_args['infix'] or f"age_{instance.age}"
-            logger.info(f"使用 PREFIX_INFIX_ID_SUFFIX 模式，设置 infix={key_args['infix']}")
-        
-        # 生成键
-        key = KeyPattern.make_key(KeyPattern(metadata['key_pattern']), **key_args)
-        logger.info(f"生成的键: {key}")
-        return key
+        # 获取 id, infix 和 suffix 值
+        try:
+            # 获取 ID - 优先使用入参数
+            id_value = kwargs.get('id')
+            if id_value is None:
+                # 其次使用自定义方法
+                if hasattr(instance, '__id__'):
+                    id_value = instance.__id__()
+                else:
+                    # 最后使用属性或生成默认值
+                    id_value = getattr(instance, 'id', str(uuid.uuid4()))
+            
+            # 获取中缀 - 优先使用入参数
+            infix = kwargs.get('infix')
+            if infix is None and key_pattern in [KeyPattern.PREFIX_INFIX_ID, 
+                                               KeyPattern.PREFIX_INFIX_ID_SUFFIX,
+                                               KeyPattern.PREFIX_INFIX_PATH_VALUE]:
+                # 其次使用自定义方法
+                if hasattr(instance, '__infix__'):
+                    infix = instance.__infix__()
+                else:
+                    # 最后使用属性
+                    infix = getattr(instance, 'infix', None)
+                    if infix is None:
+                        raise ValueError(
+                            "当前键模式需要 'infix' 值。您可以:\n"
+                            "1. 在调用时提供 infix 参数\n"
+                            "2. 在模型中定义 __infix__() 方法\n"
+                            "3. 在模型中定义 infix 属性"
+                        )
+                
+            # 获取后缀 - 优先使用入参数
+            suffix = kwargs.get('suffix')
+            if suffix is None and key_pattern in [KeyPattern.PREFIX_ID_SUFFIX,
+                                                KeyPattern.PREFIX_INFIX_ID_SUFFIX]:
+                # 其次使用自定义方法
+                if hasattr(instance, '__suffix__'):
+                    suffix = instance.__suffix__()
+                else:
+                    # 最后使用属性或生成默认值
+                    suffix = getattr(instance, 'suffix', datetime.utcnow().isoformat())
+                
+            # 路径和值只支持入参数
+            path = kwargs.get('path')
+            if path is None and key_pattern in [KeyPattern.PREFIX_PATH_VALUE,
+                                              KeyPattern.PREFIX_INFIX_PATH_VALUE]:
+                raise ValueError(
+                    "当前键模式需要 'path' 值。\n"
+                    "请在调用时提供 path 参数"
+                )
+                
+            value = kwargs.get('value')
+            if value is None and key_pattern in [KeyPattern.PREFIX_PATH_VALUE,
+                                               KeyPattern.PREFIX_INFIX_PATH_VALUE]:
+                raise ValueError(
+                    "当前键模式需要 'value' 值。\n"
+                    "请在调用时提供 value 参数"
+                )
+            
+            # 构建键参数
+            key_args = {
+                'prefix': model_id,
+                'id': id_value,
+                'infix': infix,
+                'suffix': suffix,
+                'path': path,
+                'value': value
+            }
+            logger.info(f"键参数: {key_args}")
+            
+            # 生成键
+            key = KeyPattern.make_key(key_pattern, **key_args)
+            logger.info(f"生成的键: {key}")
+            return key
+            
+        except Exception as e:
+            logger.error(f"生成键失败: {str(e)}")
+            raise
     
     @staticmethod
     def _get_model_fields(model_class: Type[BaseModel]) -> Dict[str, Dict[str, Any]]:
