@@ -5,9 +5,13 @@ from pathlib import Path
 from datetime import datetime
 from pydantic import BaseModel
 from typing import List, Dict
+import time
+import logging
 
 from illufly.io.huang_index import ModelRocksDB, KeyPattern
 from illufly.io.huang_index.model import HuangIndexModel
+
+logger = logging.getLogger(__name__)
 
 class TestModelRocksDB:
     @pytest.fixture
@@ -23,7 +27,7 @@ class TestModelRocksDB:
         db = ModelRocksDB(db_path)
         yield db
         db.close()
-        
+    
     @pytest.fixture
     def user_model(self):
         """创建测试用户模型类"""
@@ -79,14 +83,10 @@ class TestModelRocksDB:
         
         # 列出所有模型
         models = db.list_models_meta()
+        logger.info(f"models: {models}")
         assert len(models) == 2
         assert any("User" in key for key in models.keys())
         assert any("VipUser" in key for key in models.keys())
-        
-        # 按集合过滤
-        vip_models = db.list_models_meta(collection="vip")
-        assert len(vip_models) == 1
-        assert any("VipUser" in key for key in vip_models.keys())
 
     def test_model_metadata_management(self, db):
         """测试模型元数据管理"""
@@ -148,10 +148,16 @@ class TestModelRocksDB:
                 model_class=TestModel,
                 key_pattern="invalid_pattern"
             )
-            
-        # 测试无效的集合名
-        with pytest.raises(ValueError):
-            db.register_model(
-                model_class=TestModel,
-                collection=""
-            )
+
+    def test_model_same_path(self, db, user_model):
+        """测试模型在同一数据库路径下的注册"""
+        assert db.register_model(model_class=user_model)
+        db.close()
+        
+        db_same_path = ModelRocksDB(db._db_path)
+        meta = db_same_path.get_model_meta(model_id="User")
+        assert meta is not None
+        assert meta["model_id"] == "User"
+        assert "name" in meta["fields"]
+        assert "age" in meta["fields"]
+        db_same_path.close()

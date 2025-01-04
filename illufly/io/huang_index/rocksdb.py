@@ -2,6 +2,7 @@ from typing import Optional, Any, List, Dict, Set, Iterator, Tuple, Union
 from rocksdict import Rdict, Options, ColumnFamily, ReadOptions
 import msgpack
 from pathlib import Path
+import time
 
 from ...config import get_env
 from .patterns import KeyPattern, RocksDBConfig
@@ -161,58 +162,121 @@ class RocksDB:
         cf[key.encode()] = value  # 不需要手动序列化，rocksdict 会使用我们设置的 msgpack.packb
         
     def iter_keys(self,
-                 collection: str,
-                 pattern: Optional[KeyPattern] = None,
-                 prefix: Optional[str] = None,
-                 start: Optional[str] = None,
-                 end: Optional[str] = None,
-                 limit: Optional[int] = None) -> Iterator[str]:
-        """迭代键"""
+                collection: str,
+                prefix: Optional[str] = None,
+                start: Optional[str] = None,
+                end: Optional[str] = None,
+                limit: Optional[int] = None,
+                reverse: bool = False,
+                range_type: str = "[]") -> Iterator[str]:
+        """迭代键
+        
+        Args:
+            collection: 集合名称
+            prefix: 前缀匹配
+            start: 范围开始
+            end: 范围结束
+            limit: 限制数量
+            reverse: 是否反向迭代
+            range_type: 区间类型，支持:
+                - "[]": 闭区间 [start, end]（默认）
+                - "[)": 左闭右开区间 [start, end)
+                - "(]": 左开右闭区间 (start, end]
+                - "()": 开区间 (start, end)
+        
+        Raises:
+            ValueError: 当 range_type 不是有效的区间类型时
+        """
+        if range_type not in ("[]", "[)", "(]", "()"):
+            raise ValueError("无效的区间类型，必须是 [], [), (], () 之一")
+        
+        include_start = range_type[0] == "["
+        include_end = range_type[1] == "]"
+        
         cf = self.get_collection(collection)
         read_opts = ReadOptions()
         
         # 获取迭代器
         it = cf.iter(read_opts)
         count = 0
+        limit = limit or 100
         
         try:
             # 设置起始位置
-            if prefix:
-                it.seek(prefix.encode())  # 转换为字节串
-            elif start:
-                it.seek(start.encode())
+            if reverse:
+                if prefix:
+                    it.seek_for_prev((prefix + '\xff').encode())
+                elif end:
+                    it.seek_for_prev(end.encode())
+                else:
+                    it.seek_to_last()
             else:
-                it.seek_to_first()
-                
+                if prefix:
+                    it.seek(prefix.encode())
+                elif start:
+                    # 对于左开区间，需要找到比start大的第一个键
+                    if not include_start and start:
+                        it.seek_for_prev(start.encode())
+                        it.next()
+                    else:
+                        it.seek(start.encode())
+                else:
+                    it.seek_to_first()
+            
             # 迭代所有键
             while it.valid():
                 key_bytes = it.key()
                 key = key_bytes.decode() if isinstance(key_bytes, bytes) else key_bytes
                 
                 # 检查前缀匹配
-                if prefix and not key.startswith(prefix):
-                    break
+                if prefix:
+                    if not key.startswith(prefix):
+                        break
+                
+                # 检查范围
+                if not reverse:
+                    if start and not include_start and key <= start:
+                        it.next()
+                        continue
                     
-                # 检查是否超过结束位置
-                if end and key >= end:
-                    break
+                    if end:
+                        if include_end:
+                            if key > end:
+                                break
+                        else:
+                            if key >= end:
+                                break
+                else:
+                    if end and not include_end and key >= end:
+                        it.prev()
+                        continue
                     
+                    if start:
+                        if include_start:
+                            if key < start:
+                                break
+                        else:
+                            if key <= start:
+                                break
+                
+                # 检查限制
                 if limit and count >= limit:
                     break
-                    
-                if pattern and not self.validate_key(key):
-                    it.next()
+                
+                if not self.validate_key(key):
+                    it.next() if not reverse else it.prev()
                     continue
-                    
+                
                 yield key
                 count += 1
-                it.next()
+                it.next() if not reverse else it.prev()
                 
         finally:
             del it
             
     def all(self, collection: str, prefix: Optional[str] = None, 
-            start: Optional[str] = None, end: Optional[str] = None) -> List[Tuple[str, Any]]:
+            start: Optional[str] = None, end: Optional[str] = None,
+            limit: Optional[int] = None, range_type: str = "[]") -> List[Tuple[str, Any]]:
         """获取所有键值对
         
         Args:
@@ -220,19 +284,46 @@ class RocksDB:
             prefix: 前缀匹配
             start: 范围开始
             end: 范围结束
+            limit: 限制数量
         """
-        return [(k, self.get(collection, k)) 
-                for k in self.iter_keys(collection, prefix=prefix, start=start, end=end)]
+        return {
+            k: self.get(collection, k) 
+            for k in self.iter_keys(
+                collection=collection,
+                prefix=prefix,
+                start=start,
+                end=end,
+                limit=limit,
+                range_type=range_type
+            )
+        }
         
-    def first(self, collection: str, prefix: Optional[str] = None) -> Optional[Tuple[str, Any]]:
+    def first(self, collection: str, prefix: Optional[str] = None,
+            limit: Optional[int] = None, range_type: str = "[]") -> Optional[Tuple[str, Any]]:
         """获取第一个键值对"""
-        for key in self.iter_keys(collection, prefix=prefix, limit=1):
+
+        limit = limit or 1
+        for key in self.iter_keys(
+            collection=collection,
+            prefix=prefix,
+            limit=limit,
+            range_type=range_type
+        ):
             return key, self.get(collection, key)
         return None
         
-    def last(self, collection: str, prefix: Optional[str] = None) -> Optional[Tuple[str, Any]]:
+    def last(self, collection: str, prefix: Optional[str] = None,
+            limit: Optional[int] = None, range_type: str = "[]") -> Optional[Tuple[str, Any]]:
         """获取最后一个键值对"""
-        for key in self.iter_keys(collection, prefix=prefix, reverse=True, limit=1):
+
+        limit = limit or 1
+        for key in self.iter_keys(
+            collection=collection,
+            prefix=prefix,
+            reverse=True,
+            limit=limit,
+            range_type=range_type
+        ):
             return key, self.get(collection, key)
         return None
         
@@ -267,11 +358,27 @@ class RocksDB:
             
     def close(self) -> None:
         """关闭数据库"""
+        # 先清理列族引用
+        if hasattr(self, '_collections'):
+            self._collections.clear()
+            del self._collections
+        
+        # 清理配置引用
+        if hasattr(self, '_collection_configs'):
+            self._collection_configs.clear()
+            del self._collection_configs
+        
+        # 关闭数据库
         if hasattr(self, '_db'):
             self._db.close()
             del self._db
+        
+        # 清理配置
         if hasattr(self, '_config'):
             del self._config
+        
+        # 等待文件锁释放
+        time.sleep(0.1)  # 给系统一些时间来释放文件锁
         
     def get_statistics(self) -> Dict[str, Any]:
         """获取数据库基本信息

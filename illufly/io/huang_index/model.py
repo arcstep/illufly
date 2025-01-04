@@ -82,10 +82,6 @@ class ModelRegistry:
         """注册模型"""
         if db is None:
             raise ValueError("必须提供 db 参数")
-            
-        # 添加集合名验证
-        if collection == "":
-            raise ValueError("集合名不能为空字符串")
         
         collection = collection or cls.DEFAULT_CF
         model_id = cls._resolve_model_id(model_class, model_id)
@@ -146,8 +142,7 @@ class ModelRegistry:
         if not db.get(cls.MODELS_META_CF, meta_key):
             raise ValueError(f"模型 {model_id} 在集合 {collection} 中不存在")
         
-        db.delete(cls.MODELS_META_CF, meta_key)
-        return True
+        return db.delete(cls.MODELS_META_CF, meta_key)
     
     @classmethod
     def update_model(cls,
@@ -171,8 +166,7 @@ class ModelRegistry:
         metadata.update(updates)
         metadata['updated_at'] = datetime.utcnow().isoformat()
         
-        db.set(cls.MODELS_META_CF, meta_key, metadata)
-        return True
+        return db.set(cls.MODELS_META_CF, meta_key, metadata)
     
     @classmethod
     def get_model(cls,
@@ -221,31 +215,15 @@ class ModelRegistry:
     
     @classmethod
     def list_models(cls,
-                   collection: Optional[str] = None,
                    db: Optional['RocksDB'] = None) -> Dict[str, Dict[str, Any]]:
         """列出所有模型元数据"""
         if db is None:
             raise ValueError("必须提供 db 参数")
             
-        prefix = f"{cls.MODEL_KEY_PREFIX}:"
-        if collection:
-            prefix = f"{prefix}{collection}:"
-        
-        logger.info(f"正在列出模型，前缀: {prefix}")
-        
-        # 添加更多日志
-        logger.info("开始查询所有键...")
-        all_keys = list(db.iter_keys(cls.MODELS_META_CF))
-        logger.info(f"所有键: {all_keys}")
-        
-        models = dict(db.all(cls.MODELS_META_CF, prefix=prefix))
-        
-        logger.info(f"列出的模型总数: {len(models)}")
-        logger.info(f"找到的模型: {models}")
-        return models
+        return db.all(collection=cls.MODELS_META_CF)
     
     @classmethod
-    def get_key(cls,
+    def gen_key(cls,
                 instance: BaseModel,
                 model_id: Optional[str] = None,
                 collection: Optional[str] = None,
@@ -290,8 +268,8 @@ class ModelRegistry:
             # 获取中缀 - 优先使用入参数
             infix = kwargs.get('infix')
             if infix is None and key_pattern in [KeyPattern.PREFIX_INFIX_ID, 
-                                               KeyPattern.PREFIX_INFIX_ID_SUFFIX,
-                                               KeyPattern.PREFIX_INFIX_PATH_VALUE]:
+                                                KeyPattern.PREFIX_INFIX_ID_SUFFIX,
+                                                KeyPattern.PREFIX_INFIX_PATH_VALUE]:
                 # 其次使用自定义方法
                 if hasattr(instance, '__infix__'):
                     infix = instance.__infix__()
@@ -320,7 +298,7 @@ class ModelRegistry:
             # 路径和值只支持入参数
             path = kwargs.get('path')
             if path is None and key_pattern in [KeyPattern.PREFIX_PATH_VALUE,
-                                              KeyPattern.PREFIX_INFIX_PATH_VALUE]:
+                                                KeyPattern.PREFIX_INFIX_PATH_VALUE]:
                 raise ValueError(
                     "当前键模式需要 'path' 值。\n"
                     "请在调用时提供 path 参数"
@@ -328,7 +306,7 @@ class ModelRegistry:
                 
             value = kwargs.get('value')
             if value is None and key_pattern in [KeyPattern.PREFIX_PATH_VALUE,
-                                               KeyPattern.PREFIX_INFIX_PATH_VALUE]:
+                                                KeyPattern.PREFIX_INFIX_PATH_VALUE]:
                 raise ValueError(
                     "当前键模式需要 'value' 值。\n"
                     "请在调用时提供 value 参数"

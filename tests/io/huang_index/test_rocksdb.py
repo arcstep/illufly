@@ -99,23 +99,65 @@ class TestRocksDB:
         test_data = {
             "user:1": {"name": "用户1"},
             "user:2": {"name": "用户2"},
-            "user:3": {"name": "用户3"}
+            "user:3": {"name": "用户3"},
+            "user:4": {"name": "用户4"},
+            "user:5": {"name": "用户5"}
         }
         for k, v in test_data.items():
             db.set("users", k, v)
             
         # 测试前缀迭代
         keys = list(db.iter_keys("users", prefix="user:"))
-        assert len(keys) == 3
+        assert len(keys) == 5
         assert all(k.startswith("user:") for k in keys)
         
-        # 测试范围迭代
-        keys = list(db.iter_keys("users", start="user:1", end="user:2"))
+        # 测试不同的区间类型
+        # 1. 闭区间 [user:2, user:4]
+        keys = list(db.iter_keys("users", start="user:2", end="user:4", range_type="[]"))
+        assert len(keys) == 3
+        assert "user:2" in keys
+        assert "user:3" in keys
+        assert "user:4" in keys
+        
+        # 2. 左闭右开区间 [user:2, user:4)
+        keys = list(db.iter_keys("users", start="user:2", end="user:4", range_type="[)"))
         assert len(keys) == 2
+        assert "user:2" in keys
+        assert "user:3" in keys
+        assert "user:4" not in keys
+        
+        # 3. 左开右闭区间 (user:2, user:4]
+        keys = list(db.iter_keys("users", start="user:2", end="user:4", range_type="(]"))
+        assert len(keys) == 2
+        assert "user:2" not in keys
+        assert "user:3" in keys
+        assert "user:4" in keys
+        
+        # 4. 开区间 (user:2, user:4)
+        keys = list(db.iter_keys("users", start="user:2", end="user:4", range_type="()"))
+        assert len(keys) == 1
+        assert "user:2" not in keys
+        assert "user:3" in keys
+        assert "user:4" not in keys
+        
+        # 测试反向迭代
+        # 1. 闭区间 [user:2, user:4] 反向
+        keys = list(db.iter_keys("users", start="user:2", end="user:4", range_type="[]", reverse=True))
+        assert len(keys) == 3
+        assert keys == ["user:4", "user:3", "user:2"]
+        
+        # 2. 左闭右开区间 [user:2, user:4) 反向
+        keys = list(db.iter_keys("users", start="user:2", end="user:4", range_type="[)", reverse=True))
+        assert len(keys) == 2
+        assert keys == ["user:3", "user:2"]
         
         # 测试限制数量
         keys = list(db.iter_keys("users", prefix="user:", limit=2))
         assert len(keys) == 2
+        
+        # 测试无效的区间类型
+        with pytest.raises(ValueError, match="无效的区间类型"):
+            list(db.iter_keys("users", start="user:2", end="user:4", range_type="<>"))
 
     def test_first_last(self, db):
         """测试获取首条和末条记录"""
