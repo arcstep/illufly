@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from rocksdict import Options
 from illufly.io.huang_index import (
-    RocksDB,
+    BaseRocksDB,
     KeyPattern
 )
 
@@ -19,13 +19,13 @@ class TestRocksDB:
     @pytest.fixture
     def db(self, db_path):
         """创建数据库实例"""
-        db = RocksDB(db_path)
+        db = BaseRocksDB(db_path)
         yield db
         db.close()
 
     def test_db_init(self, db_path):
         """测试数据库初始化"""
-        db = RocksDB(db_path)
+        db = BaseRocksDB(db_path)
         try:
             assert Path(db_path).exists()
             assert "default" in db.list_collections()

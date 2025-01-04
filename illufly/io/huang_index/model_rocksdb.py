@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, create_model
 from pydantic.json_schema import JsonSchemaMode
 from pydantic_core import CoreSchema, core_schema
 
-from .rocksdb import RocksDB
+from .base_rocksdb import BaseRocksDB
 from .patterns import KeyPattern
 from .model import ModelRegistry
 
@@ -25,7 +25,7 @@ class DynamicModel(BaseModel):
         except KeyError:
             raise AttributeError(f"'{self.__class__.__name__}' 没有属性 '{name}'")
 
-class ModelRocksDB(RocksDB):
+class ModelRocksDB(BaseRocksDB):
     """支持 Pydantic 模型管理的 RocksDB"""
     
     def __init__(self, *args, models: Dict[str, Type[BaseModel]] = None, **kwargs):

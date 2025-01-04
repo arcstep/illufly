@@ -7,7 +7,7 @@ import time
 from ...config import get_env
 from .patterns import KeyPattern, RocksDBConfig
 
-class RocksDB:
+class BaseRocksDB:
     """RocksDB存储后端
     
     提供了对RocksDB的基本CRUD操作封装,支持:
