@@ -11,7 +11,6 @@ from .rocksdb_config import RocksDBConfig
 
 # 配置日志
 logging.basicConfig()
-logger = logging.getLogger(__name__)
 
 class BaseRocksDB:
     """RocksDB存储后端
@@ -79,8 +78,13 @@ class BaseRocksDB:
     # 列族配置的键名
     CF_CONFIGS_KEY = "collection_configs"
     
-    def __init__(self, db_path: Optional[str] = None):
+    # 添加类级别的常量
+    DEFAULT_BATCH_SIZE = 1000  # 默认批处理大小
+    MAX_ITEMS_LIMIT = 10000   # 最大返回条数限制
+    
+    def __init__(self, db_path: Optional[str] = None, logger: Optional[logging.Logger] = None):
         """初始化RocksDB"""
+        self._logger = logger or logging.getLogger(__name__)
         self._db_path = Path(db_path or get_env("ROCKSDB_BASE_DIR"))
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         
@@ -95,14 +99,14 @@ class BaseRocksDB:
         # 打开数据库
         self._db = self._init_db_with_system()
         
-        # 设置序列化方法 - 移到这里，确保在初始化系统列族之前设置
-        self._db.set_dumps(msgpack.packb)
-        self._db.set_loads(msgpack.unpackb)
+        # 移除 msgpack 序列化设置，使用默认的 JSON 序列化
+        # self._db.set_dumps(msgpack.packb)
+        # self._db.set_loads(msgpack.unpackb)
         
         # 初始化已存在的列族
         self._init_existing_collections()
         
-        logger.info(f"Initialized BaseRocksDB with path: {db_path}")
+        self._logger.info(f"Initialized BaseRocksDB with path: {db_path}")
         
     def _init_db_with_system(self) -> Rdict:
         """初始化数据库并确保系统列族存在"""
@@ -111,13 +115,13 @@ class BaseRocksDB:
         try:
             # 确保系统列族存在
             if self.SYSTEM_CF not in Rdict.list_cf(str(self._db_path)):
-                logger.info(f"Creating system column family: {self.SYSTEM_CF}")
+                self._logger.info(f"Creating system column family: {self.SYSTEM_CF}")
                 db.create_column_family(self.SYSTEM_CF)
                 # 初始化空的配置
                 system_cf = db.get_column_family(self.SYSTEM_CF)
-                # 确保在写入前设置序列化方法
-                system_cf.set_dumps(msgpack.packb)
-                system_cf.set_loads(msgpack.unpackb)
+                # 移除 msgpack 序列化设置，使用默认的 JSON 序列化
+                # system_cf.set_dumps(msgpack.packb)
+                # system_cf.set_loads(msgpack.unpackb)
                 system_cf[self.CF_CONFIGS_KEY] = {}
         except Exception as e:
             if "already exists" not in str(e):
@@ -130,13 +134,13 @@ class BaseRocksDB:
         try:
             # 获取所有已存在的列族
             existing_cfs = Rdict.list_cf(str(self._db_path))
-            logger.info(f"Found existing collections: {existing_cfs}")
+            self._logger.info(f"Found existing collections: {existing_cfs}")
             
             # 加载列族配置
             system_cf = self._db.get_column_family(self.SYSTEM_CF)
             # 确保在读取前设置序列化方法
-            system_cf.set_dumps(msgpack.packb)
-            system_cf.set_loads(msgpack.unpackb)
+            # system_cf.set_dumps(msgpack.packb)
+            # system_cf.set_loads(msgpack.unpackb)
             stored_configs = system_cf.get(self.CF_CONFIGS_KEY, {})
             
             for cf_name in existing_cfs:
@@ -152,10 +156,10 @@ class BaseRocksDB:
                     cf_name, self._default_cf_options.copy()
                 )
                 
-                logger.info(f"Initialized existing collection: {cf_name}")
+                self._logger.info(f"Initialized existing collection: {cf_name}")
                 
         except Exception as e:
-            logger.error(f"Error initializing existing collections: {e}", exc_info=True)
+            self._logger.error(f"Error initializing existing collections: {e}", exc_info=True)
             raise ValueError(f"初始化已存在的列族失败: {str(e)}") from e
 
     def set_collection_options(self, name: str, options: Dict[str, Any]) -> None:
@@ -181,7 +185,7 @@ class BaseRocksDB:
             stored_configs[name] = options
             system_cf[self.CF_CONFIGS_KEY] = stored_configs
             
-            logger.info(f"Created new collection with options: {name}")
+            self._logger.info(f"Created new collection with options: {name}")
             
         except Exception as e:
             # 清理可能的部分状态
@@ -267,7 +271,6 @@ class BaseRocksDB:
         # 获取迭代器
         it = cf.iter(read_opts)
         count = 0
-        limit = limit or 100
         
         try:
             # 设置起始位置
@@ -338,35 +341,30 @@ class BaseRocksDB:
         finally:
             del it
             
-    def all(self, collection: str, prefix: Optional[str] = None, 
-            start: Optional[str] = None, end: Optional[str] = None,
-            limit: Optional[int] = None, range_type: str = "[]") -> List[Tuple[str, Any]]:
-        """获取所有键值对
+    def all(self, collection: str, limit: Optional[int] = DEFAULT_BATCH_SIZE) -> List[Tuple[str, Any]]:
+        """获取集合中的所有数据
         
         Args:
             collection: 集合名称
-            prefix: 前缀匹配
-            start: 范围开始
-            end: 范围结束
-            limit: 限制数量
+            limit: 最大返回条数，None 表示不限制（但不建议），默认 1000 条
+            
+        Returns:
+            List[Tuple[str, Any]]: 键值对列表
+            
+        Raises:
+            ValueError: 如果 limit 超过了最大限制
         """
-        return {
-            k: self.get(collection, k) 
-            for k in self.iter_keys(
-                collection=collection,
-                prefix=prefix,
-                start=start,
-                end=end,
-                limit=limit,
-                range_type=range_type
-            )
-        }
+        if limit is not None and limit > self.MAX_ITEMS_LIMIT:
+            raise ValueError(f"返回条数限制不能超过 {self.MAX_ITEMS_LIMIT}")
+            
+        self._logger.info(f"获取集合 {collection} 的所有数据，限制: {limit}")
+        return [(key, self.get(collection, key)) 
+                for key in self.iter_keys(collection, limit=limit)]
         
     def first(self, collection: str, prefix: Optional[str] = None,
-            limit: Optional[int] = None, range_type: str = "[]") -> Optional[Tuple[str, Any]]:
+            limit: Optional[int] = 1, range_type: str = "[]") -> Optional[Tuple[str, Any]]:
         """获取第一个键值对"""
 
-        limit = limit or 1
         for key in self.iter_keys(
             collection=collection,
             prefix=prefix,
@@ -377,10 +375,9 @@ class BaseRocksDB:
         return None
         
     def last(self, collection: str, prefix: Optional[str] = None,
-            limit: Optional[int] = None, range_type: str = "[]") -> Optional[Tuple[str, Any]]:
+            limit: Optional[int] = 1, range_type: str = "[]") -> Optional[Tuple[str, Any]]:
         """获取最后一个键值对"""
 
-        limit = limit or 1
         for key in self.iter_keys(
             collection=collection,
             prefix=prefix,
@@ -537,7 +534,7 @@ class BaseRocksDB:
                 
         except Exception as e:
             stats["error"] = str(e)
-            logger.error(f"Error getting statistics: {e}", exc_info=True)
+            self._logger.error(f"Error getting statistics: {e}", exc_info=True)
             
         return stats
 
@@ -566,11 +563,47 @@ class BaseRocksDB:
         return self._cf_handles[collection]
         
     @contextmanager
-    def batch_write(self) -> Iterator[WriteBatch]:
+    def batch_write(self) -> Iterator[None]:
         """批量写入上下文管理器"""
         batch = WriteBatch()
+        self._logger.info("创建新的 WriteBatch")
+        
         try:
-            yield batch
-            self._db.write(batch)  # 使用主 Rdict 提交批量写入
+            # 存储原始的 set/delete 方法
+            original_set = self.set
+            original_delete = self.delete
+            
+            # 重写 set/delete 方法以使用 batch
+            def batch_set(collection: str, key: str, value: Any) -> None:
+                cf = self._cf_handles[collection]
+                # 使用默认序列化
+                batch.put(key.encode(), value, column_family=cf)
+                if batch.len() % 50 == 0:
+                    self._logger.info(f"批量写入: collection={collection}, key={key}, batch_size={batch.len()}")
+                
+            def batch_delete(collection: str, key: str) -> None:
+                cf = self._cf_handles[collection]
+                batch.delete(key.encode(), column_family=cf)
+                self._logger.info(f"批量删除: collection={collection}, key={key}, batch_size={batch.len()}")
+                
+            # 替换方法
+            self.set = batch_set
+            self.delete = batch_delete
+            self._logger.info("已替换原始的 set/delete 方法")
+            
+            yield
+            
+            # 如果没有异常，提交 batch
+            self._logger.info(f"准备提交 batch，大小: {batch.len()}, 字节数: {batch.size_in_bytes()}")
+            self._db.write(batch)
+            self._logger.info("batch 提交完成")
+            
+        except Exception as e:
+            self._logger.error(f"批量写入失败: {str(e)}", exc_info=True)
+            raise
+            
         finally:
-            batch.clear()
+            # 恢复原始方法
+            self.set = original_set
+            self.delete = original_delete
+            self._logger.info("已恢复原始的 set/delete 方法")

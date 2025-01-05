@@ -22,7 +22,7 @@ class TestRocksDB:
     @pytest.fixture
     def db(self, db_path):
         """创建数据库实例"""
-        db = BaseRocksDB(db_path)
+        db = BaseRocksDB(db_path, logger=logger)
         # 初始化测试需要的集合
         db.set_collection_options("users", {})
         yield db
@@ -302,3 +302,92 @@ class TestRocksDB:
                 
         finally:
             db2.close()
+
+    def test_batch_write(self, db):
+        """测试批量写入操作"""
+        # 准备测试数据
+        test_data = {
+            "user:1": {"name": "用户1", "age": 20},
+            "user:2": {"name": "用户2", "age": 30},
+            "user:3": {"name": "用户3", "age": 40}
+        }
+        
+        # 使用批量写入
+        with db.batch_write() as batch:
+            for key, value in test_data.items():
+                db.set("users", key, value)
+                
+        # 验证数据写入
+        for key, expected_value in test_data.items():
+            value = db.get("users", key)
+            assert value == expected_value
+            
+    def test_batch_write_rollback(self, db):
+        """测试批量写入的回滚"""
+        # 写入初始数据
+        db.set("users", "user:1", {"name": "用户1"})
+        
+        # 模拟批量写入过程中的错误
+        try:
+            with db.batch_write() as batch:
+                db.set("users", "user:2", {"name": "用户2"})
+                db.delete("users", "user:1")
+                raise ValueError("模拟错误")
+        except ValueError:
+            pass
+            
+        # 验证数据未被修改
+        assert db.get("users", "user:1") == {"name": "用户1"}
+        assert db.get("users", "user:2") is None
+        
+    def test_batch_write_multiple_collections(self, db):
+        """测试跨集合的批量写入"""
+        # 准备不同集合的测试数据
+        db.set_collection_options("products", {})
+        
+        test_data = {
+            "users": {
+                "user:1": {"name": "用户1"},
+                "user:2": {"name": "用户2"}
+            },
+            "products": {
+                "prod:1": {"name": "产品1"},
+                "prod:2": {"name": "产品2"}
+            }
+        }
+        
+        # 批量写入多个集合
+        with db.batch_write() as batch:
+            for collection, items in test_data.items():
+                for key, value in items.items():
+                    db.set(collection, key, value)
+                    
+        # 验证所有集合的数据
+        for collection, items in test_data.items():
+            for key, expected_value in items.items():
+                value = db.get(collection, key)
+                assert value == expected_value
+                
+    def test_batch_write_large_batch(self, db):
+        """测试大批量写入"""
+        # 准备大量测试数据
+        test_data = {
+            f"user:{i}": {"name": f"用户{i}", "data": "x" * 1000}
+            for i in range(1000)  # 1000条记录
+        }
+        
+        # 批量写入
+        with db.batch_write() as batch:
+            for key, value in test_data.items():
+                db.set("users", key, value)
+                
+        # 验证数据总量
+        count = sum(1 for _ in db.iter_keys("users", prefix="user:"))
+        assert count == 1000
+        
+        # 随机验证几条数据
+        import random
+        for _ in range(10):
+            i = random.randint(1, 1000)
+            key = f"user:{i}"
+            assert db.get("users", key) == test_data[key]
