@@ -135,3 +135,30 @@ class TestPathParser:
             result1 = parser.parse(path)
             result2 = parser.parse(path)
             assert result1 == result2, "缓存结果应该相同"
+    
+    def test_is_safe_for_path(self, parser):
+        """测试属性名安全性检查"""
+        # 安全的属性名
+        safe_cases = [
+            "username",
+            "user_name",
+            "firstName",
+            "address1",
+            "my_config_2",
+        ]
+        
+        # 不安全的属性名（包含保留字符）
+        unsafe_cases = [
+            "user.name",      # 包含点号
+            "items[0]",       # 包含方括号
+            "config{key}",    # 包含花括号
+            "first.name",     # 包含点号
+            "array[index]",   # 包含方括号
+            "data{key}value", # 包含花括号
+        ]
+        
+        for case in safe_cases:
+            assert PathParser.is_safe_for_path(case), f"应该是安全的属性名: {case}"
+        
+        for case in unsafe_cases:
+            assert not PathParser.is_safe_for_path(case), f"应该是不安全的属性名: {case}"

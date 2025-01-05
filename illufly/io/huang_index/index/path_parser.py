@@ -7,6 +7,24 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 路径语法关键字
+PATH_SYNTAX = {
+    'ATTRIBUTE_SEPARATOR': '.',    # 属性访问分隔符
+    'SEQUENCE_START': '[',         # 序列访问开始
+    'SEQUENCE_END': ']',          # 序列访问结束
+    'MAPPING_START': '{',         # 映射访问开始
+    'MAPPING_END': '}',          # 映射访问结束
+}
+
+# 特殊字符模式（用于规范化）
+SPECIAL_CHARS = frozenset([
+    PATH_SYNTAX['ATTRIBUTE_SEPARATOR'],
+    PATH_SYNTAX['SEQUENCE_START'],
+    PATH_SYNTAX['SEQUENCE_END'],
+    PATH_SYNTAX['MAPPING_START'],
+    PATH_SYNTAX['MAPPING_END']
+])
+
 class SegmentType(Enum):
     """路径段类型
     
@@ -243,3 +261,24 @@ class PathParser:
         except ValueError as e:
             logger.error(f"路径解析失败: {str(e)}")
             raise
+
+    @staticmethod
+    def is_safe_for_path(value: str) -> bool:
+        """检查值是否安全用于构建路径
+        
+        检查值中是否包含路径语法的保留字符 (.{}[])。
+        这些字符会影响路径解析，因此不应该出现在对象的属性名中。
+        
+        Args:
+            value: 要检查的值
+            
+        Returns:
+            bool: 如果值不包含任何保留字符则返回 True
+            
+        Examples:
+            >>> PathParser.is_safe_for_path("user_name")     # True
+            >>> PathParser.is_safe_for_path("name.first")    # False
+            >>> PathParser.is_safe_for_path("items[0]")      # False
+            >>> PathParser.is_safe_for_path("config{key}")   # False
+        """
+        return not bool(set(value) & SPECIAL_CHARS)
