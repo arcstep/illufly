@@ -1,12 +1,17 @@
-from typing import Optional, Any, List, Dict, Set, Iterator, Tuple, Union
-from rocksdict import Rdict, Options, ColumnFamily, ReadOptions
-import msgpack
+from typing import Dict, Any, Optional, Iterator, List, Tuple, Set
+from rocksdict import Rdict, WriteBatch, Options, ColumnFamily, ReadOptions
 from pathlib import Path
-import time
 from contextlib import contextmanager
 
+import msgpack
+import logging
+
 from ...config import get_env
-from .patterns import KeyPattern, RocksDBConfig
+from .rocksdb_config import RocksDBConfig
+
+# 配置日志
+logging.basicConfig()
+logger = logging.getLogger(__name__)
 
 class BaseRocksDB:
     """RocksDB存储后端
@@ -69,6 +74,11 @@ class BaseRocksDB:
     ```
     """
     
+    # 系统列族名称
+    SYSTEM_CF = "__system__"
+    # 列族配置的键名
+    CF_CONFIGS_KEY = "collection_configs"
+    
     def __init__(self, db_path: Optional[str] = None):
         """初始化RocksDB"""
         self._db_path = Path(db_path or get_env("ROCKSDB_BASE_DIR"))
@@ -76,55 +86,123 @@ class BaseRocksDB:
         
         # 使用 RocksDBConfig 创建默认配置
         self._config = RocksDBConfig("default")
-        
-        # 使用配置对象获取默认选项
         self._default_cf_options = self._config.default_options
         
         self._collection_configs: Dict[str, Options] = {}
-        self._collections: Dict[str, ColumnFamily] = {}
-        self._db = self._open_db()
+        self._collections: Dict[str, Rdict] = {}
+        self._cf_handles: Dict[str, ColumnFamily] = {}
         
-        # 设置基础序列化方法
+        # 打开数据库
+        self._db = self._init_db_with_system()
+        
+        # 设置序列化方法 - 移到这里，确保在初始化系统列族之前设置
         self._db.set_dumps(msgpack.packb)
         self._db.set_loads(msgpack.unpackb)
         
-    def _open_db(self) -> Rdict:
-        """打开数据库"""
-        opts = self._config.create_options(self._default_cf_options)
+        # 初始化已存在的列族
+        self._init_existing_collections()
         
-        # 设置写缓冲区管理器
-        opts.set_write_buffer_manager(self._config.write_buffer_manager)
+        logger.info(f"Initialized BaseRocksDB with path: {db_path}")
         
-        # 打开数据库
-        db = Rdict(str(self._db_path), opts)
+    def _init_db_with_system(self) -> Rdict:
+        """初始化数据库并确保系统列族存在"""
+        db = Rdict(str(self._db_path))
         
-        # 确保默认列族存在
-        if 'default' not in Rdict.list_cf(str(self._db_path)):
-            db.create_cf('default', self._config.create_options(self._default_cf_options))
-            
+        try:
+            # 确保系统列族存在
+            if self.SYSTEM_CF not in Rdict.list_cf(str(self._db_path)):
+                logger.info(f"Creating system column family: {self.SYSTEM_CF}")
+                db.create_column_family(self.SYSTEM_CF)
+                # 初始化空的配置
+                system_cf = db.get_column_family(self.SYSTEM_CF)
+                # 确保在写入前设置序列化方法
+                system_cf.set_dumps(msgpack.packb)
+                system_cf.set_loads(msgpack.unpackb)
+                system_cf[self.CF_CONFIGS_KEY] = {}
+        except Exception as e:
+            if "already exists" not in str(e):
+                raise ValueError(f"初始化系统列族失败: {str(e)}") from e
+                
         return db
         
-    def make_key(self, pattern: KeyPattern, **kwargs) -> str:
-        """构造键"""
-        return KeyPattern.make_key(pattern, **kwargs)
-        
-    def validate_key(self, key: str) -> bool:
-        """验证键是否合法"""
-        return KeyPattern.validate_key(key)
+    def _init_existing_collections(self):
+        """初始化已存在的列族"""
+        try:
+            # 获取所有已存在的列族
+            existing_cfs = Rdict.list_cf(str(self._db_path))
+            logger.info(f"Found existing collections: {existing_cfs}")
+            
+            # 加载列族配置
+            system_cf = self._db.get_column_family(self.SYSTEM_CF)
+            # 确保在读取前设置序列化方法
+            system_cf.set_dumps(msgpack.packb)
+            system_cf.set_loads(msgpack.unpackb)
+            stored_configs = system_cf.get(self.CF_CONFIGS_KEY, {})
+            
+            for cf_name in existing_cfs:
+                if cf_name == self.SYSTEM_CF:  # 跳过系统列族
+                    continue
+                    
+                # 获取列族的 Rdict 接口
+                self._collections[cf_name] = self._db.get_column_family(cf_name)
+                # 获取列族的句柄
+                self._cf_handles[cf_name] = self._db.get_column_family_handle(cf_name)
+                # 使用存储的配置或默认配置
+                self._collection_configs[cf_name] = stored_configs.get(
+                    cf_name, self._default_cf_options.copy()
+                )
+                
+                logger.info(f"Initialized existing collection: {cf_name}")
+                
+        except Exception as e:
+            logger.error(f"Error initializing existing collections: {e}", exc_info=True)
+            raise ValueError(f"初始化已存在的列族失败: {str(e)}") from e
+
+    def set_collection_options(self, name: str, options: Dict[str, Any]) -> None:
+        """设置集合（列族）配置"""
+        if name == self.SYSTEM_CF:
+            raise ValueError(f"不能修改系统列族: {self.SYSTEM_CF}")
+            
+        # 检查列族是否已存在
+        existing_cfs = Rdict.list_cf(str(self._db_path))
+        if name in existing_cfs:
+            raise ValueError(f"集合 '{name}' 已存在")
+            
+        try:
+            # 创建新的列族
+            opts = self._config.create_options(options)
+            self._collections[name] = self._db.create_column_family(name, opts)
+            self._cf_handles[name] = self._db.get_column_family_handle(name)
+            self._collection_configs[name] = options
+            
+            # 更新存储的配置
+            system_cf = self._db.get_column_family(self.SYSTEM_CF)
+            stored_configs = system_cf.get(self.CF_CONFIGS_KEY, {})
+            stored_configs[name] = options
+            system_cf[self.CF_CONFIGS_KEY] = stored_configs
+            
+            logger.info(f"Created new collection with options: {name}")
+            
+        except Exception as e:
+            # 清理可能的部分状态
+            if name in self._collections:
+                del self._collections[name]
+            if name in self._cf_handles:
+                del self._cf_handles[name]
+            if name in self._collection_configs:
+                del self._collection_configs[name]
+            raise ValueError(f"创建集合 '{name}' 失败: {str(e)}") from e
+            
+    def get_collection_options(self, name: str) -> Dict[str, Any]:
+        """获取集合配置"""
+        if name not in self._collection_configs:
+            raise ValueError(f"集合 '{name}' 不存在")
+        return self._collection_configs[name].copy()
         
     def list_collections(self) -> List[str]:
         """列出所有集合（列族）"""
         return Rdict.list_cf(str(self._db_path))
         
-    def set_collection_options(self, name: str, options: Dict[str, Any]) -> None:
-        """设置集合（列族）配置"""
-        if name not in self._collections:
-            opts = self._config.create_options(options)
-            self._collections[name] = self._db.create_column_family(name, opts)
-            self._collection_configs[name] = options
-        else:
-            raise ValueError(f"集合 {name} 已存在")
-            
     def get(self, collection: str, key: str) -> Optional[Any]:
         """获取值
         
@@ -135,12 +213,7 @@ class BaseRocksDB:
         Returns:
             Optional[Any]: 键对应的值,如果不存在则返回None
             
-        Raises:
-            ValueError: 键格式非法时抛出
         """
-        if not self.validate_key(key):
-            raise ValueError(f"非法键格式: {key}")
-            
         cf = self.get_collection(collection)
         value = cf.get(key.encode())
         return value  # 不需要手动反序列化，rocksdict 会使用我们设置的 msgpack.unpackb
@@ -151,14 +224,8 @@ class BaseRocksDB:
         Args:
             collection: 集合名称
             key: 键名
-            value: 要存储的值
-            
-        Raises:
-            ValueError: 键格式非法时抛出
-        """
-        if not self.validate_key(key):
-            raise ValueError(f"非法键格式: {key}")
-            
+            value: 要存储的值            
+        """            
         cf = self.get_collection(collection)
         cf[key.encode()] = value  # 不需要手动序列化，rocksdict 会使用我们设置的 msgpack.packb
         
@@ -264,10 +331,6 @@ class BaseRocksDB:
                 if limit and count >= limit:
                     break
                 
-                if not self.validate_key(key):
-                    it.next() if not reverse else it.prev()
-                    continue
-                
                 yield key
                 count += 1
                 it.next() if not reverse else it.prev()
@@ -333,14 +396,8 @@ class BaseRocksDB:
         
         Args:
             collection: 集合名称
-            key: 要删除的键
-            
-        Raises:
-            ValueError: 键格式非法时抛出
-        """
-        if not self.validate_key(key):
-            raise ValueError(f"非法键格式: {key}")
-            
+            key: 要删除的键            
+        """            
         cf = self.get_collection(collection)
         del cf[key.encode()]
         
@@ -359,27 +416,19 @@ class BaseRocksDB:
             
     def close(self) -> None:
         """关闭数据库"""
-        # 先清理列族引用
-        if hasattr(self, '_collections'):
+        if hasattr(self, '_db') and self._db is not None:
+            # 清理所有列族的引用
             self._collections.clear()
-            del self._collections
-        
-        # 清理配置引用
-        if hasattr(self, '_collection_configs'):
+            self._cf_handles.clear()
             self._collection_configs.clear()
-            del self._collection_configs
-        
-        # 关闭数据库
-        if hasattr(self, '_db'):
+            
+            # 关闭数据库
             self._db.close()
-            del self._db
-        
-        # 清理配置
-        if hasattr(self, '_config'):
-            del self._config
-        
-        # 等待文件锁释放
-        time.sleep(0.1)  # 给系统一些时间来释放文件锁
+            self._db = None
+            
+            # 等待锁释放（可选）
+            import time
+            time.sleep(0.1)  # 给系统一些时间来释放锁
         
     def get_statistics(self) -> Dict[str, Any]:
         """获取数据库基本信息
@@ -425,21 +474,24 @@ class BaseRocksDB:
                 total_keys += count
                 
                 # 获取列族配置
-                cf_config = self._collection_configs.get(collection, self._default_cf_options)
+                cf_config = self._collection_configs.get(collection, {})
+                if not cf_config:  # 如果没有特定配置，使用默认配置
+                    cf_config = self._default_cf_options
                 
-                # 记录列族统计
+                # 记录列族统计，只包含实际设置的选项
+                collection_options = {}
+                for key in ['write_buffer_size', 'max_write_buffer_number', 
+                           'min_write_buffer_number', 'level0_file_num_compaction_trigger']:
+                    if key in cf_config:
+                        collection_options[key] = cf_config[key]
+                
+                # 特殊处理 compression_type
+                if 'compression_type' in cf_config:
+                    collection_options['compression_type'] = str(cf_config['compression_type'])
+                
                 stats["collections"][collection] = {
                     "num_entries": count,
-                    "options": {
-                        "compression_type": str(cf_config.get('compression_type', self._config.compression_type)),
-                        "write_buffer_size": cf_config.get('write_buffer_size', self._config.write_buffer_size),
-                        "max_write_buffer_number": cf_config.get('max_write_buffer_number', 
-                                                               self._config.max_write_buffer_number),
-                        "min_write_buffer_number": cf_config.get('min_write_buffer_number',
-                                                               self._config.min_write_buffer_number),
-                        "level0_file_num_compaction_trigger": cf_config.get('level0_file_num_compaction_trigger',
-                                                                          self._config.level0_file_num_compaction_trigger)
-                    }
+                    "options": collection_options
                 }
             
             stats["num_entries"] = total_keys
@@ -485,40 +537,40 @@ class BaseRocksDB:
                 
         except Exception as e:
             stats["error"] = str(e)
+            logger.error(f"Error getting statistics: {e}", exc_info=True)
             
         return stats
 
-    def get_collection(self, name: str) -> Rdict:
-        """获取集合（列族）"""
-        if name not in self._collections:
-            # 检查列族是否已存在
-            existing_cfs = Rdict.list_cf(str(self._db_path))
-            if name in existing_cfs:
-                self._collections[name] = self._db.get_column_family(name)
-            else:
-                # 如果集合不存在，创建它
-                opts = self._config.create_options(self._default_cf_options)
-                self._collections[name] = self._db.create_column_family(name, opts)
-        return self._collections[name]
-
-    @contextmanager
-    def batch_write(self) -> Iterator[Any]:
-        """批量写入上下文管理器
+    def get_collection(self, collection: str) -> Rdict:
+        """获取集合的 Rdict 接口"""
+        if collection not in self._collections:
+            try:
+                self._collections[collection] = self._db.get_column_family(collection)
+            except Exception as e:
+                raise ValueError(
+                    f"集合 '{collection}' 不存在。请先使用 set_collection_options 创建该集合。"
+                    f"\n当前可用的集合: {sorted(Rdict.list_cf(str(self._db_path)))}"
+                ) from e
+        return self._collections[collection]
         
-        使用示例:
-        ```python
-        with db.batch_write() as batch:
-            batch.set("collection1", "key1", value1)
-            batch.set("collection2", "key2", value2)
-            batch.delete("collection1", "key3")
-        ```
-        """
-        batch = self._db.transaction()  # rocksdict 的事务支持
+    def get_cf_handle(self, collection: str) -> ColumnFamily:
+        """获取集合的 ColumnFamily 句柄"""
+        if collection not in self._cf_handles:
+            try:
+                self._cf_handles[collection] = self._db.get_column_family_handle(collection)
+            except Exception as e:
+                raise ValueError(
+                    f"集合 '{collection}' 不存在。请先使用 set_collection_options 创建该集合。"
+                    f"\n当前可用的集合: {sorted(Rdict.list_cf(str(self._db_path)))}"
+                ) from e
+        return self._cf_handles[collection]
+        
+    @contextmanager
+    def batch_write(self) -> Iterator[WriteBatch]:
+        """批量写入上下文管理器"""
+        batch = WriteBatch()
         try:
             yield batch
-            batch.commit()  # 提交事务
-        except Exception as e:
-            batch.rollback()  # 发生错误时回滚
-            raise e
+            self._db.write(batch)  # 使用主 Rdict 提交批量写入
         finally:
-            del batch  # 确保资源被释放
+            batch.clear()

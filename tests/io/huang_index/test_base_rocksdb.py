@@ -1,18 +1,21 @@
 import pytest
 import tempfile
 import shutil
+import logging
 from pathlib import Path
 from rocksdict import Options
-from illufly.io.huang_index import (
-    BaseRocksDB,
-    KeyPattern
-)
+from illufly.io.huang_index import BaseRocksDB
+
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class TestRocksDB:
     @pytest.fixture
     def db_path(self):
         """创建临时数据库目录"""
         temp_dir = tempfile.mkdtemp()
+        logger.info(f"Created temp db path: {temp_dir}")
         yield temp_dir
         shutil.rmtree(temp_dir)
         
@@ -20,6 +23,8 @@ class TestRocksDB:
     def db(self, db_path):
         """创建数据库实例"""
         db = BaseRocksDB(db_path)
+        # 初始化测试需要的集合
+        db.set_collection_options("users", {})
         yield db
         db.close()
 
@@ -47,30 +52,6 @@ class TestRocksDB:
         # 删除集合
         db.drop_collection("test_collection")
         assert "test_collection" not in db.list_collections()
-
-    def test_key_pattern(self, db):
-        """测试键模式构造和验证"""
-        # 测试有效的键
-        valid_keys = [
-            "user:123",
-            "user:123:profile",
-            "index:name:123",
-            "file:path/to/file:content",
-            "index:name:123:20241231",
-        ]
-        for key in valid_keys:
-            assert db.validate_key(key), f"键 {key} 应该有效"
-        
-        # 测试无效的键
-        invalid_keys = [
-            "123",
-            "invalid::key",
-            ":no_prefix",
-            "no_id:",
-            "index:name:123:20241231:20241231",
-        ]
-        for key in invalid_keys:
-            assert not db.validate_key(key), f"键 {key} 应该无效"
 
     def test_crud_operations(self, db):
         """测试基本的增删改查操作"""
@@ -185,16 +166,15 @@ class TestRocksDB:
 
     def test_error_handling(self, db):
         """测试错误处理"""
-        # 测试无效的键
-        with pytest.raises(ValueError, match="非法键格式"):
-            db.set("users", "invalid::key", {"data": "test"})
-            
         # 测试重复创建已存在的集合
         db.set_collection_options("test_collection", {
             'write_buffer_size': 64 * 1024 * 1024
         })
+        # 尝试重复创建同一个集合
         with pytest.raises(ValueError, match="集合.*已存在"):
-            db.set_collection_options("test_collection", {})
+            db.set_collection_options("test_collection", {
+                'write_buffer_size': 32 * 1024 * 1024
+            })
 
     def test_statistics(self, db):
         """测试数据库统计信息"""
@@ -230,3 +210,95 @@ class TestRocksDB:
         assert write_buffer_stats["buffer_size"] > 0
         assert "usage" in write_buffer_stats
         assert "enabled" in write_buffer_stats
+
+    def test_reopen_database(self, db_path):
+        """测试数据库重新打开后的列族状态"""
+        # 1. 首次打开数据库并创建列族
+        db1 = BaseRocksDB(db_path)
+        try:
+            # 创建测试列族
+            test_options = {
+                'write_buffer_size': 64 * 1024 * 1024,
+                'max_write_buffer_number': 3,
+                'min_write_buffer_number': 1
+            }
+            db1.set_collection_options("test_collection", test_options)
+            db1.set_collection_options("another_collection", {})
+            
+            # 写入一些测试数据
+            db1.set("test_collection", "key1", {"name": "test1"})
+            db1.set("another_collection", "key2", {"name": "test2"})
+            
+            # 获取已存在的列族列表
+            collections1 = set(db1.list_collections())
+            
+        finally:
+            db1.close()
+            
+        # 2. 重新打开数据库
+        db2 = BaseRocksDB(db_path)
+        try:
+            # 验证列族是否正确恢复
+            collections2 = set(db2.list_collections())
+            assert collections2 == collections1, \
+                f"重新打开后的列族列表不匹配: {collections2} != {collections1}"
+            
+            # 验证数据是否正确恢复
+            value1 = db2.get("test_collection", "key1")
+            assert value1 == {"name": "test1"}, \
+                f"test_collection 中的数据不匹配: {value1}"
+            
+            value2 = db2.get("another_collection", "key2")
+            assert value2 == {"name": "test2"}, \
+                f"another_collection 中的数据不匹配: {value2}"
+            
+            # 验证可以继续写入新数据
+            db2.set("test_collection", "key3", {"name": "test3"})
+            assert db2.get("test_collection", "key3") == {"name": "test3"}, \
+                "无法在重新打开后的数据库中写入新数据"
+            
+            # 验证可以创建新的列族
+            db2.set_collection_options("new_collection", {})
+            db2.set("new_collection", "key4", {"name": "test4"})
+            assert db2.get("new_collection", "key4") == {"name": "test4"}, \
+                "无法在重新打开后的数据库中创建新列族"
+            
+            # 验证 default 列族是否正确初始化
+            assert "default" in collections2, \
+                "default 列族未被正确初始化"
+            
+        finally:
+            db2.close()
+            
+    def test_collection_persistence(self, db_path):
+        """测试列族配置的持久化"""
+        # 1. 首次打开数据库并设置列族配置
+        db1 = BaseRocksDB(db_path)
+        try:
+            test_options = {
+                'write_buffer_size': 64 * 1024 * 1024,
+                'max_write_buffer_number': 3,
+                'min_write_buffer_number': 1
+            }
+            db1.set_collection_options("test_collection", test_options)
+            
+            # 获取统计信息
+            stats1 = db1.get_statistics()
+            collection_config1 = stats1["collections"]["test_collection"]["options"]
+            
+        finally:
+            db1.close()
+            
+        # 2. 重新打开数据库并验证配置
+        db2 = BaseRocksDB(db_path)
+        try:
+            # 获取统计信息
+            stats2 = db2.get_statistics()
+            collection_config2 = stats2["collections"]["test_collection"]["options"]
+            
+            # 验证配置是否保持一致
+            assert collection_config2 == collection_config1, \
+                f"列族配置未正确持久化: \n{collection_config2} != \n{collection_config1}"
+                
+        finally:
+            db2.close()
