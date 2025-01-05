@@ -8,46 +8,86 @@ import logging
 logger = logging.getLogger(__name__)
 
 class SegmentType(Enum):
-    """路径段类型"""
+    """路径段类型
+    
+    支持三种基本访问操作：
+    - ATTRIBUTE: 对象属性访问，使用点号(.)，如 user.name
+    - SEQUENCE: 序列索引访问，使用方括号([])，如 items[0]
+    - MAPPING: 映射键访问，使用花括号({})，如 data{key}
+    """
     ATTRIBUTE = auto()  # 属性访问，如 .name
-    LIST_INDEX = auto() # 列表索引，如 [0]
-    DICT_KEY = auto()   # 字典键，如 {key}
-    WILDCARD = auto()   # 通配符，如 [*] 或 {*}
+    SEQUENCE = auto()   # 序列索引，如 [0]
+    MAPPING = auto()    # 映射键，如 {key}
 
 @dataclass
 class PathSegment:
     """路径段 - 表示路径中的一个访问操作
     
-    用于表示路径字符串中的一个访问操作，支持:
-    - 属性访问: user.name -> ATTRIBUTE("name")
-    - 列表索引: items[0] -> LIST_INDEX("0") 
-    - 字典键访问: data{key} -> DICT_KEY("key")
-    - 通配符: items[*] -> LIST_INDEX("*", is_wildcard=True)
+    每个路径段代表一个具体的访问操作，支持三种类型：
+    1. 属性访问：使用点号(.)访问对象属性
+       示例：user.name -> ATTRIBUTE("name")
+       
+    2. 列表索引：使用方括号([])访问列表元素
+       示例：items[0] -> SEQUENCE("0")
+       
+    3. 字典键访问：使用花括号({})访问字典值
+       示例：data{key} -> MAPPING("key")
     
     Attributes:
-        type: 段类型(ATTRIBUTE/LIST_INDEX/DICT_KEY)
-        value: 段的值(属性名/索引值/键名)
-        original: 原始字符串表示
-        is_wildcard: 是否是通配符
-        access_method: 记录访问方式 ("dot" 或 "bracket")
+        type: 段类型，指示访问操作的类型
+        value: 段的值，可能是属性名、索引值或键名
     """
     type: SegmentType
     value: str
-    original: str
-    is_wildcard: bool = False
-    access_method: str = "dot"  # 新增: 记录访问方式 ("dot" 或 "bracket")
 
 class PathParser:
-    """路径解析器"""
+    """路径解析器 - 将路径字符串解析为路径段序列
+    
+    支持的路径语法：
+    1. 属性访问：使用点号
+       user.name
+       profile.address.city
+    
+    2. 列表索引：使用方括号 + 非负整数
+       items[0]
+       users[1].addresses[0]
+    
+    3. 字典键访问：使用花括号
+       data{key}
+       config{theme}.value
+    
+    4. 复合访问：支持任意组合
+       users[0].profile{settings}.addresses[1].city
+    
+    注意事项：
+    - 列表索引必须是非负整数
+    - 字典键不支持引号和嵌套花括号
+    - 属性名必须是有效的标识符
+    """
     
     def __init__(self):
+        """初始化解析器，编译正则表达式模式"""
         self.IDENTIFIER_PATTERN = re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*')
         self.DICT_KEY_PATTERN = re.compile(r'\{([^}]+)\}')
-        self.LIST_INDEX_PATTERN = re.compile(r'\[([0-9]+|\*)\]')
+        self.LIST_INDEX_PATTERN = re.compile(r'\[([0-9]+)\]')
     
     @lru_cache(maxsize=1024)
     def validate_path(self, path: str) -> None:
-        """验证路径语法"""
+        """验证路径语法的有效性
+        
+        执行以下验证：
+        1. 检查路径非空
+        2. 验证花括号配对和内容
+        3. 验证方括号配对和索引格式
+        4. 检查分隔符使用
+        5. 验证标识符格式
+        
+        Args:
+            path: 要验证的路径字符串
+            
+        Raises:
+            ValueError: 当路径语法无效时，提供具体的错误信息
+        """
         logger.info(f"开始验证路径: '{path}'")
         
         if not path:
@@ -97,18 +137,30 @@ class PathParser:
             if part and not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', part):
                 raise ValueError("非法标识符")
         
-        # 检查方括号内容
+        # 6. 检查方括号内容必须是数字
         for match in re.finditer(r'\[([^\]]*)\]', path):
             index = match.group(1)
-            if not index:
-                logger.error("检测到空的方括号")
-                raise ValueError("空的方括号")  # 在验证阶段就检查空方括号
-            if not (index.isdigit() or index == '*'):
-                logger.error("检测到非法的列表索引")
-                raise ValueError("非法的列表索引")
+            if not index.isdigit():
+                raise ValueError(f"列表索引必须是非负整数，而不是 '{index}'")
     
     def _parse_without_validation(self, path: str) -> Tuple[PathSegment, ...]:
-        """内部解析方法，不包含验证"""
+        """内部解析方法，将已验证的路径字符串解析为路径段
+        
+        按顺序尝试匹配以下模式：
+        1. 标识符（属性访问）
+        2. 字典键访问
+        3. 列表索引访问
+        4. 分隔符处理
+        
+        Args:
+            path: 已通过验证的路径字符串
+            
+        Returns:
+            Tuple[PathSegment, ...]: 解析后的路径段元组
+            
+        Raises:
+            ValueError: 当遇到无法解析的路径段时
+        """
         segments = []
         remaining = path
         
@@ -121,8 +173,7 @@ class PathParser:
                 identifier = match.group(0)
                 segments.append(PathSegment(
                     type=SegmentType.ATTRIBUTE,
-                    value=identifier,
-                    original=identifier
+                    value=identifier
                 ))
                 remaining = remaining[len(identifier):]
                 matched = True
@@ -132,10 +183,8 @@ class PathParser:
                 key = match.group(1)
                 original = match.group(0)
                 segments.append(PathSegment(
-                    type=SegmentType.DICT_KEY,
-                    value=key,
-                    original=original,
-                    access_method="bracket"
+                    type=SegmentType.MAPPING,
+                    value=key
                 ))
                 remaining = remaining[len(original):]
                 matched = True
@@ -145,11 +194,8 @@ class PathParser:
                 index = match.group(1)
                 original = match.group(0)
                 segments.append(PathSegment(
-                    type=SegmentType.LIST_INDEX,
-                    value=index,
-                    original=original,
-                    is_wildcard=index == '*',
-                    access_method="bracket"
+                    type=SegmentType.SEQUENCE,
+                    value=index
                 ))
                 remaining = remaining[len(original):]
                 matched = True
@@ -166,7 +212,28 @@ class PathParser:
     
     @lru_cache(maxsize=1024)
     def parse(self, path: str) -> Tuple[PathSegment, ...]:
-        """解析路径字符串为路径段列表"""
+        """解析路径字符串为路径段序列
+        
+        完整的解析流程：
+        1. 验证路径语法
+        2. 解析为路径段序列
+        3. 缓存结果（使用 lru_cache）
+        
+        Args:
+            path: 要解析的路径字符串
+            
+        Returns:
+            Tuple[PathSegment, ...]: 解析后的路径段元组
+            
+        Raises:
+            ValueError: 当路径语法无效或解析失败时
+            
+        Example:
+            >>> parser = PathParser()
+            >>> segments = parser.parse("users[0].profile{settings}")
+            >>> [seg.type.name for seg in segments]
+            ['ATTRIBUTE', 'SEQUENCE', 'ATTRIBUTE', 'MAPPING']
+        """
         try:
             logger.info(f"开始解析路径: '{path}'")
             # 先进行验证
@@ -176,46 +243,3 @@ class PathParser:
         except ValueError as e:
             logger.error(f"路径解析失败: {str(e)}")
             raise
-    
-    def _find_identifier_end(self, text: str) -> int:
-        """查找标识符结束位置"""
-        for i, char in enumerate(text):
-            if char in '.[':
-                return i
-        return len(text)
-    
-    def join_segments(self, segments: List[PathSegment]) -> str:
-        """将路径段列表连接为路径字符串"""
-        result = []
-        for i, segment in enumerate(segments):
-            if segment.type == SegmentType.LIST_INDEX:
-                result.append(segment.original)
-            elif i > 0 and segment.access_method == 'dot':
-                result.append(f".{segment.value}")
-            else:
-                result.append(segment.value)
-        return ''.join(result)
-    
-    def normalize_to_wildcard(self, segments: List[PathSegment]) -> List[PathSegment]:
-        """将路径段列表中的具体索引/键转换为通配符形式"""
-        normalized = []
-        for segment in segments:
-            if segment.type == SegmentType.LIST_INDEX and not segment.is_wildcard:
-                normalized.append(PathSegment(
-                    type=SegmentType.LIST_INDEX,
-                    value='*',
-                    original='[*]',
-                    is_wildcard=True,
-                    access_method='bracket'
-                ))
-            elif segment.type == SegmentType.DICT_KEY and not segment.is_wildcard:
-                normalized.append(PathSegment(
-                    type=segment.type,  # 保持原始类型
-                    value='*',
-                    original='*',
-                    is_wildcard=True,
-                    access_method=segment.access_method  # 保持原始访问方式
-                ))
-            else:
-                normalized.append(segment)
-        return normalized

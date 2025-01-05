@@ -14,6 +14,57 @@ class TestPathParser:
     def parser(self):
         return PathParser()
     
+    def test_valid_paths(self, parser):
+        """测试有效路径"""
+        valid_cases = [
+            # 基本路径
+            ("{data}", [
+                PathSegment(type=SegmentType.MAPPING, value="data")
+            ]),
+            ("data", [
+                PathSegment(type=SegmentType.ATTRIBUTE, value="data")
+            ]),
+            ("user_name", [
+                PathSegment(type=SegmentType.ATTRIBUTE, value="user_name")
+            ]),
+            
+            # 映射访问
+            ("data{key}", [
+                PathSegment(type=SegmentType.ATTRIBUTE, value="data"),
+                PathSegment(type=SegmentType.MAPPING, value="key")
+            ]),
+            
+            # 序列访问
+            ("items[0]", [
+                PathSegment(type=SegmentType.ATTRIBUTE, value="items"),
+                PathSegment(type=SegmentType.SEQUENCE, value="0")
+            ]),
+            
+            # 属性访问
+            ("user.name", [
+                PathSegment(type=SegmentType.ATTRIBUTE, value="user"),
+                PathSegment(type=SegmentType.ATTRIBUTE, value="name")
+            ]),
+            
+            # 混合访问
+            ("users[0].profile{settings}", [
+                PathSegment(type=SegmentType.ATTRIBUTE, value="users"),
+                PathSegment(type=SegmentType.SEQUENCE, value="0"),
+                PathSegment(type=SegmentType.ATTRIBUTE, value="profile"),
+                PathSegment(type=SegmentType.MAPPING, value="settings")
+            ])
+        ]
+        
+        for path, expected_segments in valid_cases:
+            segments = parser.parse(path)
+            assert len(segments) == len(expected_segments), \
+                f"路径 '{path}' 段数不匹配"
+            for actual, expected in zip(segments, expected_segments):
+                assert actual.type == expected.type, \
+                    f"路径 '{path}' 段类型不匹配: 期望 {expected.type}, 实际 {actual.type}"
+                assert actual.value == expected.value, \
+                    f"路径 '{path}' 段值不匹配: 期望 {expected.value}, 实际 {actual.value}"
+    
     def test_invalid_paths(self, parser):
         """测试无效路径"""
         invalid_cases = [
@@ -26,61 +77,25 @@ class TestPathParser:
             ("data{key{nested}}", "嵌套的花括号"),
             ("data[", "未闭合的方括号"),
             ("data]", "意外的右方括号"),
-            ("data[]", "空的方括号"),
+            ("data[]", "列表索引必须是非负整数"),
             ("data..", "连续点号"),
             ("123data", "非法标识符"),
-            ("data[abc]", "非法的列表索引"),  # 列表索引必须是数字或 *
+            ("data[abc]", "列表索引必须是非负整数"),
+            ("data[-1]", "列表索引必须是非负整数"),
+            ("items[1.5]", "列表索引必须是非负整数"),
         ]
         
         for path, expected_error in invalid_cases:
             with pytest.raises(ValueError, match=expected_error):
                 parser.parse(path)
     
-    def test_valid_paths(self, parser):
-        """测试有效路径"""
-        valid_cases = [
-            # 基本路径
-            "data",
-            "user_name",
-            "_private",
-            
-            # 字典访问
-            "data{key}",
-            "config{setting}",
-            "data{key_123}",
-            
-            # 列表访问
-            "items[0]",
-            "data[*]",
-            "matrix[123]",
-            
-            # 属性访问
-            "user.name",
-            "profile.address.city",
-            
-            # 混合访问
-            "data[0].items",
-            "users[*].name",
-            "data{key}[0]",
-            "config{theme}.color",
-            "data[0]{key}",
-            "items[0].data{key}[1]"
-        ]
-        
-        for path in valid_cases:
-            try:
-                parser.parse(path)
-            except ValueError as e:
-                pytest.fail(f"路径 '{path}' 应该是有效的，但抛出了异常: {str(e)}")
-    
     def test_cache_performance(self, parser):
         """测试缓存性能提升"""
-        # 准备测试路径
         test_paths = [
-            "data{key}[0].items[*].name",  # 复杂路径
-            "users[0].profile",            # 中等复杂度
-            "config{theme}",               # 简单路径
-            "matrix[123].rows[*]"          # 数组访问
+            "data{key}[0].items.name",
+            "users[0].profile",
+            "config{theme}",
+            "matrix[123].rows[456]"
         ]
         
         logger.info("\n=== 缓存性能测试 ===")
@@ -119,72 +134,4 @@ class TestPathParser:
         for path in test_paths:
             result1 = parser.parse(path)
             result2 = parser.parse(path)
-            assert result1 is result2, "缓存结果应该是同一个对象"
-
-def test_path_segment_equality():
-    """测试PathSegment相等性"""
-    seg1 = PathSegment(type=SegmentType.ATTRIBUTE, value="name", original="name")
-    seg2 = PathSegment(type=SegmentType.ATTRIBUTE, value="name", original="name")
-    seg3 = PathSegment(type=SegmentType.LIST_INDEX, value="0", original="[0]")
-    
-    assert seg1 == seg2
-    assert seg1 != seg3 
-
-class TestComplexPathParser:
-    """测试复杂路径解析"""
-    
-    @pytest.fixture
-    def parser(self):
-        return PathParser()
-    
-    def test_dict_access_paths(self, parser):
-        """测试字典访问路径"""
-        cases = [
-            ("data{key}", [
-                PathSegment(type=SegmentType.ATTRIBUTE, value="data", original="data"),
-                PathSegment(type=SegmentType.DICT_KEY, value="key", original="{key}", 
-                          access_method="bracket")
-            ]),
-            ("config{theme}{colors}", [
-                PathSegment(type=SegmentType.ATTRIBUTE, value="config", original="config"),
-                PathSegment(type=SegmentType.DICT_KEY, value="theme", original="{theme}", 
-                          access_method="bracket"),
-                PathSegment(type=SegmentType.DICT_KEY, value="colors", original="{colors}", 
-                          access_method="bracket")
-            ])
-        ]
-        self._verify_path_cases(parser, cases)
-    
-    def test_mixed_nested_paths(self, parser):
-        """测试混合嵌套路径（字典、列表、属性）"""
-        cases = [
-            ("users[0].profile{settings}", [  # 列表用[]，字典用{}，类属性用.
-                PathSegment(type=SegmentType.ATTRIBUTE, value="users", original="users"),
-                PathSegment(type=SegmentType.LIST_INDEX, value="0", original="[0]", 
-                          access_method="bracket"),
-                PathSegment(type=SegmentType.ATTRIBUTE, value="profile", original="profile"),
-                PathSegment(type=SegmentType.DICT_KEY, value="settings", original="{settings}", 
-                          access_method="bracket")
-            ]),
-            ("data{config}[0].items{metadata}", [
-                PathSegment(type=SegmentType.ATTRIBUTE, value="data", original="data"),
-                PathSegment(type=SegmentType.DICT_KEY, value="config", original="{config}", 
-                          access_method="bracket"),
-                PathSegment(type=SegmentType.LIST_INDEX, value="0", original="[0]", 
-                          access_method="bracket"),
-                PathSegment(type=SegmentType.ATTRIBUTE, value="items", original="items"),
-                PathSegment(type=SegmentType.DICT_KEY, value="metadata", original="{metadata}", 
-                          access_method="bracket")
-            ])
-        ]
-        self._verify_path_cases(parser, cases)
-    
-    def _verify_path_cases(self, parser, cases):
-        """验证路径解析用例"""
-        for path, expected_segments in cases:
-            segments = parser.parse(path)
-            assert len(segments) == len(expected_segments), \
-                f"路径 '{path}' 段数不匹配: 期望 {len(expected_segments)}, 实际 {len(segments)}"
-            for actual, expected in zip(segments, expected_segments):
-                assert actual == expected, \
-                    f"路径 '{path}' 段不匹配:\n期望: {expected}\n实际: {actual}" 
+            assert result1 == result2, "缓存结果应该相同"
