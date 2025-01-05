@@ -3,6 +3,7 @@ from rocksdict import Rdict, Options, ColumnFamily, ReadOptions
 import msgpack
 from pathlib import Path
 import time
+from contextlib import contextmanager
 
 from ...config import get_env
 from .patterns import KeyPattern, RocksDBConfig
@@ -499,3 +500,25 @@ class BaseRocksDB:
                 opts = self._config.create_options(self._default_cf_options)
                 self._collections[name] = self._db.create_column_family(name, opts)
         return self._collections[name]
+
+    @contextmanager
+    def batch_write(self) -> Iterator[Any]:
+        """批量写入上下文管理器
+        
+        使用示例:
+        ```python
+        with db.batch_write() as batch:
+            batch.set("collection1", "key1", value1)
+            batch.set("collection2", "key2", value2)
+            batch.delete("collection1", "key3")
+        ```
+        """
+        batch = self._db.transaction()  # rocksdict 的事务支持
+        try:
+            yield batch
+            batch.commit()  # 提交事务
+        except Exception as e:
+            batch.rollback()  # 发生错误时回滚
+            raise e
+        finally:
+            del batch  # 确保资源被释放
