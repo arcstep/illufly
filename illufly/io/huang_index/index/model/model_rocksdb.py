@@ -5,8 +5,8 @@ from pydantic import BaseModel, ConfigDict, create_model
 from pydantic.json_schema import JsonSchemaMode
 from pydantic_core import CoreSchema, core_schema
 
-from .base_rocksdb import BaseRocksDB
-from .patterns import KeyPattern
+from ...base_rocksdb import BaseRocksDB
+from ...patterns import KeyPattern
 from .model import ModelRegistry
 
 import logging

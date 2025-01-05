@@ -8,8 +8,7 @@ from typing import List, Dict
 import time
 import logging
 
-from illufly.io.huang_index import ModelRocksDB, KeyPattern
-from illufly.io.huang_index.model import HuangIndexModel
+from illufly.io.huang_index import ModelRocksDB, KeyPattern, HuangIndexModel
 
 logger = logging.getLogger(__name__)
 
