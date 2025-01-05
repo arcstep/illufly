@@ -97,13 +97,34 @@ class TestAccessors:
             name="张三",
             age=30,
             addresses=[
-                PydanticAddress(city="北京", street="长安街"),
-                PydanticAddress(city="上海", street="南京路")
+                PydanticAddress(
+                    city="北京", 
+                    street="长安街",
+                    location=PydanticLocation(
+                        latitude=39.909904,
+                        longitude=116.397399
+                    ),
+                    tags={"type": "home"}
+                ),
+                PydanticAddress(
+                    city="上海", 
+                    street="南京路",
+                    location=PydanticLocation(
+                        latitude=31.231706,
+                        longitude=121.472644
+                    ),
+                    tags={"type": "work"}
+                )
             ],
             metadata={
                 "tag": "vip",
                 "level": "1"
-            }
+            },
+            profile=PydanticProfile(
+                nickname="阿三",
+                avatar="avatar.jpg",
+                preferences={"theme": "light"}
+            )
         )
     
     @pytest.fixture
@@ -113,13 +134,34 @@ class TestAccessors:
             name="张三",
             age=30,
             addresses=[
-                DataclassAddress(city="北京", street="长安街"),
-                DataclassAddress(city="上海", street="南京路")
+                DataclassAddress(
+                    city="北京", 
+                    street="长安街",
+                    location=DataclassLocation(
+                        latitude=39.909904,
+                        longitude=116.397399
+                    ),
+                    tags={"type": "home"}
+                ),
+                DataclassAddress(
+                    city="上海", 
+                    street="南京路",
+                    location=DataclassLocation(
+                        latitude=31.231706,
+                        longitude=121.472644
+                    ),
+                    tags={"type": "work"}
+                )
             ],
             metadata={
                 "tag": "vip",
                 "level": "1"
-            }
+            },
+            profile=DataclassProfile(
+                nickname="阿三",
+                avatar="avatar.jpg",
+                preferences={"theme": "light"}
+            )
         )
     
     def test_sequence_accessor(self, path_parser, dict_data):

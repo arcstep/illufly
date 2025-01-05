@@ -52,27 +52,37 @@ class SequenceAccessor(ValueAccessor):
 
 class MappingAccessor(ValueAccessor):
     """映射类型访问器（支持所有类似字典的类型）"""
-    def get_field_value(self, obj: Mapping, path_segments: Tuple[PathSegment, ...]) -> Any:
-        if not path_segments:
-            return obj
+    def get_field_value(self, obj: Any, path_segments: Tuple[PathSegment, ...]) -> Any:
+        """获取字段值"""
+        current = obj
+        for segment in path_segments:
+            logger.info(f"MappingAccessor: 处理对象 {current}, 路径段 {segment.type}:{segment.value}")
             
-        segment = path_segments[0]
-        logger.info(f"MappingAccessor: 处理对象 {obj}, 路径段 {segment.type.name}:{segment.value}")
-        
-        try:
+            # 修改：对于字典类型，直接使用键访问
+            if isinstance(current, dict):
+                if segment.type == SegmentType.ATTRIBUTE:
+                    try:
+                        current = current[segment.value]
+                        continue
+                    except (KeyError, TypeError):
+                        return None
+                        
+            # 其他类型的处理保持不变
             if segment.type == SegmentType.MAPPING:
-                value = obj[segment.value]
-                logger.info(f"MappingAccessor: 获取到值 {value}")
-                if len(path_segments) > 1:
-                    # 如果还有后续路径段，继续处理
-                    return self.get_field_value(value, path_segments[1:])
-                return value
-            else:
-                logger.info(f"MappingAccessor: 段类型不匹配，期望 MAPPING，实际 {segment.type.name}")
-                return None
-        except (KeyError, TypeError) as e:
-            logger.info(f"MappingAccessor: 访问失败 - {str(e)}")
-            return None
+                if not isinstance(current, Mapping):
+                    logger.info(f"MappingAccessor: 段类型不匹配，期望 MAPPING，实际 {type(current)}")
+                    return None
+                try:
+                    current = current[segment.value]
+                except (KeyError, TypeError):
+                    return None
+            elif segment.type == SegmentType.ATTRIBUTE:
+                try:
+                    current = getattr(current, segment.value)
+                except (AttributeError, TypeError):
+                    return None
+                    
+        return current
     
     def get_type(self) -> Type:
         return Mapping
@@ -162,7 +172,7 @@ class AccessorRegistry:
     """访问器注册表"""
     def __init__(self):
         self._accessors: Dict[Type, ValueAccessor] = {
-            dict: DictAccessor(),
+            dict: MappingAccessor(),
             BaseModel: ModelAccessor()
         }
         self._path_parser = PathParser()
