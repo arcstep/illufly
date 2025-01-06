@@ -75,6 +75,8 @@ class BaseRocksDB:
     
     # 系统列族名称
     SYSTEM_CF = "__system__"
+    # 默认列族名称
+    DEFAULT_CF = "__default__"
     # 列族配置的键名
     CF_CONFIGS_KEY = "collection_configs"
     
@@ -82,79 +84,156 @@ class BaseRocksDB:
     DEFAULT_BATCH_SIZE = 1000  # 默认批处理大小
     MAX_ITEMS_LIMIT = 10000   # 最大返回条数限制
     
-    def __init__(self, db_path: Optional[str] = None, logger: Optional[logging.Logger] = None):
-        """初始化RocksDB"""
+    def __init__(
+        self, db_path: Optional[str] = None, 
+        system_options: Optional[Dict[str, Any]] = None,
+        collections: Optional[Dict[str, Dict]] = None, 
+        logger: Optional[logging.Logger] = None
+    ):
+        """初始化RocksDB
+        
+        Args:
+            db_path: 数据库路径
+            system_options: 系统列族的配置选项
+            collections: 其他系统/元数据列族的配置字典
+            logger: 日志记录器
+        """
         self._logger = logger or logging.getLogger(__name__)
         self._db_path = Path(db_path or get_env("ROCKSDB_BASE_DIR"))
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # 使用 RocksDBConfig 创建默认配置
-        self._config = RocksDBConfig("default")
+        self._config = RocksDBConfig(self.DEFAULT_CF)
         self._default_cf_options = self._config.default_options
         
+        # 初始化所有系统/元数据列族配置
+        self._meta_collections = {}
+        
+        # 1. 添加系统列族配置
+        self._meta_collections[self.SYSTEM_CF] = system_options or {}
+        
+        # 2. 添加其他系统/元数据列族配置
+        if collections:
+            self._meta_collections.update(collections)
+            
         self._collection_configs: Dict[str, Options] = {}
         self._collections: Dict[str, Rdict] = {}
         self._cf_handles: Dict[str, ColumnFamily] = {}
         
-        # 打开数据库
+        # 打开数据库并初始化所有系统/元数据列族
         self._db = self._init_db_with_system()
         
-        # 移除 msgpack 序列化设置，使用默认的 JSON 序列化
-        # self._db.set_dumps(msgpack.packb)
-        # self._db.set_loads(msgpack.unpackb)
-        
-        # 初始化已存在的列族
+        # 初始化其他已存在的列族（非系统/元数据列族）
         self._init_existing_collections()
         
         self._logger.info(f"Initialized BaseRocksDB with path: {db_path}")
         
     def _init_db_with_system(self) -> Rdict:
-        """初始化数据库并确保系统列族存在"""
+        """初始化数据库并确保元数据列族存在"""
         db = Rdict(str(self._db_path))
         
         try:
-            # 确保系统列族存在
-            if self.SYSTEM_CF not in Rdict.list_cf(str(self._db_path)):
+            existing_cfs = Rdict.list_cf(str(self._db_path))
+            
+            # 1. 确保系统列族存在并初始化
+            if self.SYSTEM_CF not in existing_cfs:
                 self._logger.info(f"Creating system column family: {self.SYSTEM_CF}")
-                db.create_column_family(self.SYSTEM_CF)
-                # 初始化空的配置
+                self._logger.info(f"System options: {self._meta_collections[self.SYSTEM_CF]}")
+                opts = self._config.create_options(self._meta_collections[self.SYSTEM_CF])
+                db.create_column_family(self.SYSTEM_CF, opts)
                 system_cf = db.get_column_family(self.SYSTEM_CF)
-                # 移除 msgpack 序列化设置，使用默认的 JSON 序列化
-                # system_cf.set_dumps(msgpack.packb)
-                # system_cf.set_loads(msgpack.unpackb)
-                system_cf[self.CF_CONFIGS_KEY] = {}
+                # 初始化配置存储，包括系统列族自身的配置
+                stored_configs = {
+                    self.SYSTEM_CF: self._meta_collections[self.SYSTEM_CF]
+                }
+                self._logger.info(f"Saving initial configs: {stored_configs}")
+                system_cf[self.CF_CONFIGS_KEY] = stored_configs
+                
+            # 初始化系统列族的句柄和配置
+            self._collections[self.SYSTEM_CF] = db.get_column_family(self.SYSTEM_CF)
+            self._cf_handles[self.SYSTEM_CF] = db.get_column_family_handle(self.SYSTEM_CF)
+            self._collection_configs[self.SYSTEM_CF] = self._meta_collections[self.SYSTEM_CF]
+            
+            # 2. 初始化其他元数据列族
+            for cf_name, options in self._meta_collections.items():
+                if cf_name == self.SYSTEM_CF:
+                    continue
+                    
+                if cf_name not in existing_cfs:
+                    self._logger.info(f"Creating metadata column family: {cf_name}")
+                    self._logger.info(f"Options: {options}")
+                    opts = self._config.create_options(options)
+                    self._collections[cf_name] = db.create_column_family(cf_name, opts)
+                    self._cf_handles[cf_name] = db.get_column_family_handle(cf_name)
+                    self._collection_configs[cf_name] = options
+                    
+                    # 更新系统列族中的配置
+                    system_cf = self._collections[self.SYSTEM_CF]
+                    stored_configs = system_cf.get(self.CF_CONFIGS_KEY, {})
+                    stored_configs[cf_name] = options
+                    self._logger.info(f"Updating stored configs: {stored_configs}")
+                    system_cf[self.CF_CONFIGS_KEY] = stored_configs
+                else:
+                    self._collections[cf_name] = db.get_column_family(cf_name)
+                    self._cf_handles[cf_name] = db.get_column_family_handle(cf_name)
+                    self._collection_configs[cf_name] = options
+                    
+            # 3. 确保所有元数据列族的配置都被保存
+            system_cf = self._collections[self.SYSTEM_CF]
+            stored_configs = system_cf.get(self.CF_CONFIGS_KEY, {})
+            
+            # 只更新非空的配置
+            for cf_name, options in self._meta_collections.items():
+                if options:  # 只有当配置不为空时才更新
+                    stored_configs[cf_name] = options
+            
+            self._logger.info(f"Final stored configs: {stored_configs}")
+            system_cf[self.CF_CONFIGS_KEY] = stored_configs
+            
         except Exception as e:
             if "already exists" not in str(e):
-                raise ValueError(f"初始化系统列族失败: {str(e)}") from e
+                raise ValueError(f"初始化元数据列族失败: {str(e)}") from e
                 
         return db
         
     def _init_existing_collections(self):
         """初始化已存在的列族"""
         try:
-            # 获取所有已存在的列族
             existing_cfs = Rdict.list_cf(str(self._db_path))
             self._logger.info(f"Found existing collections: {existing_cfs}")
             
-            # 加载列族配置
+            # 加载持久化的配置
             system_cf = self._db.get_column_family(self.SYSTEM_CF)
-            # 确保在读取前设置序列化方法
-            # system_cf.set_dumps(msgpack.packb)
-            # system_cf.set_loads(msgpack.unpackb)
             stored_configs = system_cf.get(self.CF_CONFIGS_KEY, {})
+            self._logger.info(f"Loaded stored configs: {stored_configs}")
             
+            # 初始化所有列族
             for cf_name in existing_cfs:
-                if cf_name == self.SYSTEM_CF:  # 跳过系统列族
-                    continue
-                    
-                # 获取列族的 Rdict 接口
                 self._collections[cf_name] = self._db.get_column_family(cf_name)
-                # 获取列族的句柄
                 self._cf_handles[cf_name] = self._db.get_column_family_handle(cf_name)
-                # 使用存储的配置或默认配置
-                self._collection_configs[cf_name] = stored_configs.get(
-                    cf_name, self._default_cf_options.copy()
-                )
+                
+                # 获取持久化的配置
+                stored_config = stored_configs.get(cf_name)
+                if stored_config:
+                    self._logger.info(f"Using stored config for {cf_name}: {stored_config}")
+                    self._collection_configs[cf_name] = stored_config
+                    
+                    # 如果是元数据列族，检查入参配置
+                    if cf_name in self._meta_collections:
+                        input_config = self._meta_collections[cf_name]
+                        if input_config:  # 只有当入参不为空时才进行校验
+                            self._logger.info(f"Validating input config for {cf_name}: {input_config}")
+                            for key, value in input_config.items():
+                                if key in stored_config and stored_config[key] != value:
+                                    raise ValueError(
+                                        f"列族 '{cf_name}' 的配置与预期不符: "
+                                        f"存储值 {stored_config[key]} != 预期值 {value} "
+                                        f"(键: {key})"
+                                    )
+                else:
+                    # 对于普通列族，使用默认配置
+                    self._logger.info(f"Using default config for {cf_name}")
+                    self._collection_configs[cf_name] = self._default_cf_options.copy()
                 
                 self._logger.info(f"Initialized existing collection: {cf_name}")
                 
@@ -198,10 +277,22 @@ class BaseRocksDB:
             raise ValueError(f"创建集合 '{name}' 失败: {str(e)}") from e
             
     def get_collection_options(self, name: str) -> Dict[str, Any]:
-        """获取集合配置"""
-        if name not in self._collection_configs:
-            raise ValueError(f"集合 '{name}' 不存在")
-        return self._collection_configs[name].copy()
+        """获取集合配置
+        
+        Args:
+            name: 集合名称
+            
+        Returns:
+            Dict[str, Any]: 集合的配置选项
+            
+        Raises:
+            ValueError: 如果集合不存在
+        """
+        # 优先使用 _collection_configs 中的配置（这里存储了从持久化读取的配置）
+        if name in self._collection_configs:
+            return self._collection_configs[name].copy()
+        
+        raise ValueError(f"集合 '{name}' 不存在")
         
     def list_collections(self) -> List[str]:
         """列出所有集合（列族）"""
@@ -576,22 +667,25 @@ class BaseRocksDB:
             # 重写 set/delete 方法以使用 batch
             def batch_set(collection: str, key: str, value: Any) -> None:
                 cf = self._cf_handles[collection]
-                # 使用默认序列化
+                # 通过闭包捕获外部的 batch 变量
+                nonlocal batch
                 batch.put(key.encode(), value, column_family=cf)
                 if batch.len() % 50 == 0:
                     self._logger.info(f"批量写入: collection={collection}, key={key}, batch_size={batch.len()}")
-                
+            
             def batch_delete(collection: str, key: str) -> None:
                 cf = self._cf_handles[collection]
+                # 通过闭包捕获外部的 batch 变量
+                nonlocal batch
                 batch.delete(key.encode(), column_family=cf)
                 self._logger.info(f"批量删除: collection={collection}, key={key}, batch_size={batch.len()}")
-                
+            
             # 替换方法
             self.set = batch_set
             self.delete = batch_delete
             self._logger.info("已替换原始的 set/delete 方法")
             
-            yield
+            yield batch  # 将 batch 对象传递给上下文
             
             # 如果没有异常，提交 batch
             self._logger.info(f"准备提交 batch，大小: {batch.len()}, 字节数: {batch.size_in_bytes()}")
