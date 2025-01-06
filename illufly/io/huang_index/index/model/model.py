@@ -6,7 +6,7 @@ import uuid
 import json
 import logging
 
-from ...patterns import KeyPattern, RocksDBConfig
+from .patterns import KeyPattern
 
 logger = logging.getLogger(__name__)
 

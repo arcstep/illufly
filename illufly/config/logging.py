@@ -1,27 +1,8 @@
 """日志配置模块
-
-用法示例:
-    # 1. 使用默认logger
-    from illufly.config import logger
-    
-    logger.debug("调试信息")
-    logger.info("普通信息") 
-    logger.warning("警告信息")
-    logger.error("错误信息")
-    logger.critical("严重错误")
-    
-    # 2. 获取模块专属logger
-    import logging
-    logger = logging.getLogger(__name__)  # 将自动添加模块路径前缀
-    
-    # 例如在 illufly.io.storage 模块中:
-    logger.info("存储模块信息")  # 输出会带有 [illufly.io.storage] 前缀
-
 注意:
     1. 默认日志级别和输出格式由环境变量控制
     2. 日志会同时输出到控制台和文件
     3. error级别以上的日志会额外写入error.log
-    4. 建议在具体业务模块中使用第2种方式创建logger,方便定位日志来源
 """
 
 import os
@@ -120,12 +101,6 @@ def setup_logging():
         if isinstance(handler, logging.FileHandler) and 'error.log' in str(handler.baseFilename):
             handler.setLevel(logging.ERROR)
         root_logger.addHandler(handler)
-    
-    # 设置一些模块的默认日志级别
-    logging.getLogger('illufly.io.jiaozi_cache').setLevel(
-        getattr(logging, config['LOG_LEVEL'].upper())
-    )
 
 # 初始化日志系统并导出默认logger
 setup_logging()
-logger = logging.getLogger('illufly')

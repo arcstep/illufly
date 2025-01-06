@@ -76,14 +76,7 @@ include = "illufly/**/*"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v"
 pythonpath = ["."]
-markers = [
-    "anyio: mark test as anyio test",
-    "smoke: mark a test as a smoke test",
-    "integration: mark a test as an integration test"
-]
-bdd_features_base_dir = "bdd/features/"
 
 [tool.anyio]
 backend = "asyncio"

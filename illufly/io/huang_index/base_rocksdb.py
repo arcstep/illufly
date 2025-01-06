@@ -160,8 +160,6 @@ class BaseRocksDB:
                     continue
                     
                 if cf_name not in existing_cfs:
-                    self._logger.info(f"Creating metadata column family: {cf_name}")
-                    self._logger.info(f"Options: {options}")
                     opts = self._config.create_options(options)
                     self._collections[cf_name] = db.create_column_family(cf_name, opts)
                     self._cf_handles[cf_name] = db.get_column_family_handle(cf_name)
@@ -171,7 +169,7 @@ class BaseRocksDB:
                     system_cf = self._collections[self.SYSTEM_CF]
                     stored_configs = system_cf.get(self.CF_CONFIGS_KEY, {})
                     stored_configs[cf_name] = options
-                    self._logger.info(f"Updating stored configs: {stored_configs}")
+                    # self._logger.info(f"Updating stored configs: {stored_configs}")
                     system_cf[self.CF_CONFIGS_KEY] = stored_configs
                 else:
                     self._collections[cf_name] = db.get_column_family(cf_name)
@@ -187,7 +185,6 @@ class BaseRocksDB:
                 if options:  # 只有当配置不为空时才更新
                     stored_configs[cf_name] = options
             
-            self._logger.info(f"Final stored configs: {stored_configs}")
             system_cf[self.CF_CONFIGS_KEY] = stored_configs
             
         except Exception as e:
@@ -200,7 +197,6 @@ class BaseRocksDB:
         """初始化已存在的列族"""
         try:
             existing_cfs = Rdict.list_cf(str(self._db_path))
-            self._logger.info(f"Found existing collections: {existing_cfs}")
             
             # 加载持久化的配置
             system_cf = self._db.get_column_family(self.SYSTEM_CF)
@@ -215,14 +211,12 @@ class BaseRocksDB:
                 # 获取持久化的配置
                 stored_config = stored_configs.get(cf_name)
                 if stored_config:
-                    self._logger.info(f"Using stored config for {cf_name}: {stored_config}")
                     self._collection_configs[cf_name] = stored_config
                     
                     # 如果是元数据列族，检查入参配置
                     if cf_name in self._meta_collections:
                         input_config = self._meta_collections[cf_name]
                         if input_config:  # 只有当入参不为空时才进行校验
-                            self._logger.info(f"Validating input config for {cf_name}: {input_config}")
                             for key, value in input_config.items():
                                 if key in stored_config and stored_config[key] != value:
                                     raise ValueError(
@@ -232,11 +226,8 @@ class BaseRocksDB:
                                     )
                 else:
                     # 对于普通列族，使用默认配置
-                    self._logger.info(f"Using default config for {cf_name}")
                     self._collection_configs[cf_name] = self._default_cf_options.copy()
-                
-                self._logger.info(f"Initialized existing collection: {cf_name}")
-                
+
         except Exception as e:
             self._logger.error(f"Error initializing existing collections: {e}", exc_info=True)
             raise ValueError(f"初始化已存在的列族失败: {str(e)}") from e
@@ -448,7 +439,6 @@ class BaseRocksDB:
         if limit is not None and limit > self.MAX_ITEMS_LIMIT:
             raise ValueError(f"返回条数限制不能超过 {self.MAX_ITEMS_LIMIT}")
             
-        self._logger.info(f"获取集合 {collection} 的所有数据，限制: {limit}")
         return [(key, self.get(collection, key)) 
                 for key in self.iter_keys(collection, limit=limit)]
         
@@ -678,19 +668,18 @@ class BaseRocksDB:
                 # 通过闭包捕获外部的 batch 变量
                 nonlocal batch
                 batch.delete(key.encode(), column_family=cf)
-                self._logger.info(f"批量删除: collection={collection}, key={key}, batch_size={batch.len()}")
+                if batch.len() % 50 == 0:
+                    self._logger.info(f"批量删除: collection={collection}, key={key}, batch_size={batch.len()}")
             
             # 替换方法
             self.set = batch_set
             self.delete = batch_delete
-            self._logger.info("已替换原始的 set/delete 方法")
             
             yield batch  # 将 batch 对象传递给上下文
             
             # 如果没有异常，提交 batch
             self._logger.info(f"准备提交 batch，大小: {batch.len()}, 字节数: {batch.size_in_bytes()}")
             self._db.write(batch)
-            self._logger.info("batch 提交完成")
             
         except Exception as e:
             self._logger.error(f"批量写入失败: {str(e)}", exc_info=True)

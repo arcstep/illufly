@@ -75,7 +75,7 @@ def get_env(key: str=None):
         "ACCESS_TOKEN_EXPIRE_MINUTES": 15,
 
         # Logging
-        "LOG_LEVEL": "INFO",
+        "LOG_LEVEL": "WARNING",
         "LOG_DIR": os.path.join(FIXED_TEMP_DIR, "__LOGS__"),
         "LOG_FILE_MAX_BYTES": 10 * 1024 * 1024,
         "LOG_FILE_BACKUP_COUNT": 10,
