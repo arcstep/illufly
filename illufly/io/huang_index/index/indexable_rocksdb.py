@@ -102,22 +102,29 @@ class IndexableRocksDB(BaseRocksDB):
             
     def set(self, collection: str, key: str, value: BaseModel):
         """设置对象时自动更新索引"""
+        self._logger.info(f"开始设置值: collection={collection}, key={key}, value={value}")
 
         self.index_manager._validate_key(key)
         try:
             old_value = self.get(collection, key)
-        except (ValueError, Exception):
+            self._logger.info(f"获取到旧值: {old_value}")
+        except (ValueError, Exception) as e:
+            self._logger.info(f"获取旧值失败: {e}")
             old_value = None
             
         # 保存新值
         super().set(collection, key, value)
+        self._logger.info("新值已保存")
         
         # 如果在批处理中，延迟索引更新
         if self._in_batch:
+            self._logger.info("在批处理中，延迟索引更新")
             self._pending_index_updates.append((collection, key, old_value, value))
         else:
             # 不在批处理中，直接更新索引
+            self._logger.info("开始更新索引")
             self.index_manager.update_indexes(collection, key, old_value, value)
+            self._logger.info("索引更新完成")
         
     def delete(self, collection: str, key: str):
         """删除对象时自动清理索引"""
@@ -140,7 +147,8 @@ class IndexableRocksDB(BaseRocksDB):
         start: Optional[str] = None,
         end: Optional[str] = None,
         limit: Optional[int] = None,
-        reverse: bool = False
+        reverse: bool = False,
+        range_type: str = "[]"
     ) -> Iterator[str]:
         """扩展的键迭代方法，支持索引查询
         
@@ -151,6 +159,11 @@ class IndexableRocksDB(BaseRocksDB):
             field_value: 索引字段值
             limit: 限制返回数量
             reverse: 是否反向迭代
+            range_type: 区间类型，支持:
+                - "[]": 闭区间 [start, end]（默认）
+                - "[)": 左闭右开区间 [start, end)
+                - "(]": 左开右闭区间 (start, end]
+                - "()": 开区间 (start, end)
         """
         if field_path is not None:
             # 使用索引查询
@@ -160,7 +173,7 @@ class IndexableRocksDB(BaseRocksDB):
         else:
             # 使用普通前缀查询
             yield from super().iter_keys(
-                collection, prefix, limit=limit, reverse=reverse, start=start, end=end
+                collection, prefix, limit=limit, reverse=reverse, start=start, end=end, range_type=range_type
             )
     
     def all(self, collection: str, prefix: Optional[str] = None,
@@ -168,26 +181,45 @@ class IndexableRocksDB(BaseRocksDB):
             start: Optional[str] = None, end: Optional[str] = None,
             limit: Optional[int] = None, reverse: bool = False) -> Iterator[Tuple[str, Any]]:
         """扩展的查询方法，支持索引查询"""
-        for key in self.iter_keys(collection, prefix, field_path, field_value, start, end, limit, reverse):
-            value = self.get(collection, key)
-            if value is not None:
-                yield key, value
+        if limit is not None and limit > self.MAX_ITEMS_LIMIT:
+            raise ValueError(f"返回条数限制不能超过 {self.MAX_ITEMS_LIMIT}")
+            
+        return [(key, self.get(collection, key)) 
+                for key in self.iter_keys(
+                    collection,
+                    limit=limit, reverse=reverse,
+                    prefix=prefix,
+                    field_path=field_path, field_value=field_value,
+                    start=start, end=end
+                )]
     
     def first(self, collection: str, prefix: Optional[str] = None,
             field_path: Optional[str] = None, field_value: Optional[Any] = None,
-            start: Optional[str] = None, end: Optional[str] = None,
-            limit: Optional[int] = None, reverse: bool = False) -> Optional[Tuple[str, Any]]:
+            start: Optional[str] = None, end: Optional[str] = None) -> Optional[Tuple[str, Any]]:
         """获取第一个匹配的记录"""
-        for item in self.all(collection, prefix, field_path, field_value, start, end, limit, reverse):
-            return item
-        return None
+        
+        results = list(self.all(
+            collection,
+            prefix=prefix,
+            field_path=field_path, field_value=field_value,
+            start=start, end=end,
+            limit=1, reverse=False
+        ))
+        
+        return results[0] if results else None
     
     def last(self, collection: str, prefix: Optional[str] = None,
             field_path: Optional[str] = None, field_value: Optional[Any] = None,
-            start: Optional[str] = None, end: Optional[str] = None,
-            limit: Optional[int] = None, reverse: bool = True) -> Optional[Tuple[str, Any]]:
+            start: Optional[str] = None, end: Optional[str] = None) -> Optional[Tuple[str, Any]]:
         """获取最后一个匹配的记录"""
-        for item in self.all(collection, prefix, field_path, field_value, start, end, limit, reverse):
-            return item
-        return None
+
+        results = list(self.all(
+            collection,
+            prefix=prefix,
+            field_path=field_path, field_value=field_value,
+            start=start, end=end,
+            limit=1, reverse=True
+        ))
+        
+        return results[0] if results else None
 

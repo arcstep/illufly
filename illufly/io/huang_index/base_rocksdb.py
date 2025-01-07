@@ -3,7 +3,6 @@ from rocksdict import Rdict, WriteBatch, Options, ColumnFamily, ReadOptions
 from pathlib import Path
 from contextlib import contextmanager
 
-import msgpack
 import logging
 
 from ...config import get_env
@@ -290,30 +289,16 @@ class BaseRocksDB:
         return Rdict.list_cf(str(self._db_path))
         
     def get(self, collection: str, key: str) -> Optional[Any]:
-        """获取值
-        
-        Args:
-            collection: 集合名称
-            key: 键名
-            
-        Returns:
-            Optional[Any]: 键对应的值,如果不存在则返回None
-            
-        """
+        """获取值"""
         cf = self.get_collection(collection)
-        value = cf.get(key.encode())
-        return value  # 不需要手动反序列化，rocksdict 会使用我们设置的 msgpack.unpackb
+        # 直接返回值，不需要反序列化
+        return cf.get(key)  # 不需要 encode() 和手动反序列化
         
     def set(self, collection: str, key: str, value: Any) -> None:
-        """设置值
-        
-        Args:
-            collection: 集合名称
-            key: 键名
-            value: 要存储的值            
-        """            
+        """设置值"""            
         cf = self.get_collection(collection)
-        cf[key.encode()] = value  # 不需要手动序列化，rocksdict 会使用我们设置的 msgpack.packb
+        # 直接设置值，不需要序列化
+        cf[key] = value  # 不需要 encode() 和手动序列化
         
     def iter_keys(self,
                 collection: str,
@@ -321,8 +306,8 @@ class BaseRocksDB:
                 start: Optional[str] = None,
                 end: Optional[str] = None,
                 limit: Optional[int] = None,
-                reverse: bool = False,
-                range_type: str = "[]") -> Iterator[str]:
+                reverse: Optional[bool] = None,
+                range_type: Optional[str] = None) -> Iterator[str]:
         """迭代键
         
         Args:
@@ -341,6 +326,11 @@ class BaseRocksDB:
         Raises:
             ValueError: 当 range_type 不是有效的区间类型时
         """
+        self._logger.info(f"iter_keys: collection={collection}, prefix={prefix}, start={start}, end={end}, limit={limit}, reverse={reverse}, range_type={range_type}")
+
+        reverse = True if reverse is not None else False
+        range_type = range_type or "[]"
+
         if range_type not in ("[]", "[)", "(]", "()"):
             raise ValueError("无效的区间类型，必须是 [], [), (], () 之一")
         
@@ -353,6 +343,12 @@ class BaseRocksDB:
         # 获取迭代器
         it = cf.iter(read_opts)
         count = 0
+        
+        # 确保 start 和 end 是字符串类型
+        if isinstance(start, bytes):
+            start = start.decode()
+        if isinstance(end, bytes):
+            end = end.decode()
         
         try:
             # 设置起始位置
@@ -423,7 +419,9 @@ class BaseRocksDB:
         finally:
             del it
             
-    def all(self, collection: str, limit: Optional[int] = DEFAULT_BATCH_SIZE) -> List[Tuple[str, Any]]:
+    def all(self, collection: str, prefix: Optional[str] = None,
+            start: Optional[str] = None, end: Optional[str] = None,
+            limit: Optional[int] = DEFAULT_BATCH_SIZE, reverse: bool = False) -> List[Tuple[str, Any]]:
         """获取集合中的所有数据
         
         Args:
@@ -440,34 +438,40 @@ class BaseRocksDB:
             raise ValueError(f"返回条数限制不能超过 {self.MAX_ITEMS_LIMIT}")
             
         return [(key, self.get(collection, key)) 
-                for key in self.iter_keys(collection, limit=limit)]
+                for key in self.iter_keys(
+                    collection,
+                    limit=limit,
+                    prefix=prefix,
+                    start=start, end=end,
+                    reverse=reverse
+                )]
         
     def first(self, collection: str, prefix: Optional[str] = None,
-            limit: Optional[int] = 1, range_type: str = "[]") -> Optional[Tuple[str, Any]]:
+            start: Optional[str] = None, end: Optional[str] = None) -> Optional[Tuple[str, Any]]:
         """获取第一个键值对"""
 
-        for key in self.iter_keys(
+        results = list(self.all(
             collection=collection,
             prefix=prefix,
-            limit=limit,
-            range_type=range_type
-        ):
-            return key, self.get(collection, key)
-        return None
+            start=start, end=end,
+            limit=1, reverse=False
+        ))
+        
+        return results[0] if results else None
         
     def last(self, collection: str, prefix: Optional[str] = None,
-            limit: Optional[int] = 1, range_type: str = "[]") -> Optional[Tuple[str, Any]]:
+            start: Optional[str] = None, end: Optional[str] = None) -> Optional[Tuple[str, Any]]:
         """获取最后一个键值对"""
 
-        for key in self.iter_keys(
+        results = list(self.all(
             collection=collection,
             prefix=prefix,
+            start=start, end=end,
             reverse=True,
-            limit=limit,
-            range_type=range_type
-        ):
-            return key, self.get(collection, key)
-        return None
+            limit=1
+        ))
+        
+        return results[0] if results else None
         
     def delete(self, collection: str, key: str) -> None:
         """删除键值对
@@ -647,7 +651,6 @@ class BaseRocksDB:
     def batch_write(self) -> Iterator[None]:
         """批量写入上下文管理器"""
         batch = WriteBatch()
-        self._logger.info("创建新的 WriteBatch")
         
         try:
             # 存储原始的 set/delete 方法
@@ -689,4 +692,3 @@ class BaseRocksDB:
             # 恢复原始方法
             self.set = original_set
             self.delete = original_delete
-            self._logger.info("已恢复原始的 set/delete 方法")

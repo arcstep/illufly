@@ -7,6 +7,7 @@ from .path_parser import PathParser
 from datetime import datetime 
 
 import logging
+import hashlib
 
 class IndexManager:
     INDEX_CF = "indexes"      # 正向索引列族
@@ -28,6 +29,25 @@ class IndexManager:
     # 前缀格式常量
     INDEX_PREFIX_FORMAT = "idx:{collection}"
     INDEX_FIELD_PREFIX_FORMAT = "idx:{collection}:{field}"
+    
+    # 特殊字符替换映射
+    SPECIAL_CHARS = {
+        '.': '_dot_',
+        '[': '_lb_',
+        ']': '_rb_',
+        '{': '_lcb_',
+        '}': '_rcb_',
+        ':': '_col_',
+        '/': '_sl_',
+        '\\': '_bs_',
+        '*': '_ast_',
+        '?': '_qm_',
+        '<': '_lt_',
+        '>': '_gt_',
+        '|': '_pipe_',
+        '"': '_quot_',
+        "'": '_apos_'
+    }
     
     def __init__(self, db: BaseRocksDB, logger=None):
         self._logger = logger or logging.getLogger(__name__)
@@ -61,16 +81,13 @@ class IndexManager:
 
     def _get_base_type(self, model_class: Type) -> Type:
         """获取基础类型"""
-        self._logger.info(f"获取基础类型: {model_class}")
         
         # 处理 typing 类型
         if hasattr(model_class, '__origin__'):
-            self._logger.info(f"处理 typing 类型: origin={model_class.__origin__}")
             return model_class.__origin__
             
         # 处理内置类型
         if model_class in (dict, Dict):
-            self._logger.info("统一使用 dict 作为基础类型")
             return dict
             
         # 其他类型保持不变
@@ -78,13 +95,10 @@ class IndexManager:
 
     def register_model_index(self, model_class: Type, field_path: str):
         """注册模型的索引配置"""
-        self._logger.info(f"开始注册索引: 类型={model_class}, 字段={field_path}")
-        self._logger.info(f"当前已注册的索引: {self._model_indexes}")
 
         # 验证字段路径的语法是否合法
         try:
             path_segments = self._path_parser.parse(field_path)
-            self._logger.info(f"字段路径 '{field_path}' 解析结果: {path_segments}")
         except ValueError as e:
             self._logger.error(f"字段路径 '{field_path}' 格式无效: {str(e)}")
             raise ValueError(f"无效的字段路径 '{field_path}': {str(e)}")
@@ -92,31 +106,25 @@ class IndexManager:
         # 验证字段路径是否可以访问到属性值
         try:
             self._accessor_registry.validate_path(model_class, field_path)
-            self._logger.info("字段路径验证通过")
         except Exception as e:
             self._logger.error(f"字段路径验证失败: {e}")
             raise
 
         # 注册索引
         base_type = self._get_base_type(model_class)
-        self._logger.info(f"基础类型: {base_type}")
-        self._logger.info(f"model_class 类型: {type(model_class)}")
         if hasattr(model_class, '__origin__'):
             self._logger.info(f"origin: {model_class.__origin__}, args: {model_class.__args__}")
 
         if base_type not in self._model_indexes:
-            self._logger.info(f"为基础类型 {base_type} 创建新的索引集合")
             self._model_indexes[base_type] = set()
         self._model_indexes[base_type].add(field_path)
 
         # 同时注册类型提示版本（如果不同的话）
         if model_class != base_type:
-            self._logger.info(f"注册类型提示版本: {model_class}")
             if model_class not in self._model_indexes:
                 self._model_indexes[model_class] = self._model_indexes[base_type]
 
         self._logger.info(f"完成索引注册: 类型={model_class}, 基础类型={base_type}, 字段={field_path}")
-        self._logger.info(f"更新后的索引配置: {self._model_indexes}")
 
         # 保存更新后的索引配置
         self._save_model_indexes()
@@ -136,23 +144,104 @@ class IndexManager:
                 "这个序列用于索引解析，不能在键中使用。"
             )
     
+    @classmethod
+    def _escape_special_chars(cls, value: str) -> str:
+        """替换字符串中的特殊字符"""
+        result = value
+        for char, replacement in cls.SPECIAL_CHARS.items():
+            result = result.replace(char, replacement)
+        return result
+    
+    @classmethod
+    def format_index_value(cls, value: Any, logger=None) -> str:
+        """格式化索引值
+        
+        格式化规则：
+        1. None -> "null"
+        2. 布尔值 -> "false" 或 "true"
+        3. 数值：
+            - float('-inf') -> "a" (确保小于所有数值)
+            - 负数 -> "a{数值}" (确保小于正数)
+            - 0 -> "c0000000000_000000"
+            - 正数 -> "c{数值}"
+            - float('inf') -> "d" (确保大于所有数值)
+            - float('nan') -> "e" (确保排在最后)
+        4. 日期时间 -> "t{timestamp:010d}"
+        5. 字符串：
+            - 空字符串 -> "empty"
+            - 长字符串 -> base32编码的MD5哈希
+            - 普通字符串 -> 转义后的字符串
+        """
+        if value is None:
+            if logger:
+                logger.info(f"格式化空值: {value} -> null")
+            return 'null'
+            
+        if isinstance(value, bool):
+            return str(value).lower()  # 使用小写以确保排序一致性
+            
+        if isinstance(value, (int, float)):
+            if isinstance(value, float):
+                if value == float('inf'): return 'd'
+                if value == float('-inf'): return 'a'
+                if value != value: return 'e'
+            
+            num = float(value)
+            if num == 0:
+                return 'c0000000000_000000'
+            
+            abs_num = abs(num)
+            int_part = int(abs_num)
+            dec_part = int((abs_num - int_part) * 1e6)
+            
+            if num < 0:
+                # 负数：按位对齐做减法
+                int_part_str = f"{9999999999 - int_part:010d}"
+                dec_part_str = f"{999999 - dec_part:06d}"
+                result = f"b{int_part_str}_{dec_part_str}"
+            else:
+                # 正数：直接格式化
+                result = f"c{int_part:010d}_{dec_part:06d}"
+            
+            if logger:
+                logger.info(f"格式化数值 {num} -> {result}")
+            return result
+            
+        if isinstance(value, datetime):
+            return f"t{int(value.timestamp()):010d}"
+            
+        if isinstance(value, str):
+            if not value:
+                return 'empty'
+            if len(value) > 100:
+                import base64
+                hash_bytes = hashlib.md5(value.encode()).digest()
+                return f"h{base64.b32encode(hash_bytes).decode().rstrip('=')}"
+            # 添加前缀 's' 以区分字符串类型
+            return f"s{cls._escape_special_chars(value)}"
+            
+        # 其他类型转为字符串
+        return f"v{cls._escape_special_chars(str(value))}"
+
     def _make_index_key(self, collection: str, field_path: str, field_value: Any, key: str) -> str:
         """创建索引键"""
         self._validate_key(key)
+        formatted_value = self.format_index_value(field_value, logger=self._logger)
         return self.INDEX_KEY_FORMAT.format(
             collection=collection,
             field=field_path,
-            value=field_value,
+            value=formatted_value,
             key=key
         )
         
     def _make_reverse_key(self, collection: str, field_path: str, field_value: Any, key: str) -> str:
         """创建反向索引键"""
         self._validate_key(key)
+        formatted_value = self.format_index_value(field_value, logger=self._logger)
         return self.REVERSE_KEY_FORMAT.format(
             collection=collection,
             field=field_path,
-            value=field_value,
+            value=formatted_value,
             key=key
         )
         
@@ -188,33 +277,30 @@ class IndexManager:
         
     def update_indexes(self, collection: str, key: str, old_value: Any, new_value: Any):
         """更新索引"""
-        self._logger.info(f"开始更新索引: collection={collection}, key={key}")
-        self._logger.info(f"旧值类型: {type(old_value) if old_value is not None else 'None'}")
-        self._logger.info(f"新值类型: {type(new_value) if new_value is not None else 'None'}")
+        self._logger.info(f"开始更新索引: collection={collection}, key={key}, old_value={old_value}, new_value={new_value}")
         
         # 处理删除操作
         if new_value is None:
             if old_value is None:
-                self._logger.info("新旧值都为空，无需更新索引")
                 return
             value_type = type(old_value)
             self._logger.info(f"删除操作，使用旧值类型: {value_type}")
         else:
             value_type = type(new_value)
-            self._logger.info(f"使用新值类型: {value_type}")
+            self._logger.info(f"更新/创建操作，使用新值类型: {value_type}")
         
         # 获取基础类型
         base_type = self._get_base_type(value_type)
         self._logger.info(f"基础类型: {base_type}")
         
-        # 检查是否需要索引处理
+        # 检查是否有注册的索引
         if value_type not in self._model_indexes and base_type not in self._model_indexes:
-            self._logger.warning(f"类型 {value_type} (基础类型 {base_type}) 没有注册任何索引")
+            self._logger.info(f"类型 {value_type} (基础类型 {base_type}) 没有注册任何索引，跳过索引更新")
             return
-            
+        
         # 使用已注册的索引配置
         indexes = self._model_indexes.get(value_type) or self._model_indexes[base_type]
-        self._logger.info(f"使用索引配置: {indexes}")
+        self._logger.info(f"找到注册的索引: {indexes}")
         
         with self.db.batch_write() as batch:
             # 获取列族句柄
@@ -223,11 +309,11 @@ class IndexManager:
             
             # 1. 删除旧索引
             if old_value is not None:
-                self._logger.info("开始删除旧索引")
                 for field_path in indexes:
                     try:
-                        old_field_value = self._accessor_registry.get_field_value(old_value, field_path)
-                        if old_field_value is not None:
+                        self._logger.info(f"尝试删除旧索引: field_path={field_path}, old_value={old_value}")
+                        if self._accessor_registry.validate_path(old_value.__class__, field_path):
+                            old_field_value = self._accessor_registry.get_field_value(old_value, field_path)
                             # 删除正向索引
                             old_index_key = self._make_index_key(collection, field_path, old_field_value, key)
                             self._logger.info(f"删除旧正向索引: {old_index_key}")
@@ -242,68 +328,166 @@ class IndexManager:
             
             # 2. 创建新索引
             if new_value is not None:
-                self._logger.info("开始创建新索引")
                 for field_path in indexes:
                     try:
-                        field_value = self._accessor_registry.get_field_value(new_value, field_path)
-                        if field_value is not None:
-                            # 创建正向索引
-                            index_key = self._make_index_key(collection, field_path, field_value, key)
-                            self._logger.info(f"创建正向索引: {index_key}")
-                            batch.put(index_key.encode(), None, column_family=index_cf)
+                        self._logger.info(f"尝试创建新索引: field_path={field_path}, new_value={new_value}")
+                        # 1. 先验证路径语法
+                        if not self._accessor_registry.validate_path(new_value.__class__, field_path):
+                            self._logger.info(f"属性路径验证失败，跳过创建索引")
+                            continue
                             
-                            # 创建反向索引
-                            reverse_key = self._make_reverse_key(collection, field_path, field_value, key)
-                            self._logger.info(f"创建反向索引: {reverse_key}")
-                            batch.put(reverse_key.encode(), None, column_family=reverse_cf)
+                        # 2. 尝试获取字段值
+                        try:
+                            field_value = self._accessor_registry.get_field_value(new_value, field_path)
+                        except (KeyError, AttributeError):
+                            # 字段不存在，跳过
+                            continue
+                            
+                        # 3. 创建索引
+                        index_key = self._make_index_key(collection, field_path, field_value, key)
+                        self._logger.info(f"创建正向索引: {index_key}")
+                        batch.put(index_key.encode(), None, column_family=index_cf)
+                        
+                        reverse_key = self._make_reverse_key(collection, field_path, field_value, key)
+                        self._logger.info(f"创建反向索引: {reverse_key}")
+                        batch.put(reverse_key.encode(), None, column_family=reverse_cf)
                     except Exception as e:
                         self._logger.error(f"创建新索引时出错: {e}")
-        
-        self._logger.info("索引更新完成")
-        
-        # 验证索引创建结果
-        self._logger.info("验证索引创建结果:")
-        for index_key in self.db.iter_keys(self.INDEX_CF):
-            self._logger.info(f"发现正向索引: {index_key}")
-        for reverse_key in self.db.iter_keys(self.REVERSE_CF):
-            self._logger.info(f"发现反向索引: {reverse_key}")
-
-    def _get_field_value(self, model: BaseModel, field_path: str) -> Any:
-        """获取模型的嵌套字段值"""
-        value = model
-        for part in field_path.split('.'):
-            if hasattr(value, part):
-                value = getattr(value, part)
-            else:
-                return None
-        return value 
 
     def query_by_index(
         self,
         collection: str,
         field_path: str,
-        value: Any = None, 
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        field_value: Any = None, 
+        start: Optional[Any] = None,
+        end: Optional[Any] = None,
         limit: Optional[int] = None,
         reverse: bool = False
     ) -> Iterator[str]:
-        """通过索引查询键"""
-        index_key_prefix = self._make_index_key(collection, field_path, value, "")
-        self._logger.info(f"查询索引前缀: {index_key_prefix}")
+        """通过索引查询键
         
-        for key in self.db.iter_keys(
-            self.INDEX_CF,
-            prefix=index_key_prefix,
-            start=start,
-            end=end,
-            limit=limit,
-            reverse=reverse
-        ):
-            parts = key.split(self.KEY_IDENTIFIER)
-            if len(parts) == 2:
-                target_key = parts[1]
-                self._logger.info(f"从索引 {key} 提取目标键: {target_key}")
-                yield target_key
-            else:
-                raise ValueError(f"索引键格式不正确: {key}") 
+        Args:
+            collection: 集合名称
+            field_path: 索引字段路径
+            field_value: 字段精确匹配值
+            start: 范围查询起始值
+            end: 范围查询结束值
+            limit: 限制返回数量
+            reverse: 是否反向查询
+        
+        Raises:
+            ValueError: 当指定的字段路径未注册索引时抛出
+            ValueError: 当既没有提供 field_value 也没有提供 start/end 时抛出
+        """
+        # 验证查询参数
+        if field_value is None and start is None and end is None:
+            error_msg = (
+                f"查询字段 {field_path} 时必须提供查询条件："
+                f"\n1. 提供 field_value 参数进行精确匹配"
+                f"\n2. 提供 start 和/或 end 参数进行范围查询"
+            )
+            self._logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # 验证字段是否已注册索引
+        for model_indexes in self._model_indexes.values():
+            if field_path in model_indexes:
+                break
+        else:
+            error_msg = (
+                f"字段 {field_path} 未注册索引。这可能是因为:"
+                f"\n1. 忘记注册该字段的索引"
+                f"\n2. 索引注册顺序有误"
+                f"\n请使用 register_model_index 注册索引并调用 rebuild_indexes 重建索引。"
+                f"\n示例: db.register_model_index(dict, '{field_path}')"
+            )
+            self._logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # 构建基础前缀
+        base_prefix = f"idx:{collection}:{field_path}:"
+        
+        if start is not None or end is not None:
+            # 范围查询时，确保只查询指定字段的索引
+            start_key = f"{base_prefix}{self.format_index_value(start, logger=self._logger)}:key:" if start is not None else base_prefix
+            end_key = f"{base_prefix}{self.format_index_value(end, logger=self._logger)}:key:" if end is not None else base_prefix + "\xff"
+            
+            self._logger.info(f"范围查询: start={start_key}, end={end_key}")
+            
+            for key in self.db.iter_keys(
+                self.INDEX_CF,
+                start=start_key,
+                end=end_key,
+                limit=limit,
+                reverse=reverse,
+                range_type="[]"  # 显式指定闭区间
+            ):
+                parts = key.split(self.KEY_IDENTIFIER)
+                if len(parts) == 2:
+                    target_key = parts[1]
+                    self._logger.info(f"从索引 {key} 提取目标键: {target_key}")
+                    yield target_key
+                else:
+                    raise ValueError(f"索引键格式不正确: {key}")
+        else:
+            # 精确匹配模式
+            formatted_value = self.format_index_value(field_value, logger=self._logger)
+            index_key_prefix = f"{base_prefix}{formatted_value}:key:"
+            self._logger.info(f"精确匹配查询前缀: {index_key_prefix}")
+            
+            for key in self.db.iter_keys(
+                self.INDEX_CF,
+                prefix=index_key_prefix,
+                limit=limit,
+                reverse=reverse
+            ):
+                parts = key.split(self.KEY_IDENTIFIER)
+                if len(parts) == 2:
+                    target_key = parts[1]
+                    self._logger.info(f"从索引 {key} 提取目标键: {target_key}")
+                    yield target_key
+                else:
+                    raise ValueError(f"索引键格式不正确: {key}") 
+
+    def rebuild_indexes(self, collection: str = None):
+        """重建索引
+        
+        用于以下场景:
+        1. 新注册索引后，为已有数据建立索引
+        2. 修改索引配置后重建索引
+        3. 索引损坏后的修复
+        
+        Args:
+            collection: 指定集合名称，如果为 None 则重建所有集合的索引
+        """
+        self._logger.info(f"开始重建索引: collection={collection}")
+        
+        # 如果没有指定集合，获取所有集合
+        if collection is None:
+            collections = self.get_all_collections()
+        else:
+            collections = [collection]
+        
+        for coll in collections:
+            self._logger.info(f"重建集合 {coll} 的索引")
+            # 删除现有索引
+            self._clear_collection_indexes(coll)
+            
+            # 重建索引
+            for key, value in self.all(coll):
+                self.update_indexes(coll, key, None, value)
+        
+        self._logger.info("索引重建完成")
+
+    def _clear_collection_indexes(self, collection: str):
+        """清除集合的所有索引"""
+        prefix = f"idx:{collection}:"
+        with self.db.batch_write() as batch:
+            # 删除正向索引
+            for key in self.db.iter_keys(self.INDEX_CF, prefix=prefix):
+                batch.delete(key, column_family=self.db.get_cf_handle(self.INDEX_CF))
+            
+            # 删除反向索引
+            rev_prefix = f"rev:{collection}:"
+            for key in self.db.iter_keys(self.REVERSE_CF, prefix=rev_prefix):
+                batch.delete(key, column_family=self.db.get_cf_handle(self.REVERSE_CF)) 
