@@ -107,10 +107,6 @@ class PathParser:
             ValueError: 当路径语法无效时，提供具体的错误信息
         """
         
-        if not path:
-            logger.error("检测到空路径")
-            raise ValueError("空路径")
-        
         # 1. 检查花括号配对
         open_count = path.count('{')
         close_count = path.count('}')

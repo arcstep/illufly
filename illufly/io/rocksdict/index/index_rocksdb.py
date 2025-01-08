@@ -42,7 +42,6 @@ class IndexedRocksDB(BaseRocksDB):
 
     # 关键标识符
     RESERVED_WORD_IN_INDEX = ":key:"
-    RESERVED_WORD_IN_REVERSE = ":rev:"
 
     # 特殊字符替换映射
     SPECIAL_CHARS = {
@@ -94,22 +93,6 @@ class IndexedRocksDB(BaseRocksDB):
             
         # 其他类型保持不变
         return model_class
-
-    @classmethod
-    def _validate_key(cls, key: str) -> None:
-        if cls.RESERVED_WORD_IN_INDEX in key:
-            raise ValueError(
-                f"键 '{key}' 包含保留的关键标识符 '{cls.RESERVED_WORD_IN_INDEX}'。"
-                "这个词用于索引解析，不能在键中使用。"
-            )
-
-    @classmethod
-    def _validate_value(cls, value: str) -> None:
-        if cls.RESERVED_WORD_IN_REVERSE in value:
-            raise ValueError(
-                f"值 '{value}' 包含保留的关键标识符 '{cls.RESERVED_WORD_IN_REVERSE}'。"
-                "这个词列用于索引解析，不能在值中使用。"
-            )
 
     @classmethod
     def _escape_special_chars(cls, value: str) -> str:
@@ -248,19 +231,32 @@ class IndexedRocksDB(BaseRocksDB):
     def indexes_cf(self) -> Rdict:
         return self.get_column_family(self.INDEX_CF)
 
+    def validate_path(self, model_class: Type, field_path: str) -> None:
+        """验证字段路径是否可以访问到属性值"""
+        if field_path != "#":
+            self._accessor_registry.validate_path(model_class, field_path)
+    
+    def get_field_value(self, model_class: Type, field_path: str, key: str) -> Any:
+        """获取字段值"""
+        if field_path == "#":
+            return key
+        else:
+            return self._accessor_registry.get_field_value(model_class, field_path)
+
     def register_indexes(self, model_name: str, model_class: Type, field_path: str, cf_name: str=None):
         """注册模型的索引配置"""
 
         # 验证字段路径的语法是否合法
         try:
-            path_segments = self._path_parser.parse(field_path)
+            if field_path != "#":
+                self._path_parser.parse(field_path)
         except ValueError as e:
             self._logger.error(f"字段路径 '{field_path}' 格式无效: {str(e)}")
             raise ValueError(f"无效的字段路径 '{field_path}': {str(e)}")
 
         # 验证字段路径是否可以访问到属性值
         try:
-            self._accessor_registry.validate_path(model_class, field_path)
+            self.validate_path(model_class, field_path)
         except Exception as e:
             self._logger.error(f"字段路径验证失败: {e}")
             raise
@@ -281,9 +277,7 @@ class IndexedRocksDB(BaseRocksDB):
     def _make_index_key(self, model_name: str, field_path: str, field_value: Any, key: str, cf_name: str=None) -> str:
         """创建索引键"""
         key = self._escape_special_chars(key)
-        self._validate_key(key)
         formatted_value = self.format_index_value(field_value)
-        self._validate_value(formatted_value)
         cf_name = cf_name or self.default_cf_name
         return self.INDEX_KEY_FORMAT.format(
             cf_name=cf_name,
@@ -293,9 +287,9 @@ class IndexedRocksDB(BaseRocksDB):
             key=key
         )
     
-    def update_with_indexes(self, model_name: str, key: str, new_value: Any, cf_name: str=None):
+    def update_with_indexes(self, model_name: str, key: str, value: Any, cf_name: str=None):
         """更新键值，并自动更新索引"""
-        self._logger.info(f"开始更新索引: model_name={model_name}, key={key}, new_value={new_value}, cf_name={cf_name}")
+        self._logger.info(f"开始更新索引: model_name={model_name}, key={key}, value={value}, cf_name={cf_name}")
 
         cf_name = cf_name or self.default_cf_name
         cf = self.get_column_family(cf_name)
@@ -313,7 +307,7 @@ class IndexedRocksDB(BaseRocksDB):
         all_paths = self.keys(prefix=model_prefix, rdict=self.indexes_metadata_cf)
 
         if not all_paths:
-            cf.put(key, new_value, cf_handle)
+            cf.put(key, value)
             self._logger.info(f"值已更新，但没有索引注册")
             return
 
@@ -321,14 +315,14 @@ class IndexedRocksDB(BaseRocksDB):
         batch = WriteBatch()
 
         # 更新值
-        batch.put(key, new_value, cf_handle)
+        batch.put(key, value, cf_handle)
 
         # 处理对象所有属性访问路径的索引
         indexes_cf_handle = self.get_column_family_handle(self.INDEX_CF)
         for path in all_paths:
             field_path = self._fetch_field_path_from_index(path)
             if not key_not_exist:
-                field_value = self._accessor_registry.get_field_value(old_value, field_path)
+                field_value = self.get_field_value(old_value, field_path, key)
                 old_index = self._make_index_key(
                     model_name=model_name,
                     field_path=field_path,
@@ -338,7 +332,7 @@ class IndexedRocksDB(BaseRocksDB):
                 )
                 batch.delete(old_index, indexes_cf_handle)
                 self._logger.info(f"准备删除旧索引: {old_index}")
-            field_value = self._accessor_registry.get_field_value(new_value, field_path)
+            field_value = self.get_field_value(value, field_path, key)
             new_index = self._make_index_key(
                 model_name=model_name,
                 field_path=field_path,
@@ -386,7 +380,7 @@ class IndexedRocksDB(BaseRocksDB):
         indexes_cf_handle = self.get_column_family_handle(self.INDEX_CF)
         for path in all_paths:
             field_path = self._fetch_field_path_from_index(path)
-            field_value = self._accessor_registry.get_field_value(old_value, field_path)
+            field_value = self.get_field_value(old_value, field_path, key)
             old_index = self._make_index_key(
                 model_name=model_name,
                 field_path=field_path,
@@ -461,7 +455,42 @@ class IndexedRocksDB(BaseRocksDB):
     
     def iter_items_with_indexes(self, *args, **kwargs):
         for key in self.iter_keys_with_indexes(*args, **kwargs):
-            yield key, self.get(key, rdict=self.indexes_cf)
+            yield key, self.get(key, rdict=kwargs.get("rdict", None))
 
     def items_with_indexes(self, *args, **kwargs):
         return list(self.iter_items_with_indexes(*args, **kwargs))
+
+    def keys_with_indexes(self, *args, **kwargs):
+        return [k for k, _ in self.iter_items_with_indexes(*args, **kwargs)]
+
+    def values_with_indexes(self, *args, **kwargs):
+        return [v for _, v in self.iter_items_with_indexes(*args, **kwargs)]
+
+    def register_model(self, model_name: str, model_class: Type, cf_name: str=None):
+        """注册模型"""
+        self.register_indexes(model_name, model_class=model_class, field_path="#", cf_name=cf_name)
+
+    def iter_model_keys(self, model_name: str, cf_name: str=None):
+        """迭代模型的所有键"""
+        cf_name = cf_name or self.default_cf_name
+        model_keys_prefix = self.MODEL_PREFIX_FORMAT.format(cf_name=cf_name, model_name=model_name) + ":#:"
+        resp = self.iter_keys(prefix=model_keys_prefix, rdict=self.indexes_cf)
+        self._logger.info(f"iter_model_keys: {resp}")
+        for index in resp:
+            key = self._fetch_key_from_index(index)
+            self._logger.info(f"iter_model_keys: {key}")
+            yield key
+
+    def rebuild_indexes(self, model_name: str, cf_name: str=None):
+        """重建所有数据的索引"""
+        cf_name = cf_name or self.default_cf_name
+        cf = self.get_column_family(cf_name)
+
+        for key in self.iter_model_keys(model_name, cf_name):
+            self.update_with_indexes(
+                model_name=model_name,
+                key=key,
+                value=cf[key],
+                cf_name=cf_name
+            )
+        self._logger.info(f"重建索引完成")
