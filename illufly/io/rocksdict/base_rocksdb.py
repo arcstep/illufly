@@ -4,6 +4,7 @@ import logging
 import itertools
 from dataclasses import dataclass
 from enum import Enum
+from itertools import islice
 
 class BaseRocksDB:
     """RocksDB基础封装类
@@ -44,6 +45,7 @@ class BaseRocksDB:
         self._db = Rdict(path, options)
         self._logger = logger or logging.getLogger(__name__)
         self._default_cf = self._db.get_column_family("default")
+        self._default_cf_name = "default"
 
     def not_exist(
         self,
@@ -133,6 +135,7 @@ class BaseRocksDB:
         """
         target = rdict if rdict is not None else self._db
         target.put(key, value, options)
+        self._logger.info(f"put: {key} -> {value}")
 
     def delete(self, key: Any, rdict: Optional[Rdict] = None) -> None:
         """删除数据
@@ -143,6 +146,7 @@ class BaseRocksDB:
         """
         target = rdict if rdict is not None else self._db
         del target[key]
+        self._logger.info(f"delete: {key}")
 
     def get(
         self,
@@ -197,78 +201,57 @@ class BaseRocksDB:
         
         target = rdict if rdict is not None else self._db
         
-        self._logger.info(f"Starting iteration with parameters:")
-        self._logger.info(f"- prefix: {prefix!r}")
-        self._logger.info(f"- start: {start!r}")
-        self._logger.info(f"- end: {end!r}")
-        self._logger.info(f"- reverse: {reverse}")
-        
         opts = options or ReadOptions()
         if not fill_cache:
             opts.fill_cache(False)
         
         it = target.iter(opts)
-        self._logger.info("Iterator created")
         
         # 设置迭代器起始位置
         if reverse:
             if end is not None:  # 反向时从 end 开始
-                self._logger.info(f"Reverse iteration: seeking to end: {end!r}")
                 it.seek(end)
                 if it.valid() and it.key() >= end:  # 如果找到了 end，需要往前移一位
                     it.prev()
             else:
-                self._logger.info("Reverse iteration: seeking to last")
                 it.seek_to_last()
         else:
             if start is not None:
-                self._logger.info(f"Forward iteration: seeking to start: {start!r}")
                 it.seek(start)
             elif prefix is not None:
-                self._logger.info(f"Forward iteration: seeking to prefix: {prefix!r}")
                 it.seek(prefix)
             else:
-                self._logger.info("Forward iteration: seeking to first")
                 it.seek_to_first()
         
         # 迭代并应用过滤
         count = 0
         while it.valid():
             key = it.key()
-            self._logger.info(f"Checking key: {key!r}")
             
             # 检查前缀
             if prefix is not None and not key.startswith(prefix):
-                self._logger.info(f"Key {key!r} doesn't match prefix {prefix!r}")
                 break
             
             # 检查范围
             if reverse:
                 if start is not None and key < start:  # 反向时 start 是下界（包含）
-                    self._logger.info(f"Key {key!r} less than start {start!r}")
                     break
                 if end is not None and key >= end:  # 反向时 end 是上界（不包含）
-                    self._logger.info(f"Key {key!r} greater or equal to end {end!r}")
                     it.prev()
                     continue
             else:
                 if start is not None and key < start:  # 正向时 start 是下界（包含）
-                    self._logger.info(f"Key {key!r} less than start {start!r}")
                     break
                 if end is not None and key >= end:  # 正向时 end 是上界（不包含）
-                    self._logger.info(f"Key {key!r} greater or equal to end {end!r}")
                     break
             
             count += 1
-            self._logger.info(f"Yielding key: {key!r} (count: {count})")
             yield key, it.value()
             
             if reverse:
                 it.prev()
             else:
                 it.next()
-        
-        self._logger.info(f"Iterator finished, yielded {count} items")
 
     def items(
         self,
@@ -304,26 +287,62 @@ class BaseRocksDB:
             options=options,
         )
         if limit is not None:
-            return list(itertools.islice(iterator, limit))
+            return list(islice(iterator, limit))
         return list(iterator)
     
-    def keys(self, *args, **kwargs) -> list[Any]:
-        """返回键列表"""
-        return [k for k, _ in self.items(*args, **kwargs)]
+    def keys(self, *args, limit: Optional[int] = None, **kwargs) -> list[Any]:
+        """返回键列表
+        
+        Args:
+            *args: 传递给 items 的位置参数
+            limit: 限制返回的键数量
+            **kwargs: 传递给 items 的关键字参数
+        """
+        iterator = (k for k, _ in self.iter(*args, **kwargs))
+        if limit is not None:
+            return list(islice(iterator, limit))
+        return list(iterator)
     
-    def values(self, *args, **kwargs) -> list[Any]:
-        """返回值列表"""
-        return [v for _, v in self.items(*args, **kwargs)]
+    def values(self, *args, limit: Optional[int] = None, **kwargs) -> list[Any]:
+        """返回值列表
+        
+        Args:
+            *args: 传递给 items 的位置参数
+            limit: 限制返回的值数量
+            **kwargs: 传递给 items 的关键字参数
+        """
+        iterator = (v for _, v in self.iter(*args, **kwargs))
+        if limit is not None:
+            return list(islice(iterator, limit))
+        return list(iterator)
     
-    def iter_keys(self, *args, **kwargs) -> Iterator[Any]:
-        """返回键迭代器"""
-        for k, _ in self.iter(*args, **kwargs):
-            yield k
+    def iter_keys(self, *args, limit: Optional[int] = None, **kwargs) -> Iterator[Any]:
+        """返回键迭代器
+        
+        Args:
+            *args: 传递给 iter 的位置参数
+            limit: 限制返回的键数量
+            **kwargs: 传递给 iter 的关键字参数
+        """
+        iterator = (k for k, _ in self.iter(*args, **kwargs))
+        if limit is not None:
+            yield from islice(iterator, limit)
+        else:
+            yield from iterator
     
-    def iter_values(self, *args, **kwargs) -> Iterator[Any]:
-        """返回值迭代器"""
-        for _, v in self.iter(*args, **kwargs):
-            yield v
+    def iter_values(self, *args, limit: Optional[int] = None, **kwargs) -> Iterator[Any]:
+        """返回值迭代器
+        
+        Args:
+            *args: 传递给 iter 的位置参数
+            limit: 限制返回的值数量
+            **kwargs: 传递给 iter 的关键字参数
+        """
+        iterator = (v for _, v in self.iter(*args, **kwargs))
+        if limit is not None:
+            yield from islice(iterator, limit)
+        else:
+            yield from iterator
     
     def write(self, batch: WriteBatch) -> None:
         """执行批处理
@@ -341,6 +360,7 @@ class BaseRocksDB:
                 logger.error(f"Batch operation failed: {e}")
                 raise
         """
+        self._logger.info(f"write with batch: {batch.len()} items")
         self._db.write(batch)
     
     def close(self) -> None:
@@ -358,7 +378,12 @@ class BaseRocksDB:
         """获取默认列族"""
         return self._default_cf
     
-    def get_column_family(self, name: str):
+    @property
+    def default_cf_name(self):
+        """获取默认列族名称"""
+        return self._default_cf_name
+    
+    def get_column_family(self, name: str) -> Rdict:
         """获取指定名称的列族"""
         return self._db.get_column_family(name)
 
@@ -387,7 +412,9 @@ class BaseRocksDB:
             新创建的列族实例
         """
         options = options or Options()
-        return self._db.create_column_family(name, options)
+        cf = self._db.create_column_family(name, options)
+        self._logger.info(f"create_column_family: {cf}")
+        return cf
     
     def drop_column_family(self, name: str) -> None:
         """删除指定的列族
@@ -396,6 +423,7 @@ class BaseRocksDB:
             name: 要删除的列族名称
         """
         self._db.drop_column_family(name)
+        self._logger.info(f"drop_column_family: {name}")
     
     def get_column_family_handle(self, name: str):
         """获取列族句柄（用于批处理操作）
