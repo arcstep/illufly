@@ -1,4 +1,4 @@
-from typing import Any, Protocol, Type, Dict, Tuple, List, Union, Optional
+from typing import Any, Protocol, Type, Dict, Tuple, List, Union, Optional, get_args, get_origin
 from abc import abstractmethod
 from pydantic import BaseModel
 from collections.abc import Mapping, Sequence
@@ -155,14 +155,33 @@ class MappingAccessor(ValueAccessor):
         if segment.type not in (SegmentType.MAPPING, SegmentType.ATTRIBUTE):
             return f"类型 {value_type.__name__} 不支持 {segment.type.name} 访问"
             
+        # 如果是字典类型，检查值类型
+        if hasattr(value_type, '__origin__') and value_type.__origin__ in (dict, Dict):
+            key_type, value_type = get_args(value_type)
+            # 如果值类型是 Union，获取所有可能的类型
+            if get_origin(value_type) is Union:
+                possible_types = get_args(value_type)
+                # 检查是否有字典类型，用于验证嵌套访问
+                dict_types = [t for t in possible_types if (
+                    hasattr(t, '__origin__') and 
+                    t.__origin__ in (dict, Dict)
+                )]
+                if not dict_types and len(path_segments) > 1:
+                    return f"类型 {value_type} 不支持嵌套访问"
+            
         return None
     
     def can_handle(self, value: Any) -> bool:
         """检查是否可以处理映射类型"""
-        
         # 处理泛型类型
         if hasattr(value, '__origin__'):
             origin = value.__origin__
+            if origin is Union:
+                # 如果是 Union 类型，检查是否包含字典类型
+                return any(
+                    hasattr(t, '__origin__') and t.__origin__ in (dict, Dict)
+                    for t in get_args(value)
+                )
             return origin in (dict, Dict)
             
         # 处理普通类型

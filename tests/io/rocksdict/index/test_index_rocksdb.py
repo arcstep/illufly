@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 from illufly.io.rocksdict.index import IndexedRocksDB
 import tempfile
 import shutil
@@ -82,8 +82,33 @@ class TestBasicIndexOperations:
 
 class TestComplexIndexOperations:
     """复杂索引操作测试"""
-            
-    def test_nested_field_index(self, db):
+    
+    def test_dict_field_index(self, db):
+        post = {
+            "title": "test",
+            "author": "alice",
+            "tags": ["python", "test"],
+            "created_at": datetime.now(),
+            "metadata": {"category": "tech"}
+        }
+        PostType = Dict[str, Union[
+            str,                    # 用于 title 和 author
+            List[str],             # 用于 tags
+            datetime,              # 用于 created_at
+            Dict[str, str]         # 用于 metadata
+        ]]
+
+        db.register_indexes("post", PostType, "metadata.category")
+        db.update_with_indexes("post", "post:1", post)
+        items = db.keys(prefix="idx", rdict=db.get_column_family(db.INDEX_CF))
+        logger.info(f"index items: {items}")
+        
+        keys = list(db.iter_keys_with_indexes("post", "metadata.category", "tech"))
+        logger.info(f"keys: {keys}")
+        assert len(keys) == 1
+        assert keys[0] == "post:1"
+
+    def test_model_field_index(self, db):
         """测试嵌套字段索引"""
         post = Post(
             title="test",

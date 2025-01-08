@@ -9,6 +9,7 @@ from datetime import datetime
 
 import hashlib
 import base64
+import re
 
 class IndexedRocksDB(BaseRocksDB):
     """
@@ -112,13 +113,49 @@ class IndexedRocksDB(BaseRocksDB):
 
     @classmethod
     def _escape_special_chars(cls, value: str) -> str:
-        """替换字符串中的特殊字符，使用Base64编码"""
-        result = value
-        for char in cls.SPECIAL_CHARS:
-            # 将特殊字符转换为Base64编码
-            encoded = base64.b64encode(char.encode()).decode()
-            result = result.replace(char, encoded)
-        return result
+        """替换字符串中的特殊字符，使用Base64编码
+        
+        为了提高性能:
+        1. 使用预编译的替换映射表
+        2. 只在字符串包含特殊字符时才进行替换
+        3. 使用 translate() 方法进行批量替换
+        """
+        # 使用类变量缓存编码映射表,避免重复计算
+        if not hasattr(cls, '_ENCODE_MAP'):
+            cls._ENCODE_MAP = str.maketrans({
+                char: f"_B64_{base64.b64encode(char.encode()).decode()}_" 
+                for char in cls.SPECIAL_CHARS
+            })
+            
+        # 快速检查是否需要编码
+        if not any(c in value for c in cls.SPECIAL_CHARS):
+            return value
+            
+        return value.translate(cls._ENCODE_MAP)
+
+    @classmethod
+    def _unescape_special_chars(cls, value: str) -> str:
+        """还原被Base64编码的特殊字符
+        
+        为了提高性能:
+        1. 使用预编译的还原映射表
+        2. 只在字符串包含编码标记时才进行还原
+        3. 使用正则表达式一次性匹配所有编码
+        """
+        # 使用类变量缓存解码映射表
+        if not hasattr(cls, '_DECODE_MAP'):
+            cls._DECODE_MAP = {
+                f"_B64_{base64.b64encode(char.encode()).decode()}_": char
+                for char in cls.SPECIAL_CHARS
+            }
+            # 预编译正则表达式
+            cls._B64_PATTERN = re.compile('|'.join(map(re.escape, cls._DECODE_MAP.keys())))
+            
+        # 快速检查是否需要解码
+        if '_B64_' not in value:
+            return value
+            
+        return cls._B64_PATTERN.sub(lambda m: cls._DECODE_MAP[m.group()], value)
 
     @classmethod
     def _fetch_key_from_index(cls, index_key: str) -> str:
@@ -126,7 +163,7 @@ class IndexedRocksDB(BaseRocksDB):
         parts = index_key.rsplit(cls.RESERVED_WORD_IN_INDEX, 1)
         if len(parts) != 2:
             raise ValueError(f"从索引键 {index_key} 中提取键失败")
-        return parts[1]
+        return cls._unescape_special_chars(parts[1])
 
     @classmethod
     def _fetch_field_path_from_index(cls, index_key: str) -> str:
@@ -376,16 +413,6 @@ class IndexedRocksDB(BaseRocksDB):
     ) -> Iterator[str]:
         """通过索引查询键"""
         index_cf = self.get_column_family(self.INDEX_CF)
-
-        # 验证查询参数
-        if field_value is None and start is None and end is None:
-            error_msg = (
-                f"查询字段 {field_path} 时必须提供查询条件："
-                f"\n1. 提供 field_value 参数进行精确匹配"
-                f"\n2. 提供 start 和/或 end 参数进行范围查询"
-            )
-            self._logger.error(error_msg)
-            raise ValueError(error_msg)
         
         # 构建基础前缀
         cf_name = cf_name or self.default_cf_name
