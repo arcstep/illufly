@@ -102,50 +102,13 @@ class BaseRocksDB:
             return True, value
         return False, None 
 
-    def get_entity(
-        self,
-        key: Union[Any, list[Any]],
-        *,
-        default: Any = None,
-        rdict: Optional[Rdict] = None,
-        options: Optional[ReadOptions] = None,
-    ) -> Union[list[Tuple[str, Any]], None]:
-        """获取键对应的实体数据（宽列数据）
-        
-        Args:
-            key: 单个键或键列表
-            default: 键不存在时的默认返回值
-            rdict: 可选的Rdict实例（如列族等）
-            options: 读取选项
-            
-        Returns:
-            list[Tuple[str, Any]]: 列名和值的元组列表
-            None: 键不存在且未指定默认值时
-            default: 键不存在且指定了默认值时
-            
-        Examples:
-            # 获取单个实体
-            entity = db.get_entity("user:123")
-            if entity:
-                for name, value in entity:
-                    print(f"{name}: {value}")
-            
-            # 使用默认值
-            entity = db.get_entity("user:123", default=[])
-            
-            # 批量获取
-            entities = db.get_entity(["user:1", "user:2"])
-        """
-        target = rdict if rdict is not None else self._db
-        return target.get_entity(key, default, options) 
-
     def put(
         self,
         key: Any,
         value: Any,
         *,
         rdict: Optional[Rdict] = None,
-        write_opt: Optional[WriteOptions] = None,
+        options: Optional[WriteOptions] = None,
     ) -> None:
         """写入数据
         
@@ -153,7 +116,7 @@ class BaseRocksDB:
             key: 数据键
             value: 要写入的值
             rdict: 可选的Rdict实例（如批处理器、列族等）
-            write_opt: 写入选项
+            options: 写入选项
             
         Examples:
             # 基本写入
@@ -162,14 +125,14 @@ class BaseRocksDB:
             # 使用写入选项
             opts = WriteOptions()
             opts.disable_wal(True)  # 禁用预写日志以提高性能
-            db.put("key", "value", write_opt=opts)
+            db.put("key", "value", options=opts)
             
             # 写入列族
             users_cf = db.get_column_family("users")
             db.put("user:1", user_data, rdict=users_cf)
         """
         target = rdict if rdict is not None else self._db
-        target.put(key, value, write_opt)
+        target.put(key, value, options)
 
     def delete(self, key: Any, rdict: Optional[Rdict] = None) -> None:
         """删除数据
@@ -187,7 +150,7 @@ class BaseRocksDB:
         *,
         default: Any = None,
         rdict: Optional[Rdict] = None,
-        read_opt: Optional[ReadOptions] = None,
+        options: Optional[ReadOptions] = None,
     ) -> Any:
         """获取数据
         
@@ -195,35 +158,19 @@ class BaseRocksDB:
             key: 单个键或键列表
             default: 键不存在时的默认返回值
             rdict: 可选的Rdict实例（如列族等）
-            read_opt: 读取选项
+            options: 读取选项
             
         Returns:
             存储的值，如果键不存在则返回默认值
         """
         target = rdict if rdict is not None else self._db
         try:
-            return target.get(key, default, read_opt)
+            return target.get(key, default, options)
         except KeyError:
             return default
 
-    def _get_next_key(self, key: Union[str, bytes]) -> Union[str, bytes]:
-        """获取下一个可能的键值
-        
-        Args:
-            key: 当前键值
-            
-        Returns:
-            下一个可能的键值（通过添加 null 字节）
-        """
-        if isinstance(key, bytes):
-            return key + b'\x00'
-        else:
-            return key + '\x00'  # 对于字符串，添加字符串形式的 null 字节
-
     def iter(
         self,
-        read_opt: Optional[ReadOptions] = None,
-        /,
         *,
         rdict: Optional[Rdict] = None,
         prefix: Optional[str] = None,
@@ -231,6 +178,7 @@ class BaseRocksDB:
         end: Optional[Any] = None,
         reverse: bool = False,
         fill_cache: bool = True,
+        options: Optional[ReadOptions] = None,
     ) -> Iterator[Tuple[Any, Any]]:
         """返回键值对迭代器
         
@@ -255,7 +203,7 @@ class BaseRocksDB:
         self._logger.info(f"- end: {end!r}")
         self._logger.info(f"- reverse: {reverse}")
         
-        opts = read_opt or ReadOptions()
+        opts = options or ReadOptions()
         if not fill_cache:
             opts.fill_cache(False)
         
@@ -324,8 +272,6 @@ class BaseRocksDB:
 
     def items(
         self,
-        /,
-        read_opt: Optional[ReadOptions] = None,
         *,
         rdict: Optional[Rdict] = None,
         prefix: Optional[str] = None,
@@ -334,11 +280,12 @@ class BaseRocksDB:
         reverse: bool = False,
         limit: Optional[int] = None,
         fill_cache: bool = True,
+        options: Optional[ReadOptions] = None,
     ) -> list[Tuple[Any, Any]]:
         """返回键值对列表
         
         Args:
-            read_opt: 自定义读取选项
+            options: 自定义读取选项
             rdict: 可选的Rdict实例（如列族等）
             prefix: 键前缀过滤
             start: 起始键（包含）
@@ -348,13 +295,13 @@ class BaseRocksDB:
             fill_cache: 是否将扫描的数据填充到块缓存中
         """
         iterator = self.iter(
-            read_opt,
             rdict=rdict,
             prefix=prefix,
             start=start,
             end=end,
             reverse=reverse,
             fill_cache=fill_cache,
+            options=options,
         )
         if limit is not None:
             return list(itertools.islice(iterator, limit))
@@ -377,20 +324,6 @@ class BaseRocksDB:
         """返回值迭代器"""
         for _, v in self.iter(*args, **kwargs):
             yield v
-    
-    def batch(self) -> WriteBatch:
-        """创建新的批处理实例
-        
-        Returns:
-            WriteBatch: 批处理实例
-            
-        Examples:
-            batch = db.batch()
-            batch.put(key1, value1)
-            batch.put(key2, value2)
-            db.write(batch)
-        """
-        return self._db.write_batch()
     
     def write(self, batch: WriteBatch) -> None:
         """执行批处理
@@ -415,9 +348,10 @@ class BaseRocksDB:
         self._db.close()
     
     @classmethod
-    def destroy(cls, path: str) -> None:
+    def destroy(cls, path: str, options: Optional[Options] = None) -> None:
         """删除数据库"""
-        Rdict.destroy(path) 
+        options = options or Options()
+        Rdict.destroy(path, options) 
 
     @property
     def default_cf(self):
@@ -439,6 +373,7 @@ class BaseRocksDB:
         Returns:
             列族名称列表
         """
+        options = options or Options()
         return Rdict.list_cf(path, options)
     
     def create_column_family(self, name: str, options: Optional[Options] = None) -> Rdict:
@@ -451,6 +386,7 @@ class BaseRocksDB:
         Returns:
             新创建的列族实例
         """
+        options = options or Options()
         return self._db.create_column_family(name, options)
     
     def drop_column_family(self, name: str) -> None:
@@ -485,3 +421,6 @@ class BaseRocksDB:
     
     def __delitem__(self, key: Any) -> None:
         self.delete(key)
+
+
+
