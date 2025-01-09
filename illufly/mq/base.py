@@ -1,13 +1,15 @@
-import zmq
+import zmq.asyncio
 import json
 import logging
-from typing import Dict, Any, Optional, Callable, List
+from typing import Dict, Any, Optional, Callable, List, Union
 from pydantic import BaseModel, Field
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from ..envir import get_env
 import threading
 import time
+import asyncio
+from threading import Thread
 
 class ServiceStatus(str, Enum):
     """服务状态枚举"""
@@ -15,26 +17,34 @@ class ServiceStatus(str, Enum):
     INACTIVE = "inactive"
     ERROR = "error"
 
+class ServiceType(str, Enum):
+    REQUEST_REPLY = "request_reply"
+    STREAM = "stream"
+
 class ServiceInfo(BaseModel):
     """服务信息模型"""
-    name: str = Field(..., description="服务名称")
-    methods: Dict[str, str] = Field(default_factory=dict, description="服务方法映射")
-    address: str = Field(..., description="服务地址")
-    status: ServiceStatus = Field(default=ServiceStatus.ACTIVE, description="服务状态")
+    name: str
+    methods: Dict[str, str]
+    address: str
+    status: ServiceStatus = ServiceStatus.ACTIVE
+    service_type: ServiceType = ServiceType.REQUEST_REPLY
+    stream_address: Optional[str] = None
     last_heartbeat: float = Field(default_factory=time.time)
 
 class RegistryRequest(BaseModel):
     """注册请求模型"""
-    action: str = Field(..., description="操作类型")
-    service: str = Field(..., description="服务名称")
-    methods: Optional[Dict[str, str]] = Field(default=None, description="服务方法")
-    address: Optional[str] = Field(default=None, description="服务地址")
+    action: str
+    service: str
+    methods: Optional[Dict[str, str]] = None
+    address: Optional[str] = None
+    service_type: ServiceType = ServiceType.REQUEST_REPLY
+    stream_address: Optional[str] = None
 
 class RegistryResponse(BaseModel):
     """注册响应模型"""
-    status: str = Field(..., description="响应状态")
-    message: str = Field(..., description="响应消息")
-    data: Optional[Dict[str, Any]] = Field(default=None, description="响应数据")
+    status: str
+    message: str
+    data: Optional[Union[Dict, List[Dict]]] = None  # 允许字典或字典列表
 
 class MQBus:
     """MQ总线管理类"""
@@ -47,7 +57,7 @@ class MQBus:
     
     def __init__(self, mode: Optional[str] = None, logger=None):
         self.logger = logger or logging.getLogger(__name__)
-        self.context = zmq.Context.instance()  # 使用单例模式
+        self.context = zmq.asyncio.Context.instance()  # 使用异步Context
         
         # 使用环境变量或默认值
         self.mode = mode or get_env("ILLUFLY_MQ_MODE")
@@ -62,8 +72,13 @@ class MQBus:
         # 初始化注册中心套接字
         self._init_registry(registry_addr)
         
+        # 新增流服务代理
+        self.stream_proxy = self.context.socket(zmq.XPUB)
+        
         self.services: Dict[str, ServiceInfo] = {}
         self.running = False
+        self.worker_task = None  # 用于存储异步任务
+        self.loop = None  # 用于存储事件循环
         self.logger.info("MQ总线初始化完成")
 
     def _init_registry(self, addr: str):
@@ -75,75 +90,114 @@ class MQBus:
         self.registry.setsockopt(zmq.SNDTIMEO, 1000)  # 发送超时1秒
         self.registry.bind(addr)
 
+    def _init_stream_proxy(self, addr: str):
+        """初始化流服务代理"""
+        self.stream_proxy.bind(addr)
+        # 设置代理选项
+        self.stream_proxy.setsockopt(zmq.XPUB_VERBOSE, 1)
+
     def start(self):
         """启动MQ总线"""
-        if self.running:
-            return
-        
+        self.logger.info("正在启动MQ总线...")
         self.running = True
-        self.worker_thread = threading.Thread(
-            target=self._registry_worker,
-            name="RegistryWorker",
-            daemon=True
-        )
-        self.worker_thread.start()
+        
+        # 创建新的事件循环
+        self.loop = asyncio.new_event_loop()
+        
+        # 在新线程中运行事件循环
+        def run_event_loop():
+            asyncio.set_event_loop(self.loop)
+            self.worker_task = self.loop.create_task(self._registry_worker())
+            self.loop.run_forever()
+            
+        self.thread = Thread(target=run_event_loop, daemon=True)
+        self.thread.start()
+        
         self.logger.info("MQ总线启动完成")
 
     def stop(self):
         """停止MQ总线"""
-        if not self.running:
-            return
-            
         self.logger.info("正在停止MQ总线...")
         self.running = False
         
-        if hasattr(self, 'worker_thread'):
-            self.worker_thread.join(timeout=1.0)
+        if self.loop:
+            try:
+                # 创建一个Future来等待任务完成
+                async def cleanup():
+                    if self.worker_task and not self.worker_task.done():
+                        self.worker_task.cancel()
+                        try:
+                            await self.worker_task
+                        except asyncio.CancelledError:
+                            pass
+                
+                # 在事件循环中执行清理
+                future = asyncio.run_coroutine_threadsafe(cleanup(), self.loop)
+                future.result(timeout=5)  # 设置超时时间
+                
+                # 停止事件循环
+                self.loop.call_soon_threadsafe(self.loop.stop)
+                self.thread.join(timeout=5)  # 设置超时时间
+                
+                # 关闭事件循环
+                if not self.loop.is_closed():
+                    self.loop.close()
+                
+            except Exception as e:
+                self.logger.error(f"停止MQ总线时出错: {e}")
+            finally:
+                self.loop = None
+                self.worker_task = None
+                
+                # 确保socket被关闭
+                try:
+                    self.registry.close(linger=0)
+                except Exception as e:
+                    self.logger.error(f"关闭socket时出错: {e}")
         
-        self.registry.close()
         self.logger.info("MQ总线已停止")
 
-    def _registry_worker(self):
-        """注册中心工作线程"""
+    async def _registry_worker(self):
+        """异步注册中心工作线程"""
         self.logger.info("注册中心工作线程开始运行")
         
         while self.running:
             try:
                 self.logger.info("等待接收请求...")
                 try:
-                    message = self.registry.recv_json()
+                    message = await self.registry.recv_json()
                     self.logger.info(f"成功接收到请求: {message}")
-                except zmq.error.Again:
-                    self.logger.debug("接收超时，继续等待...")  # 使用debug级别避免日志过多
-                    continue
-                except Exception as e:
-                    self.logger.error(f"接收消息出错: {e}")
-                    continue
-
-                try:
+                    
                     request = RegistryRequest.model_validate(message)
                     self.logger.info(f"处理请求: {request}")
+                    
                     response = self._handle_request(request)
                     self.logger.info(f"准备发送响应: {response}")
                     
-                    self.registry.send_json(response.model_dump())
+                    # 确保响应被发送
+                    await self.registry.send_json(response.model_dump())
                     self.logger.info("响应发送成功")
                     
                 except zmq.error.Again:
-                    self.logger.error("发送响应超时")
-                except Exception as e:
-                    self.logger.error(f"处理请求出错: {e}")
-                    try:
-                        error_response = RegistryResponse(
-                            status='error',
-                            message=str(e)
-                        )
-                        self.registry.send_json(error_response.model_dump())
-                    except:
-                        self.logger.error("发送错误响应失败")
+                    # 只记录调试信息，避免日志过多
+                    self.logger.debug("等待新请求...")
+                    await asyncio.sleep(0.1)  # 添加短暂延迟
+                    continue
                     
+            except asyncio.CancelledError:
+                self.logger.info("工作线程被取消")
+                break
             except Exception as e:
-                self.logger.error(f"工作线程出错: {e}")
+                self.logger.error(f"处理请求出错: {e}")
+                try:
+                    # 尝试发送错误响应
+                    error_response = RegistryResponse(
+                        status="error",
+                        message=str(e)
+                    )
+                    await self.registry.send_json(error_response.model_dump())
+                except Exception as send_error:
+                    self.logger.error(f"发送错误响应失败: {send_error}")
 
     def _handle_register(self, request: RegistryRequest) -> RegistryResponse:
         """处理服务注册请求"""
@@ -236,60 +290,88 @@ class MQBus:
         """处理注册中心请求"""
         self.logger.info(f"处理{request.action}请求: {request}")
         
-        if request.action == "register":
-            # 注册服务
-            self.services[request.service] = ServiceInfo(
-                name=request.service,
-                methods=request.methods or {},
-                address=request.address,
-                last_heartbeat=time.time()
-            )
-            return RegistryResponse(
-                status="success",
-                message=f"服务 {request.service} 注册成功"
-            )
-        
-        elif request.action == "unregister":
-            # 注销服务
-            if request.service in self.services:
-                del self.services[request.service]
+        try:
+            if request.action == "ping":
                 return RegistryResponse(
                     status="success",
-                    message=f"服务 {request.service} 注销成功"
+                    message="pong"
                 )
-            return RegistryResponse(
-                status="error",
-                message=f"服务 {request.service} 不存在"
-            )
-        
-        elif request.action == "discover":
-            # 发现服务
-            if request.service in self.services:
-                service_info = self.services[request.service]
+                
+            elif request.action == "register":
+                # 验证地址格式是否与总线模式匹配
+                if self.mode == MQBus.MODE_INPROC and not request.address.startswith("inproc://"):
+                    return RegistryResponse(
+                        status="error",
+                        message=f"地址格式错误: 当前模式为inproc，但地址为 {request.address}"
+                    )
+                
+                # 注册服务
+                self.services[request.service] = ServiceInfo(
+                    name=request.service,
+                    methods=request.methods or {},
+                    address=request.address,
+                    service_type=request.service_type,
+                    stream_address=request.stream_address,
+                    last_heartbeat=time.time()
+                )
+                self.logger.info(f"服务注册成功: {request.service}")
                 return RegistryResponse(
                     status="success",
-                    message=f"发现服务 {request.service}",
-                    data=service_info.model_dump()
+                    message=f"服务 {request.service} 注册成功"
                 )
-            return RegistryResponse(
-                status="error",
-                message=f"服务 {request.service} 不存在"
-            )
-        
-        elif request.action == "heartbeat":
-            # 心跳更新
-            if request.service in self.services:
-                self.services[request.service].last_heartbeat = time.time()
+                
+            elif request.action == "unregister":
+                if request.service in self.services:
+                    del self.services[request.service]
+                    return RegistryResponse(
+                        status="success",
+                        message=f"服务 {request.service} 注销成功"
+                    )
+                return RegistryResponse(
+                    status="error",
+                    message=f"服务 {request.service} 不存在"
+                )
+                
+            elif request.action == "discover":
+                if request.service in self.services:
+                    return RegistryResponse(
+                        status="success",
+                        message=f"服务 {request.service} 发现成功",
+                        data=self.services[request.service].model_dump()
+                    )
+                return RegistryResponse(
+                    status="error",
+                    message=f"服务 {request.service} 不存在"
+                )
+                
+            elif request.action == "list":
                 return RegistryResponse(
                     status="success",
-                    message=f"服务 {request.service} 心跳更新成功"
+                    message="获取服务列表成功",
+                    data=[service.model_dump() for service in self.services.values()]
                 )
+                
+            elif request.action == "heartbeat":
+                if request.service in self.services:
+                    self.services[request.service].last_heartbeat = time.time()
+                    return RegistryResponse(
+                        status="success",
+                        message=f"服务 {request.service} 心跳更新成功"
+                    )
+                return RegistryResponse(
+                    status="error",
+                    message=f"服务 {request.service} 不存在"
+                )
+                
+            else:
+                return RegistryResponse(
+                    status="error",
+                    message=f"未知的操作类型: {request.action}"
+                )
+                
+        except Exception as e:
+            self.logger.error(f"处理请求出错: {e}")
             return RegistryResponse(
                 status="error",
-                message=f"服务 {request.service} 不存在"
+                message=f"处理请求出错: {str(e)}"
             )
-        
-        return RegistryResponse(
-            status="error",
-            message=f"未知的操作类型: {request.action}"
-        )
