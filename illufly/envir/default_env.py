@@ -116,6 +116,16 @@ def get_env(key: str=None):
         "ROCKSDB_DEFAULT_CF_WRITE_BUFFER_SIZE": 32,  # 默认列族memtable大小(MB)
         "ROCKSDB_DEFAULT_CF_MAX_WRITE_BUFFER_NUMBER": 3,  # 默认列族最大memtable数量
         "ROCKSDB_DEFAULT_CF_COMPRESSION": "lz4",  # 默认列族压缩算法
+
+        # MQ总线配置
+        "ILLUFLY_MQ_MODE": "inproc",                # MQ运行模式：tcp 或 inproc
+        "ILLUFLY_MQ_FRONTEND_PORT": 5555,        # 前端端口(面向客户端)
+        "ILLUFLY_MQ_BACKEND_PORT": 5556,         # 后端端口(面向服务)
+        "ILLUFLY_MQ_REGISTRY_PORT": 5557,        # 注册中心端口
+        "ILLUFLY_MQ_HOST": "localhost",          # MQ主机地址
+        "ILLUFLY_MQ_MAX_WORKERS": 3,             # MQ线程池大小
+        "ILLUFLY_MQ_HEARTBEAT_INTERVAL": 30,     # 心跳间隔(秒)
+        "ILLUFLY_MQ_RECONNECT_TIMEOUT": 5000,    # 重连超时时间(毫秒)
     }
     if key:
         if key not in default_values:
