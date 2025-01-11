@@ -10,7 +10,7 @@ import os
 import platform
 import tempfile
 
-from typing import Union, List, AsyncGenerator, Optional, AsyncIterator
+from typing import Union, List, Dict, Any, Optional, AsyncIterator
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from enum import Enum
 from abc import ABC, abstractmethod
@@ -30,11 +30,83 @@ class ConcurrencyStrategy(Enum):
     THREAD_POOL = "thread_pool"
     PROCESS_POOL = "process_pool"
 
+logger = logging.getLogger(__name__)
+
+async def request_streaming_response(
+    context: zmq.asyncio.Context,
+    address: str,
+    service_name: str,
+    prompt: str,
+    logger: Optional[logging.Logger] = None,
+    timeout: float = 30.0,
+    **kwargs
+) -> AsyncIterator[StreamingBlock]:
+    """发送请求并获取流式响应"""
+    message_bus = MessageBus.instance()
+    _logger = logger or logging.getLogger(__name__)
+    client = context.socket(zmq.REQ)
+    client.connect(address)
+    
+    try:
+        # 第一阶段：初始化会话
+        _logger.debug("Initializing session")
+        await client.send_json({"command": "init"})
+        init_response = await client.recv_json()
+        
+        if init_response["status"] != "success":
+            raise RuntimeError(init_response.get("error", "Failed to initialize session"))
+            
+        session_id = init_response["session_id"]
+        topic = init_response["topic"]
+        
+        # 创建订阅
+        _logger.debug(f"Creating subscription for topic: {topic}")
+        subscription = message_bus.subscribe([
+            topic,
+            f"{topic}.complete",
+            f"{topic}.error"
+        ])
+        
+        # 第二阶段：发送实际请求
+        request = {
+            "command": "process",
+            "session_id": session_id,
+            "prompt": prompt,
+            "kwargs": kwargs
+        }
+        _logger.debug(f"Sending process request: {request}")
+        await client.send_json(request)
+        
+        # 接收流式响应
+        async with asyncio.timeout(timeout):
+            async for event in subscription:
+                _logger.debug(f"Received event: {event}")
+                if "error" in event:
+                    raise RuntimeError(event["error"])
+                elif event.get("status") == "complete":
+                    _logger.debug("Received completion notice")
+                    break
+                else:
+                    yield StreamingBlock(**event)
+        
+        # 等待最终处理结果
+        _logger.debug("Waiting for final response")
+        response = await client.recv_json()
+        if response["status"] != "success":
+            raise RuntimeError(response.get("error", "Request failed"))
+            
+    except asyncio.TimeoutError:
+        raise RuntimeError(f"Request timed out after {timeout} seconds")
+        
+    finally:
+        _logger.debug("Closing client connection")
+        client.close(linger=0)
+
 class BaseStreamingService(ABC):
     """基础流式服务 - 统一服务端和客户端"""
-    def __init__(self, config: ServiceConfig, logger=None):
+    def __init__(self, config: ServiceConfig, logger: logging.Logger = None):
         self.config = config
-        self.logger = logger or logging.getLogger(config.service_name)
+        self._logger = logger or logging.getLogger(__name__)
         self.runner: Optional[BaseRunner] = None
         self._running = False
         
@@ -62,35 +134,19 @@ class BaseStreamingService(ABC):
         """客户端调用接口"""
         if not self._running:
             raise RuntimeError("Service not started")
-        
+            
         session_id = str(uuid.uuid4())
         
-        # 订阅结果通道
-        topic = f"llm.{self.config.service_name}.{session_id}"
-        error_topic = f"{topic}.error"
-        complete_topic = f"{topic}.complete"
+        async for block in request_streaming_response(
+            context=self.runner.context,
+            address=self.config.mq_address,
+            service_name=self.config.service_name,
+            prompt=prompt,
+            message_bus=self.runner.message_bus,
+            **kwargs
+        ):
+            yield block
         
-        # 发送请求
-        await self.runner.mq_server.send_json({
-            "session_id": session_id,
-            "prompt": prompt,
-            "kwargs": kwargs
-        })
-        
-        # 等待接收确认
-        response = await self.runner.mq_server.recv_json()
-        if response.get("status") != "accepted":
-            raise RuntimeError(f"Request rejected: {response.get('error', 'Unknown error')}")
-            
-        # 接收结果流
-        async for event in self.runner.message_bus.subscribe([topic, error_topic, complete_topic]):
-            if "error" in event:
-                raise RuntimeError(event["error"])
-            elif event.get("status") == "complete":
-                break
-            else:
-                yield StreamingBlock(**event)
-            
     @abstractmethod
     async def process_request(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
         """具体的请求处理逻辑（由子类实现）"""

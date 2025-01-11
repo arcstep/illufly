@@ -7,7 +7,7 @@ from typing import AsyncIterator
 import zmq.asyncio
 from pydantic import BaseModel
 
-from .base import BaseRunner
+from .base_runner import BaseRunner
 from ..models import ServiceConfig, StreamingBlock
 from ..message_bus import MessageBus
 

@@ -7,6 +7,7 @@ from typing import List, Dict, Any, AsyncIterator
 from illufly.mq.models import ServiceConfig, StreamingBlock, ConcurrencyStrategy
 from illufly.mq.concurrency.async_runner import AsyncRunner
 from illufly.mq.message_bus import MessageBus
+from illufly.mq.base_streaming import request_streaming_response
 
 # 正确配置 logger
 logging.basicConfig(level=logging.DEBUG)
@@ -54,75 +55,6 @@ async def test_async_runner_lifecycle(config):
     assert not runner._running
     assert runner._server_task.cancelled()
 
-async def request_streaming_response(
-    context: zmq.asyncio.Context,
-    address: str,
-    service_name: str,
-    session_id: str,
-    prompt: str,
-    message_bus: MessageBus,
-    **kwargs
-) -> List[Dict[str, Any]]:
-    """发送请求并获取流式响应
-    
-    Args:
-        context: ZMQ Context
-        address: 服务地址
-        service_name: 服务名称
-        session_id: 会话ID
-        prompt: 请求内容
-        message_bus: 消息总线实例
-        **kwargs: 额外参数
-        
-    Returns:
-        List[Dict[str, Any]]: 响应事件列表
-        
-    Raises:
-        RuntimeError: 处理过程中的错误
-    """
-    logger.debug(f"Creating request for session {session_id}")
-    client = context.socket(zmq.REQ)
-    client.connect(address)
-    
-    try:
-        # 发送请求
-        request = {
-            "session_id": session_id,
-            "prompt": prompt,
-            "kwargs": kwargs
-        }
-        logger.debug(f"Sending request: {request}")
-        await client.send_json(request)
-        
-        # 开始接收流式响应
-        events = []
-        topic = f"llm.{service_name}.{session_id}"
-        async for event in message_bus.subscribe([
-            topic,
-            f"{topic}.complete",
-            f"{topic}.error"
-        ]):
-            logger.debug(f"Received event: {event}")
-            if "error" in event:
-                raise RuntimeError(event["error"])
-            elif event.get("status") == "complete":
-                logger.debug("Received completion notice")
-                break
-            else:
-                events.append(event)
-        
-        # 等待最终处理结果
-        logger.debug("Waiting for final response")
-        response = await client.recv_json()
-        logger.debug(f"Received final response: {response}")
-        assert response["status"] == "success"
-        
-        return events
-        
-    finally:
-        logger.debug("Closing client connection")
-        client.close(linger=0)
-
 @pytest.mark.asyncio
 async def test_async_runner_request_handling(config):
     """测试异步执行器的请求处理"""
@@ -131,20 +63,64 @@ async def test_async_runner_request_handling(config):
     await runner.start()
     
     try:
-        events = await request_streaming_response(
-            context=runner.context,
-            address=config.mq_address,
-            service_name=config.service_name,
-            session_id="test_session",
-            prompt="test prompt",
-            message_bus=runner.message_bus
-        )
+        events = []
+        message_bus = MessageBus.instance()
+        client = runner.context.socket(zmq.REQ)
+        client.connect(config.mq_address)
         
-        # 验证响应
+        # 第一阶段：初始化会话
+        logger.info("Phase 1: Initializing session")
+        await client.send_json({"command": "init"})
+        init_response = await client.recv_json()
+        logger.info(f"Init response received: {init_response}")
+        assert init_response["status"] == "success"
+        
+        session_id = init_response["session_id"]
+        topic = init_response["topic"]
+        
+        # 创建订阅
+        logger.info(f"Creating subscription for topic: {topic}")
+        subscription = message_bus.subscribe([
+            topic,
+            f"{topic}.complete",
+            f"{topic}.error"
+        ])
+        
+        # 第二阶段：发送实际请求
+        logger.info("Phase 2: Sending process request")
+        request = {
+            "command": "process",
+            "session_id": session_id,
+            "prompt": "test prompt",
+            "kwargs": {}
+        }
+        await client.send_json(request)
+        
+        # 接收流式响应
+        logger.info("Waiting for streaming responses")
+        async for event in subscription:
+            logger.info(f"Received event: {event}")
+            if "error" in event:
+                raise RuntimeError(event["error"])
+            elif event.get("status") == "complete":
+                logger.info("Received completion notice")
+                break
+            else:
+                events.append(event)
+        
+        # 等待最终处理结果
+        logger.info("Waiting for final response")
+        response = await client.recv_json()
+        logger.info(f"Final response received: {response}")
+        assert response["status"] == "success"
+        
+        # 验证结果
         assert len(events) == 1
         assert "test prompt" in events[0]["content"]
         
     finally:
+        logger.info("Cleaning up test resources")
+        client.close()
         await runner.stop()
 
 @pytest.mark.asyncio
@@ -155,28 +131,33 @@ async def test_async_runner_concurrent_requests(config):
     await runner.start()
     
     try:
-        # 同时发送3个请求
-        logger.info("Creating concurrent requests")
-        tasks = [
-            request_streaming_response(
+        async def collect_responses(i: int) -> List[StreamingBlock]:
+            """收集单个请求的所有响应"""
+            blocks = []
+            async for block in request_streaming_response(
                 context=runner.context,
                 address=config.mq_address,
                 service_name=config.service_name,
                 session_id=f"session_prompt_{i}",
                 prompt=f"prompt_{i}",
-                message_bus=runner.message_bus
-            )
+            ):
+                blocks.append(block)
+            return blocks
+            
+        # 同时发送3个请求
+        logger.info("Creating concurrent requests")
+        tasks = [
+            collect_responses(i)
             for i in range(3)
         ]
         
         logger.info("Waiting for all requests to complete")
         results = await asyncio.gather(*tasks)
-        logger.info("All requests completed")
         
         # 验证所有请求的响应
-        for i, events in enumerate(results):
-            assert len(events) == 1
-            assert f"prompt_{i}" in events[0]["content"]
+        for i, blocks in enumerate(results):
+            assert len(blocks) == 1
+            assert f"prompt_{i}" in blocks[0].content
             
     finally:
         await runner.stop()
@@ -189,19 +170,42 @@ async def test_async_runner_error_handling(config):
     await runner.start()
     
     try:
-        # 使用统一的请求函数，预期会抛出错误
-        with pytest.raises(RuntimeError) as exc_info:
-            await request_streaming_response(
-                context=runner.context,
-                address=config.mq_address,
-                service_name=config.service_name,
-                session_id="error_session",
-                prompt=None,  # 这应该触发错误
-                message_bus=runner.message_bus
-            )
-            
-        # 验证错误消息
-        assert "Prompt cannot be None" in str(exc_info.value)
+        message_bus = MessageBus.instance()
+        client = runner.context.socket(zmq.REQ)
+        client.connect(config.mq_address)
+        
+        # 第一阶段：初始化会话
+        logger.debug("Initializing session")
+        await client.send_json({"command": "init"})
+        init_response = await client.recv_json()
+        assert init_response["status"] == "success"
+        
+        session_id = init_response["session_id"]
+        topic = init_response["topic"]
+        
+        # 创建订阅
+        logger.debug(f"Creating subscription for topic: {topic}")
+        subscription = message_bus.subscribe([
+            topic,
+            f"{topic}.complete",
+            f"{topic}.error"
+        ])
+        
+        # 第二阶段：发送错误请求
+        request = {
+            "command": "process",
+            "session_id": session_id,
+            "prompt": None,  # 这会触发错误
+            "kwargs": {}
+        }
+        logger.debug(f"Sending process request: {request}")
+        await client.send_json(request)
+        
+        # 等待错误响应
+        response = await client.recv_json()
+        assert response["status"] == "error"
+        assert "Prompt cannot be None" in response["error"]
         
     finally:
+        client.close()
         await runner.stop() 

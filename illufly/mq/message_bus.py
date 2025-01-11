@@ -164,3 +164,30 @@ class MessageBus:
                     logging.warning(f"Failed to clean up IPC file: {e}")
             else:
                 logging.debug(f"No IPC file to clean up or file doesn't exist: {ipc_file}") 
+
+    async def ensure_subscription_ready(self, topic: str, timeout: float = 1.0) -> bool:
+        """确保订阅已经准备就绪
+        
+        Args:
+            topic: 要测试的主题
+            timeout: 超时时间（秒）
+            
+        Returns:
+            bool: 订阅是否就绪
+        """
+        test_message = {"test": True}
+        try:
+            # 发送测试消息
+            await self.publish(f"test.{topic}", test_message)
+            
+            # 创建测试订阅
+            async with asyncio.timeout(timeout):
+                async for msg in self.subscribe([f"test.{topic}"]):
+                    if msg == test_message:
+                        return True
+                        
+        except Exception as e:
+            logger.warning(f"Subscription test failed: {e}")
+            return False
+            
+        return False 

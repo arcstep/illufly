@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import AsyncIterator
 import zmq.asyncio
 
-from .base import BaseRunner
+from .base_runner import BaseRunner
 from ..models import StreamingBlock
 from ..message_bus import MessageBus
 

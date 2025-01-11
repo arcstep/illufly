@@ -14,7 +14,7 @@ class BaseRunner(ABC):
     def __init__(self, config: ServiceConfig, service=None, logger=None):
         self.config = config
         self.service = service  # service 可以为空
-        self._logger = logger or logging.getLogger(config.service_name)
+        self._logger = logger or logging.getLogger(__name__)
         self._running = False
         self.context = None
         self.mq_server = None
@@ -73,114 +73,94 @@ class BaseRunner(ABC):
         try:
             while self._running:
                 try:
-                    self._logger.debug("Waiting for request...")
+                    # 添加超时控制
                     request = await asyncio.wait_for(
                         self.mq_server.recv_json(),
-                        timeout=0.5
+                        timeout=1.0
                     )
                     self._logger.debug(f"Received request: {request}")
                     
-                    session_id = request.get("session_id")
-                    prompt = request.get("prompt")
-                    kwargs = request.get("kwargs", {})
+                    # 处理请求
+                    response = await self._handle_request(request)
                     
-                    try:
-                        # 处理请求并等待完成
-                        self._logger.debug(f"Processing request for session {session_id}")
-                        await self._handle_request(prompt, session_id, kwargs)
-                        
-                        # 处理成功后发送成功响应
-                        self._logger.debug(f"Sending success response for session {session_id}")
-                        await self.mq_server.send_json({
-                            "status": "success",
-                            "session_id": session_id
-                        })
-                    except Exception as e:
-                        # 处理失败时发送错误响应
-                        self._logger.error(f"Error processing request: {e}")
-                        await self.mq_server.send_json({
-                            "status": "error",
-                            "session_id": session_id,
-                            "error": str(e)
-                        })
-                        
+                    # 发送响应
+                    await self.mq_server.send_json(response)
+                    
                 except asyncio.TimeoutError:
                     continue
-                except Exception as e:
-                    self._logger.error(f"Server error: {e}")
-                    if not self._running:
-                        break
-                    
+                
         except asyncio.CancelledError:
             self._logger.info("Server loop cancelled")
+            raise
+        except Exception as e:
+            self._logger.error(f"Server loop error: {e}")
             raise
         finally:
             self._logger.info("Server loop ended")
 
-    async def _handle_request(self, prompt: str, session_id: str, kwargs: dict):
-        """处理单个请求并发布结果"""
-        self._logger.debug(f"Starting request handler for session {session_id}")
+    async def _handle_request(self, request: dict) -> dict:
+        """处理单个请求并返回响应"""
         try:
-            # 输入验证
-            if prompt is None:
-                raise ValueError("Prompt cannot be None")
+            command = request.get("command", "process")
+            self._logger.info(f"Handling {command} request")
             
-            if not isinstance(prompt, str):
-                raise TypeError(f"Prompt must be string, got {type(prompt)}")
-            
-            if not prompt.strip():
-                raise ValueError("Prompt cannot be empty")
-            
-            if not self.service:
-                self._logger.debug("No service instance, sending test response")
-                await self.message_bus.publish(
-                    f"llm.{self.config.service_name}.{session_id}",
-                    {
-                        "session_id": session_id,
-                        "service": self.config.service_name,
-                        "content": f"Test response for: {prompt}"
-                    }
-                )
-                await self.message_bus.publish(
-                    f"llm.{self.config.service_name}.{session_id}.complete",
-                    {
-                        "status": "complete",
-                        "session_id": session_id,
-                        "service": self.config.service_name
-                    }
-                )
-                return
-            
-            # 处理实际服务请求
-            async for event in self.service.process_request(prompt, **kwargs):
-                event_dict = event.model_dump()
-                event_dict["session_id"] = session_id
-                event_dict["service"] = self.config.service_name
-                await self.message_bus.publish(
-                    f"llm.{self.config.service_name}.{session_id}",
-                    event_dict
-                )
-            
-            # 发送完成通知
-            await self.message_bus.publish(
-                f"llm.{self.config.service_name}.{session_id}.complete",
-                {
-                    "status": "complete",
+            if command == "init":
+                session_id = str(uuid.uuid4())
+                topic = f"llm.{self.config.service_name}.{session_id}"
+                self._logger.info(f"Initialized new session: {session_id} with topic: {topic}")
+                return {
+                    "status": "success",
                     "session_id": session_id,
-                    "service": self.config.service_name
+                    "topic": topic
                 }
-            )
+                
+            elif command == "process":
+                session_id = request["session_id"]
+                prompt = request["prompt"]
+                kwargs = request.get("kwargs", {})
+                self._logger.info(f"Processing request for session {session_id}")
+                
+                if prompt is None:
+                    raise ValueError("Prompt cannot be None")
+                    
+                if not isinstance(prompt, str):
+                    raise TypeError(f"Prompt must be string, got {type(prompt)}")
+                    
+                if not prompt.strip():
+                    raise ValueError("Prompt cannot be empty")
+                
+                # 发布处理结果
+                if not self.service:
+                    self._logger.info("Using test service response")
+                    await self.message_bus.publish(
+                        f"llm.{self.config.service_name}.{session_id}",
+                        {
+                            "session_id": session_id,
+                            "service": self.config.service_name,
+                            "content": f"Test response for: {prompt}",
+                            "block_type": "text"
+                        }
+                    )
+                    self._logger.info("Published test response")
+                    await self.message_bus.publish(
+                        f"llm.{self.config.service_name}.{session_id}.complete",
+                        {
+                            "status": "complete",
+                            "session_id": session_id,
+                            "service": self.config.service_name
+                        }
+                    )
+                    self._logger.info("Published completion notice")
+                
+                self._logger.info("Sending success response")
+                return {
+                    "status": "success",
+                    "session_id": session_id
+                }
                 
         except Exception as e:
             self._logger.error(f"Error handling request: {e}")
-            # 发送错误通知
-            await self.message_bus.publish(
-                f"llm.{self.config.service_name}.{session_id}.error",
-                {
-                    "error": str(e),
-                    "session_id": session_id,
-                    "service": self.config.service_name
-                }
-            )
-            # 发送错误响应
-            raise 
+            return {
+                "status": "error",
+                "error": str(e)
+            } 
