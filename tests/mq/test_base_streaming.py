@@ -1,6 +1,8 @@
 import pytest
 import asyncio
 import logging
+import uuid
+
 from typing import AsyncIterator, Iterator, Any
 from illufly.mq.message_bus import MessageBus
 from illufly.mq.base_streaming import BaseStreamingService, ConcurrencyStrategy
@@ -72,9 +74,9 @@ async def test_service_lifecycle(service_config):
     assert not service._running
     assert service.runner is not None  # runner 实例保留
 
-def test_service_streaming_response():
+def test_sync_service_streaming_response():
     """同步版本：测试服务的流式响应"""
-    service = AsyncGeneratorService(logger=logger)
+    service = SyncGeneratorService(logger=logger)
     service.start()
     
     try:
@@ -112,7 +114,6 @@ async def test_service_streaming_response():
         
     finally:
         await service.stop_async()
-
 
 @pytest.mark.asyncio
 async def test_service_concurrent_requests(service_config):

@@ -1,14 +1,6 @@
 import asyncio
-import threading
 import zmq.asyncio
-import uuid
 import logging
-import time
-import multiprocessing
-import json
-import os
-import platform
-import tempfile
 
 from typing import Union, List, Dict, Any, Optional, AsyncIterator, Iterator, Awaitable
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
@@ -108,9 +100,12 @@ async def request_streaming_response(
 
 class BaseStreamingService(ABC):
     """基础流式服务 - 统一服务端和客户端"""
-    def __init__(self, service_config: ServiceConfig=None, logger=None):
-        self.service_config = service_config or ServiceConfig(class_name=self.__class__.__name__)
-        self._logger = logger or logging.getLogger(service_config.service_name)
+    def __init__(self, service_config: ServiceConfig=None, service_name: str=None, logger=None):
+        self.service_config = service_config or ServiceConfig(
+            service_name=service_name,
+            class_name=self.__class__.__name__
+        )
+        self._logger = logger or logging.getLogger(self.service_config.service_name)
         self.runner: Optional[BaseRunner] = None
         self._running = False
         
@@ -136,7 +131,7 @@ class BaseStreamingService(ABC):
             return
             
         self._logger.info(f"Starting service on {self.service_config.mq_address}")
-        self.runner = AsyncRunner(self.service_config)
+        self.runner = self._create_runner()
         self.runner.service = self
         await self.runner.start_async()  # 使用异步版本
         self._running = True
@@ -253,12 +248,29 @@ class BaseStreamingService(ABC):
 
     def _create_runner(self) -> BaseRunner:
         """创建对应的执行器"""
-        if self.service_config.concurrency == ConcurrencyStrategy.ASYNC:
-            return AsyncRunner(self.service_config, self)
-        elif self.service_config.concurrency == ConcurrencyStrategy.THREAD_POOL:
-            return ThreadRunner(self.service_config, self, self.service_config.max_workers)
+        if self.service_config.concurrency == ConcurrencyStrategy.ASYNC.value:
+            return AsyncRunner(
+                config=self.service_config,
+                service=self,
+                logger=self._logger
+            )
+        elif self.service_config.concurrency == ConcurrencyStrategy.THREAD_POOL.value:
+            return ThreadRunner(
+                config=self.service_config,
+                service=self,
+                max_workers=self.service_config.max_workers,
+                logger=self._logger
+            )
+        elif self.service_config.concurrency == ConcurrencyStrategy.PROCESS_POOL.value:
+            self._logger.warning("PROCESS_POOL: %s", self.service_config)
+            return ProcessRunner(
+                config=self.service_config,
+                service=self,
+                max_workers=self.service_config.max_workers,
+                logger=self._logger
+            ) 
         else:
-            return ProcessRunner(self.service_config, self, self.service_config.max_workers) 
+            raise ValueError(f"Invalid concurrency strategy: {self.service_config.concurrency}")
 
     def __enter__(self) -> 'BaseStreamingService':
         """同步上下文管理器入口"""

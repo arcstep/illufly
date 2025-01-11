@@ -35,3 +35,4 @@ class StreamingBlock(BaseModel):
     block_type: str  # start, chunk, end, error
     content: Optional[str] = None
     error: Optional[str] = None 
+    process_id: Optional[str] = None 
