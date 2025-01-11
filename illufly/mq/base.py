@@ -10,41 +10,13 @@ import threading
 import time
 import asyncio
 from threading import Thread
-
-class ServiceStatus(str, Enum):
-    """服务状态枚举"""
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-    ERROR = "error"
-
-class ServiceType(str, Enum):
-    REQUEST_REPLY = "request_reply"
-    STREAM = "stream"
-
-class ServiceInfo(BaseModel):
-    """服务信息模型"""
-    name: str
-    methods: Dict[str, str]
-    address: str
-    status: ServiceStatus = ServiceStatus.ACTIVE
-    service_type: ServiceType = ServiceType.REQUEST_REPLY
-    stream_address: Optional[str] = None
-    last_heartbeat: float = Field(default_factory=time.time)
-
-class RegistryRequest(BaseModel):
-    """注册请求模型"""
-    action: str
-    service: str
-    methods: Optional[Dict[str, str]] = None
-    address: Optional[str] = None
-    service_type: ServiceType = ServiceType.REQUEST_REPLY
-    stream_address: Optional[str] = None
-
-class RegistryResponse(BaseModel):
-    """注册响应模型"""
-    status: str
-    message: str
-    data: Optional[Union[Dict, List[Dict]]] = None  # 允许字典或字典列表
+from .types import (
+    ServiceMode,
+    ServiceInfo,
+    ServiceStatus,
+    RegistryRequest,
+    RegistryResponse,
+)
 
 class MQBus:
     """MQ总线管理类"""
@@ -310,7 +282,7 @@ class MQBus:
                     name=request.service,
                     methods=request.methods or {},
                     address=request.address,
-                    service_type=request.service_type,
+                    service_mode=request.service_mode,
                     stream_address=request.stream_address,
                     last_heartbeat=time.time()
                 )

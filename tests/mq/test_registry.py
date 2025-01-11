@@ -1,7 +1,8 @@
 import pytest
 import logging
-from illufly.mq.base import MQBus, ServiceType
+from illufly.mq.base import MQBus
 from illufly.mq.registry import RegistryClient
+from illufly.mq.types import ServiceMode
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ async def test_register_service(mq_bus, registry_client):
             "test_method": "Test Method Description",
             "stream_method": "Stream Method Description"
         },
-        service_type=ServiceType.STREAM
+        service_mode=ServiceMode.PUSH_PULL
     )
     
     assert response.status == "success"
@@ -52,8 +53,7 @@ async def test_register_service(mq_bus, registry_client):
     service_info = await registry_client.discover_service("test_service")
     assert service_info.name == "test_service"
     assert service_info.address == "inproc://test_service"
-    assert service_info.service_type == ServiceType.STREAM
-    assert service_info.stream_address == "inproc://test_service_stream"
+    assert service_info.service_mode == ServiceMode.PUSH_PULL
     assert "test_method" in service_info.methods
 
 @pytest.mark.asyncio

@@ -1,5 +1,11 @@
 from typing import Dict, Optional, List
-from .base import ServiceInfo, ServiceType, RegistryRequest, RegistryResponse
+from .types import (
+    ServiceInfo, 
+    ServiceMode,
+    RegistryRequest, 
+    RegistryResponse,
+    ServiceStatus
+)
 import zmq.asyncio  # 导入异步ZMQ
 import logging
 import time
@@ -75,20 +81,19 @@ class RegistryClient:
         self,
         name: str,
         methods: Dict[str, str],
-        service_type: ServiceType = ServiceType.REQUEST_REPLY,
+        service_mode: ServiceMode = ServiceMode.REQUEST_REPLY,
         stream_address: Optional[str] = None
     ) -> RegistryResponse:
         """注册服务"""
         address = self.get_service_address(name)
-        if service_type == ServiceType.STREAM and not stream_address:
-            stream_address = self.get_service_address(f"{name}_stream")
-            
+        self.logger.info(f"注册服务: {name}, 模式: {service_mode}, 地址: {address}")
+        
         request = RegistryRequest(
             action="register",
             service=name,
             methods=methods,
             address=address,
-            service_type=service_type,
+            service_mode=service_mode,
             stream_address=stream_address
         )
         return await self._send_request(request)
@@ -105,6 +110,7 @@ class RegistryClient:
         """发现服务"""
         request = RegistryRequest(
             action="discover",
+            address=self.get_service_address(name),
             service=name
         )
         response = await self._send_request(request)

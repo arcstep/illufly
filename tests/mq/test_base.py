@@ -1,7 +1,8 @@
 import pytest
 import logging
 import zmq
-from illufly.mq.base import MQBus, RegistryRequest, RegistryResponse
+from illufly.mq.base import MQBus
+from illufly.mq.types import RegistryRequest, RegistryResponse
 
 logger = logging.getLogger(__name__)
 
