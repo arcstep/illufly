@@ -10,11 +10,12 @@ import os
 import platform
 import tempfile
 
-from typing import Union, List, Dict, Any, Optional, AsyncIterator
+from typing import Union, List, Dict, Any, Optional, AsyncIterator, Iterator, Awaitable
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from enum import Enum
 from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
+from inspect import isasyncgenfunction, isgeneratorfunction, iscoroutinefunction
 
 from .message_bus import MessageBus
 from .utils import get_ipc_path
@@ -107,62 +108,172 @@ async def request_streaming_response(
 
 class BaseStreamingService(ABC):
     """基础流式服务 - 统一服务端和客户端"""
-    def __init__(self, config: ServiceConfig, logger=None):
-        self.config = config
-        self._logger = logger or logging.getLogger(config.service_name)
+    def __init__(self, service_config: ServiceConfig=None, logger=None):
+        self.service_config = service_config or ServiceConfig(class_name=self.__class__.__name__)
+        self._logger = logger or logging.getLogger(service_config.service_name)
         self.runner: Optional[BaseRunner] = None
         self._running = False
         
-    async def start(self):
-        """启动服务"""
+    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
+        """确保有可用的事件循环，如果需要则创建新的"""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        return loop
+        
+    def start(self) -> None:
+        """同步启动服务"""
+        loop = self._ensure_loop()
+        if loop.is_running():
+            raise RuntimeError("Cannot call start() from an async context. Use start_async() instead.")
+        loop.run_until_complete(self.start_async())
+        
+    async def start_async(self) -> None:
+        """异步启动服务"""
         if self._running:
             return
             
-        self._logger.info(f"Starting service on {self.config.mq_address}")
-        self.runner = AsyncRunner(self.config)
+        self._logger.info(f"Starting service on {self.service_config.mq_address}")
+        self.runner = AsyncRunner(self.service_config)
         self.runner.service = self
-        await self.runner.start()
+        await self.runner.start_async()  # 使用异步版本
         self._running = True
         
-    async def stop(self):
-        """停止服务"""
+    def stop(self) -> None:
+        """同步停止服务"""
+        loop = self._ensure_loop()
+        if loop.is_running():
+            raise RuntimeError("Cannot call stop() from an async context. Use stop_async() instead.")
+        loop.run_until_complete(self.stop_async())
+        
+    async def stop_async(self) -> None:
+        """异步停止服务"""
         if not self._running:
             return
             
         self._logger.info("Stopping service")
         if self.runner:
-            await self.runner.stop()
+            await self.runner.stop_async()  # 使用异步版本
         self._running = False
+        
+    def _is_async_context(self) -> bool:
+        """检测是否在异步上下文中"""
+        try:
+            loop = asyncio.get_running_loop()
+            return True
+        except RuntimeError:
+            return False
             
-    async def __call__(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
-        """客户端调用接口"""
+    def __call__(self, prompt: str, **kwargs) -> Union[Iterator[StreamingBlock], AsyncIterator[StreamingBlock]]:
+        """智能调用入口，根据上下文自动选择同步或异步方式"""
+        if self._is_async_context():
+            self._logger.debug("Detected async context, using async call")
+            return self.call_async(prompt, **kwargs)
+        else:
+            self._logger.debug("Detected sync context, using sync call")
+            return self.call(prompt, **kwargs)
+    
+    def call(self, prompt: str, **kwargs) -> Iterator[StreamingBlock]:
+        """同步调用实现"""
         if not self._running:
             raise RuntimeError("Service not started")
-
+            
         if not prompt:
             raise ValueError("Prompt cannot be Empty")
-
-        self._logger.debug("Starting streaming request")
+            
+        self._logger.debug("Starting synchronous streaming request")
+        loop = self._ensure_loop()
+        
+        async_iter = self.call_async(prompt, **kwargs)
+        while True:
+            try:
+                block = loop.run_until_complete(async_iter.__anext__())
+                yield block
+            except StopAsyncIteration:
+                break
+            
+    async def call_async(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
+        """异步调用接口"""
+        if not self._running:
+            raise RuntimeError("Service not started")
+            
+        if not prompt:
+            raise ValueError("Prompt cannot be Empty")
+            
+        self._logger.debug("Starting async streaming request")
         async for block in request_streaming_response(
             context=self.runner.context,
-            address=self.config.mq_address,
-            service_name=self.config.service_name,
+            address=self.service_config.mq_address,
+            service_name=self.service_config.service_name,
             prompt=prompt,
             logger=self._logger,
             **kwargs
         ):
             yield block
-            
+
     @abstractmethod
-    async def process_request(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
-        """服务端处理请求的抽象方法，由具体服务实现"""
+    def process(self, prompt: str, **kwargs) -> Union[
+        StreamingBlock,  # 同步返回值
+        Iterator[StreamingBlock],  # 同步生成器
+        AsyncIterator[StreamingBlock],  # 异步生成器
+        Awaitable[StreamingBlock]  # 异步返回值
+    ]:
+        """服务端处理请求的抽象方法，支持多种实现方式"""
         raise NotImplementedError
         
+    async def _adapt_process_request(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
+        """适配不同的 process 实现为统一的异步迭代器"""
+        result = self.process(prompt, **kwargs)
+        
+        # 检查实现类型
+        if isasyncgenfunction(self.process):
+            # 异步生成器
+            self._logger.debug("Using async generator implementation")
+            async for block in result:
+                yield block
+                
+        elif isgeneratorfunction(self.process):
+            # 同步生成器
+            self._logger.debug("Using sync generator implementation")
+            for block in result:
+                yield block
+                
+        elif iscoroutinefunction(self.process):
+            # 异步返回值
+            self._logger.debug("Using async return implementation")
+            block = await result
+            yield block
+            
+        else:
+            # 同步返回值
+            self._logger.debug("Using sync return implementation")
+            yield result
+
     def _create_runner(self) -> BaseRunner:
         """创建对应的执行器"""
-        if self.config.concurrency == ConcurrencyStrategy.ASYNC:
-            return AsyncRunner(self.config, self)
-        elif self.config.concurrency == ConcurrencyStrategy.THREAD_POOL:
-            return ThreadRunner(self.config, self, self.config.max_workers)
+        if self.service_config.concurrency == ConcurrencyStrategy.ASYNC:
+            return AsyncRunner(self.service_config, self)
+        elif self.service_config.concurrency == ConcurrencyStrategy.THREAD_POOL:
+            return ThreadRunner(self.service_config, self, self.service_config.max_workers)
         else:
-            return ProcessRunner(self.config, self, self.config.max_workers) 
+            return ProcessRunner(self.service_config, self, self.service_config.max_workers) 
+
+    def __enter__(self) -> 'BaseStreamingService':
+        """同步上下文管理器入口"""
+        self.start()
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """同步上下文管理器退出"""
+        self.stop()
+        
+    async def __aenter__(self) -> 'BaseStreamingService':
+        """异步上下文管理器入口"""
+        await self.start_async()
+        return self
+        
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """异步上下文管理器退出"""
+        await self.stop_async() 

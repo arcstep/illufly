@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
+from typing import AsyncIterator
+
 import asyncio
 import json
 import logging
 import uuid
-from typing import AsyncIterator
 import zmq.asyncio
+import time
 
 from ..models import ServiceConfig, StreamingBlock
 from ..message_bus import MessageBus
@@ -20,52 +22,88 @@ class BaseRunner(ABC):
         self.mq_server = None
         self.message_bus = None
         
-    async def start(self):
-        """启动服务端"""
+    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
+        """确保有可用的事件循环，如果需要则创建新的"""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        return loop
+        
+    def start(self) -> None:
+        """同步启动服务端"""
+        loop = self._ensure_loop()
+        if loop.is_running():
+            raise RuntimeError("Cannot call start() from an async context. Use start_async() instead.")
+        loop.run_until_complete(self.start_async())
+            
+    async def start_async(self) -> None:
+        """异步启动服务端"""
         if self._running:
             self._logger.debug("Runner already running")
             return
             
-        self._logger.debug("Initializing ZMQ resources")
-        self.context = zmq.asyncio.Context.instance()
-        self.mq_server = self.context.socket(zmq.REP)
-        self.mq_server.setsockopt(zmq.RCVHWM, self.config.max_requests)
-        self.mq_server.setsockopt(zmq.SNDHWM, self.config.max_requests)
-        self.mq_server.bind(self.config.mq_address)
-        self._logger.debug(f"Server socket bound to {self.config.mq_address}")
-        
-        self.message_bus = MessageBus.instance()
-        self.message_bus.start()
-        
-        self._running = True
-        self._server_task = asyncio.create_task(self._run_server())
-        self._logger.debug(f"Server task created: {self._server_task}")
-        
-        # 等待服务器真正启动
-        await asyncio.sleep(0.1)
-        
-    async def stop(self):
-        """停止服务端"""
+        self._logger.debug("Starting runner")
+        try:
+            # 初始化 ZMQ 资源
+            self._logger.debug("Initializing ZMQ resources")
+            self.context = zmq.asyncio.Context.instance()
+            self.mq_server = self.context.socket(zmq.REP)
+            self.mq_server.setsockopt(zmq.RCVHWM, self.config.max_requests)
+            self.mq_server.setsockopt(zmq.SNDHWM, self.config.max_requests)
+            self.mq_server.bind(self.config.mq_address)
+            self._logger.debug(f"Server socket bound to {self.config.mq_address}")
+            
+            self.message_bus = MessageBus.instance()
+            self.message_bus.start()
+            
+            self._running = True
+            self._server_task = asyncio.create_task(self._run_server())
+            self._logger.debug(f"Server task created: {self._server_task}")
+            
+            # 等待服务器真正启动
+            await asyncio.sleep(0.1)
+            
+        except Exception as e:
+            self._logger.error(f"Error starting runner: {e}")
+            await self.stop_async()  # 确保清理资源
+            raise
+            
+    def stop(self) -> None:
+        """同步停止服务端"""
+        loop = self._ensure_loop()
+        if loop.is_running():
+            raise RuntimeError("Cannot call stop() from an async context. Use stop_async() instead.")
+        loop.run_until_complete(self.stop_async())
+            
+    async def stop_async(self) -> None:
+        """异步停止服务端"""
         if not self._running:
             return
             
         self._logger.debug("Stopping server")
         self._running = False
         
-        if self._server_task:
-            self._logger.debug("Cancelling server task")
-            self._server_task.cancel()
-            try:
-                await self._server_task
-            except asyncio.CancelledError:
-                self._logger.debug("Server task cancelled as expected")
-        
-        if self.mq_server:
-            self._logger.debug("Closing server socket")
-            self.mq_server.close(linger=0)
-            self.mq_server = None
+        try:
+            if self._server_task:
+                self._logger.debug("Cancelling server task")
+                self._server_task.cancel()
+                try:
+                    await self._server_task
+                except asyncio.CancelledError:
+                    self._logger.debug("Server task cancelled as expected")
+                    
+            if self.mq_server:
+                self._logger.debug("Closing server socket")
+                self.mq_server.close(linger=0)
+                self.mq_server = None
+                
+            self._logger.debug("Server stopped")
             
-        self._logger.debug("Server stopped")
+        except Exception as e:
+            self._logger.error(f"Error stopping server: {e}")
+            raise
         
     async def _run_server(self):
         """运行服务器循环"""
@@ -132,7 +170,7 @@ class BaseRunner(ABC):
                 # 发布处理结果
                 if self.service:
                     self._logger.info("Processing with service instance")
-                    async for block in self.service.process_request(prompt, **kwargs):
+                    async for block in self.service._adapt_process_request(prompt, **kwargs):
                         event_dict = block.model_dump(exclude_none=True)
                         event_dict["session_id"] = session_id
                         event_dict["service"] = self.config.service_name

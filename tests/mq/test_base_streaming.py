@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 import logging
-from typing import AsyncIterator
+from typing import AsyncIterator, Iterator, Any
 from illufly.mq.message_bus import MessageBus
 from illufly.mq.base_streaming import BaseStreamingService, ConcurrencyStrategy
 from illufly.types import EventBlock
@@ -16,17 +16,40 @@ def setup_logging(caplog):
     """设置日志级别"""
     caplog.set_level(logging.DEBUG)
 
-class FakeServivce(BaseStreamingService):
-    """用于测试的具体服务实现"""
-    async def process_request(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
-        """简单的测试实现"""
+class SyncReturnService(BaseStreamingService):
+    """同步返回值实现"""
+    def process(self, prompt: str, **kwargs) -> StreamingBlock:
+        return StreamingBlock(
+            content=f"Test response for: {prompt}",
+            block_type="text"
+        )
+
+class SyncGeneratorService(BaseStreamingService):
+    """同步生成器实现"""
+    def process(self, prompt: str, **kwargs) -> Iterator[StreamingBlock]:
+        yield StreamingBlock(
+            content=f"Test response for: {prompt}",
+            block_type="text"
+        )
+
+class AsyncReturnService(BaseStreamingService):
+    """异步返回值实现"""
+    async def process(self, prompt: str, **kwargs) -> StreamingBlock:
+        return StreamingBlock(
+            content=f"Test response for: {prompt}",
+            block_type="text"
+        )
+
+class AsyncGeneratorService(BaseStreamingService):
+    """异步生成器实现"""
+    async def process(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
         yield StreamingBlock(
             content=f"Test response for: {prompt}",
             block_type="text"
         )
 
 @pytest.fixture
-def config():
+def service_config():
     """测试配置"""
     return ServiceConfig(
         service_name="test_streaming",
@@ -34,26 +57,46 @@ def config():
     )
 
 @pytest.mark.asyncio
-async def test_service_lifecycle(config):
+async def test_service_lifecycle(service_config):
     """测试服务的生命周期管理"""
-    service = FakeServivce(config, logger=logger)
+    service = AsyncGeneratorService(service_config, logger=logger)
     assert not service._running
     
     # 启动服务
-    await service.start()
+    await service.start_async()
     assert service._running
     assert service.runner is not None
     
     # 停止服务
-    await service.stop()
+    await service.stop_async()
     assert not service._running
     assert service.runner is not None  # runner 实例保留
 
+def test_service_streaming_response():
+    """同步版本：测试服务的流式响应"""
+    service = AsyncGeneratorService(logger=logger)
+    service.start()
+    
+    try:
+        # 收集响应
+        blocks = []
+        for block in service("test prompt"):
+            blocks.append(block)
+            logger.info(f"Received block: {block}")
+        
+        # 验证响应
+        assert len(blocks) == 1
+        assert blocks[0].content == "Test response for: test prompt"
+        assert blocks[0].block_type == "text"
+        
+    finally:
+        service.stop()
+
 @pytest.mark.asyncio
-async def test_service_streaming_response(config):
-    """测试服务的流式响应"""
-    service = FakeServivce(config, logger=logger)
-    await service.start()
+async def test_service_streaming_response():
+    """异步版本：测试服务的流式响应"""
+    service = AsyncGeneratorService(logger=logger)
+    await service.start_async()
     
     try:
         # 收集响应
@@ -68,13 +111,14 @@ async def test_service_streaming_response(config):
         assert blocks[0].block_type == "text"
         
     finally:
-        await service.stop()
+        await service.stop_async()
+
 
 @pytest.mark.asyncio
-async def test_service_concurrent_requests(config):
+async def test_service_concurrent_requests(service_config):
     """测试服务的并发请求处理"""
-    service = FakeServivce(config, logger=logger)
-    await service.start()
+    service = AsyncGeneratorService(service_config, logger=logger)
+    await service.start_async()
     
     try:
         async def make_request(i: int):
@@ -98,12 +142,12 @@ async def test_service_concurrent_requests(config):
             assert blocks[0].block_type == "text"
             
     finally:
-        await service.stop()
+        await service.stop_async()
 
 @pytest.mark.asyncio
-async def test_service_error_handling(config):
+async def test_service_error_handling(service_config):
     """测试服务的错误处理"""
-    service = FakeServivce(config, logger=logger)
+    service = AsyncGeneratorService(service_config, logger=logger)
     
     # 测试未启动状态调用
     with pytest.raises(RuntimeError) as exc_info:
@@ -112,7 +156,7 @@ async def test_service_error_handling(config):
     assert "Service not started" in str(exc_info.value)
     
     # 启动服务后测试
-    await service.start()
+    await service.start_async()
     try:
         # 测试空输入
         with pytest.raises(ValueError) as exc_info:
@@ -127,19 +171,19 @@ async def test_service_error_handling(config):
         assert "Prompt cannot be Empty" in str(exc_info.value)
         
     finally:
-        await service.stop()
+        await service.stop_async()
 
 @pytest.mark.asyncio
-async def test_service_cleanup(config):
+async def test_service_cleanup(service_config):
     """测试服务的资源清理"""
-    service = FakeServivce(config, logger=logger)
-    await service.start()
+    service = AsyncGeneratorService(service_config, logger=logger)
+    await service.start_async()
     
     # 模拟服务异常停止
-    await service.stop()
+    await service.stop_async()
     
     # 验证重新启动
-    await service.start()
+    await service.start_async()
     try:
         blocks = []
         async for block in service("test prompt"):
@@ -149,4 +193,87 @@ async def test_service_cleanup(config):
         assert "test prompt" in blocks[0].content
         
     finally:
-        await service.stop()
+        await service.stop_async()
+
+def test_service_sync_context():
+    """测试同步上下文管理器"""
+    with AsyncGeneratorService(logger=logger) as service:
+        blocks = []
+        for block in service("test prompt"):
+            blocks.append(block)
+            logger.info(f"Received block: {block}")
+            
+        assert len(blocks) == 1
+        assert blocks[0].content == "Test response for: test prompt"
+        assert blocks[0].block_type == "text"
+
+@pytest.mark.asyncio
+async def test_service_async_context():
+    """测试异步上下文管理器"""
+    async with AsyncGeneratorService(logger=logger) as service:
+        blocks = []
+        async for block in service("test prompt"):
+            blocks.append(block)
+            logger.info(f"Received block: {block}")
+            
+        assert len(blocks) == 1
+        assert blocks[0].content == "Test response for: test prompt"
+        assert blocks[0].block_type == "text"
+
+def test_service_context_error_handling():
+    """测试上下文管理器的错误处理"""
+    try:
+        with AsyncGeneratorService(logger=logger) as service:
+            for block in service(""):  # 应该抛出 ValueError
+                pass
+        assert False, "Should have raised ValueError"
+    except ValueError as e:
+        assert "Prompt cannot be Empty" in str(e)
+
+@pytest.mark.asyncio
+async def test_service_async_context_error_handling():
+    """测试异步上下文管理器的错误处理"""
+    try:
+        async with AsyncGeneratorService(logger=logger) as service:
+            async for block in service(""):  # 应该抛出 ValueError
+                pass
+        assert False, "Should have raised ValueError"
+    except ValueError as e:
+        assert "Prompt cannot be Empty" in str(e)
+
+@pytest.mark.parametrize("service_class", [
+    SyncReturnService,
+    SyncGeneratorService,
+    AsyncReturnService,
+    AsyncGeneratorService
+])
+def test_service_implementations(service_class):
+    """测试不同的实现方式"""
+    service = service_class(logger=logger)
+    with service:
+        blocks = []
+        for block in service("test prompt"):
+            blocks.append(block)
+            
+        assert len(blocks) == 1
+        assert blocks[0].content == "Test response for: test prompt"
+        assert blocks[0].block_type == "text"
+
+@pytest.mark.parametrize("service_class", [
+    SyncReturnService,
+    SyncGeneratorService,
+    AsyncReturnService,
+    AsyncGeneratorService
+])
+@pytest.mark.asyncio
+async def test_service_implementations_async(service_class):
+    """测试不同的实现方式"""
+    service = service_class(logger=logger)
+    async with service:
+        blocks = []
+        async for block in service("test prompt"):
+            blocks.append(block)
+            
+        assert len(blocks) == 1
+        assert blocks[0].content == "Test response for: test prompt"
+        assert blocks[0].block_type == "text"
