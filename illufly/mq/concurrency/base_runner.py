@@ -130,7 +130,17 @@ class BaseRunner(ABC):
                     raise ValueError("Prompt cannot be empty")
                 
                 # 发布处理结果
-                if not self.service:
+                if self.service:
+                    self._logger.info("Processing with service instance")
+                    async for block in self.service.process_request(prompt, **kwargs):
+                        event_dict = block.model_dump(exclude_none=True)
+                        event_dict["session_id"] = session_id
+                        event_dict["service"] = self.config.service_name
+                        await self.message_bus.publish(
+                            f"llm.{self.config.service_name}.{session_id}",
+                            event_dict
+                        )
+                else:
                     self._logger.info("Using test service response")
                     await self.message_bus.publish(
                         f"llm.{self.config.service_name}.{session_id}",
@@ -141,16 +151,17 @@ class BaseRunner(ABC):
                             "block_type": "text"
                         }
                     )
-                    self._logger.info("Published test response")
-                    await self.message_bus.publish(
-                        f"llm.{self.config.service_name}.{session_id}.complete",
-                        {
-                            "status": "complete",
-                            "session_id": session_id,
-                            "service": self.config.service_name
-                        }
-                    )
-                    self._logger.info("Published completion notice")
+                
+                # 发送完成通知
+                self._logger.info("Publishing completion notice")
+                await self.message_bus.publish(
+                    f"llm.{self.config.service_name}.{session_id}.complete",
+                    {
+                        "status": "complete",
+                        "session_id": session_id,
+                        "service": self.config.service_name
+                    }
+                )
                 
                 self._logger.info("Sending success response")
                 return {

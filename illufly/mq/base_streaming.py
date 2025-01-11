@@ -46,6 +46,9 @@ async def request_streaming_response(
     _logger = logger or logging.getLogger(__name__)
     client = context.socket(zmq.REQ)
     client.connect(address)
+
+    if not prompt:
+        raise ValueError("Prompt cannot be Empty")
     
     try:
         # 第一阶段：初始化会话
@@ -81,7 +84,7 @@ async def request_streaming_response(
         async with asyncio.timeout(timeout):
             async for event in subscription:
                 _logger.debug(f"Received event: {event}")
-                if "error" in event:
+                if event.get("error"):
                     raise RuntimeError(event["error"])
                 elif event.get("status") == "complete":
                     _logger.debug("Received completion notice")
@@ -104,9 +107,9 @@ async def request_streaming_response(
 
 class BaseStreamingService(ABC):
     """基础流式服务 - 统一服务端和客户端"""
-    def __init__(self, config: ServiceConfig, logger: logging.Logger = None):
+    def __init__(self, config: ServiceConfig, logger=None):
         self.config = config
-        self._logger = logger or logging.getLogger(__name__)
+        self._logger = logger or logging.getLogger(config.service_name)
         self.runner: Optional[BaseRunner] = None
         self._running = False
         
@@ -115,8 +118,9 @@ class BaseStreamingService(ABC):
         if self._running:
             return
             
-        if not self.runner:
-            self.runner = self._create_runner()
+        self._logger.info(f"Starting service on {self.config.mq_address}")
+        self.runner = AsyncRunner(self.config)
+        self.runner.service = self
         await self.runner.start()
         self._running = True
         
@@ -125,32 +129,34 @@ class BaseStreamingService(ABC):
         if not self._running:
             return
             
+        self._logger.info("Stopping service")
         if self.runner:
             await self.runner.stop()
-            self.runner = None
         self._running = False
             
     async def __call__(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
         """客户端调用接口"""
         if not self._running:
             raise RuntimeError("Service not started")
-            
-        session_id = str(uuid.uuid4())
-        
+
+        if not prompt:
+            raise ValueError("Prompt cannot be Empty")
+
+        self._logger.debug("Starting streaming request")
         async for block in request_streaming_response(
             context=self.runner.context,
             address=self.config.mq_address,
             service_name=self.config.service_name,
             prompt=prompt,
-            message_bus=self.runner.message_bus,
+            logger=self._logger,
             **kwargs
         ):
             yield block
-        
+            
     @abstractmethod
     async def process_request(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
-        """具体的请求处理逻辑（由子类实现）"""
-        pass
+        """服务端处理请求的抽象方法，由具体服务实现"""
+        raise NotImplementedError
         
     def _create_runner(self) -> BaseRunner:
         """创建对应的执行器"""
