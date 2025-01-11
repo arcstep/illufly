@@ -1,106 +1,81 @@
 import pytest
-import asyncio
 import logging
-import uuid
+import asyncio
+import zmq.asyncio
+from typing import AsyncIterator
+from illufly.mq.models import ServiceConfig, StreamingBlock, ConcurrencyStrategy
+from illufly.mq.concurrency.thread_runner import ThreadRunner
+from illufly.mq.base_streaming import BaseStreamingService, request_streaming_response
 
-from typing import AsyncIterator, Iterator, Any
-from illufly.mq.message_bus import MessageBus
-from illufly.mq.base_streaming import BaseStreamingService, ConcurrencyStrategy
-from illufly.types import EventBlock
-from illufly.mq.models import ServiceConfig, StreamingBlock
-
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-
-@pytest.fixture(autouse=True)
-def setup_logging(caplog):
-    """设置日志级别"""
-    caplog.set_level(logging.DEBUG)
-
-class SyncReturnService(BaseStreamingService):
-    """同步返回值实现"""
-    def process(self, prompt: str, **kwargs) -> StreamingBlock:
-        return StreamingBlock(
-            content=f"Test response for: {prompt}",
-            block_type="text"
-        )
-
-class SyncGeneratorService(BaseStreamingService):
-    """同步生成器实现"""
-    def process(self, prompt: str, **kwargs) -> Iterator[StreamingBlock]:
-        yield StreamingBlock(
-            content=f"Test response for: {prompt}",
-            block_type="text"
-        )
-
-class AsyncReturnService(BaseStreamingService):
-    """异步返回值实现"""
-    async def process(self, prompt: str, **kwargs) -> StreamingBlock:
-        return StreamingBlock(
-            content=f"Test response for: {prompt}",
-            block_type="text"
-        )
 
 class AsyncGeneratorService(BaseStreamingService):
     """异步生成器实现"""
     async def process(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
+        # 增加处理延迟，强制使用多个线程
+        await asyncio.sleep(1.0)
+        yield StreamingBlock(
+            content=f"Processing: {prompt}",
+            block_type="text"
+        )
+        await asyncio.sleep(1.0)
         yield StreamingBlock(
             content=f"Test response for: {prompt}",
             block_type="text"
         )
 
 @pytest.fixture
-def service_config():
+def config():
     """测试配置"""
     return ServiceConfig(
-        service_name="test_streaming",
-        mq_address="ipc:///tmp/test_streaming",
+        service_name="test_thread_runner",
+        mq_address="ipc:///tmp/test_thread_runner",
         concurrency=ConcurrencyStrategy.THREAD_POOL
     )
 
-@pytest.mark.asyncio
-async def test_service_lifecycle(service_config):
-    """测试服务的生命周期管理"""
-    service = AsyncGeneratorService(service_config, logger=logger)
-    assert not service._running
-    
-    # 启动服务
-    await service.start_async()
-    assert service._running
-    assert service.runner is not None
-    
-    # 停止服务
-    await service.stop_async()
-    assert not service._running
-    assert service.runner is not None  # runner 实例保留
+@pytest.fixture
+async def runner(config):
+    """测试运行器"""
+    runner = ThreadRunner(config)
+    runner.service = AsyncGeneratorService(config)
+    await runner.start_async()
+    yield runner
+    await runner.stop_async()
 
 @pytest.mark.asyncio
-async def test_service_concurrent_requests(service_config):
-    """测试服务的并发请求处理"""
-    service = AsyncGeneratorService(service_config, logger=logger)
-    await service.start_async()
+async def test_thread_pool_request_handling(runner):
+    """测试线程池请求处理"""
+    context = zmq.asyncio.Context.instance()
+    thread_ids = set()
     
-    try:
-        async def make_request(i: int):
-            blocks = []
-            async for block in service(f"prompt_{i}"):
-                blocks.append(block)
-            return blocks
-        
-        # 同时发送3个请求
-        tasks = [
-            make_request(i)
-            for i in range(3)
-        ]
-        
-        results = await asyncio.gather(*tasks)
-        
-        # 验证所有请求的响应
-        for i, blocks in enumerate(results):
-            assert len(blocks) == 1
-            assert blocks[0].content == f"Test response for: prompt_{i}"
-            assert blocks[0].block_type == "text"
-            
-    finally:
-        await service.stop_async()
+    async def make_request(i: int):
+        blocks = []
+        async for block in request_streaming_response(
+            context=context,
+            address=runner.config.mq_address,
+            service_name=runner.config.service_name,
+            prompt=f"test_{i}",
+            logger=logger
+        ):
+            blocks.append(block)
+            if block.thread_id:
+                thread_ids.add(block.thread_id)
+                logger.debug(f"收集到线程ID: {block.thread_id}")
+        return blocks
+    
+    # 创建多个并发请求任务
+    tasks = [make_request(i) for i in range(5)]
+    
+    # 等待所有请求完成
+    results = await asyncio.gather(*tasks)
+    
+    # 验证每个请求的响应
+    for i, blocks in enumerate(results):
+        assert len(blocks) == 2  # 每个请求应该有两个响应块
+        assert blocks[0].content == f"Processing: test_{i}"
+        assert blocks[1].content == f"Test response for: test_{i}"
+        assert blocks[0].block_type == "text"
+        assert blocks[1].block_type == "text"
+    
+    # 验证是否使用了多个线程
+    assert len(thread_ids) > 1, f"应该使用多个线程，但只使用了: {thread_ids}"
