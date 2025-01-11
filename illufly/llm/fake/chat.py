@@ -7,8 +7,8 @@ import uuid
 import json
 from enum import Enum
 
+from ...mq.base_streaming import BaseStreamingService
 from ...types import EventBlock
-from ..base import BaseStreamingService
 
 class FakeChat(BaseStreamingService):
     def __init__(
