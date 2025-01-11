@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "illufly"
-version = "0.6.4"
+version = "1.0.1"
 description = "A simple Agent framework based on GPT with auto-evolution ability."
 authors = ["arcstep <xuehongwei@illufly.com>"]
 homepage = "https://github.com/arcstep/illufly"
@@ -60,12 +60,13 @@ pytest = "^8.2.0"
 pytest-bdd = "^8.1.0"
 allure-pytest = "^2.13.5"
 pytest-cov = "^4.0.0"
-pytest-asyncio = ">=0.20.3,<0.22.0"
+pytest-asyncio = ">=0.23.0,<0.24.0"
 trio = "^0.27.0"
 asyncio = "^3.4.3"
 httpx = "^0.24.0"
 freezegun = "^1.2.0"
 sse-starlette = "^2.1.2"
+pytest-timeout = "^2.3.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
