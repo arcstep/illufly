@@ -6,50 +6,55 @@ import zmq.asyncio
 import uuid
 import json
 from enum import Enum
+import logging
 
-from ...mq.base_streaming import BaseStreamingService
-from ...types import EventBlock
+from ...mq import StreamingService, StreamingBlock
 
-class FakeChat(BaseStreamingService):
+class FakeChat(StreamingService):
+    """Fake Chat Service"""
     def __init__(
         self, 
         response: Union[str, List[str]]=None, 
-        sleep: float=None,
+        sleep: float=0.1,
         **kwargs
     ):
-        self.sleep = sleep if sleep is not None else 0.2
-        self.response = response if isinstance(response, list) else ([response] if response else None)
+        super().__init__(**kwargs)
+        self._logger = kwargs.get("logger", logging.getLogger(__name__))
+        
+        # 处理响应设置
+        if response is None:
+            self.response = []  # 空列表表示使用默认响应
+        elif isinstance(response, str):
+            self.response = [response]
+        else:
+            self.response = response
+            
+        self.sleep = sleep
         self.current_response_index = 0
         
-        self.logger.info(
+        self._logger.info(
             f"Initializing FakeChat with "
-            f"response_length: {len(response) if response else 'default'}, "
-            f"sleep: {sleep}s"
+            f"response_length: {len(self.response)}, "
+            f"sleep: {self.sleep}s"
         )
-        
-        super().__init__(**kwargs)
 
-    async def process_request(self, prompt: str, **kwargs):
-        self.logger.debug(f"Processing prompt: {prompt[:50]}...")
+    async def process(self, prompt: str, **kwargs):
+        """异步生成响应"""
+        self._logger.debug(f"Processing prompt: {prompt[:50]}...")
         
-        yield EventBlock(block_type="info", content=f'I am FakeLLM')
+        # 发送初始信息
+        yield StreamingBlock(block_type="info", content="I am FakeLLM")
         
-        if self.response:
-            resp = self.response[self.current_response_index]
-            self.logger.debug(
-                f"Using response {self.current_response_index + 1}/{len(self.response)}: "
-                f"{resp[:50]}..."
-            )
-            self.current_response_index = (self.current_response_index + 1) % len(self.response)
-        else:
+        # 获取响应内容
+        if not self.response:
+            # 使用默认响应
             resp = f"Reply >> {prompt}"
-            self.logger.debug(f"Using default response format")
-
-        chunk_count = 0
-        for content in resp:
-            chunk_count += 1
-            await asyncio.sleep(self.sleep)
-            yield EventBlock(block_type="chunk", content=content)
+        else:
+            resp = self.response[self.current_response_index]
+            self.current_response_index = (self.current_response_index + 1) % len(self.response)
         
-        self.logger.debug(f"Completed streaming {chunk_count} chunks")
-        yield EventBlock(block_type="end", content="")
+        # 逐字符发送响应
+        for content in resp:
+            await asyncio.sleep(self.sleep)
+            yield StreamingBlock(block_type="chunk", content=content)
+        

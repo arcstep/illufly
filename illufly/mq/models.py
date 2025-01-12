@@ -19,7 +19,7 @@ class ServiceConfig(BaseModel):
         mid = values.get("service_name", "default")
         suffix = uuid.uuid4()
         default_values = {
-            "rep_address": get_ipc_path(f"{prefix}-{mid}"),
+            "rep_address": f"inproc://{prefix}-{mid}",
         }
         return {**default_values, **values}
 

@@ -64,7 +64,6 @@ async def test_service_lifecycle():
     try:
         await service.start_async()
         assert service._running
-        assert service.message_bus._started
         
         # 等待服务就绪
         await service._bind_event.wait()

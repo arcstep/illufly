@@ -29,10 +29,7 @@ class StreamingService(ABC):
         self.service_config = service_config or ServiceConfig(service_name=service_name)
         
         # 确保消息总线以服务端角色启动
-        self.message_bus = message_bus or create_message_bus(
-            MessageBusType.IPC,
-            role="server"  # 明确指定角色
-        )
+        self.message_bus = message_bus or create_message_bus(MessageBusType.INPROC)
         
         self._logger = logger or logging.getLogger(self.service_config.service_name)
         self._running = False
@@ -82,7 +79,6 @@ class StreamingService(ABC):
             # 确保消息总线先启动
             if not self.message_bus._started:
                 self._logger.debug("启动消息总线")
-                self.message_bus.start()
                 
             # 初始化ZMQ资源
             self.rep_socket = self._context.socket(zmq.REP)
@@ -152,20 +148,33 @@ class StreamingService(ABC):
 
                         try:
                             async for block in self._adapt_process_request(prompt, **kwargs):
+                                # 根据消息类型选择对应的 topic
+                                if block.block_type == "end":
+                                    topic = topics["topic_end"]
+                                elif block.block_type == "error":
+                                    topic = topics["topic_error"]
+                                else:
+                                    topic = topics["topic_chunk"]
+                                    
+                                self._logger.debug(f"Publishing to topic: {topic}, block: {block}")
                                 await self.message_bus.publish(
-                                    topics.get("topic_chunk", "chunk"),
+                                    topic,
                                     block.model_dump(exclude_none=True)
                                 )
                             await self.rep_socket.send_json({"status": "success"})
                         except Exception as e:
+                            error_topic = topics["topic_error"]
+                            self._logger.error(f"Error in process request: {e}")
                             await self.message_bus.publish(
-                                topics.get("topic_error", "error"),
+                                error_topic,
                                 StreamingBlock(block_type="error", content=str(e)).model_dump(exclude_none=True)
                             )
                             await self.rep_socket.send_json({"status": "error", "error": str(e)})
                         finally:
+                            end_topic = topics["topic_end"]
+                            self._logger.debug(f"Publishing end message to topic: {end_topic}")
                             await self.message_bus.publish(
-                                topics.get("topic_end", "end"),
+                                end_topic,
                                 StreamingBlock(block_type="end", content="").model_dump(exclude_none=True)
                             )
                             self.threads.pop(thread_id, None)
@@ -316,6 +325,7 @@ class StreamingService(ABC):
                         raise RuntimeError(block["error"])
                     elif block.get("block_type") == "end":
                         self._logger.info("流式响应完成")
+                        yield StreamingBlock(**block)
                         break
                     else:
                         yield StreamingBlock(**block)
