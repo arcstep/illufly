@@ -14,6 +14,9 @@ def get_env(key: str=None):
         FIXED_TEMP_DIR = os.path.join('/tmp', "__ILLUFLY__")
 
     default_values = {
+        # 消息总线配置
+        "ILLUFLY_MQ_MESSAGE_BUS_ADDRESS": None,
+
         # 文件夹配置
         "ILLUFLY_TEMP_DIR": FIXED_TEMP_DIR,
         "ILLUFLY_CONFIG_STORE_DIR": "__USERS__",

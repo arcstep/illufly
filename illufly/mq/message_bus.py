@@ -1,67 +1,32 @@
 import os
+import asyncio
 import zmq.asyncio
 import threading
 import logging
 import json
+from enum import Enum
 from typing import List, AsyncIterator, Dict, Any
+from ..envir import get_env
 from .utils import get_ipc_path
-import asyncio
 
-class MessageBus:
-    """全局消息总线 - 利用 ZMQ 端口绑定特性实现单例"""
-    _instance = None
-    _context = None
-    _pub_socket = None
-    _lock = threading.Lock()
-    _started = False
-    _is_server = False
-    _address = None
+class MessageBusType(Enum):
+    INPROC = "inproc"
+    IPC = "ipc"
+    TCP = "tcp"
 
+class MessageBusBase:
+    """消息总线基类"""
     def __init__(self, logger=None):
         self._logger = logger or logging.getLogger(__name__)
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-    
-    @classmethod
-    def instance(cls, name: str = "message_bus"):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    instance = cls()
-                    instance._address = get_ipc_path(name)
-                    logging.debug(f"Instance initialized with address: {instance._address}")
-        return cls._instance
-    
-    def start(self):
-        """启动消息总线（如果尚未启动）"""
-        with self._lock:
-            if not self._started:
-                try:
-                    self._context = zmq.asyncio.Context.instance()
-                    self._pub_socket = self._context.socket(zmq.PUB)
-                    self._pub_socket.setsockopt(zmq.SNDHWM, 1000)
-                    self._pub_socket.setsockopt(zmq.RCVHWM, 1000)
-                    self._pub_socket.setsockopt(zmq.LINGER, 0)
-                    self._pub_socket.bind(self._address)
-                    self._started = True
-                    self._is_server = True
-                    self._logger.info(f"Global message bus started at {self._address} with HWM=1000")
-                except zmq.error.ZMQError as e:
-                    self._logger.info("Message bus already running, connecting as client")
-                    self._pub_socket.connect(self._address)
-                    self._started = True
-                    self._is_server = False
+        self._context = None
+        self._pub_socket = None
+        self._started = False
+        self._address = None
 
     async def publish(self, topic: str, message: Dict[str, Any]):
-        """发布消息到指定主题"""
+        """发布消息到指定主题 - 基类要求显式启动"""
         if not self._started:
             raise RuntimeError("Message bus not started")
-            
-        if not self._pub_socket:
-            raise RuntimeError("Publisher socket not initialized")
             
         try:
             self._logger.debug(f"Publishing to {topic}: {message}")
@@ -74,8 +39,8 @@ class MessageBus:
             self._logger.error(f"Error publishing message: {e}")
             raise
 
-    async def subscribe(self, topics: List[str]) -> AsyncIterator[Dict[str, Any]]:
-        """订阅指定主题的消息流"""
+    def subscribe(self, topics: List[str]) -> AsyncIterator[Dict[str, Any]]:
+        """订阅指定主题的消息流 - 返回异步迭代器"""
         if not self._started:
             raise RuntimeError("Message bus not started")
             
@@ -84,110 +49,143 @@ class MessageBus:
         sub_socket.setsockopt(zmq.RCVHWM, 1000)
         sub_socket.connect(self._address)
         
-        try:
-            # 订阅所有指定的主题
-            for topic in topics:
-                self._logger.debug(f"Subscribing to topic: {topic}")
-                sub_socket.setsockopt(zmq.SUBSCRIBE, topic.encode())
-            
-            # 等待订阅生效
-            await asyncio.sleep(0.1)
-                
-            while True:
+        for topic in topics:
+            self._logger.debug(f"Subscribing to topic: {topic}")
+            sub_socket.setsockopt(zmq.SUBSCRIBE, topic.encode())
+
+        class MessageIterator:
+            def __init__(self, socket, logger):
+                self.socket = socket
+                self.logger = logger
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
                 try:
-                    self._logger.debug("Waiting for message...")
-                    [topic, message] = await sub_socket.recv_multipart()
+                    [topic, message] = await self.socket.recv_multipart()
                     topic = topic.decode()
                     message = json.loads(message.decode())
-                    self._logger.debug(f"Received message on {topic}: {message}")
-                    yield message
+                    self.logger.debug(f"Received message on {topic}: {message}")
+                    return message
                 except asyncio.CancelledError:
-                    self._logger.debug("Subscription cancelled")
-                    break
+                    self.socket.close(linger=0)
+                    raise StopAsyncIteration
                 except Exception as e:
-                    self._logger.error(f"Error receiving message: {e}")
+                    self.logger.error(f"Error receiving message: {e}")
+                    self.socket.close(linger=0)
                     raise
-                    
-        finally:
-            self._logger.debug("Closing subscription socket")
-            sub_socket.close(linger=0)
+
+        return MessageIterator(sub_socket, self._logger)
 
     @property
     def address(self) -> str:
         return self._address
-    
-    @property
-    def socket(self):
-        if not self._started:
-            raise RuntimeError("Message bus not started")
-        return self._pub_socket
-    
-    def __del__(self):
-        self.cleanup()
-    
-    @classmethod
-    def release(cls):
-        logging.debug("MessageBus.release called")
-        with cls._lock:
-            if cls._instance:
-                logging.debug(f"Releasing MessageBus instance (is_server={cls._instance._is_server})")
-                if not cls._instance._is_server:
-                    if cls._instance._pub_socket:
-                        logging.debug("Closing client socket")
-                        cls._instance._pub_socket.close(linger=0)
-                        cls._instance._pub_socket = None
-                    cls._instance = None
-                    cls._started = False
-                    logging.info("Message bus client released")
-                else:
-                    if cls._instance._pub_socket:
-                        logging.debug("Closing server socket")
-                        cls._instance._pub_socket.close(linger=0)
-                        cls._instance._pub_socket = None
-                    logging.debug("Starting cleanup")
-                    cls._instance.cleanup()
-                    cls._instance = None
-                    cls._started = False
-                    logging.info("Message bus server released")
-            else:
-                logging.debug("No MessageBus instance to release")
 
     def cleanup(self):
-        if self._address and self._address.startswith("ipc://"):
+        if self._pub_socket:
+            self._pub_socket.close(linger=0)
+            self._pub_socket = None
+        self._started = False
+
+class InprocMessageBus(MessageBusBase):
+    """进程内消息总线 - 支持自启动的单例模式"""
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, logger=None):
+        if not hasattr(self, '_initialized'):
+            super().__init__(logger)
+            self._address = "inproc://message_bus"
+            self._initialized = True
+            self._logger.debug(f"InprocMessageBus initialized, id: {id(self)}")
+
+    def _ensure_started(self):
+        """确保消息总线已启动"""
+        with self._lock:
+            if not self._started:
+                self._context = zmq.asyncio.Context.instance()
+                self._pub_socket = self._context.socket(zmq.PUB)
+                self._pub_socket.bind(self._address)
+                self._started = True
+                self._logger.info(f"Inproc message bus started at {self._address}")
+
+    async def publish(self, topic: str, message: Dict[str, Any]):
+        """重写publish方法以支持自启动"""
+        self._ensure_started()
+        await super().publish(topic, message)
+
+    def subscribe(self, topics: List[str]) -> AsyncIterator[Dict[str, Any]]:
+        """重写subscribe方法以支持自启动"""
+        self._ensure_started()
+        return super().subscribe(topics)  # 直接返回异步迭代器
+
+class DistributedMessageBus(MessageBusBase):
+    """分布式消息总线基类 - 需要显式启动"""
+    def __init__(self, address: str, role: str = "client", logger=None):
+        if not role in ("server", "client"):
+            raise ValueError("Role must be either 'server' or 'client'")
+        super().__init__(logger)
+        self._address = address
+        self._role = role
+        self._is_server = role == "server"
+
+    def start(self):
+        """启动分布式消息总线"""
+        if not self._started:
+            self._context = zmq.asyncio.Context.instance()
+            self._pub_socket = self._context.socket(zmq.PUB)
+            self._pub_socket.setsockopt(zmq.SNDHWM, 1000)
+            self._pub_socket.setsockopt(zmq.RCVHWM, 1000)
+            self._pub_socket.setsockopt(zmq.LINGER, 0)
+            
+            if self._is_server:
+                self._pub_socket.bind(self._address)
+                self._logger.info(f"Distributed message bus server started at {self._address}")
+            else:
+                self._pub_socket.connect(self._address)
+                self._logger.info(f"Connected to message bus at {self._address}")
+            
+            self._started = True
+
+class IpcMessageBus(DistributedMessageBus):
+    """IPC 消息总线实现"""
+    def __init__(self, path: str = None, role: str = "client", logger=None):
+        path = path or get_ipc_path("message_bus")
+        address = f"ipc://{path}"
+        super().__init__(address, role, logger)
+
+    def cleanup(self):
+        super().cleanup()
+        if self._is_server and self._address.startswith("ipc://"):
             ipc_file = self._address[6:]
             if os.path.exists(ipc_file):
                 try:
-                    logging.debug(f"Attempting to remove IPC file: {ipc_file}")
                     os.remove(ipc_file)
-                    logging.info(f"Cleaned up IPC file: {ipc_file}")
+                    self._logger.info(f"Cleaned up IPC file: {ipc_file}")
                 except OSError as e:
-                    logging.warning(f"Failed to clean up IPC file: {e}")
-            else:
-                logging.debug(f"No IPC file to clean up or file doesn't exist: {ipc_file}") 
+                    self._logger.warning(f"Failed to clean up IPC file: {e}")
 
-    async def ensure_subscription_ready(self, topic: str, timeout: float = 1.0) -> bool:
-        """确保订阅已经准备就绪
-        
-        Args:
-            topic: 要测试的主题
-            timeout: 超时时间（秒）
-            
-        Returns:
-            bool: 订阅是否就绪
-        """
-        test_message = {"test": True}
-        try:
-            # 发送测试消息
-            await self.publish(f"test.{topic}", test_message)
-            
-            # 创建测试订阅
-            async with asyncio.timeout(timeout):
-                async for msg in self.subscribe([f"test.{topic}"]):
-                    if msg == test_message:
-                        return True
-                        
-        except Exception as e:
-            logger.warning(f"Subscription test failed: {e}")
-            return False
-            
-        return False 
+class TcpMessageBus(DistributedMessageBus):
+    """TCP 消息总线实现"""
+    def __init__(self, host: str, port: int, role: str = "client", logger=None):
+        address = f"tcp://{host}:{port}"
+        super().__init__(address, role, logger)
+
+def create_message_bus(bus_type: MessageBusType, **kwargs) -> MessageBusBase:
+    """消息总线工厂方法"""
+    if bus_type == MessageBusType.INPROC:
+        return InprocMessageBus(**kwargs)
+    elif bus_type == MessageBusType.IPC:
+        return IpcMessageBus(**kwargs)
+    elif bus_type == MessageBusType.TCP:
+        return TcpMessageBus(**kwargs)
+    else:
+        raise ValueError(f"Unsupported message bus type: {bus_type}") 

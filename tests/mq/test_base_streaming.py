@@ -2,6 +2,7 @@ import pytest
 import asyncio
 import logging
 import uuid
+import os
 
 from typing import AsyncIterator, Iterator, Any
 from illufly.mq.message_bus import MessageBus
@@ -53,9 +54,22 @@ class AsyncGeneratorService(BaseStreamingService):
 @pytest.fixture
 def service_config():
     """测试配置"""
+    os.environ["ILLUFLY_MQ_MESSAGE_BUS_ADDRESS"] = "inproc://test_message_bus"
+
     return ServiceConfig(
         service_name="test_streaming",
         mq_address="ipc:///tmp/test_streaming"
+    )
+
+@pytest.fixture
+def service_config_with_tcp():
+    """TCP版本测试配置"""
+    # os.environ["ILLUFLY_MQ_MESSAGE_BUS_ADDRESS"] = "tcp://localhost:5555"
+
+    return ServiceConfig(
+        service_name="test_streaming",
+        mq_address="tcp://localhost:5556",
+        concurrency_strategy=ConcurrencyStrategy.PROCESS_POOL
     )
 
 @pytest.mark.asyncio
@@ -98,6 +112,28 @@ def test_sync_service_streaming_response():
 async def test_service_streaming_response():
     """异步版本：测试服务的流式响应"""
     service = AsyncGeneratorService(logger=logger)
+    await service.start_async()
+    
+    try:
+        # 收集响应
+        blocks = []
+        async for block in service("test prompt"):
+            blocks.append(block)
+            logger.info(f"Received block: {block}")
+        
+        # 验证响应
+        assert len(blocks) == 1
+        assert blocks[0].content == "Test response for: test prompt"
+        assert blocks[0].block_type == "text"
+        
+    finally:
+        await service.stop_async()
+
+
+@pytest.mark.asyncio
+async def test_service_streaming_response_with_tcp(service_config_with_tcp):
+    """TCP版本：测试服务的流式响应"""
+    service = AsyncGeneratorService(service_config_with_tcp, logger=logger)
     await service.start_async()
     
     try:

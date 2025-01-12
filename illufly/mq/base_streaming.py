@@ -11,7 +11,6 @@ from inspect import isasyncgenfunction, isgeneratorfunction, iscoroutinefunction
 
 from .message_bus import MessageBus
 from .utils import get_ipc_path
-from ..types import EventBlock
 from .models import ServiceConfig, StreamingBlock
 from .concurrency.base_runner import BaseRunner
 from .concurrency.async_runner import AsyncRunner
