@@ -14,7 +14,6 @@ import psutil
 
 from .base_runner import BaseRunner
 from ..models import ServiceConfig, StreamingBlock
-from ..message_bus import MessageBus
 
 class ProcessContext(BaseModel):
     """进程上下文"""

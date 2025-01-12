@@ -9,18 +9,18 @@ import zmq.asyncio
 import time
 
 from ..models import ServiceConfig, StreamingBlock
-from ..message_bus import MessageBus
+from ..message_bus import MessageBusBase, MessageBusType, create_message_bus
 
 class BaseRunner(ABC):
     """并发执行器基类 - 专注于服务端逻辑"""
-    def __init__(self, config: ServiceConfig, service=None, logger=None):
+    def __init__(self, config: ServiceConfig, service=None, message_bus=None, logger=None):
         self.config = config
         self.service = service  # service 可以为空
         self._logger = logger or logging.getLogger(__name__)
         self._running = False
         self.context = None
         self.mq_server = None
-        self.message_bus = None
+        self.message_bus = message_bus or create_message_bus(MessageBusType.INPROC)
         
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
         """确保有可用的事件循环，如果需要则创建新的"""
@@ -54,10 +54,7 @@ class BaseRunner(ABC):
             self.mq_server.setsockopt(zmq.SNDHWM, self.config.max_requests)
             self.mq_server.bind(self.config.mq_address)
             self._logger.debug(f"Server socket bound to {self.config.mq_address}")
-            
-            self.message_bus = MessageBus.instance()
-            self.message_bus.start()
-            
+                        
             self._running = True
             self._server_task = asyncio.create_task(self._run_server())
             self._logger.debug(f"Server task created: {self._server_task}")

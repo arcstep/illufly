@@ -12,17 +12,23 @@ logger = logging.getLogger(__name__)
 class AsyncGeneratorService(BaseStreamingService):
     """异步生成器实现"""
     async def process(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
+        self._logger.info(f"开始处理请求: {prompt}")
         # 增加处理延迟，强制使用多个线程
         await asyncio.sleep(1.0)
-        yield StreamingBlock(
+        block = StreamingBlock(
             content=f"Processing: {prompt}",
             block_type="text"
         )
+        self._logger.info(f"生成第一个块: {block}")
+        yield block
+        
         await asyncio.sleep(1.0)
-        yield StreamingBlock(
+        block = StreamingBlock(
             content=f"Test response for: {prompt}",
             block_type="text"
         )
+        self._logger.info(f"生成第二个块: {block}")
+        yield block
 
 @pytest.fixture
 def config():
@@ -50,6 +56,7 @@ async def test_thread_pool_request_handling(runner):
     
     async def make_request(i: int):
         blocks = []
+        logger.info(f"开始请求 {i} 的消息接收")
         async for block in request_streaming_response(
             context=context,
             address=runner.config.mq_address,
@@ -57,10 +64,12 @@ async def test_thread_pool_request_handling(runner):
             prompt=f"test_{i}",
             logger=logger
         ):
+            logger.info(f"请求 {i} 收到块: {block}")
             blocks.append(block)
             if block.thread_id:
                 thread_ids.add(block.thread_id)
                 logger.debug(f"收集到线程ID: {block.thread_id}")
+        logger.info(f"请求 {i} 接收完成")
         return blocks
     
     # 创建多个并发请求任务

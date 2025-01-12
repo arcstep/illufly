@@ -5,7 +5,6 @@ import uuid
 import os
 
 from typing import AsyncIterator, Iterator, Any
-from illufly.mq.message_bus import MessageBus
 from illufly.mq.base_streaming import BaseStreamingService, ConcurrencyStrategy
 from illufly.types import EventBlock
 from illufly.mq.models import ServiceConfig, StreamingBlock

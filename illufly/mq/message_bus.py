@@ -24,59 +24,73 @@ class MessageBusBase:
         self._address = None
 
     async def publish(self, topic: str, message: Dict[str, Any]):
-        """发布消息到指定主题 - 基类要求显式启动"""
+        """发布消息到指定主题"""
         if not self._started:
             raise RuntimeError("Message bus not started")
             
+        self._logger.debug(f"[{self.__class__.__name__}] 准备发布消息 - 地址: {self._address}, 主题: {topic}")
         try:
-            self._logger.debug(f"Publishing to {topic}: {message}")
-            await self._pub_socket.send_multipart([
-                topic.encode(),
-                json.dumps(message).encode()
-            ])
-            self._logger.debug("Message published")
+            message_data = json.dumps(message).encode()
+            await self._pub_socket.send_multipart([topic.encode(), message_data])
+            self._logger.debug(f"[{self.__class__.__name__}] 消息发布成功 - 主题: {topic}, 大小: {len(message_data)}字节")
         except Exception as e:
-            self._logger.error(f"Error publishing message: {e}")
+            self._logger.error(f"[{self.__class__.__name__}] 发布消息失败: {e}")
             raise
 
     def subscribe(self, topics: List[str]) -> AsyncIterator[Dict[str, Any]]:
-        """订阅指定主题的消息流 - 返回异步迭代器"""
+        """订阅指定主题的消息流"""
         if not self._started:
             raise RuntimeError("Message bus not started")
             
-        self._logger.debug(f"Creating subscription for topics: {topics}")
+        self._logger.debug(f"[{self.__class__.__name__}] 创建订阅 - 地址: {self._address}, 主题: {topics}")
         sub_socket = self._context.socket(zmq.SUB)
         sub_socket.setsockopt(zmq.RCVHWM, 1000)
         sub_socket.connect(self._address)
         
         for topic in topics:
-            self._logger.debug(f"Subscribing to topic: {topic}")
+            self._logger.debug(f"[{self.__class__.__name__}] 设置订阅主题: {topic}")
             sub_socket.setsockopt(zmq.SUBSCRIBE, topic.encode())
 
         class MessageIterator:
-            def __init__(self, socket, logger):
+            def __init__(self, socket, logger, bus_type):
                 self.socket = socket
                 self.logger = logger
+                self.bus_type = bus_type
 
             def __aiter__(self):
                 return self
 
             async def __anext__(self):
                 try:
-                    [topic, message] = await self.socket.recv_multipart()
+                    self.logger.debug(f"[{self.bus_type}] 等待接收消息...")
+                    data = await self.socket.recv_multipart()
+                    
+                    if len(data) != 2:
+                        self.logger.error(
+                            f"[{self.bus_type}] 接收到的数据格式错误 - "
+                            f"期望2个部分，实际收到{len(data)}个部分: {data}"
+                        )
+                        raise ValueError(f"Invalid message format: {data}")
+                        
+                    [topic, message] = data
                     topic = topic.decode()
                     message = json.loads(message.decode())
-                    self.logger.debug(f"Received message on {topic}: {message}")
+                    self.logger.debug(
+                        f"[{self.bus_type}] 接收到消息 - "
+                        f"主题: {topic}, "
+                        f"内容: {message}"
+                    )
                     return message
                 except asyncio.CancelledError:
+                    self.logger.debug(f"[{self.bus_type}] 订阅被取消")
                     self.socket.close(linger=0)
                     raise StopAsyncIteration
                 except Exception as e:
-                    self.logger.error(f"Error receiving message: {e}")
+                    self.logger.error(f"[{self.bus_type}] 接收消息时出错: {e}")
                     self.socket.close(linger=0)
                     raise
 
-        return MessageIterator(sub_socket, self._logger)
+        return MessageIterator(sub_socket, self._logger, self.__class__.__name__)
 
     @property
     def address(self) -> str:
@@ -158,9 +172,27 @@ class DistributedMessageBus(MessageBusBase):
 class IpcMessageBus(DistributedMessageBus):
     """IPC 消息总线实现"""
     def __init__(self, path: str = None, role: str = "client", logger=None):
-        path = path or get_ipc_path("message_bus")
-        address = f"ipc://{path}"
+        if path is None:
+            path = get_ipc_path("message_bus")
+            
+        directory = os.path.dirname(path)
+        if not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+            
+        if len(path) > zmq.IPC_PATH_MAX_LEN:
+            raise ValueError(
+                f"IPC path length ({len(path)}) exceeds maximum allowed "
+                f"({zmq.IPC_PATH_MAX_LEN})"
+            )
+            
+        address = f"ipc://{path}" if not path.startswith("ipc://") else path
         super().__init__(address, role, logger)
+        self._logger.info(f"[IpcMessageBus] 初始化 - 角色: {role}, 路径: {path}")
+
+    def start(self):
+        """启动IPC消息总线"""
+        super().start()
+        self._logger.info(f"[IpcMessageBus] 启动完成 - 地址: {self._address}")
 
     def cleanup(self):
         super().cleanup()
@@ -175,9 +207,21 @@ class IpcMessageBus(DistributedMessageBus):
 
 class TcpMessageBus(DistributedMessageBus):
     """TCP 消息总线实现"""
-    def __init__(self, host: str, port: int, role: str = "client", logger=None):
+    def __init__(self, host: str = "127.0.0.1", port: int = 5555,
+                 role: str = "client", logger=None):
         address = f"tcp://{host}:{port}"
         super().__init__(address, role, logger)
+        self._logger.info(
+            f"[TcpMessageBus] 初始化 - "
+            f"角色: {role}, "
+            f"主机: {host}, "
+            f"端口: {port}"
+        )
+
+    def start(self):
+        """启动TCP消息总线"""
+        super().start()
+        self._logger.info(f"[TcpMessageBus] 启动完成 - 地址: {self._address}")
 
 def create_message_bus(bus_type: MessageBusType, **kwargs) -> MessageBusBase:
     """消息总线工厂方法"""

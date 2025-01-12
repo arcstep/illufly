@@ -17,6 +17,7 @@ class ThreadRunner(BaseRunner):
         self._max_workers = max_workers or (multiprocessing.cpu_count() * 5)
         self.executor = ThreadPoolExecutor(max_workers=self._max_workers)
         self._logger.debug(f"线程池初始化完成，最大工作线程数: {self._max_workers}")
+        logger.info(f"创建线程池执行器：{config.service_name}, 最大工作线程数: {self._max_workers}, 其他参数：{kwargs}")
         
     async def _handle_request(self, request: dict) -> dict:
         """在线程池中处理请求"""
@@ -32,17 +33,13 @@ class ThreadRunner(BaseRunner):
             try:
                 self._logger.info(f"提交任务到线程池，会话ID: {session_id}, 提示词: {prompt}")
                 
-                # 立即返回响应，不等待处理完成
-                future = self.executor.submit(
+                # 提交任务到线程池，传入 session_id
+                self.executor.submit(
                     self._thread_process_request,
                     prompt,
+                    session_id,
                     **kwargs
                 )
-                
-                # 启动异步任务来处理结果
-                asyncio.create_task(self._handle_thread_result(
-                    future, session_id
-                ))
                 
                 self._logger.info(f"任务已提交到线程池，会话ID: {session_id}")
                 return {
@@ -61,73 +58,72 @@ class ThreadRunner(BaseRunner):
         else:
             return await super()._handle_request(request)
                 
-    def _thread_process_request(self, prompt: str, **kwargs) -> list:
-        """在线程中执行请求的独立函数"""
+    def _thread_process_request(self, prompt: str, session_id: str, **kwargs) -> None:
+        """在线程中执行请求并直接发布结果"""
         thread_id = threading.current_thread().name
-        self._logger.info(f"线程 {thread_id} 开始处理请求: {prompt}")
+        self._logger.info(
+            f"[ThreadRunner] 线程 {thread_id} 开始处理请求 - "
+            f"会话ID: {session_id}, "
+            f"提示词: {prompt}"
+        )
         
         try:
-            blocks = []
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
             async def process_generator():
-                self._logger.info(f"线程 {thread_id} 开始生成响应")
-                async for block in self.service._adapt_process_request(prompt, **kwargs):
-                    block_dict = block.model_dump(exclude_none=True)
-                    block_dict["thread_id"] = thread_id
-                    blocks.append(block_dict)
-                    self._logger.info(f"线程 {thread_id} 生成块: {block_dict}")
+                try:
+                    self._logger.info(f"[ThreadRunner] 线程 {thread_id} 开始生成响应")
+                    async for block in self.service._adapt_process_request(prompt, **kwargs):
+                        block_dict = block.model_dump(exclude_none=True)
+                        block_dict["thread_id"] = thread_id
+                        
+                        topic = f"llm.{self.config.service_name}.{session_id}"
+                        message = {
+                            **block_dict,
+                            "session_id": session_id,
+                            "service": self.config.service_name
+                        }
+                        
+                        self._logger.debug(
+                            f"[ThreadRunner] 线程 {thread_id} 准备发布消息 - "
+                            f"主题: {topic}, "
+                            f"消息: {message}"
+                        )
+                        
+                        await self.message_bus.publish(topic, message)
+                        self._logger.debug(f"[ThreadRunner] 线程 {thread_id} 发布成功")
+                        
+                    # 发送完成消息
+                    complete_topic = f"llm.{self.config.service_name}.{session_id}.complete"
+                    self._logger.debug(f"[ThreadRunner] 线程 {thread_id} 准备发送完成消息")
+                    await self.message_bus.publish(
+                        complete_topic,
+                        {
+                            "status": "complete",
+                            "session_id": session_id,
+                            "service": self.config.service_name,
+                            "thread_id": thread_id
+                        }
+                    )
+                except Exception as e:
+                    self._logger.error(f"[ThreadRunner] 线程 {thread_id} 生成响应时出错: {e}")
+                    error_topic = f"llm.{self.config.service_name}.{session_id}.error"
+                    await self.message_bus.publish(
+                        error_topic,
+                        {
+                            "status": "error",
+                            "error": str(e),
+                            "session_id": session_id,
+                            "service": self.config.service_name,
+                            "thread_id": thread_id
+                        }
+                    )
                     
             loop.run_until_complete(process_generator())
-            self._logger.info(f"线程 {thread_id} 处理完成，生成了 {len(blocks)} 个块")
-            return blocks
             
         except Exception as e:
             self._logger.error(f"线程处理出错: {e}")
             raise
         finally:
             loop.close()
-            
-    async def _handle_thread_result(self, future, session_id: str) -> None:
-        """异步处理线程池的结果"""
-        try:
-            self._logger.info(f"开始处理线程结果，会话ID: {session_id}")
-            blocks = await asyncio.get_event_loop().run_in_executor(
-                None, future.result, 30.0
-            )
-            self._logger.info(f"收到线程结果，块数: {len(blocks)}")
-            
-            # 发布结果
-            for block in blocks:
-                await self.message_bus.publish(
-                    f"llm.{self.config.service_name}.{session_id}",
-                    {
-                        **block,
-                        "session_id": session_id,
-                        "service": self.config.service_name
-                    }
-                )
-            
-            # 发送完成消息
-            thread_id = blocks[-1]["thread_id"] if blocks else None
-            await self.message_bus.publish(
-                f"llm.{self.config.service_name}.{session_id}.complete",
-                {
-                    "status": "complete",
-                    "session_id": session_id,
-                    "service": self.config.service_name,
-                    "thread_id": thread_id
-                }
-            )
-        except Exception as e:
-            self._logger.error(f"处理结果时出错: {e}")
-            await self.message_bus.publish(
-                f"llm.{self.config.service_name}.{session_id}.error",
-                {
-                    "status": "error",
-                    "error": str(e),
-                    "session_id": session_id,
-                    "service": self.config.service_name
-                }
-            )

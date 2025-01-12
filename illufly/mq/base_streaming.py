@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
 from inspect import isasyncgenfunction, isgeneratorfunction, iscoroutinefunction
 
-from .message_bus import MessageBus
+from .message_bus import MessageBusBase, MessageBusType, create_message_bus
 from .utils import get_ipc_path
 from .models import ServiceConfig, StreamingBlock
 from .concurrency.base_runner import BaseRunner
@@ -29,12 +29,13 @@ async def request_streaming_response(
     address: str,
     service_name: str,
     prompt: str,
+    message_bus: MessageBusBase = None,
     logger: Optional[logging.Logger] = None,
     timeout: float = 30.0,
     **kwargs
 ) -> AsyncIterator[StreamingBlock]:
     """发送请求并获取流式响应"""
-    message_bus = MessageBus.instance()
+    message_bus = message_bus or create_message_bus(MessageBusType.INPROC)
     _logger = logger or logging.getLogger(__name__)
     client = context.socket(zmq.REQ)
     client.connect(address)
@@ -99,13 +100,14 @@ async def request_streaming_response(
 
 class BaseStreamingService(ABC):
     """基础流式服务 - 统一服务端和客户端"""
-    def __init__(self, service_config: ServiceConfig=None, service_name: str=None, logger=None):
+    def __init__(self, service_config: ServiceConfig=None, service_name: str=None, message_bus: MessageBusBase=None, logger=None):
         self.service_config = service_config or ServiceConfig(
             service_name=service_name,
             class_name=self.__class__.__name__
         )
         self._logger = logger or logging.getLogger(self.service_config.service_name)
         self.runner: Optional[BaseRunner] = None
+        self.message_bus = message_bus or create_message_bus(MessageBusType.INPROC)
         self._running = False
         
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
@@ -251,6 +253,7 @@ class BaseStreamingService(ABC):
             return AsyncRunner(
                 config=self.service_config,
                 service=self,
+                message_bus=self.message_bus,
                 logger=self._logger
             )
         elif self.service_config.concurrency == ConcurrencyStrategy.THREAD_POOL.value:
@@ -258,6 +261,7 @@ class BaseStreamingService(ABC):
                 config=self.service_config,
                 service=self,
                 max_workers=self.service_config.max_workers,
+                message_bus=self.message_bus,
                 logger=self._logger
             )
         elif self.service_config.concurrency == ConcurrencyStrategy.PROCESS_POOL.value:
@@ -266,6 +270,7 @@ class BaseStreamingService(ABC):
                 config=self.service_config,
                 service=self,
                 max_workers=self.service_config.max_workers,
+                message_bus=self.message_bus,
                 logger=self._logger
             ) 
         else:
