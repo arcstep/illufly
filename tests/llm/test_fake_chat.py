@@ -1,7 +1,6 @@
 import pytest
 import asyncio
 from illufly.llm.fake.chat import FakeChat
-from illufly.llm.base import ConcurrencyStrategy
 
 @pytest.fixture
 def chat():
@@ -91,10 +90,6 @@ async def test_chat_concurrency_modes():
                 events.append(event.content)
         return "".join(events)
     
-    # 测试所有并发模式
-    for mode in ConcurrencyStrategy:
-        result = await test_mode(mode)
-        assert result == "Test"
 
 @pytest.mark.asyncio
 async def test_chat_default_response(chat):

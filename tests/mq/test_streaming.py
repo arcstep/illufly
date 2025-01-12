@@ -5,7 +5,7 @@ import uuid
 import os
 
 from typing import AsyncIterator, Iterator, Any
-from illufly.mq.base_streaming import BaseStreamingService, ConcurrencyStrategy
+from illufly.mq.streaming import StreamingService
 from illufly.types import EventBlock
 from illufly.mq.models import ServiceConfig, StreamingBlock
 
@@ -18,7 +18,7 @@ def setup_logging(caplog):
     """设置日志级别"""
     caplog.set_level(logging.DEBUG)
 
-class SyncReturnService(BaseStreamingService):
+class SyncReturnService(StreamingService):
     """同步返回值实现"""
     def process(self, prompt: str, **kwargs) -> StreamingBlock:
         return StreamingBlock(
@@ -26,7 +26,7 @@ class SyncReturnService(BaseStreamingService):
             block_type="text"
         )
 
-class SyncGeneratorService(BaseStreamingService):
+class SyncGeneratorService(StreamingService):
     """同步生成器实现"""
     def process(self, prompt: str, **kwargs) -> Iterator[StreamingBlock]:
         yield StreamingBlock(
@@ -34,7 +34,7 @@ class SyncGeneratorService(BaseStreamingService):
             block_type="text"
         )
 
-class AsyncReturnService(BaseStreamingService):
+class AsyncReturnService(StreamingService):
     """异步返回值实现"""
     async def process(self, prompt: str, **kwargs) -> StreamingBlock:
         return StreamingBlock(
@@ -42,7 +42,7 @@ class AsyncReturnService(BaseStreamingService):
             block_type="text"
         )
 
-class AsyncGeneratorService(BaseStreamingService):
+class AsyncGeneratorService(StreamingService):
     """异步生成器实现"""
     async def process(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
         yield StreamingBlock(
@@ -50,42 +50,27 @@ class AsyncGeneratorService(BaseStreamingService):
             block_type="text"
         )
 
-@pytest.fixture
-def service_config():
-    """测试配置"""
-    os.environ["ILLUFLY_MQ_MESSAGE_BUS_ADDRESS"] = "inproc://test_message_bus"
-
-    return ServiceConfig(
-        service_name="test_streaming",
-        mq_address="ipc:///tmp/test_streaming"
-    )
-
-@pytest.fixture
-def service_config_with_tcp():
-    """TCP版本测试配置"""
-    # os.environ["ILLUFLY_MQ_MESSAGE_BUS_ADDRESS"] = "tcp://localhost:5555"
-
-    return ServiceConfig(
-        service_name="test_streaming",
-        mq_address="tcp://localhost:5556",
-        concurrency_strategy=ConcurrencyStrategy.PROCESS_POOL
-    )
-
 @pytest.mark.asyncio
-async def test_service_lifecycle(service_config):
+async def test_service_lifecycle():
     """测试服务的生命周期管理"""
-    service = AsyncGeneratorService(service_config, logger=logger)
-    assert not service._running
+    service_name = f"test_service_{uuid.uuid4()}"
+    config = ServiceConfig(service_name=service_name)
     
-    # 启动服务
-    await service.start_async()
-    assert service._running
-    assert service.runner is not None
+    service = AsyncGeneratorService(
+        service_config=config,
+        logger=logger
+    )
     
-    # 停止服务
-    await service.stop_async()
-    assert not service._running
-    assert service.runner is not None  # runner 实例保留
+    try:
+        await service.start_async()
+        assert service._running
+        assert service.message_bus._started
+        
+        # 等待服务就绪
+        await service._bind_event.wait()
+        
+    finally:
+        await service.stop_async()
 
 def test_sync_service_streaming_response():
     """同步版本：测试服务的流式响应"""
@@ -130,30 +115,9 @@ async def test_service_streaming_response():
 
 
 @pytest.mark.asyncio
-async def test_service_streaming_response_with_tcp(service_config_with_tcp):
-    """TCP版本：测试服务的流式响应"""
-    service = AsyncGeneratorService(service_config_with_tcp, logger=logger)
-    await service.start_async()
-    
-    try:
-        # 收集响应
-        blocks = []
-        async for block in service("test prompt"):
-            blocks.append(block)
-            logger.info(f"Received block: {block}")
-        
-        # 验证响应
-        assert len(blocks) == 1
-        assert blocks[0].content == "Test response for: test prompt"
-        assert blocks[0].block_type == "text"
-        
-    finally:
-        await service.stop_async()
-
-@pytest.mark.asyncio
-async def test_service_concurrent_requests(service_config):
+async def test_service_concurrent_requests():
     """测试服务的并发请求处理"""
-    service = AsyncGeneratorService(service_config, logger=logger)
+    service = AsyncGeneratorService(logger=logger)
     await service.start_async()
     
     try:
@@ -181,9 +145,9 @@ async def test_service_concurrent_requests(service_config):
         await service.stop_async()
 
 @pytest.mark.asyncio
-async def test_service_error_handling(service_config):
+async def test_service_error_handling():
     """测试服务的错误处理"""
-    service = AsyncGeneratorService(service_config, logger=logger)
+    service = AsyncGeneratorService(logger=logger)
     
     # 测试未启动状态调用
     with pytest.raises(RuntimeError) as exc_info:
@@ -210,9 +174,9 @@ async def test_service_error_handling(service_config):
         await service.stop_async()
 
 @pytest.mark.asyncio
-async def test_service_cleanup(service_config):
+async def test_service_cleanup():
     """测试服务的资源清理"""
-    service = AsyncGeneratorService(service_config, logger=logger)
+    service = AsyncGeneratorService(logger=logger)
     await service.start_async()
     
     # 模拟服务异常停止

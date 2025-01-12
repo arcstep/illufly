@@ -121,7 +121,7 @@ class InprocMessageBus(MessageBusBase):
             self._initialized = True
             self._logger.debug(f"InprocMessageBus initialized, id: {id(self)}")
 
-    def _ensure_started(self):
+    def _ensure_inproc_started(self):
         """确保消息总线已启动"""
         with self._lock:
             if not self._started:
@@ -133,13 +133,13 @@ class InprocMessageBus(MessageBusBase):
 
     async def publish(self, topic: str, message: Dict[str, Any]):
         """重写publish方法以支持自启动"""
-        self._ensure_started()
+        self._ensure_inproc_started()
         await super().publish(topic, message)
 
     def subscribe(self, topics: List[str]) -> AsyncIterator[Dict[str, Any]]:
         """重写subscribe方法以支持自启动"""
-        self._ensure_started()
-        return super().subscribe(topics)  # 直接返回异步迭代器
+        self._ensure_inproc_started()
+        return super().subscribe(topics)
 
 class DistributedMessageBus(MessageBusBase):
     """分布式消息总线基类 - 需要显式启动"""
@@ -162,10 +162,10 @@ class DistributedMessageBus(MessageBusBase):
             
             if self._is_server:
                 self._pub_socket.bind(self._address)
-                self._logger.info(f"Distributed message bus server started at {self._address}")
+                self._logger.info(f"消息总线服务已启动 - 地址: {self._address}")
             else:
                 self._pub_socket.connect(self._address)
-                self._logger.info(f"Connected to message bus at {self._address}")
+                self._logger.info(f"消息总线客户端已连接 - 地址: {self._address}")
             
             self._started = True
 
@@ -188,11 +188,6 @@ class IpcMessageBus(DistributedMessageBus):
         address = f"ipc://{path}" if not path.startswith("ipc://") else path
         super().__init__(address, role, logger)
         self._logger.info(f"[IpcMessageBus] 初始化 - 角色: {role}, 路径: {path}")
-
-    def start(self):
-        """启动IPC消息总线"""
-        super().start()
-        self._logger.info(f"[IpcMessageBus] 启动完成 - 地址: {self._address}")
 
     def cleanup(self):
         super().cleanup()
@@ -217,11 +212,6 @@ class TcpMessageBus(DistributedMessageBus):
             f"主机: {host}, "
             f"端口: {port}"
         )
-
-    def start(self):
-        """启动TCP消息总线"""
-        super().start()
-        self._logger.info(f"[TcpMessageBus] 启动完成 - 地址: {self._address}")
 
 def create_message_bus(bus_type: MessageBusType, **kwargs) -> MessageBusBase:
     """消息总线工厂方法"""
