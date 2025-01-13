@@ -15,6 +15,12 @@ from .models import ServiceConfig, StreamingBlock
 
 logger = logging.getLogger(__name__)
 
+__ACCEPT_BLOCK_TYPES__ = [
+    "start", "end", "error", "info",
+    "chunk", "tools_call_chunk",
+    "usage",
+]
+
 class StreamingService(ABC):
     """基于ZMQ的流式服务"""
 
@@ -37,7 +43,7 @@ class StreamingService(ABC):
         self._context = zmq.asyncio.Context.instance()
 
     @abstractmethod
-    def process(self, prompt: str, **kwargs) -> Union[
+    def process(self, prompt: Any, **kwargs) -> Union[
         StreamingBlock,  # 同步返回值
         Iterator[StreamingBlock],  # 同步生成器
         AsyncIterator[StreamingBlock],  # 异步生成器
@@ -159,7 +165,7 @@ class StreamingService(ABC):
                                     topic = topics["topic_chunk"]
                                 
                                 # 只允许预期的 block_type
-                                if block.block_type not in ["start", "chunk", "end", "error", "info"]:
+                                if block.block_type not in __ACCEPT_BLOCK_TYPES__:
                                     block.block_type = "chunk"
                                     
                                 self._logger.debug(f"Publishing to topic: {topic}, block: {block}")
@@ -243,7 +249,7 @@ class StreamingService(ABC):
         except RuntimeError:
             return False
             
-    def __call__(self, prompt: str, **kwargs) -> Union[Iterator[StreamingBlock], AsyncIterator[StreamingBlock]]:
+    def __call__(self, prompt: Any, **kwargs) -> Union[Iterator[StreamingBlock], AsyncIterator[StreamingBlock]]:
         """智能调用入口，根据上下文自动选择同步或异步方式"""
         if self._is_async_context():
             self._logger.debug("Detected async context, using async call")
@@ -252,7 +258,7 @@ class StreamingService(ABC):
             self._logger.debug("Detected sync context, using sync call")
             return self.call(prompt, **kwargs)
     
-    def call(self, prompt: str, **kwargs) -> Iterator[StreamingBlock]:
+    def call(self, prompt: Any, **kwargs) -> Iterator[StreamingBlock]:
         """同步调用实现"""
         if not self._running:
             raise RuntimeError("Service not started")
@@ -271,7 +277,7 @@ class StreamingService(ABC):
             except StopAsyncIteration:
                 break
             
-    async def call_async(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
+    async def call_async(self, prompt: Any, **kwargs) -> AsyncIterator[StreamingBlock]:
         """异步调用接口"""
         if not self._running:  # 修正条件判断
             raise RuntimeError("Service not started")
@@ -343,7 +349,7 @@ class StreamingService(ABC):
             if 'req_socket' in locals():
                 req_socket.close()
         
-    async def _adapt_process_request(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
+    async def _adapt_process_request(self, prompt: Any, **kwargs) -> AsyncIterator[StreamingBlock]:
         """适配不同的 process 实现为统一的异步迭代器"""
         result = self.process(prompt, **kwargs)
         

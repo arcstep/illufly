@@ -10,46 +10,24 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-fastapi = "^0.100.0"
-python-jose = "^3.3.0"
-passlib = {version = "^1.7.4", extras = ["bcrypt"]}
-argon2-cffi = "^23.1.0"
-python-multipart = "^0.0.9"
-aiohttp = "^3.10.10"
-numpy = "^2.1.3"
-pandas = "^2.2.2"
-scipy = "^1.14.1"
-faiss-cpu = "^1.8.0.post1"
-mistune = "^3.0.2"
-chevron = "^0.14.0"
-tiktoken = "^0.7.0"
-matplotlib = "^3.9.2"
-seaborn = "^0.13.2"
-tabulate = "^0.9.0"
 pydantic = "^2.10.4"
-rocksdict = "^0.3.25"
-msgpack = "^1.1.0"
 pyzmq = "^26.2.0"
+rocksdict = "^0.3.25"
+faiss-cpu = "^1.8.0.post1"
+python-dotenv = "^1.0.1"
+asyncio = "^3.4.3"
+regex = "^2024.11.6"
 
 [tool.poetry.group.dev.dependencies]
-python-dotenv = "^1.0.1"
-pydot = "^2.0.0"
 setuptools = "^69.1.0"
 poetry2setup = "^1.1.0"
 ipykernel = "^6.29.2"
 markdown = "^3.6"
-torch = "2.0.1"
-sentence-transformers = "^3.1.1"
-gradio = "^5.1.0"
 dashscope = "^1.20.11"
-alibabacloud-avatar20220130 = "^2.5.3"
-rocksdict = "^0.3.25"
 pytest-benchmark = "^5.1.0"
-orjson = "^3.10.13"
-python-rapidjson = "^1.20"
-ujson = "^5.10.0"
-lz4 = "^4.3.3"
-python-snappy = "^0.7.3"
+pandas = "^2.2.3"
+pyyaml = "^6.0.2"
+seaborn = "^0.13.2"
 
 [tool.poetry.group.test]
 optional = true
@@ -60,13 +38,16 @@ pytest = "^8.2.0"
 pytest-bdd = "^8.1.0"
 allure-pytest = "^2.13.5"
 pytest-cov = "^4.0.0"
-pytest-asyncio = ">=0.23.0,<0.24.0"
+pytest-asyncio = ">=0.23.0"
 trio = "^0.27.0"
-asyncio = "^3.4.3"
 httpx = "^0.24.0"
 freezegun = "^1.2.0"
 sse-starlette = "^2.1.2"
 pytest-timeout = "^2.3.1"
+vcrpy = "^7.0.0"
+anyio = "^4.8.0"
+pytest-tornasync = "^0.6.0.post2"
+pytest-trio = "^0.8.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -74,11 +55,6 @@ build-backend = "poetry.core.masonry.api"
 
 [[tool.poetry.packages]]
 include = "illufly/**/*"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-pythonpath = ["."]
 
 [tool.anyio]
 backend = "asyncio"

@@ -4,7 +4,7 @@ import logging
 import uuid
 import os
 
-from typing import AsyncIterator, Iterator, Any
+from typing import AsyncIterator, Iterator, Any, Dict
 from illufly.mq.streaming import StreamingService
 from illufly.types import EventBlock
 from illufly.mq.models import ServiceConfig, StreamingBlock
@@ -57,6 +57,16 @@ class AsyncGeneratorService(StreamingService):
     async def process(self, prompt: str, **kwargs) -> AsyncIterator[StreamingBlock]:
         yield StreamingBlock(
             content=f"Test response for: {prompt}",
+            block_type="text"
+        )
+
+class DictInputService(StreamingService):
+    """同步返回值实现"""
+    def process(self, prompt: Dict[str, str], **kwargs) -> StreamingBlock:
+        name = prompt["name"]
+        age = prompt["age"]
+        return StreamingBlock(
+            content=f"Test response for: {name} {age}",
             block_type="text"
         )
 
@@ -122,6 +132,27 @@ async def test_service_streaming_response():
     finally:
         await service.stop_async()
 
+@pytest.mark.asyncio
+async def test_service_dict_input_streaming_response():
+    """异步版本：测试服务的流式响应"""
+    service = DictInputService(logger=logger)
+    await service.start_async()
+    
+    try:
+        # 收集响应
+        blocks = []
+        async for block in service({"name": "illufly", "age": 18}):
+            blocks.append(block)
+            logger.info(f"Received block: {block}")
+        
+        # 验证响应
+        assert len(blocks) == 2
+        assert "illufly" in blocks[0].content
+        assert "18" in blocks[0].content
+        assert blocks[0].block_type == "chunk"
+        
+    finally:
+        await service.stop_async()
 
 @pytest.mark.asyncio
 async def test_service_concurrent_requests():

@@ -19,9 +19,11 @@ async def chat():
         service_name="test_chat",
         logger=logger
     )
-    await chat.start_async()  # 使用异步启动
-    yield chat
-    await chat.stop_async()   # 使用异步停止
+    await chat.start_async()
+    try:
+        yield chat
+    finally:
+        await chat.stop_async()
 
 @pytest.fixture
 async def chat_with_list():
@@ -31,20 +33,24 @@ async def chat_with_list():
         logger=logger
     )
     await chat.start_async()
-    yield chat
-    await chat.stop_async()
+    try:
+        yield chat
+    finally:
+        await chat.stop_async()
 
 @pytest.mark.asyncio
 async def test_chat_initialization(chat):
     """测试聊天初始化"""
-    assert chat._running
-    assert chat.sleep == 0.1
-    assert chat.response == ["Hello World!"]
+    chat_instance = await anext(chat)
+    assert chat_instance._running
+    assert chat_instance.sleep == 0.1
+    assert chat_instance.response == ["Hello World!"]
 
 @pytest.mark.asyncio
 async def test_chat_response(chat):
+    chat_instance = await anext(chat)
     events = []
-    async for event in chat("test prompt"):
+    async for event in chat_instance("test prompt"):
         logger.info(f"event: {event}")
         events.append(event)
     
@@ -62,8 +68,9 @@ async def test_chat_response(chat):
 @pytest.mark.asyncio
 async def test_chat_multiple_responses(chat):
     """测试多轮对话"""
+    chat_instance = await anext(chat)
     blocks = []
-    async for block in chat("Test prompt"):
+    async for block in chat_instance("Test prompt"):
         blocks.append(block)
     
     assert len(blocks) > 0
@@ -72,9 +79,10 @@ async def test_chat_multiple_responses(chat):
 
 @pytest.mark.asyncio
 async def test_chat_sleep_timing(chat):
+    chat_instance = await anext(chat)
     start_time = asyncio.get_event_loop().time()
         
-    async for _ in chat("test"):
+    async for _ in chat_instance("test"):
         pass
         
     end_time = asyncio.get_event_loop().time()
