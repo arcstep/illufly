@@ -17,7 +17,7 @@ class MessageBus:
     _bound_address = None
     _bound_lock = threading.Lock()
     
-    def __init__(self, address="inproc://message_bus", logger=None):
+    def __init__(self, address="inproc://message_bus", to_bind=True, to_connect=True, logger=None):
         self._logger = logger or logging.getLogger(__name__)
         self._pub_socket = None
         self._sub_socket = None
@@ -26,9 +26,11 @@ class MessageBus:
         self._address = self._normalize_address(address)  # 规范化地址
         self._is_inproc = self._address.startswith("inproc://")
         self._is_ipc = self._address.startswith("ipc://")
-        
-        self._try_bind()
-        self._init_subscriber()
+
+        if to_bind:
+            self._try_bind()
+        if to_connect:
+            self._init_subscriber()
             
     def _normalize_address(self, address: str) -> str:
         """规范化地址格式，处理IPC地址长度限制"""
@@ -71,20 +73,39 @@ class MessageBus:
                 return
                 
             try:
-                self._pub_socket = self._context.socket(zmq.PUB)
-                self._pub_socket.bind(self._address)
+                # 对于IPC，先检查文件是否存在
+                if self._is_ipc:
+                    path = urlparse(self._address).path
+                    if os.path.exists(path):
+                        self._logger.warning(f"IPC file exists: {path}, treating as bound by another process")
+                        MessageBus._bound_socket = True
+                        return
+            
+                # 创建socket并尝试绑定
+                socket = self._context.socket(zmq.PUB)
+                socket.bind(self._address)
+                self._pub_socket = socket  # 只有绑定成功才保存socket
                 MessageBus._bound_socket = self._pub_socket
                 self._logger.info(f"Publisher bound to: {self._address}")
-                
             except zmq.ZMQError as e:
+                socket.close()  # 关闭失败的socket
                 if e.errno == zmq.EADDRINUSE:
                     self._logger.warning(f"Address {self._address} in use by another process")
-                    if self._is_inproc:
-                        MessageBus._bound_socket = True  # 标记为已绑定
-                    self._init_subscriber()
+                    MessageBus._bound_socket = True  # 标记为外部绑定
                 else:
                     raise
-            
+    @property
+    def is_bound(self):
+        return self._bound_socket is not None
+
+    @property
+    def is_connected(self):
+        return self._sub_socket is not None
+
+    @property
+    def is_bound_outside(self):
+        return MessageBus._bound_socket is True
+
     def _init_subscriber(self):
         """初始化订阅者"""
         self._sub_socket = self._context.socket(zmq.SUB)
