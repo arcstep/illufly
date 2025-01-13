@@ -8,9 +8,9 @@ import json
 from enum import Enum
 import logging
 
-from ...mq import StreamingService, StreamingBlock
+from ..mq import StreamingService, StreamingBlock
 
-class FakeChat(StreamingService):
+class ChatFake(StreamingService):
     """Fake Chat Service"""
     def __init__(
         self, 

@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 import logging
-from illufly.llm.fake.chat import FakeChat
+from illufly.llm.chat_fake import ChatFake
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ def setup_logging(caplog):
 @pytest.fixture
 async def chat():
     """异步 fixture"""
-    chat = FakeChat(
+    chat = ChatFake(
         response="Hello World!",
         sleep=0.1,
         service_name="test_chat",
@@ -25,7 +25,7 @@ async def chat():
 
 @pytest.fixture
 async def chat_with_list():
-    chat = FakeChat(
+    chat = ChatFake(
         response=["Response 1", "Response 2"],
         sleep=0.1,
         logger=logger
@@ -86,7 +86,7 @@ async def test_chat_sleep_timing(chat):
 async def test_chat_concurrency_modes():
     # 测试不同的并发模式
     async def test_mode(concurrency):
-        chat = FakeChat(
+        chat = ChatFake(
             response="Test",
             concurrency=concurrency,
             max_workers=2
@@ -103,7 +103,7 @@ async def test_chat_concurrency_modes():
 @pytest.mark.asyncio
 async def test_chat_default_response(chat):
     # 测试没有设置response时的默认行为
-    chat = FakeChat(sleep=0.1)
+    chat = ChatFake(sleep=0.1)
     await chat.start_async()
     prompt = "test prompt"
     
