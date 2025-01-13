@@ -21,10 +21,27 @@ class TestPubSubFunctionality:
     """
     
     @pytest.mark.asyncio
-    async def test_pub_sub_inproc(self):
-        """测试进程内发布订阅"""
-        bus1 = MessageBus(logger=logger)
-        bus2 = MessageBus(logger=logger)
+    @pytest.mark.parametrize("address", [
+        "inproc://test_pubsub",
+        pytest.param(
+            "ipc:///tmp/test_pubsub.ipc", 
+            marks=pytest.mark.skipif(
+                os.name == 'nt', 
+                reason="IPC not supported on Windows"
+            )
+        ),
+        "tcp://127.0.0.1:5555"
+    ])
+    async def test_pub_sub_basic(self, address):
+        """测试基本的发布订阅功能
+        
+        验证不同传输模式下：
+        1. 发布者和订阅者能正确通信
+        2. 消息顺序保持正确
+        3. 资源能正确清理
+        """
+        bus1 = MessageBus(address=address, logger=logger)
+        bus2 = MessageBus(address=address, logger=logger)
         received = []
         
         try:
@@ -57,18 +74,29 @@ class TestPubSubFunctionality:
         finally:
             bus1.cleanup()
             bus2.cleanup()
-
+            
     @pytest.mark.asyncio
-    async def test_multiple_subscribers(self):
-        """测试多个订阅者"""
-        bus_pub = MessageBus(logger=logger)
-        bus_sub1 = MessageBus(logger=logger)
-        bus_sub2 = MessageBus(logger=logger)
+    @pytest.mark.parametrize("address", [
+        "inproc://test_multiple",
+        pytest.param("ipc:///tmp/test_multiple.ipc", 
+                    marks=pytest.mark.skipif(os.name == 'nt', 
+                                          reason="IPC not supported on Windows")),
+        "tcp://127.0.0.1:5556"
+    ])
+    async def test_multiple_subscribers(self, address):
+        """测试多个订阅者
+        
+        验证不同传输模式下：
+        1. 多个订阅者都能收到消息
+        2. 消息内容保持一致
+        """
+        bus_pub = MessageBus(address=address, logger=logger)
+        bus_sub1 = MessageBus(address=address, logger=logger)
+        bus_sub2 = MessageBus(address=address, logger=logger)
         received1 = []
         received2 = []
         
         try:
-            # 等待连接建立
             await asyncio.sleep(0.1)
             
             async def subscriber1():
