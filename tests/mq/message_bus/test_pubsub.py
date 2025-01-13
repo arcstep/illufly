@@ -1,3 +1,14 @@
+import pytest
+import asyncio
+import zmq.asyncio
+import os
+import multiprocessing
+import time
+from urllib.parse import urlparse
+from illufly.mq.message_bus import MessageBus
+
+import logging
+logger = logging.getLogger(__name__)
 
 class TestPubSubFunctionality:
     """发布订阅功能测试
@@ -17,10 +28,6 @@ class TestPubSubFunctionality:
         received = []
         
         try:
-            # 先启动两个总线
-            bus1.start()
-            bus2.start()
-            
             # 等待连接建立
             await asyncio.sleep(0.1)
             
@@ -35,7 +42,7 @@ class TestPubSubFunctionality:
             # 启动订阅任务
             sub_task = asyncio.create_task(subscriber())
             # 等待订阅建立
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
             
             logger.debug("Starting to publish messages")
             # 发送多条消息
@@ -61,11 +68,6 @@ class TestPubSubFunctionality:
         received2 = []
         
         try:
-            # 先启动两个总线
-            bus_pub.start()
-            bus_sub1.start()
-            bus_sub2.start()
-            
             # 等待连接建立
             await asyncio.sleep(0.1)
             
@@ -104,9 +106,6 @@ class TestPubSubFunctionality:
         received = []
         
         try:
-            # 先启动两个总线
-            bus1.start()
-            bus2.start()
             
             # 等待连接建立
             await asyncio.sleep(0.1)
@@ -151,9 +150,6 @@ class TestPubSubFunctionality:
         TOPICS = ["topic1", "topic2"]  # 测试多个主题
         
         try:
-            bus_pub.start()
-            bus_sub1.start()
-            bus_sub2.start()
             await asyncio.sleep(0.1)
             
             async def subscriber(bus, received, expected_count):
