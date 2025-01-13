@@ -25,7 +25,7 @@ class TestMessageBusBasic:
     @pytest.mark.asyncio
     async def test_default_address(self):
         """测试默认地址"""
-        bus = MessageBus()
+        bus = MessageBus(logger=logger)
         try:
             assert bus._address == "inproc://message_bus"
         finally:
@@ -41,7 +41,7 @@ class TestMessageBusBasic:
     ])
     async def test_valid_addresses(self, address):
         """测试有效地址配置和资源清理"""
-        bus = MessageBus(address, role="publisher")
+        bus = MessageBus(address, logger=logger)
         try:
             assert bus._address == address
             assert bus._pub_socket is not None
@@ -54,8 +54,7 @@ class TestMessageBusBasic:
         address = "tcp://127.0.0.1:5556"
         
         # 创建实例
-        bus_pub = MessageBus(address, role="publisher")
-        bus_sub = MessageBus(address, role="subscriber")
+        bus = MessageBus(address, logger=logger)
         
         try:
             # 等待订阅者准备就绪
@@ -64,14 +63,14 @@ class TestMessageBusBasic:
             # 创建接收任务
             received = []
             receive_task = asyncio.create_task(
-                self._receive_message(bus_sub, received)
+                self._receive_message(bus, received)
             )
             
             # 给接收任务一点时间启动
             await asyncio.sleep(0.1)
             
             # 发送测试消息
-            bus_pub.publish("test", {"msg": "hello"})
+            bus.publish("test", {"msg": "hello"})
             
             # 等待接收完成
             try:
@@ -84,8 +83,7 @@ class TestMessageBusBasic:
             assert received[0]["msg"] == "hello"
             
         finally:
-            bus_pub.cleanup()
-            bus_sub.cleanup()
+            bus.cleanup()
             
     async def _receive_message(self, bus, received):
         """接收消息的辅助方法"""

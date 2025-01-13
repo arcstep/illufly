@@ -10,10 +10,6 @@ from illufly.mq.message_bus import MessageBus
 import logging
 logger = logging.getLogger(__name__)
 
-@pytest.fixture(autouse=True)
-def setup_log(caplog):
-    caplog.set_level(logging.DEBUG)
-
 class TestMessageBusBinding:
     """绑定行为测试
     
@@ -33,22 +29,24 @@ class TestMessageBusBinding:
         if hasattr(self, 'bus2'):
             self.bus2.cleanup()
 
-    def test_inproc_auto_binding(self):
-        """测试进程内自动绑定"""
-        self.bus1 = MessageBus("inproc://test", logger=logger)
-        self.bus1.start()
-        assert MessageBus._bound_socket == "inproc://test"
-        
-        self.bus2 = MessageBus("inproc://test", logger=logger)
-        self.bus2.start()
-        # 第二个实例应该不会重复绑定
-        assert MessageBus._bound_socket == "inproc://test"
+    def test_inproc_auto_binding_and_connecting(self):
+        """测试进程内自动绑定和连接"""
+        assert MessageBus._bound_socket is None
 
-    def test_ipc_auto_binding(self):
-        """测试IPC自动绑定"""
+        self.bus1 = MessageBus("inproc://test", role="publisher", logger=logger)
+        self.bus2 = MessageBus("inproc://test", role="subscriber", logger=logger)
+
+        # 第二个实例应该不会重复绑定
+        assert self.bus1._pub_socket == MessageBus._bound_socket
+        assert self.bus2._sub_socket
+
+    def test_ipc_auto_binding_and_connecting(self):
+        """测试IPC自动绑定和连接"""
+        assert MessageBus._bound_socket is None
+
         address = "ipc:///tmp/test_bus.ipc"
-        self.bus1 = MessageBus(address, auto_bind=True, logger=logger)
-        self.bus1.start()
+        self.bus1 = MessageBus(address, role="publisher", logger=logger)
+        assert MessageBus._bound_socket
         
         # 验证IPC文件创建
         path = urlparse(address).path
@@ -58,20 +56,13 @@ class TestMessageBusBinding:
         self.bus1.cleanup()
         assert not os.path.exists(path)
 
-    def test_tcp_binding(self, caplog):
-        """测试TCP绑定和自动切换到连接模式"""
+    def test_tcp_binding_and_connecting(self):
+        """测试TCP绑定"""
+        assert MessageBus._bound_socket is None
+
         address = "tcp://127.0.0.1:5555"
+        self.bus1 = MessageBus(address, role="publisher", logger=logger)
+        self.bus2 = MessageBus(address, role="subscriber", logger=logger)
         
-        self.bus1 = MessageBus(address, auto_bind=True, logger=logger)
-        self.bus1.start()
-        
-        # 第二个实例应该自动切换为连接模式
-        self.bus2 = MessageBus(address, auto_bind=True, logger=logger)
-        self.bus2.start()
-        
-        # 验证警告日志
-        assert any("Address in use, connected to:" in record.message 
-                  for record in caplog.records)
-        
-        # 清除日志记录
-        caplog.clear()
+        assert self.bus1._pub_socket == MessageBus._bound_socket
+        assert self.bus2._sub_socket

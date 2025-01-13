@@ -13,9 +13,8 @@ class MessageBus:
     _bound_socket = None  # 类变量，跟踪已绑定的socket
     _bound_lock = threading.Lock()  # 保护绑定操作的锁
     
-    def __init__(self, address="inproc://message_bus", role="publisher", logger=None):
+    def __init__(self, address="inproc://message_bus", logger=None):
         self._address = address
-        self._role = role
         self._logger = logger or logging.getLogger(__name__)
         self._pub_socket = None
         self._sub_socket = None
@@ -25,19 +24,15 @@ class MessageBus:
         self._ready = asyncio.Event()  # 用于标记初始化完成
         
         # 在构造函数中只做基本初始化
-        if role == "publisher":
-            self._try_bind()
-        else:
-            self._init_subscriber()
+        self._try_bind()
+        self._init_subscriber()
             
     def _try_bind(self):
         """尝试绑定socket，处理已存在的情况"""
         with MessageBus._bound_lock:
-            # 检查是否已有绑定的socket（仅对inproc地址）
-            if self._is_inproc and MessageBus._bound_socket:
+            # 检查是否已有绑定的socket
+            if MessageBus._bound_socket:
                 self._logger.warning(f"Address {self._address} already bound, switching to subscriber mode")
-                self._role = "subscriber"
-                self._init_subscriber()
                 return
                 
             try:
