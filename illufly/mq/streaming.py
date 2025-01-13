@@ -2,6 +2,8 @@ import asyncio
 import zmq.asyncio
 import logging
 import uuid
+import threading
+import queue
 
 from typing import Union, List, Dict, Any, Optional, AsyncIterator, Iterator, Awaitable
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
@@ -10,7 +12,7 @@ from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
 from inspect import isasyncgenfunction, isgeneratorfunction, iscoroutinefunction
 
-from .message_bus import MessageBusBase, MessageBusType, create_message_bus
+from .message_bus import MessageBus
 from .models import ServiceConfig, StreamingBlock
 
 logger = logging.getLogger(__name__)
@@ -27,7 +29,7 @@ class StreamingService(ABC):
     def __init__(
         self,
         service_name: str=None,
-        message_bus: MessageBusBase=None,
+        message_bus_address: str=None,
         service_config: ServiceConfig=None,
         logger=None
     ):
@@ -35,12 +37,13 @@ class StreamingService(ABC):
         self.service_config = service_config or ServiceConfig(service_name=service_name)
         
         # 确保消息总线以服务端角色启动
-        self.message_bus = message_bus or create_message_bus(MessageBusType.INPROC)
+        self.message_bus = MessageBus(message_bus_address, logger=logger)
         
         self._logger = logger or logging.getLogger(self.service_config.service_name)
         self._running = False
         self._bind_event = asyncio.Event()
         self._context = zmq.asyncio.Context.instance()
+        self._loop = None  # 添加循环引用
 
     @abstractmethod
     def process(self, prompt: Any, **kwargs) -> Union[
@@ -57,28 +60,28 @@ class StreamingService(ABC):
         raise NotImplementedError
 
     def start(self) -> None:
-        """启动服务"""
-
+        """同步启动服务"""
         loop = self._ensure_loop()
         if loop.is_running():
-            raise RuntimeError("Cannot call start() from an async context. Use start_async() instead.")
+            raise RuntimeError("Cannot call start() from an async context")
         loop.run_until_complete(self.start_async())
-        
+        return self
 
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
-        """确保有可用的事件循环，如果需要则创建新的"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        return loop
-        
+        """确保使用同一个事件循环"""
+        if self._loop is None:
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self._loop)
+        return self._loop
+
     async def start_async(self) -> None:
         """异步启动服务"""
         if self._running:
             self._logger.info("服务已经在运行中")
-            return
+            return self
 
         self._logger.info(f"开始启动服务 {self.service_config.service_name}")
         try:
@@ -100,6 +103,8 @@ class StreamingService(ABC):
             
             # 设置就绪事件
             self._bind_event.set()
+
+            return self
             
         except Exception as e:
             self._logger.error(f"服务启动失败: {e}")
@@ -216,30 +221,23 @@ class StreamingService(ABC):
 
     def stop(self) -> None:
         """同步停止服务"""
-        loop = self._ensure_loop()
-        if loop.is_running():
-            raise RuntimeError("Cannot call stop() from an async context. Use stop_async() instead.")
-        loop.run_until_complete(self.stop_async())
-        
+        if self._running:
+            loop = self._ensure_loop()
+            loop.run_until_complete(self.stop_async())
+            self._loop = None  # 清除循环引用
+
     async def stop_async(self) -> None:
-        """异步停止服务"""
-        if not self._running:
-            return
-            
-        self._running = False
-        self._bind_event.clear()
-        
-        # 取消并等待消息接收任务完成
-        if hasattr(self, '_receive_task'):
-            self._receive_task.cancel()
-            try:
-                await self._receive_task
-            except asyncio.CancelledError:
-                pass
-        
-        # 清理资源
-        if hasattr(self, 'rep_socket'):
-            self.rep_socket.close()
+        """停止服务"""
+        if self._running:
+            self._running = False
+            # 等待 receive_loop 完成
+            if hasattr(self, '_receive_task'):
+                try:
+                    await asyncio.wait_for(self._receive_task, timeout=5.0)
+                except asyncio.TimeoutError:
+                    self._logger.warning("Timeout waiting for receive_loop to stop")
+                except Exception as e:
+                    self._logger.error(f"Error stopping receive_loop: {e}")
 
     def _is_async_context(self) -> bool:
         """检测是否在异步上下文中"""
@@ -269,23 +267,53 @@ class StreamingService(ABC):
         self._logger.debug("Starting synchronous streaming request")
         loop = self._ensure_loop()
         
-        async_iter = self.call_async(prompt, **kwargs)
-        while True:
+        # 使用线程运行异步代码
+        result_queue = queue.Queue()
+        
+        def run_async():
             try:
-                block = loop.run_until_complete(async_iter.__anext__())
-                yield block
-            except StopAsyncIteration:
-                break
-            
+                async_iter = self.call_async(prompt, **kwargs)
+                while True:
+                    try:
+                        block = loop.run_until_complete(async_iter.__anext__())
+                        result_queue.put(("block", block))
+                    except StopAsyncIteration:
+                        result_queue.put(("done", None))
+                        break
+                    except Exception as e:
+                        result_queue.put(("error", e))
+                        break
+            finally:
+                if hasattr(async_iter, 'aclose'):
+                    loop.run_until_complete(async_iter.aclose())
+
+        thread = threading.Thread(target=run_async)
+        thread.start()
+        
+        try:
+            while True:
+                msg_type, data = result_queue.get()
+                if msg_type == "block":
+                    yield data
+                elif msg_type == "error":
+                    raise data
+                elif msg_type == "done":
+                    break
+        finally:
+            thread.join(timeout=5)
+
     async def call_async(self, prompt: Any, **kwargs) -> AsyncIterator[StreamingBlock]:
         """异步调用接口"""
-        if not self._running:  # 修正条件判断
+        if not self._running:
             raise RuntimeError("Service not started")
         
         if not prompt:
             raise ValueError("Prompt cannot be Empty")
         
         self._logger.info(f"开始异步流式请求: prompt={prompt}")
+        
+        req_socket = None
+        subscription = None
         
         try:
             # 等待服务端绑定完成
@@ -300,21 +328,17 @@ class StreamingService(ABC):
             self._logger.debug("发送初始化请求")
             await req_socket.send_json({"command": "init"})
             response = await req_socket.recv_json()
-            self._logger.debug(f"收到初始化响应: {response}")
             
             if response["status"] != "success":
                 raise RuntimeError(f"初始化失败: {response.get('error', 'Unknown error')}")
             
-            thread_id = response.get("thread_id")
-            topics = response.get("topics", {})
-            self._logger.info(f"会话初始化成功: thread_id={thread_id}")
-
+            thread_id = response["thread_id"]
+            topics = response["topics"]
+            
             # 订阅消息通道
-            self._logger.debug(f"订阅消息通道: {topics.values()}")
-            subscription = self.message_bus.subscribe(list(topics.values()))
-
+            subscription = await self.message_bus.subscribe(list(topics.values()))
+            
             # 发送处理请求
-            self._logger.debug("发送处理请求")
             await req_socket.send_json({
                 "command": "process",
                 "thread_id": thread_id,
@@ -323,59 +347,90 @@ class StreamingService(ABC):
             })
             
             response = await req_socket.recv_json()
-            self._logger.debug(f"收到处理响应: {response}")
-            
             if response["status"] != "success":
                 raise RuntimeError(f"处理请求失败: {response.get('error', 'Unknown error')}")
 
             # 接收流式响应
-            self._logger.info("开始接收流式响应")
-            async with asyncio.timeout(10):
-                async for block in subscription:
-                    self._logger.debug(f"收到消息块: {block}")
-                    if block.get("error"):
-                        raise RuntimeError(block["error"])
-                    elif block.get("block_type") == "end":
-                        self._logger.info("流式响应完成")
-                        yield StreamingBlock(**block)
+            async with asyncio.timeout(kwargs.get('timeout', 30)):
+                async for message in subscription:
+                    block = StreamingBlock(**message)
+                    if block.block_type == "error":
+                        raise RuntimeError(block.content)
+                    elif block.block_type == "end":
                         break
-                    else:
-                        yield StreamingBlock(**block)
-
+                    yield block
+                    
+        except asyncio.TimeoutError:
+            raise TimeoutError("请求超时")
         except Exception as e:
             self._logger.error(f"流式请求处理失败: {e}")
             raise
         finally:
-            if 'req_socket' in locals():
+            if subscription:
+                await subscription.aclose()
+            if req_socket:
                 req_socket.close()
         
     async def _adapt_process_request(self, prompt: Any, **kwargs) -> AsyncIterator[StreamingBlock]:
-        """适配不同的 process 实现为统一的异步迭代器"""
-        result = self.process(prompt, **kwargs)
-        
-        # 检查实现类型
-        if isasyncgenfunction(self.process):
-            # 异步生成器
-            self._logger.debug("Using async generator implementation")
-            async for block in result:
-                yield block
-                
-        elif isgeneratorfunction(self.process):
-            # 同步生成器
-            self._logger.debug("Using sync generator implementation")
-            for block in result:
-                yield block
-                
-        elif iscoroutinefunction(self.process):
-            # 异步返回值
-            self._logger.debug("Using async return implementation")
-            block = await result
-            yield block
+        """适配不同的返回类型为统一的异步迭代器"""
+        try:
+            result = self.process(prompt, **kwargs)
             
+            # 处理异步结果
+            if hasattr(result, '__aiter__'):
+                # 异步迭代器
+                self._logger.debug("Adapting async iterator result")
+                async for item in result:
+                    yield self._convert_to_block(item)
+                    
+            elif hasattr(result, '__iter__') and not isinstance(result, (str, bytes, dict)):
+                # 同步迭代器 (排除字符串、字节和字典类型)
+                self._logger.debug("Adapting sync iterator result")
+                for item in result:
+                    yield self._convert_to_block(item)
+                    
+            elif asyncio.iscoroutine(result):
+                # 异步返回值
+                self._logger.debug("Adapting async return value")
+                item = await result
+                yield self._convert_to_block(item)
+                
+            else:
+                # 同步返回值
+                self._logger.debug("Adapting sync return value")
+                yield self._convert_to_block(result)
+                
+        except Exception as e:
+            self._logger.error(f"处理请求时出错: {e}")
+            yield StreamingBlock(block_type="error", content=str(e))
+            raise
+        finally:
+            # 确保生成结束块
+            yield StreamingBlock(block_type="end", content="")
+
+    def _convert_to_block(self, item: Any) -> StreamingBlock:
+        """将任意类型的返回值转换为 StreamingBlock"""
+        if isinstance(item, StreamingBlock):
+            return item
+        elif isinstance(item, dict):
+            # 如果是字典，检查是否包含特定字段
+            if "block_type" in item and "content" in item:
+                return StreamingBlock(**item)
+            else:
+                return StreamingBlock(
+                    block_type="chunk",
+                    content=json.dumps(item, ensure_ascii=False)
+                )
+        elif isinstance(item, (list, tuple)):
+            return StreamingBlock(
+                block_type="chunk",
+                content=json.dumps(item, ensure_ascii=False)
+            )
         else:
-            # 同步返回值
-            self._logger.debug("Using sync return implementation")
-            yield result
+            return StreamingBlock(
+                block_type="chunk",
+                content=str(item)
+            )
 
     def __enter__(self) -> 'BaseStreamingService':
         """同步上下文管理器入口"""

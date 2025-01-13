@@ -1,0 +1,64 @@
+interactions:
+- request:
+    body:
+      input:
+        messages:
+        - content: "\u4F60\u597D"
+          role: user
+      model: qwen-plus
+      parameters:
+        base_url: null
+        incremental_output: true
+        result_format: message
+    headers:
+      Accept:
+      - text/event-stream
+      Content-Type:
+      - application/json
+      X-Accel-Buffering:
+      - 'no'
+      X-DashScope-SSE:
+      - enable
+      user-agent:
+      - dashscope/1.20.14; python/3.11.7; platform/macOS-14.6.1-x86_64-i386-64bit;
+        processor/i386
+    method: POST
+    uri: https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation
+  response:
+    body:
+      string: "id:1\nevent:result\n:HTTP_STATUS/200\ndata:{\"output\":{\"choices\":[{\"message\":{\"content\":\"\u4F60\u597D\",\"role\":\"assistant\"},\"finish_reason\":\"null\"}]},\"usage\":{\"total_tokens\":10,\"output_tokens\":1,\"input_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0}},\"request_id\":\"8eb7a1dc-62a2-9813-90f9-8a1324a2ee03\"}\n\nid:2\nevent:result\n:HTTP_STATUS/200\ndata:{\"output\":{\"choices\":[{\"message\":{\"content\":\"\uFF01\",\"role\":\"assistant\"},\"finish_reason\":\"null\"}]},\"usage\":{\"total_tokens\":11,\"output_tokens\":2,\"input_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0}},\"request_id\":\"8eb7a1dc-62a2-9813-90f9-8a1324a2ee03\"}\n\nid:3\nevent:result\n:HTTP_STATUS/200\ndata:{\"output\":{\"choices\":[{\"message\":{\"content\":\"\u6709\u4EC0\u4E48\",\"role\":\"assistant\"},\"finish_reason\":\"null\"}]},\"usage\":{\"total_tokens\":12,\"output_tokens\":3,\"input_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0}},\"request_id\":\"8eb7a1dc-62a2-9813-90f9-8a1324a2ee03\"}\n\nid:4\nevent:result\n:HTTP_STATUS/200\ndata:{\"output\":{\"choices\":[{\"message\":{\"content\":\"\u6211\u53EF\u4EE5\u5E2E\u4F60\u7684\u5417\",\"role\":\"assistant\"},\"finish_reason\":\"null\"}]},\"usage\":{\"total_tokens\":16,\"output_tokens\":7,\"input_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0}},\"request_id\":\"8eb7a1dc-62a2-9813-90f9-8a1324a2ee03\"}\n\nid:5\nevent:result\n:HTTP_STATUS/200\ndata:{\"output\":{\"choices\":[{\"message\":{\"content\":\"\uFF1F\",\"role\":\"assistant\"},\"finish_reason\":\"null\"}]},\"usage\":{\"total_tokens\":17,\"output_tokens\":8,\"input_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0}},\"request_id\":\"8eb7a1dc-62a2-9813-90f9-8a1324a2ee03\"}\n\nid:6\nevent:result\n:HTTP_STATUS/200\ndata:{\"output\":{\"choices\":[{\"message\":{\"content\":\"\",\"role\":\"assistant\"},\"finish_reason\":\"stop\"}]},\"usage\":{\"total_tokens\":17,\"output_tokens\":8,\"input_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0}},\"request_id\":\"8eb7a1dc-62a2-9813-90f9-8a1324a2ee03\"}\n\n"
+    headers:
+      Content-Type:
+      - text/event-stream;charset=UTF-8
+      Date:
+      - Mon, 13 Jan 2025 02:07:02 GMT
+      Server:
+      - istio-envoy
+      Set-Cookie:
+      - acw_tc=8eb7a1dc-62a2-9813-90f9-8a1324a2ee03eb0e821087ebbd7b0590b95a207cb394;path=/;HttpOnly;Max-Age=1800
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin,Access-Control-Request-Method,Access-Control-Request-Headers
+      eagleeye-traceid:
+      - 622a661f6a586e5b2abb2dc3642e1ec6
+      req-arrive-time:
+      - '1736734022680'
+      req-cost-time:
+      - '236'
+      resp-start-time:
+      - '1736734022917'
+      x-dashscope-call-gateway:
+      - 'true'
+      x-dashscope-finished:
+      - 'false'
+      x-dashscope-timeout:
+      - '180'
+      x-envoy-upstream-service-time:
+      - '229'
+      x-request-id:
+      - 8eb7a1dc-62a2-9813-90f9-8a1324a2ee03
+    status:
+      code: 200
+      message: OK
+version: 1

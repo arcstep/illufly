@@ -17,6 +17,7 @@ faiss-cpu = "^1.8.0.post1"
 python-dotenv = "^1.0.1"
 asyncio = "^3.4.3"
 regex = "^2024.11.6"
+openai = "^1.59.6"
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^69.1.0"
@@ -24,7 +25,6 @@ poetry2setup = "^1.1.0"
 ipykernel = "^6.29.2"
 markdown = "^3.6"
 dashscope = "^1.20.11"
-pytest-benchmark = "^5.1.0"
 pandas = "^2.2.3"
 pyyaml = "^6.0.2"
 seaborn = "^0.13.2"
@@ -34,20 +34,20 @@ optional = true
 
 [tool.poetry.group.test.dependencies]
 behave = "^1.2.6"
-pytest = "^8.2.0"
 pytest-bdd = "^8.1.0"
 allure-pytest = "^2.13.5"
 pytest-cov = "^4.0.0"
-pytest-asyncio = ">=0.23.0"
 trio = "^0.27.0"
 httpx = "^0.24.0"
 freezegun = "^1.2.0"
 sse-starlette = "^2.1.2"
 pytest-timeout = "^2.3.1"
-vcrpy = "^7.0.0"
+vcrpy = "6.0.1"
 anyio = "^4.8.0"
 pytest-tornasync = "^0.6.0.post2"
 pytest-trio = "^0.8.0"
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
