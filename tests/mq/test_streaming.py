@@ -18,6 +18,16 @@ def setup_logging(caplog):
     """设置日志级别"""
     caplog.set_level(logging.DEBUG)
 
+class TextReturnService(StreamingService):
+    """同步返回值实现"""
+    def process(self, prompt: str, **kwargs) -> StreamingBlock:
+        return f"Test response for: {prompt}"
+
+class DictReturnService(StreamingService):
+    """同步返回值实现"""
+    def process(self, prompt: str, **kwargs) -> StreamingBlock:
+        return {"myreplay": "Test response for:hello", "myname": "illufly"}
+
 class SyncReturnService(StreamingService):
     """同步返回值实现"""
     def process(self, prompt: str, **kwargs) -> StreamingBlock:
@@ -84,9 +94,9 @@ def test_sync_service_streaming_response():
             logger.info(f"Received block: {block}")
         
         # 验证响应
-        assert len(blocks) == 1
+        assert len(blocks) == 2
         assert blocks[0].content == "Test response for: test prompt"
-        assert blocks[0].block_type == "text"
+        assert blocks[0].block_type == "chunk"
         
     finally:
         service.stop()
@@ -105,9 +115,9 @@ async def test_service_streaming_response():
             logger.info(f"Received block: {block}")
         
         # 验证响应
-        assert len(blocks) == 1
+        assert len(blocks) == 2
         assert blocks[0].content == "Test response for: test prompt"
-        assert blocks[0].block_type == "text"
+        assert blocks[0].block_type == "chunk"
         
     finally:
         await service.stop_async()
@@ -136,9 +146,9 @@ async def test_service_concurrent_requests():
         
         # 验证所有请求的响应
         for i, blocks in enumerate(results):
-            assert len(blocks) == 1
+            assert len(blocks) == 2
             assert blocks[0].content == f"Test response for: prompt_{i}"
-            assert blocks[0].block_type == "text"
+            assert blocks[0].block_type == "chunk"
             
     finally:
         await service.stop_async()
@@ -188,7 +198,7 @@ async def test_service_cleanup():
         async for block in service("test prompt"):
             blocks.append(block)
         
-        assert len(blocks) == 1
+        assert len(blocks) == 2
         assert "test prompt" in blocks[0].content
         
     finally:
@@ -202,9 +212,9 @@ def test_service_sync_context():
             blocks.append(block)
             logger.info(f"Received block: {block}")
             
-        assert len(blocks) == 1
+        assert len(blocks) == 2
         assert blocks[0].content == "Test response for: test prompt"
-        assert blocks[0].block_type == "text"
+        assert blocks[0].block_type == "chunk"
 
 @pytest.mark.asyncio
 async def test_service_async_context():
@@ -215,9 +225,9 @@ async def test_service_async_context():
             blocks.append(block)
             logger.info(f"Received block: {block}")
             
-        assert len(blocks) == 1
+        assert len(blocks) == 2
         assert blocks[0].content == "Test response for: test prompt"
-        assert blocks[0].block_type == "text"
+        assert blocks[0].block_type == "chunk"
 
 def test_service_context_error_handling():
     """测试上下文管理器的错误处理"""
@@ -244,7 +254,9 @@ async def test_service_async_context_error_handling():
     SyncReturnService,
     SyncGeneratorService,
     AsyncReturnService,
-    AsyncGeneratorService
+    AsyncGeneratorService,
+    DictReturnService,
+    TextReturnService
 ])
 def test_service_implementations(service_class):
     """测试不同的实现方式"""
@@ -254,15 +266,17 @@ def test_service_implementations(service_class):
         for block in service("test prompt"):
             blocks.append(block)
             
-        assert len(blocks) == 1
-        assert blocks[0].content == "Test response for: test prompt"
-        assert blocks[0].block_type == "text"
+        assert len(blocks) == 2
+        assert "Test response for" in blocks[0].content
+        assert blocks[0].block_type == "chunk"
 
 @pytest.mark.parametrize("service_class", [
     SyncReturnService,
     SyncGeneratorService,
     AsyncReturnService,
-    AsyncGeneratorService
+    AsyncGeneratorService,
+    DictReturnService,
+    TextReturnService
 ])
 @pytest.mark.asyncio
 async def test_service_implementations_async(service_class):
@@ -273,6 +287,6 @@ async def test_service_implementations_async(service_class):
         async for block in service("test prompt"):
             blocks.append(block)
             
-        assert len(blocks) == 1
-        assert blocks[0].content == "Test response for: test prompt"
-        assert blocks[0].block_type == "text"
+        assert len(blocks) == 2
+        assert "Test response for" in blocks[0].content
+        assert blocks[0].block_type == "chunk"

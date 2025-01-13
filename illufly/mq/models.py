@@ -25,6 +25,6 @@ class ServiceConfig(BaseModel):
 
 class StreamingBlock(BaseModel):
     """流式响应块"""
-    block_type: str  # start, chunk, end, error
+    block_type: str = "chunk"  # start, chunk, end, error
     content: Optional[str] = None
     error: Optional[str] = None

@@ -149,12 +149,18 @@ class StreamingService(ABC):
                         try:
                             async for block in self._adapt_process_request(prompt, **kwargs):
                                 # 根据消息类型选择对应的 topic
+                                if not isinstance(block, StreamingBlock):
+                                    block = StreamingBlock(content=str(block))
                                 if block.block_type == "end":
                                     topic = topics["topic_end"]
                                 elif block.block_type == "error":
                                     topic = topics["topic_error"]
                                 else:
                                     topic = topics["topic_chunk"]
+                                
+                                # 只允许预期的 block_type
+                                if block.block_type not in ["start", "chunk", "end", "error", "info"]:
+                                    block.block_type = "chunk"
                                     
                                 self._logger.debug(f"Publishing to topic: {topic}, block: {block}")
                                 await self.message_bus.publish(
