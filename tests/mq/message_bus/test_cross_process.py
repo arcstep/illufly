@@ -10,7 +10,6 @@ from illufly.mq.message_bus import MessageBus
 import logging
 logger = logging.getLogger(__name__)
 
-
 class TestCrossProcessCommunication:
     """跨进程通信测试
     
@@ -28,72 +27,66 @@ class TestCrossProcessCommunication:
         if hasattr(self, 'bus'):
             self.bus.cleanup()
 
-    def test_ipc_cross_process(self):
+    def test_ipc_cross_process(self, caplog):
         """测试IPC跨进程通信"""
         address = "ipc:///tmp/test_cross_process.ipc"
-        subscribe_event = multiprocessing.Event()
-        done_event = multiprocessing.Event()
+        # 确保开始测试时文件不存在
+        path = urlparse(address).path
+        if os.path.exists(path):
+            os.unlink(path)
+        subscribe_done = multiprocessing.Event()
+        collect_event = multiprocessing.Event()
         
         # 启动发布者进程
         process = multiprocessing.Process(
             target=run_ipc_publisher,
-            args=(address, subscribe_event, done_event)
+            args=(address, subscribe_done, collect_event)
         )
         process.start()
-        logger.info(f"Publisher process started with PID: {process.pid}")
-        logger.info(f"Publisher process is alive: {process.is_alive()}")
+        logger.info(f"启动订阅者子进程，PID: {process.pid}")
+        logger.info(f"订阅者子进程状态: {process.is_alive()}")
 
         # 在主进程中订阅
         received = []
-        async def subscribe():
-            try:
-                async with asyncio.timeout(3.0):
-                    logger.info("Starting subscription")
-                    self.bus = MessageBus(address, to_bind=False, to_connect=True, logger=logger)
-                    logger.info("Subscriber started")
-                    sub_results = self.bus.subscribe(["test"])
-                    await asyncio.sleep(0.1)
-                    subscribe_event.set()
-                    async for msg in sub_results:
-                        logger.info(f"Received message: {msg}")
-                        received.append(msg)
-                        break
-            except asyncio.TimeoutError:
-                logger.error(f"Subscription timed out, publisher alive: {process.is_alive()}")
-                if process.exitcode is not None:
-                    logger.error(f"Publisher process exited with code: {process.exitcode}")
-                raise
-            finally:
-                logger.info("Subscription completed")
-        
         try:
-            asyncio.run(subscribe())
+            self.bus = MessageBus(address, to_bind=False, to_connect=True, logger=logger)
+            self.bus.subscribe(["test"])
+            logger.info("我订阅了，等待子进程发布消息 ... ")
+            time.sleep(0.2)  # 给订阅一些建立的时间
+            subscribe_done.set()
+            received = list(self.bus.collect())
+            logger.info(f"我收到消息了，消息数量: {len(received)}，你可以退出")
+        except Exception as e:
+            logger.error(f"订阅超时，发布者状态: {process.is_alive()}")
+            if process.exitcode is not None:
+                logger.error(f"Publisher process exited with code: {process.exitcode}")
+            raise
         finally:
-            # 通知发布者可以退出了
-            logger.info("Signaling publisher to exit")
-            done_event.set()
+            collect_event.set()
             process.join(timeout=1)
             if process.is_alive():
-                logger.warning("Had to terminate publisher process")
+                logger.warning("已经过了1秒，你还没退出，不得不强行终止")
                 process.terminate()
-            logger.info(f"Publisher process final exit code: {process.exitcode}")
+            logger.info(f"发布者进程最终退出码: {process.exitcode}")
 
-def run_ipc_publisher(address, subscribe_event, done_event):
+def run_ipc_publisher(address, subscribe_done, collect_event):
     """在另一个进程中运行IPC发布者"""    
+    logging.basicConfig(level=logging.DEBUG)
+
     try:
-        logger.info(f"Publisher process starting with address: {address}")
+        logger.info(f"发布者绑定到地址: {address}")
         bus = MessageBus(address, to_bind=True, to_connect=False, logger=logger)
-        logger.info("Publisher started")
+        logger.info("我是发布者，等你准备好订阅我就继续 ... ")
         
-        subscribe_event.wait()
+        subscribe_done.wait()
         time.sleep(0.2)  # 给订阅一些建立的时间
         bus.publish("test", {"msg": "from another process"})
-        logger.info("Message published")
+        bus.publish("test", end=True)
         
         # 等待主进程通知可以退出
-        logger.info("Waiting for done signal")
-        done_event.wait()
-        logger.info("Received done signal, cleaning up")
+        logger.info("我已经发布完消息，等你接收完就通知我退出")
+        collect_event.wait()
+        logger.info("我现在退出了")
         
         bus.cleanup()
         logger.info("Publisher cleaned up")

@@ -9,4 +9,4 @@ set +a
 # 将上级目录的绝对路径添加到 PYTHONPATH
 export PYTHONPATH="$SCRIPT_DIR/:$PYTHONPATH"
 
-jupyter lab
+poetry run jupyter lab

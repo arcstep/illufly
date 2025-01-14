@@ -18,6 +18,7 @@ python-dotenv = "^1.0.1"
 asyncio = "^3.4.3"
 regex = "^2024.11.6"
 openai = "^1.59.6"
+async-timeout = "^5.0.1"
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^69.1.0"
@@ -28,6 +29,7 @@ dashscope = "^1.20.11"
 pandas = "^2.2.3"
 pyyaml = "^6.0.2"
 seaborn = "^0.13.2"
+jupyter = "^1.1.1"
 
 [tool.poetry.group.test]
 optional = true

@@ -20,7 +20,6 @@ class TestPubSubFunctionality:
     4. 验证高负载下的性能表现
     """
     
-    @pytest.mark.asyncio
     @pytest.mark.parametrize("address", [
         "inproc://test_pubsub",
         pytest.param(
@@ -32,7 +31,7 @@ class TestPubSubFunctionality:
         ),
         "tcp://127.0.0.1:5555"
     ])
-    async def test_pub_sub_basic(self, address):
+    def test_pub_sub_basic(self, address):
         """测试基本的发布订阅功能
         
         验证不同传输模式下：
@@ -42,48 +41,70 @@ class TestPubSubFunctionality:
         """
         bus1 = MessageBus(address=address, logger=logger)
         bus2 = MessageBus(address=address, logger=logger)
-        received = []
         
         try:
-            # 等待连接建立
-            await asyncio.sleep(0.1)
-            
-            async def subscriber():
-                async with asyncio.timeout(1.0):
-                    async for msg in bus2.subscribe(["test"]):
-                        logger.debug(f"Subscriber received: {msg}")
-                        received.append(msg)
-                        if len(received) >= 2:
-                            break
-            
-            # 启动订阅任务
-            sub_task = asyncio.create_task(subscriber())
-            # 等待订阅建立
-            await asyncio.sleep(0.1)
-            
-            logger.debug("Starting to publish messages")
+            bus2.subscribe(["test"])
             # 发送多条消息
-            bus1.publish("test", {"msg": "hello1"})
-            bus1.publish("test", {"msg": "hello2"})
+            bus1.publish("test", {"msg": "hello1"}, end=False)
+            bus1.publish("test", {"msg": "hello2"}, end=True)
             
-            await sub_task
-            assert len(received) == 2
+            received = list(bus2.collect("test"))
+            assert len(received) == 3
             assert received[0]["msg"] == "hello1"
             assert received[1]["msg"] == "hello2"
             
         finally:
             bus1.cleanup()
             bus2.cleanup()
+
+    @pytest.mark.parametrize("address", [
+        "inproc://test_pubsub",
+        pytest.param(
+            "ipc:///tmp/test_pubsub.ipc", 
+            marks=pytest.mark.skipif(
+                os.name == 'nt', 
+                reason="IPC not supported on Windows"
+            )
+        ),
+        "tcp://127.0.0.1:5555"
+    ])
+    def test_pub_multi_topics(self, address):
+        """测试多主题发布订阅功能
+        
+        验证不同传输模式下：
+        1. 发布者和订阅者能正确通信
+        2. 消息顺序保持正确
+        3. 资源能正确清理
+        """
+        bus1 = MessageBus(address=address, logger=logger)
+        bus2 = MessageBus(address=address, logger=logger)
+        
+        try:
+            bus2.subscribe(["test1", "test2"])
+            # 发送多条消息
+            bus1.publish("test1", {"msg": "hello1"}, end=False)
+            bus1.publish("test2", {"msg": "hello2"}, end=False)
+            bus1.publish("test1", end=True)
             
-    @pytest.mark.asyncio
+            received = list(bus2.collect(["test1", "test2"]))
+            assert len(received) == 3
+            assert received[0]["msg"] == "hello1"
+            assert received[1]["msg"] == "hello2"
+            
+        finally:
+            bus1.cleanup()
+            bus2.cleanup()
+
     @pytest.mark.parametrize("address", [
         "inproc://test_multiple",
-        pytest.param("ipc:///tmp/test_multiple.ipc", 
-                    marks=pytest.mark.skipif(os.name == 'nt', 
-                                          reason="IPC not supported on Windows")),
+        pytest.param(
+            "ipc:///tmp/test_multiple.ipc", 
+            marks=pytest.mark.skipif(os.name == 'nt', 
+            reason="IPC not supported on Windows")
+        ),
         "tcp://127.0.0.1:5556"
     ])
-    async def test_multiple_subscribers(self, address):
+    def test_multiple_subscribers(self, address):
         """测试多个订阅者
         
         验证不同传输模式下：
@@ -93,31 +114,14 @@ class TestPubSubFunctionality:
         bus_pub = MessageBus(address=address, logger=logger)
         bus_sub1 = MessageBus(address=address, logger=logger)
         bus_sub2 = MessageBus(address=address, logger=logger)
-        received1 = []
-        received2 = []
         
         try:
-            await asyncio.sleep(0.1)
-            
-            async def subscriber1():
-                async with asyncio.timeout(1.0):
-                    async for msg in bus_sub1.subscribe(["test"]):
-                        received1.append(msg)
-                        break
-                        
-            async def subscriber2():
-                async with asyncio.timeout(1.0):
-                    async for msg in bus_sub2.subscribe(["test"]):
-                        received2.append(msg)
-                        break
-            
-            sub_task1 = asyncio.create_task(subscriber1())
-            sub_task2 = asyncio.create_task(subscriber2())
-            await asyncio.sleep(0.1)
-            
-            bus_pub.publish("test", {"msg": "hello"})
-            
-            await asyncio.gather(sub_task1, sub_task2)
+            bus_sub1.subscribe(["test"])
+            bus_sub2.subscribe(["test"])
+            bus_pub.publish("test", {"msg": "hello"}, end=True)
+
+            received1 = list(bus_sub1.collect("test"))
+            received2 = list(bus_sub2.collect("test"))
             assert received1[0]["msg"] == "hello"
             assert received2[0]["msg"] == "hello"
             
@@ -126,41 +130,25 @@ class TestPubSubFunctionality:
             bus_sub1.cleanup()
             bus_sub2.cleanup()
 
-    @pytest.mark.asyncio
-    async def test_topic_filtering(self):
+    def test_topic_filtering(self):
         """测试主题过滤"""
         bus1 = MessageBus(logger=logger)
         bus2 = MessageBus(logger=logger)
         received = []
         
-        try:
-            
-            # 等待连接建立
-            await asyncio.sleep(0.1)
-            
-            async def subscriber():
-                async with asyncio.timeout(1.0):
-                    async for msg in bus2.subscribe(["topic1"]):
-                        received.append(msg)
-                        break
-            
-            sub_task = asyncio.create_task(subscriber())
-            await asyncio.sleep(0.1)
-            
-            # 发送到不同主题
-            bus1.publish("topic1", {"msg": "hello1"})
-            bus1.publish("topic2", {"msg": "hello2"})
-            
-            await sub_task
-            assert len(received) == 1
+        try:            
+            bus2.subscribe(["topic1"])
+            bus1.publish("topic1", {"msg": "hello1"}, end=True)
+            bus1.publish("topic2", {"msg": "hello2"}, end=True)
+            received = list(bus2.collect("topic1"))
+            assert len(received) == 2
             assert received[0]["msg"] == "hello1"
             
         finally:
             bus1.cleanup()
             bus2.cleanup()
 
-    @pytest.mark.asyncio
-    async def test_high_load_pub_sub(self):
+    def test_high_load_pub_sub(self, caplog):
         """测试高负载场景
         
         验证在大量消息和多个订阅者的情况下：
@@ -168,49 +156,34 @@ class TestPubSubFunctionality:
         2. 顺序保持正确
         3. 系统保持稳定
         """
+        caplog.set_level(logging.INFO)
+
         bus_pub = MessageBus(logger=logger)
         bus_sub1 = MessageBus(logger=logger)
         bus_sub2 = MessageBus(logger=logger)
-        received1 = []
-        received2 = []
         
         MSG_COUNT = 1000  # 每个主题发送1000条消息
         TOPICS = ["topic1", "topic2"]  # 测试多个主题
         
-        try:
-            await asyncio.sleep(0.1)
-            
-            async def subscriber(bus, received, expected_count):
-                async with asyncio.timeout(5.0):  # 增加超时时间
-                    async for msg in bus.subscribe(TOPICS):
-                        received.append(msg)
-                        if len(received) >= expected_count:
-                            break
-            
-            # 启动订阅者
-            sub_task1 = asyncio.create_task(
-                subscriber(bus_sub1, received1, MSG_COUNT * len(TOPICS))
-            )
-            sub_task2 = asyncio.create_task(
-                subscriber(bus_sub2, received2, MSG_COUNT * len(TOPICS))
-            )
-            await asyncio.sleep(0.5)
+        try: 
+            bus_sub1.subscribe(TOPICS)
+            bus_sub2.subscribe(TOPICS)
             
             # 高速发布消息
             start_time = time.time()
             for topic in TOPICS:
                 for i in range(MSG_COUNT):
-                    bus_pub.publish(topic, {
-                        "seq": i,
-                        "topic": topic,
-                        "msg": f"message-{i}"
-                    })
-            
-            # 等待所有消息接收完成
-            await asyncio.gather(sub_task1, sub_task2)
-            elapsed = time.time() - start_time
+                    bus_pub.publish(
+                        topic,
+                        {"seq": i, "topic": topic, "msg": f"message-{i}"},
+                        end=False
+                    )
+            bus_pub.publish("topic2", end=True)
             
             # 验证结果
+            received1 = list(bus_sub1.collect(TOPICS, timeout=5.0))
+            received2 = list(bus_sub2.collect(TOPICS, timeout=5.0))
+
             for received in [received1, received2]:
                 # 检查消息数量
                 assert len(received) == MSG_COUNT * len(TOPICS)
@@ -223,6 +196,7 @@ class TestPubSubFunctionality:
                     assert sequences == list(range(MSG_COUNT))
             
             # 记录性能指标
+            elapsed = time.time() - start_time
             total_msgs = MSG_COUNT * len(TOPICS) * 2  # 2个订阅者
             msg_per_sec = total_msgs / elapsed
             logger.info(f"Processed {total_msgs} messages in {elapsed:.2f} seconds")

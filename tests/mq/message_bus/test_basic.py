@@ -48,48 +48,74 @@ class TestMessageBusBasic:
         finally:
             bus.cleanup()
             
-    @pytest.mark.asyncio
-    async def test_pub_sub_communication(self):
+    def test_pub_sub_communication(self):
         """测试显式发布订阅通信"""
-        address = "tcp://127.0.0.1:5556"
-        
         # 创建实例
-        bus = MessageBus(address, logger=logger)
+        bus = MessageBus(logger=logger)
         
         try:
-            # 等待订阅者准备就绪
-            # await bus_sub.ensure_ready()
-            
-            # 创建接收任务
-            received = []
-            receive_task = asyncio.create_task(
-                self._receive_message(bus, received)
-            )
-            
-            # 给接收任务一点时间启动
-            await asyncio.sleep(0.1)
-            
             # 发送测试消息
+            bus.subscribe("test")
             bus.publish("test", {"msg": "hello"})
-            
-            # 等待接收完成
-            try:
-                await asyncio.wait_for(receive_task, timeout=1.0)
-            except asyncio.TimeoutError:
-                receive_task.cancel()
-                raise
-                
-            assert len(received) == 1
+            bus.publish("test")
+            time.sleep(0.1)
+            received = list(bus.collect())
+
+            assert len(received) == 2
             assert received[0]["msg"] == "hello"
             
         finally:
             bus.cleanup()
             
-    async def _receive_message(self, bus, received):
-        """接收消息的辅助方法"""
-        bus._sub_socket.subscribe(b"test")
-        async for msg in bus.subscribe(["test"]):
-            if msg.get("topic") != "_heartbeat":
-                received.append(msg)
-                break
+    def test_collect_messages(self):
+        """测试简洁的消息收集方法"""
+        address = "tcp://127.0.0.1:5557"
+        bus = MessageBus(address, logger=logger)
+        
+        try:
+            # 先创建订阅，等待连接建立
+            time.sleep(0.1)  # 给ZMQ一点时间建立连接
+            
+            # 发送一系列消息
+            bus.publish("test", {"block_type": "start", "content": "hello"})
+            bus.publish("test", {"block_type": "data", "content": "world"})
+            bus.publish("test", {"block_type": "end", "content": "done"})
+            bus.publish("test")
+            
+            # 收集消息
+            messages = list(bus.collect())
+            
+            # 验证消息
+            assert len(messages) == 3
+            assert messages[0]["block_type"] == "start"
+            assert messages[0]["content"] == "hello"
+            assert messages[1]["block_type"] == "data"
+            assert messages[1]["content"] == "world"
+            assert messages[2]["block_type"] == "end"
+            assert messages[2]["content"] == "done"
+            
+        finally:
+            bus.cleanup()
+            
+    def test_collect_timeout(self):
+        """测试消息收集超时"""
+        address = "tcp://127.0.0.1:5558"
+        bus = MessageBus(address, logger=logger)
+        
+        try:
+            # 发送一条消息但不发送结束标记
+            bus.publish("test", {"block_type": "data", "content": "hello"})
+            
+            # 收集消息，应该在超时后返回
+            start_time = time.time()
+            messages = list(bus.collect(timeout=0.5))
+            elapsed = time.time() - start_time
+            
+            # 验证结果
+            assert len(messages) == 1
+            assert messages[0]["content"] == "hello"
+            assert 0.4 < elapsed < 0.6  # 验证确实等待了大约0.5秒
+            
+        finally:
+            bus.cleanup()
 
