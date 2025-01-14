@@ -19,8 +19,17 @@ class TestMessageBusBasic:
     4. 验证发布者/订阅者的自动角色切换
     """
     
-    def setup_method(self, method):
-        MessageBus._bound_socket = None
+    def setup_method(self):
+        """测试前清理环境"""
+        # 清理可能存在的 IPC 文件
+        if os.path.exists("/tmp/test.ipc"):
+            os.remove("/tmp/test.ipc")
+            
+    def teardown_method(self):
+        """测试后清理环境"""
+        # 清理测试产生的 IPC 文件
+        if os.path.exists("/tmp/test.ipc"):
+            os.remove("/tmp/test.ipc")
         
     @pytest.mark.asyncio
     async def test_default_address(self):
@@ -45,6 +54,7 @@ class TestMessageBusBasic:
         try:
             assert bus._address == address
             assert bus._pub_socket is not None
+            assert bus._sub_socket is not None
         finally:
             bus.cleanup()
             

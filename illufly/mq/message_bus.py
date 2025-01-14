@@ -4,12 +4,14 @@ import zmq.asyncio
 import threading
 import logging
 import json
-from typing import List, Union, Dict, Any, Optional
+from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
 from urllib.parse import urlparse
 import time
 import tempfile
 import hashlib
 import async_timeout
+
+from illufly.base.async_service import AsyncService
 
 class MessageBus:
     _bound_socket = None
@@ -71,7 +73,7 @@ class MessageBus:
         with MessageBus._bound_lock:
             # 检查是否已有绑定的socket
             if MessageBus._bound_socket:
-                self._logger.warning(f"Address {self._address} already bound")
+                self._logger.info(f"Address {self._address} already bound")
                 return                
             try:
                 # 对于IPC，先检查文件是否存在
@@ -131,7 +133,7 @@ class MessageBus:
                 self._sub_socket.subscribe(topic.encode())
                 self._subscribed_topics.add(topic)
                 self._logger.debug(f"Auto-subscribed to topic: {topic}")
-                time.sleep(0.1)
+                time.sleep(0.01)
             if message:
                 # 使用multipart发送消息
                 self._bound_socket.send_multipart([
@@ -203,7 +205,7 @@ class MessageBus:
             
         self._logger.info("MessageBus cleaned up")
 
-    async def collect_async(self, once: bool = True, timeout: float = None):
+    async def collect_async(self, once: bool = True, timeout: float = None) -> AsyncGenerator[dict, None]:
         """异步收集消息直到收到结束标记或超时
         
         Args:
@@ -239,10 +241,8 @@ class MessageBus:
             self._logger.error(f"Collection error: {e}")
             raise
 
-    def collect(self, once: bool = True, timeout: float = 30.0):
+    def collect(self, once: bool = True, timeout: float = 30.0) -> Generator[dict, None, None]:
         """同步收集消息
-        
-        自动处理各种运行环境（Jupyter、测试、异步、同步等）
         
         Args:
             once: 是否只收集一次
@@ -251,85 +251,7 @@ class MessageBus:
         Yields:
             dict: 收到的消息
         """
-        def is_notebook():
-            try:
-                shell = get_ipython().__class__.__name__
-                return shell in ('ZMQInteractiveShell', 'Shell')
-            except NameError:
-                return False
-            
-        def get_or_create_loop():
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    import nest_asyncio
-                    nest_asyncio.apply()
-                return loop
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                return loop
-            
-        def cleanup_tasks(loop):
-            """清理所有任务"""
-            tasks = asyncio.all_tasks(loop)
-            if not tasks:
-                return
-            
-            for task in tasks:
-                task.cancel()
-            
-            # 等待所有任务取消完成
-            loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
-            
-            # 确保所有任务都已完成
-            for task in tasks:
-                if not task.done():
-                    self._logger.warning(f"Task {task.get_name()} could not be cancelled")
-            
-        async def async_generator():
-            try:
-                async for msg in self.collect_async(once=once, timeout=timeout):
-                    yield msg
-            finally:
-                if is_notebook():
-                    loop = asyncio.get_running_loop()
-                    current = asyncio.current_task(loop)
-                    for task in asyncio.all_tasks(loop):
-                        if task is not current and not task.done():
-                            task.cancel()
-                            try:
-                                await task
-                            except asyncio.CancelledError:
-                                pass
-            
-        def sync_wrapper():
-            """同步包装器"""
-            loop = get_or_create_loop()
-            ait = async_generator()
-            
-            try:
-                while True:
-                    try:
-                        yield loop.run_until_complete(ait.__anext__())
-                    except StopAsyncIteration:
-                        break
-            finally:
-                if is_notebook():
-                    cleanup_tasks(loop)
-                
-        # 返回同步生成器
-        yield from sync_wrapper()
-
-    def check_event_loop_status(self):
-        """检查事件循环状态（调试用）"""
-        try:
-            loop = asyncio.get_event_loop()
-            pending = len(asyncio.all_tasks(loop))
-            running = loop.is_running()
-            return {
-                'loop_running': running,
-                'pending_tasks': pending
-            }
-        except Exception as e:
-            return {'error': str(e)}
+        async_service = AsyncService()
+        return async_service.wrap_async_generator(
+            self.collect_async(once=once, timeout=timeout)
+        )
