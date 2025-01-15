@@ -11,7 +11,8 @@ import tempfile
 import hashlib
 import async_timeout
 
-from illufly.base.async_service import AsyncService
+from ..base.async_service import AsyncService
+from .utils import normalize_address, cleanup_bound_socket, init_bound_socket
 
 class MessageBus:
     _bound_socket = None
@@ -25,9 +26,7 @@ class MessageBus:
         self._subscribed_topics = set()
         self._context = zmq.asyncio.Context.instance()
 
-        self._address = self._normalize_address(address)  # 规范化地址
-        self._is_inproc = self._address.startswith("inproc://")
-        self._is_ipc = self._address.startswith("ipc://")
+        self._address = normalize_address(address)  # 规范化地址
 
         if to_bind:
             self.to_bind = True
@@ -35,67 +34,7 @@ class MessageBus:
         if to_connect:
             self.to_connect = True
             self.init_subscriber()
-            
-    def _normalize_address(self, address: str) -> str:
-        """规范化地址格式，处理IPC地址长度限制"""
-        if address.startswith("ipc://"):
-            # 解析IPC路径
-            path = urlparse(address).path
-            if not path:
-                # 如果没有指定路径，使用临时目录
-                path = os.path.join(tempfile.gettempdir(), "message_bus.ipc")                
-            # 计算最大允许长度（保留20字符给zmq内部使用）
-            max_path_length = 87
-            if len(path) > max_path_length:
-                # 使用hash处理超长路径
-                dir_path = os.path.dirname(path)
-                file_name = os.path.basename(path)
-                hashed_name = hashlib.md5(file_name.encode()).hexdigest()[:10] + ".ipc"
-                
-                # 如果目录路径也太长，使用临时目录
-                if len(dir_path) > (max_path_length - len(hashed_name) - 1):
-                    dir_path = tempfile.gettempdir()
-                    
-                path = os.path.join(dir_path, hashed_name)
-                self._logger.warning(
-                    f"IPC path too long, truncated to: {path}"
-                )            
-            # 确保目录存在
-            # os.makedirs(os.path.dirname(path), exist_ok=True)
-            return f"ipc://{path}"            
-        return address
         
-    def init_publisher(self):
-        """尝试绑定socket，处理已存在的情况"""
-        if not self.to_bind:
-            raise RuntimeError("Not in publisher mode")
-        
-        with MessageBus._bound_lock:
-            # 检查是否已有绑定的socket
-            if MessageBus._bound_socket:
-                self._logger.info(f"Address {self._address} already bound")
-                return                
-            try:
-                # 对于IPC，先检查文件是否存在
-                if self._is_ipc:
-                    path = urlparse(self._address).path
-                    if os.path.exists(path):
-                        self._logger.warning(f"IPC file exists: {path}, treating as bound by another process")
-                        MessageBus._bound_socket = True
-                        return            
-                # 创建socket并尝试绑定
-                socket = self._context.socket(zmq.PUB)
-                socket.bind(self._address)
-                self._pub_socket = socket  # 只有绑定成功才保存socket
-                MessageBus._bound_socket = self._pub_socket
-                self._logger.info(f"Publisher bound to: {self._address}")
-            except zmq.ZMQError as e:
-                socket.close()  # 关闭失败的socket
-                if e.errno == zmq.EADDRINUSE:
-                    self._logger.warning(f"Address {self._address} in use by another process")
-                    MessageBus._bound_socket = True  # 标记为外部绑定
-                else:
-                    raise
     @property
     def is_bound(self):
         return self._bound_socket is not None
@@ -107,6 +46,25 @@ class MessageBus:
     @property
     def is_bound_outside(self):
         return MessageBus._bound_socket is True
+
+    def init_publisher(self):
+        """尝试绑定socket，处理已存在的情况"""
+        if not self.to_bind:
+            raise RuntimeError("Not in publisher mode")
+        
+        with MessageBus._bound_lock:
+            # 检查是否已有绑定的socket
+            if MessageBus._bound_socket:
+                self._logger.info(f"Address {self._address} already bound")
+                return                
+            already_bound, socket_result = init_bound_socket(self._context, zmq.PUB, self._address, self._logger)
+            if already_bound is True:
+                MessageBus._bound_socket = True
+                return
+            else:
+                MessageBus._bound_socket = socket_result
+                self._pub_socket = socket_result
+            MessageBus._bound_address = self._address
 
     def init_subscriber(self):
         """初始化订阅者"""
@@ -184,26 +142,11 @@ class MessageBus:
     def cleanup(self):
         """清理资源"""
         if self._pub_socket:
-            self._pub_socket.close()
             # 如果是绑定者，清理静态变量
             if self._pub_socket is MessageBus._bound_socket:
                 MessageBus._bound_socket = None
                 MessageBus._bound_address = None
-            # 如果是IPC，删除文件
-            if self._is_ipc:
-                try:
-                    path = urlparse(self._address).path
-                    if os.path.exists(path):
-                        os.unlink(path)
-                except Exception as e:
-                    self._logger.warning(f"Failed to remove IPC file: {e}")
-            self._pub_socket = None
-            
-        if self._sub_socket:
-            self._sub_socket.close()
-            self._sub_socket = None
-            
-        self._logger.info("MessageBus cleaned up")
+        cleanup_bound_socket(self._pub_socket, self._address, self._logger)
 
     async def collect_async(self, once: bool = True, timeout: float = None) -> AsyncGenerator[dict, None]:
         """异步收集消息直到收到结束标记或超时
