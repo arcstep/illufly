@@ -12,7 +12,7 @@ import hashlib
 import async_timeout
 
 from ..base.async_service import AsyncService
-from .utils import normalize_address, cleanup_bound_socket, init_bound_socket
+from .utils import normalize_address, init_bound_socket, cleanup_bound_socket, cleanup_connected_socket
 
 class MessageBus:
     _bound_socket = None
@@ -147,6 +147,7 @@ class MessageBus:
                 MessageBus._bound_socket = None
                 MessageBus._bound_address = None
         cleanup_bound_socket(self._pub_socket, self._address, self._logger)
+        cleanup_connected_socket(self._sub_socket, self._address, self._logger)
 
     async def collect_async(self, once: bool = True, timeout: float = None) -> AsyncGenerator[dict, None]:
         """异步收集消息直到收到结束标记或超时

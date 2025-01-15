@@ -4,11 +4,12 @@ import zmq.asyncio
 import os
 import multiprocessing
 import time
-from urllib.parse import urlparse
-from illufly.mq.message_bus import MessageBus
-
 import logging
 logger = logging.getLogger(__name__)
+
+from urllib.parse import urlparse
+from illufly.mq.message_bus import MessageBus
+from illufly.mq.utils import is_ipc
 
 class TestMessageBusBinding:
     """绑定行为测试
@@ -51,7 +52,7 @@ class TestMessageBusBinding:
         address = f"ipc://{ipc_path}"
         
         self.bus1 = MessageBus(address, logger=logger)
-        assert self.bus1._is_ipc
+        assert is_ipc(address)
         assert self.bus1._bound_socket
         assert MessageBus._bound_socket
         

@@ -120,3 +120,9 @@ def cleanup_bound_socket(socket, address, logger):
         # 如果是IPC，删除文件
         cleanup_ipc_file(address, logger)
         socket = None
+
+def cleanup_connected_socket(socket, address, logger):
+    """清理连接socket"""
+    if socket:
+        socket.close()
+        socket = None
