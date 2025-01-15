@@ -1,6 +1,6 @@
 import os
 import asyncio
-import zmq.asyncio
+import zmq
 import threading
 import logging
 import json
@@ -29,10 +29,10 @@ class MessageBus:
         self._address = normalize_address(address)  # 规范化地址
 
         if to_bind:
-            self.to_bind = True
+            self._to_bind = True
             self.init_publisher()
         if to_connect:
-            self.to_connect = True
+            self._to_connect = True
             self.init_subscriber()
         
     @property
@@ -49,7 +49,7 @@ class MessageBus:
 
     def init_publisher(self):
         """尝试绑定socket，处理已存在的情况"""
-        if not self.to_bind:
+        if not self._to_bind:
             raise RuntimeError("Not in publisher mode")
         
         with MessageBus._bound_lock:
@@ -68,7 +68,7 @@ class MessageBus:
 
     def init_subscriber(self):
         """初始化订阅者"""
-        if not self.to_connect:
+        if not self._to_connect:
             raise RuntimeError("Not in subscriber mode")
 
         self._sub_socket = self._context.socket(zmq.SUB)
@@ -195,7 +195,6 @@ class MessageBus:
         Yields:
             dict: 收到的消息
         """
-        async_service = AsyncService()
-        return async_service.wrap_async_generator(
+        return AsyncService(self._logger).wrap_async_generator(
             self.collect_async(once=once, timeout=timeout)
         )

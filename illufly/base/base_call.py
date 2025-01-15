@@ -110,7 +110,14 @@ class BaseCall():
                 
         return wrapper
 
-    # 为了保持向后兼容，我们可以保留这些方法，但它们不再是必需的
+    def __call__(self, *args, **kwargs) -> Any:
+        """默认调用方法，使用默认的处理方法名"""
+        return self.auto_call(
+            self.handle_call,
+            self.async_handle_call,
+            base_class=BaseCall
+        )(*args, **kwargs)
+
     def handle_call(self, *args, **kwargs) -> Any:
         """同步处理请求"""
         raise NotImplementedError
@@ -118,20 +125,3 @@ class BaseCall():
     async def async_handle_call(self, *args, **kwargs) -> Any:
         """异步处理请求"""
         raise NotImplementedError
-
-    def __call__(self, *args, **kwargs) -> Any:
-        """默认调用方法，使用默认的处理方法名"""
-        handler_mode = self._get_handler_mode()
-        is_async_ctx = self._is_async_context()
-        
-        if is_async_ctx:
-            if handler_mode in ('async', 'both'):
-                return self.async_handle_call(*args, **kwargs)
-            else:
-                wrapped = self._async_service.wrap_sync_func(self.handle_call)
-                return wrapped(*args, **kwargs)
-        else:
-            if handler_mode in ('sync', 'both'):
-                return self.handle_call(*args, **kwargs)
-            else:
-                return self._async_service.wrap_async_func(self.async_handle_call)(*args, **kwargs)
