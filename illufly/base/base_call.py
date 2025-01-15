@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Callable, Optional, Union, Awaitable
 
 from .async_service import AsyncService
 
@@ -8,14 +8,7 @@ class BaseCall():
     """支持兼容同步方法或异步方法定义的基类服务"""
     def __init__(self, logger: logging.Logger=None):
         self._logger = logger or logging.getLogger(__name__)
-
-    def handle_request(self, *args, **kwargs) -> Any:
-        """同步处理请求"""
-        raise NotImplementedError
-
-    async def async_handle_request(self, *args, **kwargs) -> Any:
-        """异步处理请求"""
-        raise NotImplementedError
+        self._async_service = AsyncService(self._logger)
 
     def _is_async_context(self) -> bool:
         """检测是否在异步上下文中"""
@@ -25,23 +18,40 @@ class BaseCall():
         except RuntimeError:
             return False
             
-    def _get_handler_mode(self) -> str:
-        """检测子类实现了哪种处理方法
-        
-        检查整个继承链，只要不是 BaseCall 中的方法就认为是有效实现
-        """
-        def is_method_overridden(method_name: str) -> bool:
-            # 获取当前类的方法
-            method = getattr(self.__class__, method_name, None)
+    def _get_handler_mode(self, sync_handler: Optional[Callable] = None, 
+                         async_handler: Optional[Callable] = None,
+                         base_class: Optional[type] = None) -> str:
+        """检测处理方法的模式"""
+        def is_method_overridden(method: Optional[Callable], base: Optional[type]) -> bool:
             if method is None:
                 return False
-            # 获取 BaseCall 的方法
-            base_method = getattr(BaseCall, method_name, None)
-            # 如果方法存在且不等于基类方法，则认为被重写
-            return method is not None and method != base_method
-
-        has_sync = is_method_overridden('handle_request')
-        has_async = is_method_overridden('async_handle_request')
+            if base is None:
+                return True
+                
+            # 获取方法在基类中的定义
+            base_method = getattr(base, method.__name__, None)
+            if base_method is None:
+                return True
+                
+            # 获取实际的函数对象
+            if hasattr(method, '__func__'):  # 绑定方法
+                method = method.__func__
+            if hasattr(base_method, '__func__'):  # 绑定方法
+                base_method = base_method.__func__
+                
+            # 比较函数的代码对象
+            return method.__code__ is not base_method.__code__
+            
+        # 如果没有提供处理方法，使用默认的方法名
+        if sync_handler is None and async_handler is None:
+            sync_handler = getattr(self, 'handle_call', None)
+            async_handler = getattr(self, 'async_handle_call', None)
+            base_class = BaseCall  # 使用 BaseCall 作为默认基类
+            
+        has_sync = sync_handler is not None and not asyncio.iscoroutinefunction(sync_handler) \
+                  and is_method_overridden(sync_handler, base_class)
+        has_async = async_handler is not None and asyncio.iscoroutinefunction(async_handler) \
+                   and is_method_overridden(async_handler, base_class)
         
         if has_sync and has_async:
             return 'both'
@@ -50,47 +60,78 @@ class BaseCall():
         elif has_async:
             return 'async'
         else:
-            raise NotImplementedError("Neither handle_request nor async_handle_request is implemented")
+            raise NotImplementedError("Neither sync nor async handler is provided")
             
+    def auto_call(self, 
+                 sync_handler: Optional[Callable[..., Any]],
+                 async_handler: Optional[Callable[..., Awaitable[Any]]],
+                 base_class: Optional[type] = None,
+                 ) -> Callable[..., Union[Any, Awaitable[Any]]]:
+        """自动调度同步或异步处理方法
+        
+        Args:
+            sync_handler: 同步处理方法
+            async_handler: 异步处理方法
+            base_class: 基类，用于判断方法是否被重写
+            
+        Returns:
+            根据上下文返回适当的调用包装器
+        """
+        handler_mode = self._get_handler_mode(sync_handler, async_handler, base_class)
+        is_async_ctx = self._is_async_context()
+        
+        def make_sync_call(*args, **kwargs):
+            """构造同步调用"""
+            if handler_mode in ('sync', 'both'):
+                return sync_handler(*args, **kwargs)
+            else:  # async only
+                return self._async_service.wrap_async_func(
+                    lambda: async_handler(*args, **kwargs)
+                )()
+                
+        async def make_async_call(*args, **kwargs):
+            """构造异步调用"""
+            if handler_mode in ('async', 'both'):
+                return await async_handler(*args, **kwargs)
+            else:  # sync only
+                wrapped = self._async_service.wrap_sync_func(
+                    lambda: sync_handler(*args, **kwargs)
+                )
+                return await wrapped()
+                
+        def wrapper(*args, **kwargs):
+            """根据上下文选择调用方式"""
+            if is_async_ctx:
+                self._logger.debug("Detected async context")
+                return make_async_call(*args, **kwargs)
+            else:
+                self._logger.debug("Detected sync context")
+                return make_sync_call(*args, **kwargs)
+                
+        return wrapper
+
+    # 为了保持向后兼容，我们可以保留这些方法，但它们不再是必需的
+    def handle_call(self, *args, **kwargs) -> Any:
+        """同步处理请求"""
+        raise NotImplementedError
+
+    async def async_handle_call(self, *args, **kwargs) -> Any:
+        """异步处理请求"""
+        raise NotImplementedError
+
     def __call__(self, *args, **kwargs) -> Any:
-        """智能调用入口，根据上下文和实现方式自动选择调用方式"""
+        """默认调用方法，使用默认的处理方法名"""
         handler_mode = self._get_handler_mode()
         is_async_ctx = self._is_async_context()
         
         if is_async_ctx:
-            self._logger.debug("Detected async context")
             if handler_mode in ('async', 'both'):
-                return self.call_async(*args, **kwargs)
-            else:  # sync only
-                async_service = AsyncService(self._logger)
-                return async_service.wrap_sync_func(
-                    lambda: self.call(*args, **kwargs)
-                )()  # 直接调用，因为wrap_sync_func返回异步函数
+                return self.async_handle_call(*args, **kwargs)
+            else:
+                wrapped = self._async_service.wrap_sync_func(self.handle_call)
+                return wrapped(*args, **kwargs)
         else:
-            self._logger.debug("Detected sync context")
             if handler_mode in ('sync', 'both'):
-                return self.call(*args, **kwargs)
-            else:  # async only
-                async_service = AsyncService(self._logger)
-                return async_service.wrap_async_func(
-                    lambda: self.call_async(*args, **kwargs)
-                )()  # 直接调用，因为wrap_async_func返回同步函数
-
-    def call(self, *args, **kwargs) -> Any:
-        """同步调用实现"""
-        if self._get_handler_mode() == 'async':
-            async_service = AsyncService(self._logger)
-            return async_service.wrap_async_func(
-                lambda: self.async_handle_request(*args, **kwargs)
-            )()  # 直接调用
-        return self.handle_request(*args, **kwargs)
-
-    async def call_async(self, *args, **kwargs) -> Any:
-        """异步调用实现"""
-        if self._get_handler_mode() == 'sync':
-            async_service = AsyncService(self._logger)
-            wrapped = async_service.wrap_sync_func(
-                lambda: self.handle_request(*args, **kwargs)
-            )
-            return await wrapped()  # 等待异步函数执行完成
-        return await self.async_handle_request(*args, **kwargs)
+                return self.handle_call(*args, **kwargs)
+            else:
+                return self._async_service.wrap_async_func(self.async_handle_call)(*args, **kwargs)
