@@ -4,6 +4,7 @@ import threading
 import time
 import logging
 from illufly.base.async_service import AsyncService
+import concurrent.futures
 
 class TestAsyncService:
     """测试AsyncService在各种环境下的行为"""
@@ -127,3 +128,103 @@ class TestAsyncService:
             
         with self.service.managed_sync():
             asyncio.get_event_loop().run_until_complete(run_with_cleanup()) 
+        
+    async def test_wrap_sync_func(self):
+        """测试同步函数包装为异步函数"""
+        def sync_func():
+            return "sync result"
+            
+        wrapped = self.service.wrap_sync_func(sync_func)
+        result = await wrapped()
+        assert result == "sync result"
+        
+    def test_wrap_async_func(self):
+        """测试异步函数包装为同步函数"""
+        async def async_func():
+            await asyncio.sleep(0.1)
+            return "async result"
+            
+        wrapped = self.service.wrap_async_func(async_func)
+        result = wrapped()
+        assert result == "async result" 
+        
+    def test_wrap_sync_func_in_nested_loop(self):
+        """测试在嵌套事件循环环境中包装同步函数"""
+        def create_running_loop():
+            loop = asyncio.new_event_loop()
+            
+            def run_loop():
+                asyncio.set_event_loop(loop)
+                loop.run_forever()
+                
+            thread = threading.Thread(target=run_loop, daemon=True)
+            thread.start()
+            time.sleep(0.1)
+            return loop, thread
+            
+        # 创建后台事件循环
+        background_loop, thread = create_running_loop()
+        result_future = concurrent.futures.Future()
+        
+        try:
+            def sync_func():
+                time.sleep(0.1)
+                return "sync result"
+                
+            wrapped = self.service.wrap_sync_func(sync_func)
+            
+            async def run_test():
+                result = await wrapped()
+                return result
+                
+            def handle_result(task):
+                try:
+                    result_future.set_result(task.result())
+                except Exception as e:
+                    result_future.set_exception(e)
+            
+            # 在后台循环中创建任务
+            task = asyncio.run_coroutine_threadsafe(run_test(), background_loop)
+            task.add_done_callback(handle_result)
+            
+            # 等待结果
+            result = result_future.result(timeout=2)
+            assert result == "sync result"
+            
+        finally:
+            background_loop.call_soon_threadsafe(background_loop.stop)
+            thread.join(timeout=1)
+            background_loop.close()
+            
+    def test_wrap_async_func_in_nested_loop(self):
+        """测试在嵌套事件循环环境中包装异步函数"""
+        def create_running_loop():
+            loop = asyncio.new_event_loop()
+            
+            def run_loop():
+                asyncio.set_event_loop(loop)
+                loop.run_forever()
+                
+            thread = threading.Thread(target=run_loop, daemon=True)
+            thread.start()
+            time.sleep(0.1)
+            return loop, thread
+            
+        # 创建后台事件循环
+        background_loop, thread = create_running_loop()
+        
+        try:
+            async def async_func():
+                await asyncio.sleep(0.1)  # 模拟异步操作
+                return "async result"
+                
+            # 在嵌套环境中运行包装的异步函数
+            wrapped = self.service.wrap_async_func(async_func)
+            result = wrapped()  # 同步调用
+            assert result == "async result"
+            
+        finally:
+            # 清理后台事件循环
+            background_loop.call_soon_threadsafe(background_loop.stop)
+            thread.join(timeout=1)
+            background_loop.close() 

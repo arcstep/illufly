@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional, Any, AsyncGenerator, Generator, TypeVar, Callable
+from typing import Optional, Any, AsyncGenerator, Generator, TypeVar, Callable, Awaitable
 from contextlib import contextmanager, asynccontextmanager
 from functools import wraps
 
@@ -120,3 +120,18 @@ class AsyncService:
                     break
         finally:
             loop.run_until_complete(self._cleanup_tasks()) 
+
+    def wrap_sync_func(self, func: Callable[..., T]) -> Callable[..., Awaitable[T]]:
+        """将同步函数包装为异步函数"""
+        self._logger.debug(f"Wrapping sync function: {func.__name__}")
+        async def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+        return wrapper
+
+    def wrap_async_func(self, func: Callable[..., Awaitable[T]]) -> Callable[..., T]:
+        """将异步函数包装为同步函数"""
+        self._logger.debug(f"Wrapping async function: {func.__name__}")
+        def wrapper(*args, **kwargs):
+            loop = self.get_or_create_loop()
+            return loop.run_until_complete(func(*args, **kwargs))
+        return wrapper 
