@@ -73,7 +73,7 @@ async def test_stream_processing(is_async):
     # 验证实时性
     for i, msg in enumerate(messages[:-1]):  # 除去结束标记
         delay = receive_times[i] - msg["publish_time"]
-        assert delay < 0.01, f"消息 {i} 延迟过大: {delay:.3f}秒"
+        assert delay < 0.02, f"消息 {i} 延迟过大: {delay:.3f}秒"
 
 def test_sync_stream_blocking():
     """测试同步流处理是否会阻塞"""

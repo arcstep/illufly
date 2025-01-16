@@ -68,6 +68,24 @@ class BaseService(BaseCall):
     def _get_thread_id(self):
         return f"{self._service_name}.{uuid.uuid1()}"
 
+    async def _process_and_end(self, thread_id: str, **kwargs):
+        """将处理和结束标记合并为一个顺序任务"""
+        try:
+            # 1. 执行主处理任务
+            await self.async_method(
+                "server",
+                thread_id=thread_id,
+                message_bus=self._message_bus,
+                **kwargs
+            )
+            
+            # 2. 等待处理完成后再发送结束标记
+            self._message_bus.publish(thread_id, {"block_type": "end"})
+            
+        except Exception as e:
+            self._logger.error(f"Error in processing: {e}")
+            raise
+
     def call(self, **kwargs):
         """同步调用服务方法"""
         thread_id = self._get_thread_id()
@@ -79,25 +97,18 @@ class BaseService(BaseCall):
         try:
             # 1. 先订阅并创建收集器
             client_bus.subscribe(thread_id)
-            collector = client_bus.collect(timeout=30.0)  # 添加超时保护
+            collector = client_bus.collect(timeout=30.0)
             
-            # 2. 在后台执行服务方法
+            # 2. 创建单个顺序任务
             with self._async_service.managed_sync() as loop:
                 task = loop.create_task(
-                    self.async_method(
-                        "server",
+                    self._process_and_end(
                         thread_id=thread_id,
-                        message_bus=self._message_bus,
                         **kwargs
                     )
                 )
                 
-                # 3. 发送结束标记的任务
-                end_task = loop.create_task(
-                    self._send_end_block(thread_id)
-                )
-                
-                return self.Response(collector, [task, end_task], self._async_service, self._logger)
+                return self.Response(collector, [task], self._async_service, self._logger)
                 
         except Exception as e:
             self._logger.error(f"Error in sync call: {e}")
@@ -115,42 +126,21 @@ class BaseService(BaseCall):
         try:
             # 1. 先订阅并创建收集器
             client_bus.subscribe(thread_id)
-            collector = client_bus.async_collect(timeout=30.0)  # 添加超时保护
+            collector = client_bus.async_collect(timeout=30.0)
             
-            # 2. 在后台执行服务方法
+            # 2. 创建单个顺序任务
             task = asyncio.create_task(
-                self.async_method(
-                    "server",
+                self._process_and_end(
                     thread_id=thread_id,
-                    message_bus=self._message_bus,
                     **kwargs
                 )
             )
             
-            # 3. 发送结束标记的任务
-            end_task = asyncio.create_task(
-                self._send_end_block(thread_id)
-            )
-            
-            return self.AsyncResponse(collector, [task, end_task], self._logger)
+            return self.AsyncResponse(collector, [task], self._logger)
             
         except Exception as e:
             self._logger.error(f"Error in async call: {e}")
             client_bus.cleanup()
-            raise
-
-    async def _send_end_block(self, thread_id: str):
-        """等待处理完成后发送结束标记"""
-        try:
-            # 等待处理完成事件
-            if thread_id in self._processing_events:
-                await self._processing_events[thread_id].wait()
-            
-            # 发送结束标记
-            self._message_bus.publish(thread_id, {"block_type": "end"})
-            
-        except Exception as e:
-            self._logger.error(f"Error sending end block: {e}")
             raise
 
     class Response:
