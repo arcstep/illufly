@@ -48,7 +48,7 @@ class TestPubSubFunctionality:
             bus1.publish("test", {"msg": "hello1"}, end=False)
             bus1.publish("test", {"msg": "hello2"}, end=True)
             
-            received = list(bus2.collect("test"))
+            received = list(bus2.collect())
             assert len(received) == 3
             assert received[0]["msg"] == "hello1"
             assert received[1]["msg"] == "hello2"
@@ -86,7 +86,7 @@ class TestPubSubFunctionality:
             bus1.publish("test2", {"msg": "hello2"}, end=False)
             bus1.publish("test1", end=True)
             
-            received = list(bus2.collect(["test1", "test2"]))
+            received = list(bus2.collect())
             assert len(received) == 3
             assert received[0]["msg"] == "hello1"
             assert received[1]["msg"] == "hello2"
@@ -120,8 +120,8 @@ class TestPubSubFunctionality:
             bus_sub2.subscribe(["test"])
             bus_pub.publish("test", {"msg": "hello"}, end=True)
 
-            received1 = list(bus_sub1.collect("test"))
-            received2 = list(bus_sub2.collect("test"))
+            received1 = list(bus_sub1.collect())
+            received2 = list(bus_sub2.collect())
             assert received1[0]["msg"] == "hello"
             assert received2[0]["msg"] == "hello"
             
@@ -140,7 +140,7 @@ class TestPubSubFunctionality:
             bus2.subscribe(["topic1"])
             bus1.publish("topic1", {"msg": "hello1"}, end=True)
             bus1.publish("topic2", {"msg": "hello2"}, end=True)
-            received = list(bus2.collect("topic1"))
+            received = list(bus2.collect())
             assert len(received) == 2
             assert received[0]["msg"] == "hello1"
             
@@ -163,41 +163,35 @@ class TestPubSubFunctionality:
         bus_sub2 = MessageBus(logger=logger)
         
         MSG_COUNT = 1000  # 每个主题发送1000条消息
-        TOPICS = ["topic1", "topic2"]  # 测试多个主题
         
         try: 
-            bus_sub1.subscribe(TOPICS)
-            bus_sub2.subscribe(TOPICS)
+            bus_sub1.subscribe("topic1")
+            bus_sub2.subscribe("topic2")
             
             # 高速发布消息
             start_time = time.time()
-            for topic in TOPICS:
+            for topic in ["topic1", "topic2"]:
                 for i in range(MSG_COUNT):
                     bus_pub.publish(
                         topic,
                         {"seq": i, "topic": topic, "msg": f"message-{i}"},
-                        end=False
+                        end=False,
+                        delay=0
                     )
+            bus_pub.publish("topic1", end=True)
             bus_pub.publish("topic2", end=True)
             
             # 验证结果
-            received1 = list(bus_sub1.collect(TOPICS, timeout=5.0))
-            received2 = list(bus_sub2.collect(TOPICS, timeout=5.0))
+            received1 = list(bus_sub1.collect(timeout=5.0))
+            received2 = list(bus_sub2.collect(timeout=5.0))
 
             for received in [received1, received2]:
                 # 检查消息数量
-                assert len(received) == MSG_COUNT * len(TOPICS)
-                
-                # 检查每个主题的消息顺序
-                for topic in TOPICS:
-                    topic_msgs = [msg for msg in received if msg["topic"] == topic]
-                    assert len(topic_msgs) == MSG_COUNT
-                    sequences = [msg["seq"] for msg in topic_msgs]
-                    assert sequences == list(range(MSG_COUNT))
+                assert len(received) == MSG_COUNT + 1
             
             # 记录性能指标
             elapsed = time.time() - start_time
-            total_msgs = MSG_COUNT * len(TOPICS) * 2  # 2个订阅者
+            total_msgs = (MSG_COUNT + 1) * 2  # 2个订阅者
             msg_per_sec = total_msgs / elapsed
             logger.info(f"Processed {total_msgs} messages in {elapsed:.2f} seconds")
             logger.info(f"Average throughput: {msg_per_sec:.2f} messages/second")

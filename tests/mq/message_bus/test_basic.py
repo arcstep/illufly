@@ -58,8 +58,32 @@ class TestMessageBusBasic:
         finally:
             bus.cleanup()
             
-    def test_pub_sub_communication(self):
-        """测试显式发布订阅通信"""
+    @pytest.mark.asyncio
+    async def test_async_collect_communication(self):
+        """测试异步收集通信"""
+        # 创建实例
+        bus = MessageBus(logger=logger)
+        
+        try:
+            # 发送测试消息
+            bus.subscribe("test")
+            bus.publish("test", {"msg": "hello"})
+            bus.publish("test")
+            time.sleep(0.1)
+            resp = bus.async_collect()
+
+            results = []
+            async for msg in resp:
+                results.append(msg)
+
+            assert len(results) == 2
+            assert results[0]["msg"] == "hello"
+            
+        finally:
+            bus.cleanup()
+
+    def test_sync_collect_communication(self):
+        """测试同步收集通信"""
         # 创建实例
         bus = MessageBus(logger=logger)
         
@@ -76,9 +100,9 @@ class TestMessageBusBasic:
             
         finally:
             bus.cleanup()
-            
-    def test_collect_messages(self):
-        """测试简洁的消息收集方法"""
+
+    def test_collect_multiple_messages(self):
+        """测试收集多条消息"""
         address = "tcp://127.0.0.1:5557"
         bus = MessageBus(address, logger=logger)
         

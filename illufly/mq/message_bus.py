@@ -1,6 +1,6 @@
 import os
 import asyncio
-import zmq
+import zmq.asyncio
 import threading
 import logging
 import json
@@ -78,7 +78,7 @@ class MessageBus:
         self._sub_socket.connect(self._address)
         self._logger.info(f"Subscriber connected to: {self._address}")
 
-    def publish(self, topic: str, message: Union[dict, str]=None, end: bool = False):
+    def publish(self, topic: str, message: Union[dict, str]=None, end: bool = False, delay: float = 0.01):
         """发布消息，如果存在订阅套接字则自动订阅"""
         if not isinstance(topic, str):
             raise ValueError("Topic must be a string")
@@ -94,7 +94,8 @@ class MessageBus:
                 self._sub_socket.subscribe(topic.encode())
                 self._subscribed_topics.add(topic)
                 self._logger.debug(f"Auto-subscribed to topic: {topic}")
-                time.sleep(0.01)
+                # 添加短暂延迟，确保订阅生效
+                time.sleep(delay)
 
             if message:
                 # 使用multipart发送消息
@@ -125,7 +126,7 @@ class MessageBus:
                 self._sub_socket.unsubscribe(topic.encode())
             self._logger.debug(f"Unsubscribed from topic: {topic}")
 
-    def subscribe(self, topics: Union[str, List[str]]):
+    def subscribe(self, topics: Union[str, List[str]], delay: float = 0.01):
         """仅完成主题订阅，不收取消息"""
         if not self._sub_socket:
             raise RuntimeError("Not in subscriber mode")
@@ -139,7 +140,10 @@ class MessageBus:
                 if topic not in self._subscribed_topics:
                     self._sub_socket.subscribe(topic.encode())
                     self._logger.debug(f"Subscribed to topic: {topic}")
-                    self._subscribed_topics.add(topic)                
+                    self._subscribed_topics.add(topic)
+                    
+            # 添加短暂延迟，确保订阅生效
+            time.sleep(delay)
 
         except Exception as e:
             self._logger.error(f"Subscription error: {e}")
@@ -175,42 +179,54 @@ class MessageBus:
             raise RuntimeError("No topics subscribed")
 
         collect_start = time.time()
+        last_poll = time.time()
+        poll_interval = 0.01  # 10ms
+        
+        # 保存当前任务引用
+        self._current_collection_task = asyncio.current_task()
+        self._logger.debug(f"Collection task created: {self._current_collection_task.get_name()}")
         
         try:
             while True:
                 try:
-                    # 使用较短的 poll 超时，便于及时退出
-                    if await self._sub_socket.poll(timeout=100):  # 100ms
+                    current_time = time.time()
+                    remaining_timeout = None
+                    if timeout:
+                        elapsed = current_time - collect_start
+                        if elapsed >= timeout:
+                            break
+                        remaining_timeout = min(timeout - elapsed, poll_interval)
+                    else:
+                        remaining_timeout = poll_interval
+                    
+                    if await self._sub_socket.poll(timeout=remaining_timeout * 1000):
                         [topic_bytes, payload] = await self._sub_socket.recv_multipart()
-                        topic_str = topic_bytes.decode()
                         message = json.loads(payload.decode())
-                        message['topic'] = topic_str
+                        message['topic'] = topic_bytes.decode()
                         
-                        self._logger.debug(f"Received message at {time.time()}: {message}")
+                        self._logger.debug(f"Yielding message: {message}")
                         yield message
                         
-                        # 检查是否结束
                         if message.get('block_type') == 'end':
-                            self._logger.debug("Received end message, stopping collection")                        
+                            self._logger.debug("End message received, stopping collection")
                             if once:
-                                self._logger.debug("Once mode enabled, stopping after first message")
                                 break
-                    else:
-                        # 检查总体超时
-                        if timeout is not None:
-                            if time.time() - collect_start > timeout:
-                                self._logger.debug(f"Collection timeout after {timeout}s")
-                                break
-                        await asyncio.sleep(0.001)
-                        
+                    
+                    last_poll = current_time
+                    
                 except Exception as e:
                     self._logger.error(f"Collection error: {e}")
                     raise
                 
         except GeneratorExit:
-            self._logger.debug("Generator closed")
+            self._logger.debug(f"Generator {self._current_collection_task.get_name()} closing")
+        except asyncio.CancelledError:
+            self._logger.debug(f"Task {self._current_collection_task.get_name()} cancelled")
+            raise
         finally:
-            self._logger.debug("Collection finished")
+            self._logger.debug(f"Collection task {self._current_collection_task.get_name()} finished")
+            if hasattr(self, '_current_collection_task'):
+                self._current_collection_task = None
 
     def collect(self, timeout: float = None, once: bool = True) -> Generator[dict, None, None]:
         """同步收集消息
