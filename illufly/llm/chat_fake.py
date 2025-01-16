@@ -1,13 +1,14 @@
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Dict, Any
 import asyncio
 import logging
 
-from ..mq import StreamingService, StreamingBlock
+from ..base import BaseService, StreamingBlock
+from ..mq import MessageBus
 
-class ChatFake(StreamingService):
+class ChatFake(BaseService):
     """Fake Chat Service"""
     def __init__(
-        self, 
+        self,
         response: Union[str, List[str]]=None, 
         sleep: float=0.1,
         **kwargs
@@ -17,7 +18,7 @@ class ChatFake(StreamingService):
         
         # 处理响应设置
         if response is None:
-            self.response = []  # 空列表表示使用默认响应
+            self.response = []
         elif isinstance(response, str):
             self.response = [response]
         else:
@@ -32,17 +33,21 @@ class ChatFake(StreamingService):
             f"sleep: {self.sleep}s"
         )
 
-    async def process(self, prompt: str, **kwargs):
+        # 注册流式处理方法
+        self.register_method("server", async_handle=self._async_handler)
+
+    async def _async_handler(self, messages: Union[str, List[Dict[str, Any]]], thread_id: str, message_bus: MessageBus, **kwargs):
         """异步生成响应"""
-        self._logger.debug(f"Processing prompt: {prompt[:50]}...")
-        
-        # 发送初始信息
-        yield StreamingBlock(block_type="info", content="I am FakeLLM")
+        if isinstance(messages, str):
+            messages = [{"role": "user", "content": messages}]
+
+        self._logger.debug(f"Processing prompt: {str(messages)[:50]}...")
         
         # 获取响应内容
+        resp_content = "\n".join([m["content"] for m in messages])
         if not self.response:
             # 使用默认响应
-            resp = f"Reply >> {prompt}"
+            resp = f"Reply >> {resp_content}"
         else:
             resp = self.response[self.current_response_index]
             self.current_response_index = (self.current_response_index + 1) % len(self.response)
@@ -50,5 +55,4 @@ class ChatFake(StreamingService):
         # 逐字符发送响应
         for content in resp:
             await asyncio.sleep(self.sleep)
-            yield StreamingBlock(block_type="chunk", content=content)
-        
+            message_bus.publish(thread_id, StreamingBlock(block_type="chunk", content=content).model_dump())

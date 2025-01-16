@@ -2,6 +2,7 @@ import pytest
 import asyncio
 import logging
 from illufly.llm.chat_fake import ChatFake
+from illufly.base import StreamingBlock
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +20,10 @@ async def chat():
         service_name="test_chat",
         logger=logger
     )
-    await chat.start_async()
     try:
         yield chat
     finally:
-        await chat.stop_async()
+        chat.cleanup()
 
 @pytest.fixture
 async def chat_with_list():
@@ -32,57 +32,50 @@ async def chat_with_list():
         sleep=0.1,
         logger=logger
     )
-    await chat.start_async()
     try:
         yield chat
     finally:
-        await chat.stop_async()
+        chat.cleanup()
 
 @pytest.mark.asyncio
 async def test_chat_initialization(chat):
     """测试聊天初始化"""
-    chat_instance = await anext(chat)
-    assert chat_instance._running
-    assert chat_instance.sleep == 0.1
-    assert chat_instance.response == ["Hello World!"]
+    assert chat.sleep == 0.1
+    assert chat.response == ["Hello World!"]
 
 @pytest.mark.asyncio
 async def test_chat_response(chat):
-    chat_instance = await anext(chat)
     events = []
-    async for event in chat_instance("test prompt"):
+    async for event in await chat.async_call("test prompt"):
         logger.info(f"event: {event}")
         events.append(event)
     
     assert len(events) > 0
-    assert events[0].block_type == "info"
-    assert events[0].content == "I am FakeLLM"
+    assert events[0]['block_type'] == "chunk"
     
     # 验证每个字符都是单独的chunk
     for i, char in enumerate("Hello World!"):
-        assert events[i+1].block_type == "chunk"
-        assert events[i+1].content == char
+        assert events[i]['block_type'] == "chunk"
+        assert events[i]['content'] == char
     
-    assert events[-1].block_type == "end"
+    assert events[-1]['block_type'] == "end"
 
 @pytest.mark.asyncio
 async def test_chat_multiple_responses(chat):
     """测试多轮对话"""
-    chat_instance = await anext(chat)
     blocks = []
-    async for block in chat_instance("Test prompt"):
+    async for block in await chat.async_call("Test prompt"):
         blocks.append(block)
     
     assert len(blocks) > 0
-    assert blocks[0].block_type == "info"
-    assert blocks[-1].block_type == "end"
+    assert blocks[0]['block_type'] == "chunk"
+    assert blocks[-1]['block_type'] == "end"
 
 @pytest.mark.asyncio
 async def test_chat_sleep_timing(chat):
-    chat_instance = await anext(chat)
     start_time = asyncio.get_event_loop().time()
         
-    async for _ in chat_instance("test"):
+    async for _ in await chat.async_call("test"):
         pass
         
     end_time = asyncio.get_event_loop().time()
@@ -99,12 +92,11 @@ async def test_chat_concurrency_modes():
             concurrency=concurrency,
             max_workers=2
         )
-        chat.start()
         events = []
-        async for event in chat("test"):
-            if event.block_type == "chunk":
-                events.append(event.content)
-        chat.stop()
+        async for event in await chat.async_call("test"):
+            if event['block_type'] == "chunk":
+                events.append(event['content'])
+        chat.cleanup()
         return "".join(events)
     
 
@@ -112,12 +104,11 @@ async def test_chat_concurrency_modes():
 async def test_chat_default_response(chat):
     # 测试没有设置response时的默认行为
     chat = ChatFake(sleep=0.1)
-    await chat.start_async()
     prompt = "test prompt"
     
     events = []
-    async for event in chat(prompt):
-        if event.block_type == "chunk":
-            events.append(event.content)
-    await chat.stop_async()
+    async for event in await chat.async_call(prompt):
+        if event['block_type'] == "chunk":
+            events.append(event['content'])
+    chat.cleanup()
     assert "".join(events) == f"Reply >> {prompt}" 

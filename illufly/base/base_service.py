@@ -12,6 +12,7 @@ from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
 from ..mq.message_bus import MessageBus
 from .base_call import BaseCall
 from .async_service import AsyncService
+from .models import StreamingBlock
 
 class BaseService(BaseCall):
     """请求之后从 MessageBus 做出回应
@@ -41,15 +42,15 @@ class BaseService(BaseCall):
     ```
     """
                 
-    def __init__(self, service_name: str, message_bus_address: str = None):
+    def __init__(self, service_name: str=None, message_bus_address: str = None, **kwargs):
         """初始化服务
         
         Args:
             service_name: 服务名称
             message_bus_address: MessageBus，如果为None则创建新的
         """
-        super().__init__()
-        self._service_name = service_name
+        super().__init__(**kwargs)
+        self._service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
         self._message_bus_address = message_bus_address
         self._message_bus = MessageBus(
             address=message_bus_address,
@@ -72,25 +73,26 @@ class BaseService(BaseCall):
         """清理资源"""
         self._message_bus.cleanup()
 
-    async def _process_and_end(self, thread_id: str, **kwargs):
+    async def _process_and_end(self, *args, thread_id: str, **kwargs):
         """将处理和结束标记合并为一个顺序任务"""
         try:
             # 1. 执行主处理任务
             await self.async_method(
                 "server",
+                *args,
                 thread_id=thread_id,
                 message_bus=self._message_bus,
                 **kwargs
             )
             
             # 2. 等待处理完成后再发送结束标记
-            self._message_bus.publish(thread_id, {"block_type": "end"})
+            self._message_bus.publish(thread_id, {"block_type": "end", "content": ""})
             
         except Exception as e:
             self._logger.error(f"Error in processing: {e}")
             raise
 
-    def call(self, **kwargs):
+    def call(self, *args, **kwargs):
         """同步调用服务方法"""
         thread_id = self._get_thread_id()
         client_bus = MessageBus(
@@ -107,6 +109,7 @@ class BaseService(BaseCall):
             with self._async_service.managed_sync() as loop:
                 task = loop.create_task(
                     self._process_and_end(
+                        *args,
                         thread_id=thread_id,
                         **kwargs
                     )
@@ -119,7 +122,7 @@ class BaseService(BaseCall):
             client_bus.cleanup()
             raise
 
-    async def async_call(self, **kwargs):
+    async def async_call(self, *args, **kwargs):
         """异步调用服务方法"""
         thread_id = self._get_thread_id()
         client_bus = MessageBus(
@@ -135,6 +138,7 @@ class BaseService(BaseCall):
             # 2. 创建单个顺序任务
             task = asyncio.create_task(
                 self._process_and_end(
+                    *args,
                     thread_id=thread_id,
                     **kwargs
                 )
