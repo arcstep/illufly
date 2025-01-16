@@ -95,6 +95,7 @@ class MessageBus:
                 self._subscribed_topics.add(topic)
                 self._logger.debug(f"Auto-subscribed to topic: {topic}")
                 time.sleep(0.01)
+
             if message:
                 # 使用multipart发送消息
                 self._bound_socket.send_multipart([
@@ -158,45 +159,73 @@ class MessageBus:
         cleanup_bound_socket(self._pub_socket, self._address, self._logger)
         cleanup_connected_socket(self._sub_socket, self._address, self._logger)
 
-    async def async_collect(self, once: bool = True, timeout: float = None) -> AsyncGenerator[dict, None]:
+    async def async_collect(self, timeout: float = None, once: bool = False) -> AsyncGenerator[dict, None]:
         """异步收集消息直到收到结束标记或超时
         
         Args:
-            once: 是否只收集一次
             timeout: 每次接收消息的超时时间（秒），None表示永不超时
+            once: 是否只收集一次
         """
+        self._logger.debug(f"async_collect started for topics: {self._subscribed_topics}")
+        
         if not self._sub_socket:
             raise RuntimeError("Not in subscriber mode")
-        
+
         if not self._subscribed_topics:
             raise RuntimeError("No topics subscribed")
+
+        collect_start = time.time()
         
         try:
             while True:
                 try:
-                    if timeout is not None:
-                        async with async_timeout.timeout(timeout):
-                            [topic, payload] = await self._sub_socket.recv_multipart()
+                    # 使用较短的 poll 超时，便于及时退出
+                    if await self._sub_socket.poll(timeout=100):  # 100ms
+                        [topic_bytes, payload] = await self._sub_socket.recv_multipart()
+                        topic_str = topic_bytes.decode()
+                        message = json.loads(payload.decode())
+                        message['topic'] = topic_str
+                        
+                        self._logger.debug(f"Received message at {time.time()}: {message}")
+                        yield message
+                        
+                        # 检查是否结束
+                        if message.get('block_type') == 'end':
+                            self._logger.debug("Received end message, stopping collection")
+                            break
+                        
+                        if once:
+                            self._logger.debug("Once mode enabled, stopping after first message")
+                            break
                     else:
-                        [topic, payload] = await self._sub_socket.recv_multipart()                        
-                    message = json.loads(payload.decode())
-                    message['topic'] = topic.decode()                    
-                    yield message
-                    # 检查是否结束
-                    if once and message.get('block_type') == 'end':
-                        break
-                except asyncio.TimeoutError:
-                    self._logger.debug(f"Message receive timeout after {timeout}s")
-                    break
-                except StopAsyncIteration:
-                    break
-        except Exception as e:
-            self._logger.error(f"Collection error: {e}")
-            raise
+                        # 检查总体超时
+                        if timeout is not None:
+                            if time.time() - collect_start > timeout:
+                                self._logger.debug(f"Collection timeout after {timeout}s")
+                                break
+                        await asyncio.sleep(0.001)
+                        
+                except Exception as e:
+                    self._logger.error(f"Collection error: {e}")
+                    raise
+                
+        except GeneratorExit:
+            self._logger.debug("Generator closed")
+        finally:
+            self._logger.debug("Collection finished")
 
-    def collect(self, *args, **kwargs) -> Generator[dict, None, None]:
-        """同步收集消息"""
+    def collect(self, timeout: float = None, once: bool = False) -> Generator[dict, None, None]:
+        """同步收集消息
+        
+        Args:
+            timeout: 超时时间（秒）
+            once: 是否只收集一次
+            
+        Returns:
+            Generator[dict, None, None]: 消息生成器
+        """
         self._logger.debug(f"MessageBus.collect using AsyncService: {id(self._async_service)}")
+        
         return self._async_service.wrap_async_generator(
-            self.async_collect(*args, **kwargs)
+            self.async_collect(timeout=timeout, once=once)
         )
