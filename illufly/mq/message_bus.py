@@ -17,7 +17,7 @@ from .utils import normalize_address, init_bound_socket, cleanup_bound_socket, c
 class MessageBus:
     _bound_socket = None
     _bound_address = None
-    _bound_lock = threading.Lock()
+    _bound_refs = 0  # 引用计数
     
     def __init__(self, address=None, to_bind=True, to_connect=True, logger=None):
         self._logger = logger or logging.getLogger(__name__)
@@ -27,9 +27,10 @@ class MessageBus:
         self._sub_socket = None
         self._subscribed_topics = set()
         self._context = zmq.asyncio.Context.instance()
+        self._is_publisher = False  # 标记是否使用了发布功能
 
         address = address or "inproc://message_bus"
-        self._address = normalize_address(address)  # 规范化地址
+        self._address = normalize_address(address)
 
         if to_bind:
             self._to_bind = True
@@ -55,19 +56,26 @@ class MessageBus:
         if not self._to_bind:
             raise RuntimeError("Not in publisher mode")
         
-        with MessageBus._bound_lock:
-            # 检查是否已有绑定的socket
-            if MessageBus._bound_socket:
-                self._logger.info(f"Address {self._address} already bound")
-                return                
-            already_bound, socket_result = init_bound_socket(self._context, zmq.PUB, self._address, self._logger)
-            if already_bound is True:
-                MessageBus._bound_socket = True
-                return
-            else:
-                MessageBus._bound_socket = socket_result
-                self._pub_socket = socket_result
-            MessageBus._bound_address = self._address
+        # 检查是否已有绑定的socket
+        if MessageBus._bound_socket:
+            self._logger.info(f"Address {self._address} already bound, refs: {MessageBus._bound_refs}")
+            MessageBus._bound_refs += 1  # 增加引用计数
+            self._is_publisher = True
+            return
+            
+        already_bound, socket_result = init_bound_socket(self._context, zmq.PUB, self._address, self._logger)
+        if already_bound is True:
+            MessageBus._bound_socket = True
+            MessageBus._bound_refs = 1  # 初始化引用计数
+            self._is_publisher = True
+            return
+        else:
+            MessageBus._bound_socket = socket_result
+            self._pub_socket = socket_result
+            MessageBus._bound_refs = 1  # 初始化引用计数
+            self._is_publisher = True
+        MessageBus._bound_address = self._address
+        self._logger.debug(f"Bound socket initialized with ref count: {MessageBus._bound_refs}")
 
     def init_subscriber(self):
         """初始化订阅者"""
@@ -83,7 +91,7 @@ class MessageBus:
         if not isinstance(topic, str):
             raise ValueError("Topic must be a string")
         if not self._bound_socket:
-            raise RuntimeError("Not in publisher mode")
+            raise RuntimeError("No bound socket found")
 
         if message and isinstance(message, str):
             message = {"content": message}
@@ -150,17 +158,27 @@ class MessageBus:
             raise
 
     def __del__(self):
-        """析构函数，确保资源被清理"""
+        """析构函数确保资源被清理"""
         self.cleanup()
 
     def cleanup(self):
         """清理资源"""
-        if self._pub_socket:
-            # 如果是绑定者，清理静态变量
-            if self._pub_socket is MessageBus._bound_socket:
-                MessageBus._bound_socket = None
-                MessageBus._bound_address = None
-        cleanup_bound_socket(self._pub_socket, self._address, self._logger)
+        if self._is_publisher:
+            # 如果是发布者，减少引用计数
+            MessageBus._bound_refs -= 1
+            self._logger.debug(f"Decreased bound socket refs to: {MessageBus._bound_refs}")
+            
+            # 只有当引用计数为0时才清理静态socket
+            if MessageBus._bound_refs == 0:
+                if self._pub_socket is MessageBus._bound_socket:
+                    self._logger.info("Cleaning up bound socket (last reference)")
+                    MessageBus._bound_socket = None
+                    MessageBus._bound_address = None
+                    cleanup_bound_socket(self._pub_socket, self._address, self._logger)
+            else:
+                self._logger.debug(f"Skipping bound socket cleanup, remaining refs: {MessageBus._bound_refs}")
+        
+        # 清理订阅socket
         cleanup_connected_socket(self._sub_socket, self._address, self._logger)
 
     async def async_collect(self, timeout: float = None, once: bool = True) -> AsyncGenerator[dict, None]:
