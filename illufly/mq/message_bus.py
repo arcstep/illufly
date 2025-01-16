@@ -19,13 +19,16 @@ class MessageBus:
     _bound_address = None
     _bound_lock = threading.Lock()
     
-    def __init__(self, address="inproc://message_bus", to_bind=True, to_connect=True, logger=None):
+    def __init__(self, address=None, to_bind=True, to_connect=True, logger=None):
         self._logger = logger or logging.getLogger(__name__)
+        self._async_service = AsyncService(self._logger)
+        self._logger.debug(f"MessageBus created with AsyncService: {id(self._async_service)}")
         self._pub_socket = None
         self._sub_socket = None
         self._subscribed_topics = set()
         self._context = zmq.asyncio.Context.instance()
 
+        address = address or "inproc://message_bus"
         self._address = normalize_address(address)  # 规范化地址
 
         if to_bind:
@@ -123,6 +126,8 @@ class MessageBus:
 
     def subscribe(self, topics: Union[str, List[str]]):
         """仅完成主题订阅，不收取消息"""
+        if not self._sub_socket:
+            raise RuntimeError("Not in subscriber mode")
 
         topics = [topics] if isinstance(topics, str) else topics
         if any(not isinstance(topic, str) for topic in topics):
@@ -139,6 +144,10 @@ class MessageBus:
             self._logger.error(f"Subscription error: {e}")
             raise
 
+    def __del__(self):
+        """析构函数，确保资源被清理"""
+        self.cleanup()
+
     def cleanup(self):
         """清理资源"""
         if self._pub_socket:
@@ -149,7 +158,7 @@ class MessageBus:
         cleanup_bound_socket(self._pub_socket, self._address, self._logger)
         cleanup_connected_socket(self._sub_socket, self._address, self._logger)
 
-    async def collect_async(self, once: bool = True, timeout: float = None) -> AsyncGenerator[dict, None]:
+    async def async_collect(self, once: bool = True, timeout: float = None) -> AsyncGenerator[dict, None]:
         """异步收集消息直到收到结束标记或超时
         
         Args:
@@ -185,16 +194,9 @@ class MessageBus:
             self._logger.error(f"Collection error: {e}")
             raise
 
-    def collect(self, once: bool = True, timeout: float = 30.0) -> Generator[dict, None, None]:
-        """同步收集消息
-        
-        Args:
-            once: 是否只收集一次
-            timeout: 超时时间（秒）
-            
-        Yields:
-            dict: 收到的消息
-        """
-        return AsyncService(self._logger).wrap_async_generator(
-            self.collect_async(once=once, timeout=timeout)
+    def collect(self, *args, **kwargs) -> Generator[dict, None, None]:
+        """同步收集消息"""
+        self._logger.debug(f"MessageBus.collect using AsyncService: {id(self._async_service)}")
+        return self._async_service.wrap_async_generator(
+            self.async_collect(*args, **kwargs)
         )
