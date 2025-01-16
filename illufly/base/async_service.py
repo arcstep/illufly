@@ -54,28 +54,41 @@ class AsyncService:
         
     async def _cleanup_tasks(self):
         """清理所有跟踪的任务，除了当前任务"""
-        current_task = asyncio.current_task()
-        
-        async with self._cleanup_lock:
-            active_tasks = [t for t in self._tasks 
-                          if not t.done() and t != current_task]
+        try:
+            current_task = asyncio.current_task()
             
-            if not active_tasks:
-                return
+            async with self._cleanup_lock:
+                active_tasks = [t for t in self._tasks 
+                              if not t.done() and t != current_task]
                 
-            self._logger.debug(f"Cleaning up {len(active_tasks)} tasks")
-            for task in active_tasks:
-                task.cancel()
-                try:
-                    await asyncio.wait([task], timeout=0.1)
-                    if not task.done():
-                        self._logger.warning(f"Task {task.get_name()} failed to cancel in time")
-                    elif task.cancelled():
-                        self._logger.debug(f"Task cancelled: {task.get_name()}")
-                    else:
-                        self._logger.debug(f"Task completed: {task.get_name()}")
-                except Exception as e:
-                    self._logger.error(f"Error cleaning up task: {e}")
+                if not active_tasks:
+                    return
+                    
+                self._logger.debug(f"Cleaning up {len(active_tasks)} tasks")
+                for task in active_tasks:
+                    task.cancel()
+                    try:
+                        await asyncio.wait([task], timeout=0.1)
+                        if not task.done():
+                            self._logger.warning(f"Task {task.get_name()} failed to cancel in time")
+                        elif task.cancelled():
+                            self._logger.debug(f"Task cancelled: {task.get_name()}")
+                        else:
+                            self._logger.debug(f"Task completed: {task.get_name()}")
+                    except Exception as e:
+                        self._logger.error(f"Error cleaning up task: {e}")
+                    finally:
+                        if task in self._tasks:
+                            self._tasks.remove(task)
+                            
+                self._logger.debug(f"Cleanup completed, remaining tasks: {len(self._tasks)}")
+        except RuntimeError as e:
+            if "no running event loop" in str(e):
+                self._logger.debug("Skipping cleanup as no event loop is running")
+            else:
+                self._logger.error(f"Runtime error during cleanup: {e}")
+        except Exception as e:
+            self._logger.error(f"Unexpected error during cleanup: {e}")
 
     def to_sync(self, async_func: Callable[..., T]) -> Callable[..., T]:
         """装饰器：将异步函数转换为同步函数"""
