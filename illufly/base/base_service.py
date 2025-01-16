@@ -60,13 +60,17 @@ class BaseService(BaseCall):
 
     def __del__(self):
         """析构函数，确保资源被清理"""
-        self._message_bus.cleanup()
+        self.cleanup()
 
     def __call__(self, *args, **kwargs):
         return self.call(*args, **kwargs)
 
     def _get_thread_id(self):
         return f"{self._service_name}.{uuid.uuid1()}"
+
+    def cleanup(self):
+        """清理资源"""
+        self._message_bus.cleanup()
 
     async def _process_and_end(self, thread_id: str, **kwargs):
         """将处理和结束标记合并为一个顺序任务"""

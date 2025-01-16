@@ -44,20 +44,28 @@ async def test_stream_processing(is_async):
     messages = []
     receive_times = []
     
-    if is_async:
-        response = await service.async_call(message="流处理测试")
-        async for msg in response:
-            messages.append(msg)
-            receive_times.append(time.time())
-            if msg.get("block_type") == "end":
-                break
-    else:
-        response = service.call(message="流处理测试")
-        for msg in response:
-            messages.append(msg)
-            receive_times.append(time.time())
-            if msg.get("block_type") == "end":
-                break
+    try:
+        if is_async:
+            response = await service.async_call(message="流处理测试")
+            async for msg in response:
+                messages.append(msg)
+                receive_times.append(time.time())
+                if msg.get("block_type") == "end":
+                    break
+        else:
+            response = service.call(message="流处理测试")
+            for msg in response:
+                messages.append(msg)
+                receive_times.append(time.time())
+                if msg.get("block_type") == "end":
+                    break
+    finally:
+        # 确保正确关闭异步生成器
+        if is_async and response:
+            await response._collector.aclose()
+        # 清理服务资源
+        service.cleanup()
+        await asyncio.sleep(0)  # 确保清理完成
     
     # 基本验证
     assert len(messages) == 5, "应该收到5条消息"  # 开始 + 3个块 + 结束
