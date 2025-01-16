@@ -18,6 +18,7 @@ class AsyncService:
         self._logger = logger or logging.getLogger(__name__)
         self._tasks = set()
         self._cleanup_lock = asyncio.Lock()
+        self._logger.debug(f"AsyncService created: {id(self)}")
         
     @staticmethod
     def get_or_create_loop() -> asyncio.AbstractEventLoop:
@@ -27,10 +28,16 @@ class AsyncService:
             if loop.is_running():
                 import nest_asyncio
                 nest_asyncio.apply()
+            logging.getLogger(__name__).debug(
+                f"Got existing loop: {id(loop)}, is_closed={loop.is_closed()}, is_running={loop.is_running()}"
+            )
             return loop
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            logging.getLogger(__name__).debug(
+                f"Created new loop: {id(loop)}"
+            )
             return loop
             
     def _track_task(self, task: asyncio.Task) -> asyncio.Task:
@@ -105,21 +112,28 @@ class AsyncService:
     def wrap_async_generator(self, agen: AsyncGenerator[T, None]) -> Generator[T, None, None]:
         """包装异步生成器为同步生成器"""
         loop = self.get_or_create_loop()
+        self._logger.debug(f"wrap_async_generator using loop: {id(loop)}")
         
         async def managed_agen():
-            async with self.managed_async():
+            try:
                 async for item in agen:
                     yield item
-                    
+            finally:
+                self._logger.debug(f"managed_agen cleanup with loop: {id(loop)}, is_closed={loop.is_closed()}")
+                await self._cleanup_tasks()
+                
         ait = managed_agen()
-        try:
-            while True:
-                try:
-                    yield loop.run_until_complete(ait.__anext__())
-                except StopAsyncIteration:
-                    break
-        finally:
-            loop.run_until_complete(self._cleanup_tasks()) 
+        while True:
+            try:
+                self._logger.debug(f"Before run_until_complete with loop: {id(loop)}, is_closed={loop.is_closed()}")
+                yield loop.run_until_complete(ait.__anext__())
+                self._logger.debug(f"After run_until_complete with loop: {id(loop)}, is_closed={loop.is_closed()}")
+            except StopAsyncIteration:
+                self._logger.debug(f"Generator finished with loop: {id(loop)}, is_closed={loop.is_closed()}")
+                break
+            except Exception as e:
+                self._logger.error(f"Error in generator with loop: {id(loop)}, error: {e}")
+                raise
 
     def wrap_sync_func(self, func: Callable[..., T]) -> Callable[..., Awaitable[T]]:
         """将同步函数包装为异步函数"""
