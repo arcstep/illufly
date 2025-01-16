@@ -159,7 +159,7 @@ class MessageBus:
         cleanup_bound_socket(self._pub_socket, self._address, self._logger)
         cleanup_connected_socket(self._sub_socket, self._address, self._logger)
 
-    async def async_collect(self, timeout: float = None, once: bool = False) -> AsyncGenerator[dict, None]:
+    async def async_collect(self, timeout: float = None, once: bool = True) -> AsyncGenerator[dict, None]:
         """异步收集消息直到收到结束标记或超时
         
         Args:
@@ -191,12 +191,10 @@ class MessageBus:
                         
                         # 检查是否结束
                         if message.get('block_type') == 'end':
-                            self._logger.debug("Received end message, stopping collection")
-                            break
-                        
-                        if once:
-                            self._logger.debug("Once mode enabled, stopping after first message")
-                            break
+                            self._logger.debug("Received end message, stopping collection")                        
+                            if once:
+                                self._logger.debug("Once mode enabled, stopping after first message")
+                                break
                     else:
                         # 检查总体超时
                         if timeout is not None:
@@ -214,7 +212,7 @@ class MessageBus:
         finally:
             self._logger.debug("Collection finished")
 
-    def collect(self, timeout: float = None, once: bool = False) -> Generator[dict, None, None]:
+    def collect(self, timeout: float = None, once: bool = True) -> Generator[dict, None, None]:
         """同步收集消息
         
         Args:
