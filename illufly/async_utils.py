@@ -6,7 +6,7 @@ from functools import wraps
 
 T = TypeVar('T')
 
-class AsyncService:
+class AsyncUtils:
     """异步环境管理基类
     
     专注于处理：
@@ -18,7 +18,7 @@ class AsyncService:
         self._logger = logger or logging.getLogger(__name__)
         self._tasks = set()
         self._cleanup_lock = asyncio.Lock()
-        self._logger.debug(f"AsyncService created: {id(self)}")
+        self._logger.debug(f"AsyncUtils created: {id(self)}")
         
     @staticmethod
     def get_or_create_loop() -> asyncio.AbstractEventLoop:

@@ -5,7 +5,7 @@ import logging
 import os
 import time
 from urllib.parse import urlparse
-from illufly.mq.message_bus import MessageBus
+from illufly.mq.message_bus import MessageBus, StreamingBlock, BlockType
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class TestMessageBusBasic:
         try:
             # 发送测试消息
             bus.subscribe("test")
-            bus.publish("test", {"msg": "hello"})
+            bus.publish("test", "hello")
             bus.publish("test")
             time.sleep(0.1)
             resp = bus.async_collect()
@@ -77,7 +77,7 @@ class TestMessageBusBasic:
                 results.append(msg)
 
             assert len(results) == 2
-            assert results[0]["msg"] == "hello"
+            assert results[-2].content == "hello"
             
         finally:
             bus.cleanup()
@@ -90,13 +90,13 @@ class TestMessageBusBasic:
         try:
             # 发送测试消息
             bus.subscribe("test")
-            bus.publish("test", {"msg": "hello"})
-            bus.publish("test")
+            bus.publish("test", StreamingBlock(block_type=BlockType.CHUNK, content="hello"))
+            bus.publish("test", StreamingBlock(block_type=BlockType.END, content="done"))
             time.sleep(0.1)
             received = list(bus.collect())
 
             assert len(received) == 2
-            assert received[0]["msg"] == "hello"
+            assert received[-2].content == "hello"
             
         finally:
             bus.cleanup()
@@ -111,22 +111,21 @@ class TestMessageBusBasic:
             time.sleep(0.1)  # 给ZMQ一点时间建立连接
             
             # 发送一系列消息
-            bus.publish("test", {"block_type": "start", "content": "hello"})
-            bus.publish("test", {"block_type": "data", "content": "world"})
-            bus.publish("test", {"block_type": "end", "content": "done"})
-            bus.publish("test")
+            bus.publish("test", StreamingBlock(block_type=BlockType.START, content="hello"))
+            bus.publish("test", StreamingBlock(block_type=BlockType.CHUNK, content="world"))
+            bus.publish("test", StreamingBlock(block_type=BlockType.END, content="done"))
             
             # 收集消息
             messages = list(bus.collect())
             
             # 验证消息
             assert len(messages) == 3
-            assert messages[0]["block_type"] == "start"
-            assert messages[0]["content"] == "hello"
-            assert messages[1]["block_type"] == "data"
-            assert messages[1]["content"] == "world"
-            assert messages[2]["block_type"] == "end"
-            assert messages[2]["content"] == "done"
+            assert messages[0].block_type == BlockType.START
+            assert messages[0].content == "hello"
+            assert messages[1].block_type == BlockType.CHUNK
+            assert messages[1].content == "world"
+            assert messages[2].block_type == BlockType.END
+            assert messages[2].content == "done"
             
         finally:
             bus.cleanup()
@@ -138,7 +137,7 @@ class TestMessageBusBasic:
         
         try:
             # 发送一条消息但不发送结束标记
-            bus.publish("test", {"block_type": "data", "content": "hello"})
+            bus.publish("test", StreamingBlock(block_type=BlockType.CHUNK, content="hello"))
             
             # 收集消息，应该在超时后返回
             start_time = time.time()
@@ -147,7 +146,7 @@ class TestMessageBusBasic:
             
             # 验证结果
             assert len(messages) == 1
-            assert messages[0]["content"] == "hello"
+            assert messages[0].content == "hello"
             assert 0.4 < elapsed < 0.6  # 验证确实等待了大约0.5秒
             
         finally:

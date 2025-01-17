@@ -5,7 +5,7 @@ import os
 import multiprocessing
 import time
 from urllib.parse import urlparse
-from illufly.mq.message_bus import MessageBus
+from illufly.mq.message_bus import MessageBus, BlockType, StreamingBlock
 
 import logging
 logger = logging.getLogger(__name__)
@@ -45,13 +45,14 @@ class TestPubSubFunctionality:
         try:
             bus2.subscribe(["test"])
             # 发送多条消息
-            bus1.publish("test", {"msg": "hello1"}, end=False)
-            bus1.publish("test", {"msg": "hello2"}, end=True)
+            bus1.publish("test", StreamingBlock(content="hello1"))
+            bus1.publish("test", StreamingBlock(content="hello2"), end=True)
             
             received = list(bus2.collect())
             assert len(received) == 3
-            assert received[0]["msg"] == "hello1"
-            assert received[1]["msg"] == "hello2"
+            assert received[0].content == "hello1"
+            assert received[1].content == "hello2"
+            assert received[-1].block_type == BlockType.END
             
         finally:
             bus1.cleanup()
@@ -82,15 +83,16 @@ class TestPubSubFunctionality:
         try:
             bus2.subscribe(["test1", "test2"])
             # 发送多条消息
-            bus1.publish("test1", {"msg": "hello1"}, end=False)
-            bus1.publish("test2", {"msg": "hello2"}, end=False)
-            bus1.publish("test1", end=True)
+            bus1.publish("test1", StreamingBlock(content="hello1"))
+            bus1.publish("test2", StreamingBlock(content="hello2"))
+            bus1.publish("test1", StreamingBlock(block_type=BlockType.END))
             
             received = list(bus2.collect())
             assert len(received) == 3
-            assert received[0]["msg"] == "hello1"
-            assert received[1]["msg"] == "hello2"
-            
+            assert received[0].content == "hello1"
+            assert received[1].content == "hello2"
+            assert received[-1].block_type == BlockType.END
+
         finally:
             bus1.cleanup()
             bus2.cleanup()
@@ -118,12 +120,14 @@ class TestPubSubFunctionality:
         try:
             bus_sub1.subscribe(["test"])
             bus_sub2.subscribe(["test"])
-            bus_pub.publish("test", {"msg": "hello"}, end=True)
+            bus_pub.publish("test", {"content": "hello"}, end=True)
 
             received1 = list(bus_sub1.collect())
             received2 = list(bus_sub2.collect())
-            assert received1[0]["msg"] == "hello"
-            assert received2[0]["msg"] == "hello"
+            assert len(received1) == 2
+            assert len(received2) == 2
+            assert received1[0].content == "hello"
+            assert received2[0].content == "hello"
             
         finally:
             bus_pub.cleanup()
@@ -136,13 +140,13 @@ class TestPubSubFunctionality:
         bus2 = MessageBus(logger=logger)
         received = []
         
-        try:            
+        try:
             bus2.subscribe(["topic1"])
-            bus1.publish("topic1", {"msg": "hello1"}, end=True)
-            bus1.publish("topic2", {"msg": "hello2"}, end=True)
+            bus1.publish("topic1", StreamingBlock(content="hello1"), end=True)
+            bus1.publish("topic2", StreamingBlock(content="hello2"), end=True)
             received = list(bus2.collect())
             assert len(received) == 2
-            assert received[0]["msg"] == "hello1"
+            assert received[0].content == "hello1"
             
         finally:
             bus1.cleanup()
@@ -174,12 +178,12 @@ class TestPubSubFunctionality:
                 for i in range(MSG_COUNT):
                     bus_pub.publish(
                         topic,
-                        {"seq": i, "topic": topic, "msg": f"message-{i}"},
+                        StreamingBlock(thread_id=f"thread-{i}", topic=topic, content=f"message-{i}"),
                         end=False,
                         delay=0
                     )
-            bus_pub.publish("topic1", end=True)
-            bus_pub.publish("topic2", end=True)
+            bus_pub.publish("topic1", StreamingBlock(block_type=BlockType.END))
+            bus_pub.publish("topic2", StreamingBlock(block_type=BlockType.END))
             
             # 验证结果
             received1 = list(bus_sub1.collect(timeout=5.0))

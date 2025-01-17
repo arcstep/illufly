@@ -3,15 +3,15 @@ import asyncio
 import threading
 import time
 import logging
-from illufly.base.async_service import AsyncService
+from illufly.async_utils import AsyncUtils
 import concurrent.futures
 
-class TestAsyncService:
-    """测试AsyncService在各种环境下的行为"""
+class TestAsyncUtils:
+    """测试AsyncUtils在各种环境下的行为"""
     
     def setup_method(self):
         self.logger = logging.getLogger(__name__)
-        self.service = AsyncService(self.logger)
+        self.service = AsyncUtils(self.logger)
         
     async def dummy_task(self, duration=0.1):
         """测试用的异步任务"""

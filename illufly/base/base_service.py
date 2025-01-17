@@ -9,10 +9,9 @@ from abc import ABC, abstractmethod
 
 from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
 
-from ..mq.message_bus import MessageBus
+from ..async_utils import AsyncUtils
+from ..mq.message_bus import MessageBus, StreamingBlock
 from .base_call import BaseCall
-from .async_service import AsyncService
-from .models import StreamingBlock
 
 class BaseService(BaseCall):
     """请求之后从 MessageBus 做出回应
@@ -24,11 +23,14 @@ class BaseService(BaseCall):
     使用示例:
     ```python
     class MyService(BaseService):
+        def __init__(self, service_name: str = "test_service", message_bus_address: str = None):
+            super().__init__(service_name, message_bus_address)
+            self.register_method("server", async_handle=self._async_handler)
+        
         async def _async_handler(self, message: str, thread_id: str, message_bus: MessageBus):
-            resp = {"status": "success", "message": f"收到消息: {message}"}
-            message_bus.publish(thread_id, resp)
-            message_bus.publish(thread_id, end=True)
-            return resp
+            response = {"status": "success", "message": f"收到消息: {message}"}
+            message_bus.publish(thread_id, response)
+            return response
     
     # 同步调用
     service = MyService()
@@ -41,7 +43,7 @@ class BaseService(BaseCall):
         print(msg)
     ```
     """
-                
+
     def __init__(self, service_name: str=None, message_bus_address: str = None, **kwargs):
         """初始化服务
         
@@ -56,7 +58,7 @@ class BaseService(BaseCall):
             address=message_bus_address,
             logger=self._logger
         )
-        self._async_service = AsyncService(logger=self._logger)
+        self._async_utils = AsyncUtils(logger=self._logger)
         self._processing_events = {}  # 用于跟踪每个调用的处理状态
 
     def __del__(self):
@@ -106,7 +108,7 @@ class BaseService(BaseCall):
             collector = client_bus.collect(timeout=30.0)
             
             # 2. 创建单个顺序任务
-            with self._async_service.managed_sync() as loop:
+            with self._async_utils.managed_sync() as loop:
                 task = loop.create_task(
                     self._process_and_end(
                         *args,
@@ -115,7 +117,7 @@ class BaseService(BaseCall):
                     )
                 )
                 
-                return self.Response(collector, [task], self._async_service, self._logger)
+                return self.Response(collector, [task], self._async_utils, self._logger)
                 
         except Exception as e:
             self._logger.error(f"Error in sync call: {e}")
@@ -152,10 +154,10 @@ class BaseService(BaseCall):
             raise
 
     class Response:
-        def __init__(self, collector, tasks, async_service, logger):
+        def __init__(self, collector, tasks, async_utils, logger):
             self._collector = collector
             self._tasks = tasks
-            self._async_service = async_service
+            self._async_utils = async_utils
             self._logger = logger
 
         def __iter__(self):
@@ -171,7 +173,7 @@ class BaseService(BaseCall):
                 
             finally:
                 # 清理所有任务
-                with self._async_service.managed_sync() as loop:
+                with self._async_utils.managed_sync() as loop:
                     for task in self._tasks:
                         if not task.done():
                             task.cancel()
