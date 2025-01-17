@@ -10,16 +10,24 @@ import time
 import tempfile
 import hashlib
 import async_timeout
+from enum import Enum, auto
 
 from ..async_utils import AsyncUtils
 from .models import StreamingBlock, BlockType
 from .utils import normalize_address, init_bound_socket, cleanup_bound_socket, cleanup_connected_socket
 
+class BindState(Enum):
+    """Socket绑定状态"""
+    UNBOUND = auto()         # 未绑定
+    LOCAL_BOUND = auto()     # 本地进程绑定
+    EXTERNAL_BOUND = auto()  # 外部进程绑定
+    REMOTE_BOUND = auto()    # 远程服务器绑定
+
 class MessageBus:
     _bound_socket = None
-    _bound_address = None
+    _bound_state = BindState.UNBOUND
     _bound_refs = 0
-    _bound_lock = threading.Lock()  # 重新引入锁来保护引用计数
+    _bound_lock = threading.Lock()
     
     def __init__(self, address=None, to_bind=True, to_connect=True, logger=None):
         self._logger = logger or logging.getLogger(__name__)
@@ -30,15 +38,15 @@ class MessageBus:
         self._subscribed_topics = set()
         self._context = zmq.asyncio.Context.instance()
         self._is_publisher = False  # 标记是否使用了发布功能
+        self._to_bind = to_bind
+        self._to_connect = to_connect
 
         address = address or "inproc://message_bus"
         self._address = normalize_address(address)
 
         if to_bind:
-            self._to_bind = True
             self.init_publisher()
         if to_connect:
-            self._to_connect = True
             self.init_subscriber()
         
     @property
@@ -51,7 +59,8 @@ class MessageBus:
 
     @property
     def is_bound_outside(self):
-        return MessageBus._bound_socket is True
+        """检查是否被外部进程绑定"""
+        return MessageBus._bound_state in (BindState.EXTERNAL_BOUND, BindState.REMOTE_BOUND)
 
     def init_publisher(self):
         """尝试绑定socket，处理已存在的情况"""
@@ -59,26 +68,54 @@ class MessageBus:
             raise RuntimeError("Not in publisher mode")
         
         with MessageBus._bound_lock:
-            # 检查是否已有绑定的socket
-            if MessageBus._bound_socket:
-                MessageBus._bound_refs = max(1, MessageBus._bound_refs + 1)  # 确保引用计数不会小于1
-                self._is_publisher = True
-                self._logger.info(f"Address {self._address} already bound, refs: {MessageBus._bound_refs}")
-                return
+            self._logger.debug(f"Initializing publisher for {self._address}, current refs: {MessageBus._bound_refs}")
+            
+            parsed = urlparse(self._address)
+            is_local = parsed.scheme == 'inproc' or (
+                parsed.scheme in ('tcp', 'ipc') and 
+                (parsed.hostname in ('localhost', '127.0.0.1', None))
+            )
+            
+            if MessageBus._bound_socket is not None:
+                if is_local and MessageBus._bound_state == BindState.LOCAL_BOUND:
+                    # 本地已绑定，增加引用计数
+                    if not self._is_publisher:  # 只有第一次初始化时增加引用计数
+                        MessageBus._bound_refs += 1
+                        self._is_publisher = True
+                    self._pub_socket = MessageBus._bound_socket
+                else:
+                    # 外部或远程绑定
+                    self._pub_socket = None
+                    self._is_publisher = True
                 
+                self._logger.info(f"Address {self._address} already bound, state: {MessageBus._bound_state.name}, refs: {MessageBus._bound_refs if is_local else 'N/A'}")
+                return
+            
+            # 尝试绑定新socket
             already_bound, socket_result = init_bound_socket(self._context, zmq.PUB, self._address, self._logger)
-            if already_bound is True:
-                MessageBus._bound_socket = True
-                MessageBus._bound_refs = 1
+            if already_bound:
+                # 外部已绑定
+                MessageBus._bound_state = BindState.EXTERNAL_BOUND
+                self._pub_socket = None
                 self._is_publisher = True
+                self._logger.debug(f"Socket already bound externally")
                 return
             else:
-                MessageBus._bound_socket = socket_result
-                self._pub_socket = socket_result
-                MessageBus._bound_refs = 1
-                self._is_publisher = True
+                if is_local:
+                    # 本地新绑定
+                    MessageBus._bound_socket = socket_result
+                    MessageBus._bound_state = BindState.LOCAL_BOUND
+                    MessageBus._bound_refs = 1
+                    self._pub_socket = socket_result
+                    self._is_publisher = True
+                else:
+                    # 远程新绑定
+                    MessageBus._bound_state = BindState.REMOTE_BOUND
+                    self._pub_socket = socket_result
+                    self._is_publisher = True
+                
             MessageBus._bound_address = self._address
-            self._logger.debug(f"Bound socket initialized with ref count: {MessageBus._bound_refs}")
+            self._logger.debug(f"Socket bound with state: {MessageBus._bound_state.name}, refs: {MessageBus._bound_refs if is_local else 'N/A'}")
 
     def init_subscriber(self):
         """初始化订阅者"""
@@ -173,23 +210,38 @@ class MessageBus:
     def cleanup(self):
         """清理资源"""
         if self._is_publisher:
+            parsed = urlparse(self._address)
+            is_local = parsed.scheme == 'inproc' or (
+                parsed.scheme in ('tcp', 'ipc') and 
+                (parsed.hostname in ('localhost', '127.0.0.1', None))
+            )
+            
             with MessageBus._bound_lock:
-                # 减少引用计数，但不允许小于0
-                MessageBus._bound_refs = max(0, MessageBus._bound_refs - 1)
-                self._logger.debug(f"Decreased bound socket refs to: {MessageBus._bound_refs}")
-                
-                # 只有当引用计数为0时才清理静态socket
-                if MessageBus._bound_refs == 0:
-                    if self._pub_socket is MessageBus._bound_socket:
-                        self._logger.info("Cleaning up bound socket (last reference)")
-                        MessageBus._bound_socket = None
-                        MessageBus._bound_address = None
-                        cleanup_bound_socket(self._pub_socket, self._address, self._logger)
-                else:
-                    self._logger.debug(f"Skipping bound socket cleanup, remaining refs: {MessageBus._bound_refs}")
+                if is_local and MessageBus._bound_state == BindState.LOCAL_BOUND:
+                    self._logger.debug(f"Cleaning up local publisher for {self._address}, current refs: {MessageBus._bound_refs}")
+                    if MessageBus._bound_refs > 0:
+                        MessageBus._bound_refs -= 1
+                        self._logger.debug(f"Decreased bound socket refs to: {MessageBus._bound_refs}")
+                        
+                        if MessageBus._bound_refs == 0:
+                            if MessageBus._bound_socket:
+                                self._logger.info("Cleaning up bound socket (last reference)")
+                                socket_to_clean = MessageBus._bound_socket
+                                MessageBus._bound_socket = None
+                                MessageBus._bound_state = BindState.UNBOUND
+                                MessageBus._bound_address = None
+                                cleanup_bound_socket(socket_to_clean, self._address, self._logger)
+                        else:
+                            self._logger.debug(f"Skipping bound socket cleanup, remaining refs: {MessageBus._bound_refs}")
+                elif self._pub_socket:
+                    # 远程连接直接清理自己的socket
+                    cleanup_bound_socket(self._pub_socket, self._address, self._logger)
         
         # 清理订阅socket
-        cleanup_connected_socket(self._sub_socket, self._address, self._logger)
+        if self._sub_socket:
+            cleanup_connected_socket(self._sub_socket, self._address, self._logger)
+            self._sub_socket = None
+            self._logger.debug(f"Cleaned up subscriber for {self._address}")
 
     async def async_collect(self, timeout: float = None, once: bool = True) -> AsyncGenerator[StreamingBlock, None]:
         """异步收集消息直到收到结束标记或超时"""

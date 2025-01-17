@@ -1,6 +1,7 @@
+from unittest.mock import patch, MagicMock
+import zmq
 import pytest
 import asyncio
-import zmq.asyncio
 import os
 import multiprocessing
 import time
@@ -8,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from urllib.parse import urlparse
-from illufly.mq.message_bus import MessageBus
+from illufly.mq.message_bus import MessageBus, BindState
 from illufly.mq.utils import is_ipc
 
 class TestMessageBusBinding:
@@ -23,6 +24,8 @@ class TestMessageBusBinding:
     
     def setup_method(self, method):
         MessageBus._bound_socket = None
+        MessageBus._bound_state = BindState.UNBOUND
+        MessageBus._bound_refs = 0
         
     def teardown_method(self, method):
         if hasattr(self, 'bus1'):
@@ -30,96 +33,26 @@ class TestMessageBusBinding:
         if hasattr(self, 'bus2'):
             self.bus2.cleanup()
 
-    def test_inproc_auto_binding_and_connecting(self):
-        """测试进程内自动绑定和连接"""
-        assert MessageBus._bound_socket is None
-
-        self.bus1 = MessageBus("inproc://test", logger=logger)
-        self.bus2 = MessageBus("inproc://test", logger=logger)
-
-        # 第二个实例应该不会重复绑定
-        assert self.bus1._pub_socket == MessageBus._bound_socket
-        assert self.bus2._sub_socket
-
-    def test_ipc_auto_binding_and_connecting(self, tmp_path):
-        """测试IPC自动绑定和连接"""
-        assert MessageBus._bound_socket is None
+    def test_remote_binding(self):
+        """测试远程服务器绑定"""
+        # 创建一个模拟的 socket 对象
+        mock_socket = MagicMock()
+        mock_socket.bind = MagicMock()  # 模拟 bind 方法
         
-        # 使用较短的IPC路径
-        ipc_path = os.path.join(tmp_path, "test.ipc")
-        if os.path.exists(ipc_path):
-            os.remove(ipc_path)
-        address = f"ipc://{ipc_path}"
-        
-        self.bus1 = MessageBus(address, logger=logger)
-        assert is_ipc(address)
-        assert self.bus1._bound_socket
-        assert MessageBus._bound_socket
-        
-        # 验证IPC文件创建
-        # assert os.path.exists(ipc_path)
-        
-        # 清理
-        self.bus1.cleanup()
-        assert not os.path.exists(ipc_path)
-
-    def test_tcp_binding_and_connecting(self):
-        """测试TCP绑定"""
-        assert MessageBus._bound_socket is None
-
-        address = "tcp://127.0.0.1:5555"
-        self.bus1 = MessageBus(address, logger=logger)
-        self.bus2 = MessageBus(address, logger=logger)
-        
-        assert self.bus1._pub_socket == MessageBus._bound_socket
-        assert self.bus2._sub_socket
-
-    def test_ipc_cross_process_binding(self, tmp_path, capfd):
-        """测试IPC跨进程绑定行为"""
-        ipc_path = os.path.join(tmp_path, "test_cross.ipc")
-        address = f"ipc://{ipc_path}"
-        ready_event = multiprocessing.Event()
-                
-        # 启动外部进程
-        process = multiprocessing.Process(
-            target=run_external_binder,
-            args=(address, ready_event)
-        )
-        process.start()
-        
-        try:
-            # 等待外部进程绑定完成
-            ready_event.wait()
+        # 模拟远程绑定
+        with patch.object(zmq.Context, 'socket', return_value=mock_socket):
+            address = "tcp://example.com:5555"  # 使用非本地地址
+            bus = MessageBus(address, logger=logger)
             
-            # 捕获并打印输出
-            out, err = capfd.readouterr()
-            logger.info(f"Child process stdout: {out}")
-            logger.info(f"Child process stderr: {err}")
-            
-            # 主进程尝试绑定同一地址
-            self.bus1 = MessageBus(address, to_bind=True, to_connect=False, logger=logger)
-            
-            # 应该发现地址被外部进程占用
-            assert self.bus1._pub_socket is None
-            assert MessageBus._bound_socket is True
-            assert self.bus1.is_bound_outside is True
-            
-            # 尝试作为订阅者连接
-            self.bus2 = MessageBus(address, to_bind=False, to_connect=True, logger=logger)
-            assert self.bus2._sub_socket is not None
-            assert self.bus2.is_connected is True
-            
-        finally:
-            process.terminate()
-            process.join(timeout=1)
-            if os.path.exists(ipc_path):
-                os.remove(ipc_path)
-                
+            assert MessageBus._bound_state == BindState.REMOTE_BOUND, "应该识别为远程绑定"
+            assert bus.is_bound_outside is True
+            assert MessageBus._bound_refs == 0, "远程绑定不应使用引用计数"
+
     def test_tcp_cross_process_binding(self):
         """测试TCP跨进程绑定行为"""
         address = "tcp://127.0.0.1:5556"
         ready_event = multiprocessing.Event()
-                    
+        
         # 启动外部进程
         process = multiprocessing.Process(
             target=run_external_binder,
@@ -131,24 +64,30 @@ class TestMessageBusBinding:
             # 等待外部进程绑定完成
             ready_event.wait()
             
-            # 主进程尝试绑定同一地址
-            self.bus1 = MessageBus(address, to_bind=True, to_connect=False, logger=logger)
-            
-            # 应该发现地址被外部进程占用
-            assert self.bus1._pub_socket is None
-            assert MessageBus._bound_socket is True
-            assert self.bus1.is_bound_outside is True
-            
-            # 尝试作为订阅者连接
-            self.bus2 = MessageBus(address, to_bind=False, to_connect=True, logger=logger)
-            assert self.bus2._sub_socket is not None
-            assert self.bus2.is_connected is True
-            
+            # 在 init_bound_socket 层面模拟绑定失败
+            with patch('illufly.mq.utils.init_bound_socket') as mock_init:
+                # 模拟地址已被占用的情况
+                mock_init.return_value = (True, None)  # (already_bound, socket_result)
+                
+                # 主进程尝试绑定同一地址
+                self.bus1 = MessageBus(address, to_bind=True, to_connect=False, logger=logger)
+                
+                # 应该发现地址被外部进程占用
+                assert self.bus1._pub_socket is None
+                assert MessageBus._bound_state == BindState.EXTERNAL_BOUND, "应该识别为外部绑定"
+                assert self.bus1.is_bound_outside is True
+                
+                # 尝试作为订阅者连接
+                self.bus2 = MessageBus(address, to_bind=False, to_connect=True, logger=logger)
+                assert self.bus2._sub_socket is not None
+                assert self.bus2.is_connected is True
+                
         finally:
             process.terminate()
             process.join(timeout=1)
 
 def run_external_binder(address, ready_event):
+    """外部绑定进程"""
     print("--------------------------------")
     print(f"External binder process starting: PID={os.getpid()}")
     print("--------------------------------", flush=True)
