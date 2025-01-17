@@ -2,8 +2,8 @@ from typing import Union, List, Optional, Dict, Any
 import asyncio
 import logging
 
-from ..base import BaseService, StreamingBlock
-from ..mq import MessageBus
+from ..base import BaseService
+from ..mq import MessageBus, StreamingBlock, BlockType
 
 class ChatFake(BaseService):
     """Fake Chat Service"""
@@ -14,7 +14,6 @@ class ChatFake(BaseService):
         **kwargs
     ):
         super().__init__(**kwargs)
-        self._logger = kwargs.get("logger", logging.getLogger(__name__))
         
         # 处理响应设置
         if response is None:
@@ -55,4 +54,4 @@ class ChatFake(BaseService):
         # 逐字符发送响应
         for content in resp:
             await asyncio.sleep(self.sleep)
-            message_bus.publish(thread_id, StreamingBlock(block_type="chunk", content=content).model_dump())
+            message_bus.publish(thread_id, StreamingBlock(content=content))
