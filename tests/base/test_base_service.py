@@ -1,6 +1,6 @@
 import pytest
 from illufly.base.base_service import BaseService
-from illufly.mq.message_bus import MessageBus
+from illufly.mq.message_bus import MessageBus, BlockType, StreamingBlock
 
 class MyService(BaseService):
     """用于测试的服务类"""
@@ -10,7 +10,7 @@ class MyService(BaseService):
     
     async def _async_handler(self, message: str, thread_id: str, message_bus: MessageBus):
         """异步处理器"""
-        response = {"status": "success", "message": f"收到消息: {message}"}
+        response = StreamingBlock(block_type=BlockType.CHUNK, content=f"收到消息: {message}")
         message_bus.publish(thread_id, response)
         return response
 
@@ -26,8 +26,8 @@ class TestBaseService:
         # 直接迭代 Response 对象
         messages = list(resp)
         assert len(messages) > 0
-        assert messages[0]["status"] == "success"
-        assert messages[0]["message"] == "收到消息: 测试消息"
+        assert messages[0].block_type == BlockType.CHUNK
+        assert messages[0].content == "收到消息: 测试消息"
     
     @pytest.mark.asyncio
     async def test_async_call(self, service):
@@ -39,5 +39,5 @@ class TestBaseService:
             messages.append(msg)
         
         assert len(messages) > 0
-        assert messages[0]["status"] == "success"
-        assert messages[0]["message"] == "收到消息: 异步测试消息" 
+        assert messages[0].block_type == BlockType.CHUNK
+        assert messages[0].content == "收到消息: 异步测试消息" 

@@ -205,7 +205,22 @@ class MessageBus:
 
     def __del__(self):
         """析构函数确保资源被清理"""
-        self.cleanup()
+        try:
+            # 如果事件循环还在运行，尝试正常清理
+            if asyncio.get_event_loop().is_running():
+                self.cleanup()
+            else:
+                # 事件循环已关闭，执行同步清理
+                if self._sub_socket:
+                    cleanup_connected_socket(self._sub_socket, self._address, self._logger)
+                    self._sub_socket = None
+                if self._pub_socket:
+                    cleanup_bound_socket(self._pub_socket, self._address, self._logger)
+                    self._pub_socket = None
+        except Exception as e:
+            # 在对象销毁时不抛出异常
+            if self._logger:
+                self._logger.warning(f"Error during MessageBus cleanup: {e}")
 
     def cleanup(self):
         """清理资源"""

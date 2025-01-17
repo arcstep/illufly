@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
 
 from ..async_utils import AsyncUtils
-from ..mq.message_bus import MessageBus, StreamingBlock
+from ..mq.message_bus import MessageBus, StreamingBlock, BlockType
 from .base_call import BaseCall
 
 class BaseService(BaseCall):
@@ -28,7 +28,7 @@ class BaseService(BaseCall):
             self.register_method("server", async_handle=self._async_handler)
         
         async def _async_handler(self, message: str, thread_id: str, message_bus: MessageBus):
-            response = {"status": "success", "message": f"收到消息: {message}"}
+            response = {"block_type": "chunk", "content": f"收到消息: {message}"}
             message_bus.publish(thread_id, response)
             return response
     
@@ -88,7 +88,7 @@ class BaseService(BaseCall):
             )
             
             # 2. 等待处理完成后再发送结束标记
-            self._message_bus.publish(thread_id, {"block_type": "end", "content": ""})
+            self._message_bus.publish(thread_id, StreamingBlock(block_type=BlockType.END))
             
         except Exception as e:
             self._logger.error(f"Error in processing: {e}")
@@ -164,7 +164,7 @@ class BaseService(BaseCall):
             try:
                 for msg in self._collector:
                     yield msg
-                    if msg.get("block_type") == "end":
+                    if msg.block_type == BlockType.END:
                         break
                         
             except Exception as e:
@@ -198,7 +198,7 @@ class BaseService(BaseCall):
             try:
                 async for msg in self._collector:
                     yield msg
-                    if msg.get("block_type") == "end":
+                    if msg.block_type == BlockType.END:
                         break
                         
             except Exception as e:
