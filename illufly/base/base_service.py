@@ -44,7 +44,14 @@ class BaseService(BaseCall):
     ```
     """
 
-    def __init__(self, service_name: str=None, message_bus_address: str = None, **kwargs):
+    def __init__(
+        self,
+        service_name: str=None,
+        message_bus_address: str = None,
+        to_bind: bool = True,
+        timeout: float = 30.0,
+        **kwargs
+    ):
         """初始化服务
         
         Args:
@@ -54,8 +61,11 @@ class BaseService(BaseCall):
         super().__init__(**kwargs)
         self._service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
         self._message_bus_address = message_bus_address
+        self._to_bind = to_bind
+        self._timeout = timeout
         self._message_bus = MessageBus(
             address=message_bus_address,
+            to_bind=to_bind,
             logger=self._logger
         )
         self._async_utils = AsyncUtils(logger=self._logger)
@@ -102,9 +112,9 @@ class BaseService(BaseCall):
             )
             self._logger.info(f"Send <<END>> flag for thread: {thread_id}")
 
-    def call(self, *args, **kwargs):
+    def call(self, *args, thread_id: str = None, **kwargs):
         """同步调用服务方法"""
-        thread_id = self._get_thread_id()
+        thread_id = thread_id or self._get_thread_id()
         client_bus = MessageBus(
             address=self._message_bus_address,
             logger=self._logger
@@ -113,7 +123,11 @@ class BaseService(BaseCall):
         try:
             # 1. 先订阅并创建收集器
             client_bus.subscribe(thread_id)
-            collector = client_bus.collect(timeout=30.0)
+            collector = client_bus.collect(timeout=self._timeout)
+
+            # 如果不需要绑定，则直接返回收集器
+            if not self._to_bind:
+                return self.Response(collector, [], self._async_utils, self._logger)
             
             # 2. 创建单个顺序任务
             with self._async_utils.managed_sync() as loop:
@@ -123,7 +137,7 @@ class BaseService(BaseCall):
                         thread_id=thread_id,
                         **kwargs
                     )
-                )                
+                )
                 return self.Response(collector, [task], self._async_utils, self._logger)
                 
         except Exception as e:
@@ -131,9 +145,9 @@ class BaseService(BaseCall):
             client_bus.cleanup()
             raise
 
-    async def async_call(self, *args, **kwargs):
+    async def async_call(self, *args, thread_id: str = None, **kwargs):
         """异步调用服务方法"""
-        thread_id = self._get_thread_id()
+        thread_id = thread_id or self._get_thread_id()
         client_bus = MessageBus(
             address=self._message_bus_address,
             logger=self._logger
@@ -142,8 +156,12 @@ class BaseService(BaseCall):
         try:
             # 1. 先订阅并创建收集器
             client_bus.subscribe(thread_id)
-            collector = client_bus.async_collect(timeout=30.0)
+            collector = client_bus.async_collect(timeout=self._timeout)
             
+            # 如果不需要绑定，则直接返回收集器
+            if not self._to_bind:
+                return self.AsyncResponse(collector, [], self._logger)
+
             # 2. 创建单个顺序任务
             task = asyncio.create_task(
                 self._process_and_end(

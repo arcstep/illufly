@@ -162,6 +162,7 @@ class ChatOpenAI(BaseService):
                     logger=self._logger,
                     **_kwargs
                 )
+                self._logger.info(f"openai calling kwargs: {_kwargs}")
             else:
                 completion = self.client.chat.completions.create(**_kwargs)
             
