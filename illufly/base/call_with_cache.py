@@ -114,11 +114,16 @@ def _generate_cache_key(func: Callable, context: CallContext, args: tuple, kwarg
 
 def _get_cached_result(cache_key: str, context: CallContext, params: dict, logger: logging.Logger) -> Optional[CachedResult]:
     """获取缓存的结果"""
-    exists, value = get_cache_db().may_exist(cache_key)
-    if exists and value is not None:
-        cached = CachedResult.model_validate(value)
+    not_found = get_cache_db().not_exist(cache_key)
+    if not_found:
+        return None
+
+    cached = get_cache_db().get(cache_key)
+    if cached is not None:
+        cached = CachedResult.model_validate(cached)
         logger.debug(f"Cache hit for {cache_key}, with context: {context.context}, params: {params}")
         return cached
+
     return None
 
 def _handle_error(error: Exception, cache_key: str) -> None:
