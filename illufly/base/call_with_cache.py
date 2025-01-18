@@ -38,9 +38,7 @@ class CallContext(BaseModel):
     def get_cache_key(self) -> str:
         """生成上下文的缓存键"""
         # 对字典进行排序以确保相同内容生成相同的键
-        return hashlib.sha256(
-            json.dumps(self.context, sort_keys=True).encode()
-        ).hexdigest()
+        return hashlib.sha256(json.dumps(self.context, sort_keys=True).encode()).hexdigest()
 
 class CachedResult(BaseModel):
     """缓存的结果"""
@@ -119,7 +117,7 @@ def _get_cached_result(cache_key: str, context: CallContext, params: dict, logge
     exists, value = get_cache_db().may_exist(cache_key)
     if exists and value is not None:
         cached = CachedResult.model_validate(value)
-        logger.info(f"Cache hit for {cache_key}, with context: {context.context}, params: {params}")
+        logger.debug(f"Cache hit for {cache_key}, with context: {context.context}, params: {params}")
         return cached
     return None
 
@@ -147,7 +145,7 @@ def call_with_cache(
     
     # 检查缓存
     if cached := _get_cached_result(cache_key, context, {"args": args, "kwargs": kwargs}, logger):
-        logger.warning(f"Cache hit for {cache_key}, with context: {context}, params: {kwargs}")
+        logger.warning(f"Cache hit for {cache_key}")
         if cached.is_error:
             raise RuntimeError(cached.error)
         if cached.is_iterator:

@@ -143,7 +143,6 @@ class ChatOpenAI(BaseService):
                 **kwargs,
                 **{"stream": True}
             })
-            self._logger.info(f"openai calling kwargs: {_kwargs}")
 
             # 发送开始标记
             message_bus.publish(thread_id, StreamingBlock.create_start(thread_id))
