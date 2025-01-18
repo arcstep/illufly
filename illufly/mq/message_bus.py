@@ -269,7 +269,6 @@ class MessageBus:
             raise RuntimeError("No topics subscribed")
 
         collect_start = time.time()
-        last_poll = time.time()
         poll_interval = 0.01  # 10ms
         
         # 保存当前任务引用
@@ -284,6 +283,7 @@ class MessageBus:
                     if timeout:
                         elapsed = current_time - collect_start
                         if elapsed >= timeout:
+                            self._logger.debug("Collection timeout reached")
                             break
                         remaining_timeout = min(timeout - elapsed, poll_interval)
                     else:
@@ -300,13 +300,15 @@ class MessageBus:
                         yield block
                         
                         if block.block_type == BlockType.END and once:
-                            break
+                            self._logger.debug("Received END block, stopping collection")
+                            return  # 直接返回，不再继续收集
                     
-                    last_poll = current_time
-                    
+                except zmq.error.ZMQError as e:
+                    self._logger.error(f"ZMQ error during collection: {e}")
+                    break
                 except Exception as e:
                     self._logger.error(f"Collection error: {e}")
-                    raise
+                    break
                 
         except GeneratorExit:
             self._logger.debug(f"Generator {self._current_collection_task.get_name()} closing")

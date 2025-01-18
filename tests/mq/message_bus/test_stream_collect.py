@@ -11,114 +11,74 @@ class TestMessageBusStream:
     """消息总线流处理能力测试"""
     
     @pytest.mark.asyncio
-    async def test_async_stream_collect(self):
-        """测试异步流收集的实时性和并行处理能力"""
-        bus = MessageBus(logger=logger)
+    async def test_stream_collect(self):
+        """测试流式收集"""
         topic = "test_stream"
-        bus.subscribe(topic)
+        bus = MessageBus()
         
-        publish_times = []
-        receive_times = []
-        messages = []
+        # 发送开始消息
+        start_block = StreamingBlock(
+            block_type=BlockType.START,
+            content="开始处理",
+            topic=topic
+        )
+        bus.publish(topic, start_block)
         
-        received_first = asyncio.Event()
-        publisher_done = asyncio.Event()
+        # 等待第一条消息
+        first_message_received = asyncio.Event()
+        total_steps = 4
         
-        async def publisher():
-            await received_first.wait()
-            logger.debug("Publisher starting after first message received")
+        async def publish_messages():
+            """发布消息"""
+            await first_message_received.wait()
             
-            for i in range(4):
-                publish_time = time.time()
-                publish_times.append(publish_time)
-                
-                # 创建带进度的消息块
-                progress = StreamingBlock.create_progress(
-                    percentage=(i + 1) * 25.0,
-                    message=f"处理第 {i + 1} 步",
-                    step=i + 1,
-                    total_steps=4,
-                    topic=topic,
-                    seq=i + 1
+            # 发送进度消息
+            for i in range(total_steps):
+                progress = StreamingBlock(
+                    block_type=BlockType.PROGRESS,
+                    block_content={
+                        "step": i + 1,
+                        "total_steps": total_steps,
+                        "percentage": ((i + 1) / total_steps) * 100,
+                        "message": f"处理第 {i + 1}/{total_steps} 步"
+                    },
+                    topic=topic
                 )
-                bus.publish(topic, progress.model_dump())
+                bus.publish(topic, progress)
                 await asyncio.sleep(0.1)
             
-            final_time = time.time()
-            publish_times.append(final_time)
+            # 发送结束消息
             end_block = StreamingBlock(
                 block_type=BlockType.END,
                 content="处理完成",
-                topic=topic,
-                seq=5
+                topic=topic
             )
-            bus.publish(topic, end_block.model_dump())
-            publisher_done.set()
+            bus.publish(topic, end_block)
         
-        publisher_task = asyncio.create_task(publisher())
-        collector = None
+        # 启动发布任务
+        publish_task = asyncio.create_task(publish_messages())
         
-        try:
-            initial_time = time.time()
-            publish_times.append(initial_time)
-            start_block = StreamingBlock(
-                block_type=BlockType.START,
-                content="开始处理",
-                topic=topic,
-                seq=0
-            )
-            bus.publish(topic, start_block.model_dump())
-            
-            collector = bus.async_collect()
-            async for msg in collector:
-                receive_time = time.time()
-                receive_times.append(receive_time)
-                block = StreamingBlock.model_validate(msg)
-                messages.append(block)
-                
-                if len(messages) == 1:
-                    received_first.set()
-                    logger.debug("First message received, signaling publisher")
-                
-                # 验证进度消息的结构
-                if block.block_type == BlockType.PROGRESS:
-                    progress_content = block.get_structured_content()
-                    assert isinstance(progress_content, ProgressContent)
-                    assert 0 <= progress_content.percentage <= 100
-                    assert progress_content.step <= progress_content.total_steps
-                
-                if block.block_type == BlockType.END:
-                    break
-            
-            await publisher_done.wait()
-            await publisher_task
-            
-            # 验证消息处理
-            assert len(messages) == 6, "应该收到6条消息（开始+4条进度+结束）"
-            assert len(receive_times) == 6, "应该有6个接收时间点"
-            assert len(publish_times) == 6, "应该有6个发布时间点"
-            
-            # 验证消息顺序和类型
-            assert messages[0].block_type == BlockType.START, "第一条应该是开始消息"
-            for i, msg in enumerate(messages[1:-1]):
-                assert msg.block_type == BlockType.PROGRESS, f"消息 {i+1} 应该是进度块"
-                progress = msg.get_structured_content()
-                assert progress.percentage == (i + 1) * 25.0, f"进度值错误: {progress.percentage}"
-            assert messages[-1].block_type == BlockType.END, "最后一条应该是结束消息"
-            
-        finally:
-            if not publisher_task.done():
-                publisher_task.cancel()
-                try:
-                    await publisher_task
-                except asyncio.CancelledError:
-                    pass
-            
-            if collector is not None:
-                try:
-                    await collector.aclose()
-                except Exception as e:
-                    logger.debug(f"Error closing collector: {e}")
-            
-            await asyncio.sleep(0.01)
-            bus.cleanup() 
+        # 收集消息
+        blocks = []
+        async for block in bus.async_collect():
+            blocks.append(block)
+            if len(blocks) == 1:
+                first_message_received.set()
+        
+        # 等待发布任务完成
+        await publish_task
+        
+        # 验证消息
+        assert len(blocks) == total_steps + 2  # 开始 + 进度消息 + 结束
+        assert blocks[0].block_type == BlockType.START
+        
+        # 验证进度消息
+        for i in range(total_steps):
+            progress = blocks[i + 1].get_progress()
+            assert progress is not None
+            assert progress.step == i + 1
+            assert progress.total_steps == total_steps
+            assert progress.percentage == ((i + 1) / total_steps) * 100
+            assert progress.message == f"处理第 {i + 1}/{total_steps} 步"
+        
+        assert blocks[-1].block_type == BlockType.END 

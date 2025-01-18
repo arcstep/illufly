@@ -77,8 +77,8 @@ class BaseService(BaseCall):
 
     async def _process_and_end(self, *args, thread_id: str, **kwargs):
         """将处理和结束标记合并为一个顺序任务"""
+        self._logger.info(f"Starting _process_and_end for thread: {thread_id}")
         try:
-            # 1. 执行主处理任务
             await self.async_method(
                 "server",
                 *args,
@@ -86,13 +86,33 @@ class BaseService(BaseCall):
                 message_bus=self._message_bus,
                 **kwargs
             )
-            
-            # 2. 等待处理完成后再发送结束标记
-            self._message_bus.publish(thread_id, StreamingBlock(block_type=BlockType.END))
-            
         except Exception as e:
-            self._logger.error(f"Error in processing: {e}")
-            raise
+            # 将异常作为正常的错误状态处理
+            self._logger.info(f"Processing resulted in error state: {e}")
+            try:
+                self._logger.info("Attempting to send error block")
+                self._message_bus.publish(
+                    thread_id,
+                    StreamingBlock(
+                        block_type=BlockType.ERROR,
+                        content=str(e)
+                    )
+                )
+                self._logger.info("Attempting to send end block")
+                self._message_bus.publish(
+                    thread_id,
+                    StreamingBlock(block_type=BlockType.END)
+                )
+            except Exception as publish_error:
+                self._logger.error(f"Failed to publish blocks: {publish_error}", exc_info=True)
+        else:
+            self._logger.info("Processing completed successfully, sending end block")
+            self._message_bus.publish(
+                thread_id,
+                StreamingBlock(block_type=BlockType.END)
+            )
+        finally:
+            self._logger.info(f"_process_and_end finished for thread: {thread_id}")
 
     def call(self, *args, **kwargs):
         """同步调用服务方法"""
@@ -159,30 +179,43 @@ class BaseService(BaseCall):
             self._tasks = tasks
             self._async_utils = async_utils
             self._logger = logger
+            self._is_closed = False
 
         def __iter__(self):
+            if self._is_closed:
+                raise RuntimeError("Response already closed")
+                
             try:
                 for msg in self._collector:
                     yield msg
                     if msg.block_type == BlockType.END:
-                        break
+                        break  # 收到结束标记后立即退出
                         
             except Exception as e:
-                self._logger.error(f"Error during sync collection: {e}")
+                self._logger.error(f"Error during collection: {e}")
                 raise
                 
             finally:
-                # 清理所有任务
-                with self._async_utils.managed_sync() as loop:
-                    for task in self._tasks:
-                        if not task.done():
-                            task.cancel()
-                            try:
-                                loop.run_until_complete(task)
-                            except asyncio.CancelledError:
-                                pass
-                            except Exception as e:
-                                self._logger.error(f"Error cleaning up task: {e}")
+                self._cleanup()
+
+        def _cleanup(self):
+            """清理资源"""
+            if self._is_closed:
+                return
+                
+            self._is_closed = True
+            
+            # 清理所有任务
+            with self._async_utils.managed_sync() as loop:
+                for task in self._tasks:
+                    if not task.done():
+                        task.cancel()
+                        try:
+                            loop.run_until_complete(task)
+                        except asyncio.CancelledError:
+                            pass
+                        except Exception as e:
+                            self._logger.error(f"Error cleaning up task: {e}")
 
     class AsyncResponse:
         def __init__(self, collector, tasks, logger):
