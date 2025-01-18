@@ -274,3 +274,22 @@ async def test_error_caching():
         )
     assert "API Error" in str(exc_info.value)
 
+def test_iterator_cache():
+    """测试迭代器缓存"""
+    def iter_func():
+        return iter([1, 2, 3, 4, 5])
+    
+    iter_func.__name__ = 'iter_func'
+    iter_func.__module__ = 'test_module'
+    
+    context = CallContext(context={"test": "iterator"})
+    
+    # 第一次调用
+    result1 = call_with_cache(iter_func, context=context)
+    items1 = list(result1)
+    
+    # 第二次调用
+    result2 = call_with_cache(iter_func, context=context)
+    items2 = list(result2)
+    
+    assert items1 == items2 == [1, 2, 3, 4, 5]
