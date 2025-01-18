@@ -5,9 +5,12 @@ import logging
 from pathlib import Path
 from illufly.llm.chat_openai import ChatOpenAI
 from illufly.mq.models import StreamingBlock, BlockType
+from illufly.envir import get_env
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+cache_dir = get_env("ILLUFLY_CACHE_CALL")
 
 @pytest.fixture(autouse=True)
 def setup_logging(caplog):
@@ -15,8 +18,8 @@ def setup_logging(caplog):
     caplog.set_level(logging.INFO)
 
 @pytest.fixture
-def chat_with_invalid_model(tmp_path):
-    os.environ["ILLUFLY_CACHE_CALL"] = str(tmp_path / "chat_cache_1")
+def chat_with_invalid_model():
+    os.environ["ILLUFLY_CACHE_CALL"] = os.path.join(cache_dir, "chat_cache_invalid_model")
     return ChatOpenAI(
         prefix="QWEN",
         model="qwen-test",
@@ -26,24 +29,24 @@ def chat_with_invalid_model(tmp_path):
     )
 
 @pytest.fixture
-def chat_with_invalid_api_key(tmp_path):
-    os.environ["ILLUFLY_CACHE_CALL"] = str(tmp_path / "chat_cache_2")
+def chat_with_invalid_api_key():
+    os.environ["ILLUFLY_CACHE_CALL"] = os.path.join(cache_dir, "chat_cache_invalid_api_key")
     return ChatOpenAI(
         prefix="QWEN",
         api_key="invalid_key",
         service_name="test_chat_openai",
         logger=logger,
-        enable_cache=False
+        enable_cache=True
     )
 
 @pytest.fixture
-def chat(tmp_path):
-    os.environ["ILLUFLY_CACHE_CALL"] = str(tmp_path / "chat_cache_2")
+def chat():
+    os.environ["ILLUFLY_CACHE_CALL"] = os.path.join(cache_dir, "chat_cache_normal")
     return ChatOpenAI(
         prefix="QWEN",
         service_name="test_chat_openai",
         logger=logger,
-        enable_cache=False
+        enable_cache=True
     )
 
 def test_invalid_model(chat_with_invalid_model):
@@ -90,6 +93,7 @@ def test_invalid_api_key(chat_with_invalid_api_key):
     """测试无效的 API Key"""
     messages = [{"role": "user", "content": "你好"}]
     blocks = []
+    logger.warning(f"OpenAI client: {chat_with_invalid_api_key.client}, model_args: {chat_with_invalid_api_key.model_args}")
     for block in chat_with_invalid_api_key(messages):
         blocks.append(block)
         logger.info(f"Received block: {block}")

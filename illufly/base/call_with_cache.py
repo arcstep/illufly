@@ -147,6 +147,7 @@ def call_with_cache(
     
     # 检查缓存
     if cached := _get_cached_result(cache_key, context, {"args": args, "kwargs": kwargs}, logger):
+        logger.warning(f"Cache hit for {cache_key}, with context: {context}, params: {kwargs}")
         if cached.is_error:
             raise RuntimeError(cached.error)
         if cached.is_iterator:

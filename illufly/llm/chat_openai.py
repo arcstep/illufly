@@ -31,7 +31,6 @@ class ChatOpenAI(BaseService):
         
         self.default_call_args = {
             "model": model,
-            "max_tokens": 2000  # 修改默认的 max_tokens 值
         }
         self.model_args = {
             "base_url": base_url,
@@ -141,7 +140,6 @@ class ChatOpenAI(BaseService):
             _kwargs = self.default_call_args.copy()
             _kwargs.update({
                 "messages": messages,
-                "max_tokens": min(kwargs.pop("max_tokens", 2000), 2000),  # 确保不超过限制
                 **kwargs,
                 **{"stream": True}
             })
@@ -158,8 +156,9 @@ class ChatOpenAI(BaseService):
                     context=CallContext(context={
                         "service_name": self._service_name,
                         "provider": self.provider,
-                        "base_url": self.model_args.get("base_url"),
-                        "model": self.default_call_args["model"],
+                        "base_url": self.model_args.get("base_url", ""),
+                        "api_key": self.model_args.get("api_key", ""),
+                        "model": self.default_call_args.get("model", ""),
                     }),
                     logger=self._logger,
                     **_kwargs

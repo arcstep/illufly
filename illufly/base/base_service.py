@@ -123,8 +123,7 @@ class BaseService(BaseCall):
                         thread_id=thread_id,
                         **kwargs
                     )
-                )
-                
+                )                
                 return self.Response(collector, [task], self._async_utils, self._logger)
                 
         except Exception as e:
@@ -152,8 +151,7 @@ class BaseService(BaseCall):
                     thread_id=thread_id,
                     **kwargs
                 )
-            )
-            
+            )            
             return self.AsyncResponse(collector, [task], self._logger)
             
         except Exception as e:

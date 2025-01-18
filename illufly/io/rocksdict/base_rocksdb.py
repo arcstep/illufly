@@ -135,7 +135,7 @@ class BaseRocksDB:
         """
         target = rdict if rdict is not None else self._db
         target.put(key, value, options)
-        self._logger.info(f"put: {key} -> {value}")
+        self._logger.debug(f"put: {key} -> {value}")
 
     def delete(self, key: Any, rdict: Optional[Rdict] = None) -> None:
         """删除数据
@@ -146,7 +146,7 @@ class BaseRocksDB:
         """
         target = rdict if rdict is not None else self._db
         del target[key]
-        self._logger.info(f"delete: {key}")
+        self._logger.debug(f"delete: {key}")
 
     def get(
         self,
@@ -360,7 +360,7 @@ class BaseRocksDB:
                 logger.error(f"Batch operation failed: {e}")
                 raise
         """
-        self._logger.info(f"write with batch: {batch.len()} items")
+        self._logger.debug(f"write with batch: {batch.len()} items")
         self._db.write(batch)
     
     def close(self) -> None:
@@ -413,7 +413,7 @@ class BaseRocksDB:
         """
         options = options or Options()
         cf = self._db.create_column_family(name, options)
-        self._logger.info(f"create_column_family: {cf}")
+        self._logger.debug(f"create_column_family: {cf}")
         return cf
     
     def drop_column_family(self, name: str) -> None:
@@ -423,7 +423,7 @@ class BaseRocksDB:
             name: 要删除的列族名称
         """
         self._db.drop_column_family(name)
-        self._logger.info(f"drop_column_family: {name}")
+        self._logger.debug(f"drop_column_family: {name}")
     
     def get_column_family_handle(self, name: str):
         """获取列族句柄（用于批处理操作）

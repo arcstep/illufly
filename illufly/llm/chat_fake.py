@@ -54,4 +54,4 @@ class ChatFake(BaseService):
         # 逐字符发送响应
         for content in resp:
             await asyncio.sleep(self.sleep)
-            message_bus.publish(thread_id, StreamingBlock(content=content))
+            message_bus.publish(thread_id, StreamingBlock.create_chunk(content=content, topic=thread_id))
