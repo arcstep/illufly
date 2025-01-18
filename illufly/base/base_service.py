@@ -87,32 +87,20 @@ class BaseService(BaseCall):
                 **kwargs
             )
         except Exception as e:
-            # 将异常作为正常的错误状态处理
-            self._logger.info(f"Processing resulted in error state: {e}")
-            try:
-                self._logger.info("Attempting to send error block")
-                self._message_bus.publish(
-                    thread_id,
-                    StreamingBlock(
-                        block_type=BlockType.ERROR,
-                        content=str(e)
-                    )
-                )
-                self._logger.info("Attempting to send end block")
-                self._message_bus.publish(
-                    thread_id,
-                    StreamingBlock(block_type=BlockType.END)
-                )
-            except Exception as publish_error:
-                self._logger.error(f"Failed to publish blocks: {publish_error}", exc_info=True)
-        else:
-            self._logger.info("Processing completed successfully, sending end block")
+            self._logger.error(f"Processing resulted in error state: {e}")
             self._message_bus.publish(
                 thread_id,
-                StreamingBlock(block_type=BlockType.END)
+                StreamingBlock.create_error(
+                    error=str(e),
+                    topic=thread_id
+                )
             )
         finally:
-            self._logger.info(f"_process_and_end finished for thread: {thread_id}")
+            self._message_bus.publish(
+                thread_id,
+                StreamingBlock.create_end(thread_id)
+            )
+            self._logger.info(f"Send <<END>> flag for thread: {thread_id}")
 
     def call(self, *args, **kwargs):
         """同步调用服务方法"""

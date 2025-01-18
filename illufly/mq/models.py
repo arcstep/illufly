@@ -110,6 +110,11 @@ class StreamingBlock(BaseModel):
         return cls(block_type=BlockType.END, topic=topic)
 
     @classmethod
+    def create_error(cls, error: str, topic: str = "") -> "StreamingBlock":
+        """创建错误块"""
+        return cls(block_type=BlockType.ERROR, content=error, topic=topic)
+
+    @classmethod
     def create_vision_input(cls, messages: List[Dict[str, Any]], topic: str = "") -> "StreamingBlock":
         """创建视觉输入块"""
         content_list = []

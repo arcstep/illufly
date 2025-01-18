@@ -1,43 +1,51 @@
 import os
-import json
-from typing import List, Dict, Any
-from http import HTTPStatus
-from ..mq import StreamingService, StreamingBlock
+from typing import List, Dict, Any, Union
+from ..mq import MessageBus, StreamingBlock, BlockType
+from ..base import BaseService, CallContext, call_with_cache
 from openai import OpenAI
 
-class ChatOpenAI(StreamingService):
+class ChatOpenAI(BaseService):
     DEFAULT_MODEL = {
-        "OPENAI": "gpt-o1-mini",
-        "QWEN": "qwen-plus",
-        "BAIDU": "ernie-bot-turbo",
-        "ZHIPU": "glm-4-flush",
+        "OPENAI": "gpt-4-vision-preview",
+        "QWEN": "qwen-vl-plus",
+        "BAIDU": "ernie-bot-4",
+        "ZHIPU": "glm-4v",
+        "MOONSHOT": "moonshot-v1-8k",
+        "GROQ": "mixtral-8x7b-32768",
     }
 
-    def __init__(self, model: str=None, prefix: str=None, extra_args: dict={}, **kwargs):
-        """
-        使用 imitator 参数指定兼容 OpenAI 接口协议的模型来源，默认 prefix="OPENAI"。
-        只需要在环境变量中配置 imitator 对应的 API_KEY 和 BASE_URL 即可。
-        
-        例如：
-        QWEN_API_KEY=sk-...
-        QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+    PROVIDER_URLS = {
+        "QWEN": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "BAIDU": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat",
+        "ZHIPU": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+        "MOONSHOT": "https://api.moonshot.cn/v1",
+        "GROQ": "https://api.groq.com/openai/v1",
+    }
 
-        然后使用类似 `ChatOpenAI(prefix="QWEN")` 的代码就可以使用千问系列模型。
-        """
-
+    def __init__(self, model: str = None, prefix: str = None, extra_args: dict = {}, enable_cache: bool = False, **kwargs):
         prefix = (prefix or "").upper() or "OPENAI"
-
+        
+        # 设置默认模型和基础URL
+        model = model or self.DEFAULT_MODEL.get(prefix, "gpt-4-turbo-preview")
+        base_url = kwargs.pop("base_url", None) or os.getenv(f"{prefix}_BASE_URL") or self.PROVIDER_URLS.get(prefix)
+        
         self.default_call_args = {
-            "model": model or self.DEFAULT_MODEL.get(prefix, "gpt-o1-mini")
+            "model": model,
+            "max_tokens": 2000  # 修改默认的 max_tokens 值
         }
         self.model_args = {
-            "base_url": kwargs.pop("base_url", os.getenv(f"{prefix}_BASE_URL")),
+            "base_url": base_url,
             "api_key": kwargs.pop("api_key", os.getenv(f"{prefix}_API_KEY")),
             **extra_args
         }
+        self.provider = prefix
         self.client = OpenAI(**self.model_args)
 
+        # 启用接口级别的缓存命中
+        self._enable_cache = enable_cache
+
         super().__init__(**kwargs)
+        self.register_method("server", async_handle=self._async_handler)
 
     def validate_messages(self, messages: List[Dict[str, Any]]) -> None:
         """验证消息格式
@@ -72,88 +80,139 @@ class ChatOpenAI(StreamingService):
                     f"第{i+1}条消息的 content 必须是字符串, 得到 {type(msg['content'])}"
                 )
 
-    async def process(
+    async def _process_vision_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """处理包含视觉内容的消息"""
+        processed_messages = []
+        for msg in messages:
+            if isinstance(msg.get("content"), list):
+                # 处理多模态内容
+                content_list = []
+                for content in msg["content"]:
+                    if content.get("type") == "text":
+                        content_list.append({"type": "text", "text": content["text"]})
+                    elif content.get("type") == "image":
+                        image_content = {
+                            "type": "image",
+                            "image_url": content.get("image_url"),
+                            "detail": content.get("detail", "auto")
+                        }
+                        # 处理 base64 图片
+                        if content.get("image_base64"):
+                            image_content["image_url"] = f"data:image/jpeg;base64,{content['image_base64']}"
+                        content_list.append(image_content)
+                processed_messages.append({
+                    "role": msg["role"],
+                    "content": content_list
+                })
+            else:
+                processed_messages.append(msg)
+        return processed_messages
+
+    async def _async_handler(
         self,
-        messages: List[dict],
+        messages: Union[List[dict], str],
+        thread_id: str,
+        message_bus: MessageBus,
         **kwargs
     ):
-        """处理消息流
-        Args:
-            messages: 消息列表或单个消息字符串
-            **kwargs: 其他参数
-        Yields:
-            StreamingBlock: 流式响应块
-        Raises:
-            ValueError: 当消息格式不正确时
-            RuntimeError: 当连接或处理出错时
-        """
         try:
-            # 处理单个字符串消息
             if isinstance(messages, str):
                 messages = [{"role": "user", "content": messages}]
             
             # 验证消息格式
             self.validate_messages(messages)
+            
+            # 处理多模态消息
+            messages = await self._process_vision_messages(messages)
+            
+            # 检查是否包含视觉内容
+            has_vision = any(
+                isinstance(msg.get("content"), list) and 
+                any(c.get("type") == "image" for c in msg["content"])
+                for msg in messages
+            )
+            
+            # 如果包含视觉内容，确保使用支持视觉的模型
+            if has_vision and "vision" not in self.default_call_args["model"]:
+                vision_model = self.DEFAULT_MODEL.get(self.provider, "").replace("-plus", "-vision")
+                if vision_model:
+                    self.default_call_args["model"] = vision_model
 
-            # 构建请求参数
             _kwargs = self.default_call_args.copy()
             _kwargs.update({
                 "messages": messages,
+                "max_tokens": min(kwargs.pop("max_tokens", 2000), 2000),  # 确保不超过限制
                 **kwargs,
-                **{"stream": True, "stream_options": {"include_usage": True}}
+                **{"stream": True}
             })
+            self._logger.info(f"openai calling kwargs: {_kwargs}")
 
-            # 发送请求并处理响应
-            completion = self.client.chat.completions.create(**_kwargs)
+            # 发送开始标记
+            message_bus.publish(thread_id, StreamingBlock.create_start(thread_id))
 
-            usage = {}
-            output = []
-            request_id = None
+            # 启用缓存
+            # 缓存在生产系统中可能丢失随机性，因此主要用于测试、开发或功能演示
+            if self._enable_cache:
+                completion = call_with_cache(
+                    self.client.chat.completions.create,
+                    context=CallContext(context={
+                        "service_name": self._service_name,
+                        "provider": self.provider,
+                        "base_url": self.model_args.get("base_url"),
+                        "model": self.default_call_args["model"],
+                    }),
+                    logger=self._logger,
+                    **_kwargs
+                )
+            else:
+                completion = self.client.chat.completions.create(**_kwargs)
             
             for response in completion:
-                if response.usage:
-                    usage = response.usage
+                self._logger.info(f"openai response: {response}")
                 if response.choices:
-                    ai_output = response.choices[0].delta
-                    if ai_output.tool_calls:
-                        for func in ai_output.tool_calls:
-                            func_json = {
-                                "id": func.id or "",
-                                "type": func.type or "function",
+                    delta = response.choices[0].delta
+                    
+                    # 处理工具调用
+                    if delta.tool_calls:
+                        for tool_call in delta.tool_calls:
+                            tool_data = {
+                                "id": tool_call.id,
+                                "type": tool_call.type,
                                 "function": {
-                                    "name": func.function.name or "",
-                                    "arguments": func.function.arguments or ""
+                                    "name": tool_call.function.name,
+                                    "arguments": tool_call.function.arguments
                                 }
                             }
-                            output.append({"tools_call_chunk": func_json})
-                            yield StreamingBlock(
-                                block_type="tools_call_chunk", 
-                                block_content=json.dumps(func_json, ensure_ascii=False)
+                            message_bus.publish(
+                                thread_id,
+                                StreamingBlock.create_tools_call(tool_data, thread_id)
                             )
-                    else:
-                        content = ai_output.content
-                        if content:
-                            output.append({"chunk": content})
-                            yield StreamingBlock(
-                                block_type="chunk", 
-                                block_content=json.dumps(content, ensure_ascii=False)
-                            )
-            
-            # 发送使用情况
-            usage_dict = {
-                "request_id": request_id,
-                "prompt_tokens": usage.prompt_tokens if usage else None,
-                "completion_tokens": usage.completion_tokens if usage else None,
-                "total_tokens": usage.total_tokens if usage else None
-            }
-            yield StreamingBlock(
-                block_type="usage",
-                block_content=json.dumps(usage_dict, ensure_ascii=False)
-            )
+                    
+                    # 处理文本内容
+                    if delta.content:
+                        message_bus.publish(
+                            thread_id,
+                            StreamingBlock.create_chunk(delta.content, thread_id)
+                        )
+
+                # # 处理使用情况
+                # if response.usage:
+                #     usage_data = {
+                #         "prompt_tokens": response.usage.prompt_tokens,
+                #         "completion_tokens": response.usage.completion_tokens,
+                #         "total_tokens": response.usage.total_tokens,
+                #         "model": self.default_call_args["model"],
+                #         "provider": self.provider
+                #     }
+                #     message_bus.publish(
+                #         thread_id,
+                #         StreamingBlock.create_usage(usage_data, thread_id)
+                #     )
+
+            # 发送结束标记
+            # message_bus.publish(thread_id, StreamingBlock.create_end(thread_id))
 
         except ValueError as e:
-            # 格式错误，直接抛出
             raise
         except Exception as e:
-            # 其他错误（如连接错误），包装为 RuntimeError
             raise RuntimeError(f"API 调用失败: {str(e)}")

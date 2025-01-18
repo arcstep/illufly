@@ -10,7 +10,25 @@ import pickle
 from ..envir.default_env import get_env
 from ..io.rocksdict import BaseRocksDB
 
-CACHE_DB = BaseRocksDB(get_env("ILLUFLY_CACHE_CALL"))
+class CacheDBManager:
+    _db = None
+
+    @classmethod
+    def get_db(cls):
+        if cls._db is None:
+            cls._db = BaseRocksDB(get_env("ILLUFLY_CACHE_CALL"))
+        return cls._db
+
+    @classmethod
+    def reset_db(cls):
+        if cls._db is not None:
+            cls._db.close()
+            cls._db = None
+
+# 替换全局变量
+def get_cache_db():
+    return CacheDBManager.get_db()
+
 logger = logging.getLogger(__name__)
 
 class CallContext(BaseModel):
@@ -98,7 +116,7 @@ def _generate_cache_key(func: Callable, context: CallContext, args: tuple, kwarg
 
 def _get_cached_result(cache_key: str, context: CallContext, params: dict, logger: logging.Logger) -> Optional[CachedResult]:
     """获取缓存的结果"""
-    exists, value = CACHE_DB.may_exist(cache_key)
+    exists, value = get_cache_db().may_exist(cache_key)
     if exists and value is not None:
         cached = CachedResult.model_validate(value)
         logger.info(f"Cache hit for {cache_key}, with context: {context.context}, params: {params}")
@@ -113,7 +131,7 @@ def _handle_error(error: Exception, cache_key: str) -> None:
         error=error_msg,
         is_error=True
     )
-    CACHE_DB.put(cache_key, cached.model_dump())
+    get_cache_db().put(cache_key, cached.model_dump())
     raise RuntimeError(error_msg)
 
 def call_with_cache(
@@ -153,7 +171,7 @@ def call_with_cache(
                 is_error=False
             )
         # 存储结果
-        CACHE_DB.put(cache_key, cached.model_dump())
+        get_cache_db().put(cache_key, cached.model_dump())
         if cached.is_iterator:
             return iter(result)
         return cached.result
