@@ -166,13 +166,16 @@ class BaseService(BaseCall):
             self._async_utils = async_utils
             self._logger = logger
             self._is_closed = False
+            self._cache_result = []
 
         def __iter__(self):
             if self._is_closed:
-                raise RuntimeError("Response already closed")
-                
+                for msg in self._cache_result:
+                    yield msg         
+                return
             try:
                 for msg in self._collector:
+                    self._cache_result.append(msg)
                     yield msg
                     if msg.block_type == BlockType.END:
                         break  # 收到结束标记后立即退出
@@ -209,13 +212,17 @@ class BaseService(BaseCall):
             self._tasks = tasks
             self._logger = logger
             self._is_closed = False
+            self._cache_result = []
 
         async def __aiter__(self):
             if self._is_closed:
-                raise RuntimeError("Response already closed")
-                
+                for msg in self._cache_result:
+                    yield msg
+                return
+            
             try:
                 async for msg in self._collector:
+                    self._cache_result.append(msg)
                     yield msg
                     if msg.block_type == BlockType.END:
                         break

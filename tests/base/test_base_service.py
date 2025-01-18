@@ -44,7 +44,23 @@ class TestBaseServiceResponse:
         for msg in response:
             messages.append(msg)
         assert len(messages) == 3
-                
+
+    def test_sync_response_recollect(self):
+        """重复收集"""
+        service = MyService()
+        response = service.call("test")
+        
+        # 部分消费消息
+        messages = []
+        for msg in response:
+            messages.append(msg)
+        assert len(messages) == 3
+
+        messages2 = []
+        for msg in response:
+            messages2.append(msg)
+        assert len(messages2) == 3
+
     @pytest.mark.asyncio
     async def test_async_response_auto_close(self):
         """测试异步响应"""

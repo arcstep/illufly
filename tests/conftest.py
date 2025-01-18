@@ -3,7 +3,7 @@ import logging
 
 @pytest.fixture(autouse=True)
 def setup_log(caplog):
-    caplog.set_level(logging.DEBUG)
+    caplog.set_level(logging.INFO)
 
 def pytest_configure(config):
     config.addinivalue_line(
