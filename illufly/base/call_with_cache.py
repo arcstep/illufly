@@ -1,14 +1,17 @@
 from typing import Any, Callable, Dict, Optional
+from pydantic import BaseModel, Field
+from datetime import datetime
+
 import hashlib
 import json
-from pydantic import BaseModel, Field
+import logging
 import pickle
-from datetime import datetime
 
 from ..envir.default_env import get_env
 from ..io.rocksdict import BaseRocksDB
 
 CACHE_DB = BaseRocksDB(get_env("ILLUFLY_CACHE_CALL"))
+logger = logging.getLogger(__name__)
 
 class CallContext(BaseModel):
     """调用上下文，支持任意键值对"""
@@ -76,19 +79,23 @@ def call_with_cache(
     func: Callable,
     *args,
     context: CallContext,
+    logger: logging.Logger = None,
     **kwargs
 ) -> Any:
     """支持对通用函数调用实现缓存支持"""
     # 生成缓存键
-    args_key = hashlib.sha256(str(args).encode()).hexdigest()
-    kwargs_key = hashlib.sha256(json.dumps(kwargs, sort_keys=True).encode()).hexdigest()
+    params = {"args": args, "kwargs": kwargs}
+    params_key = hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()
     context_key = context.get_cache_key()
-    cache_key = f"{func.__module__}.{func.__name__}.{context_key}.{args_key}.{kwargs_key}"
+    cache_key = f"{func.__module__}.{func.__name__}.{context_key}.{params_key}"
     
+    logger = logger or logging.getLogger(__name__)
     # 检查缓存是否存在
     exists, value = CACHE_DB.may_exist(cache_key)
     if exists and value is not None:
         cached = CachedResult.model_validate(value)
+        logger.info(f"Cache hit for {cache_key}, with context: {context.context}, params: {params}")
+
         if cached and cached.is_error:  # 确保 cached 不为 None
             raise RuntimeError(cached.error)
         return cached.result if cached else None

@@ -3,7 +3,7 @@ import os
 import shutil
 from pathlib import Path
 from datetime import datetime
-from illufly.base import BaseCall, CallContext, CachedResult, call_with_cache
+from illufly.base import CallContext, CachedResult, call_with_cache
 from openai import OpenAI
 from unittest.mock import Mock, patch
 from dataclasses import dataclass
