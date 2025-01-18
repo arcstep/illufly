@@ -14,21 +14,8 @@ def get_env(key: str=None):
         FIXED_TEMP_DIR = os.path.join('/tmp', "__ILLUFLY__")
 
     default_values = {
-        # 消息总线配置
-        "ILLUFLY_MQ_MESSAGE_BUS_ADDRESS": None,
-
-        # 文件夹配置
-        "ILLUFLY_TEMP_DIR": FIXED_TEMP_DIR,
-        "ILLUFLY_CONFIG_STORE_DIR": "__USERS__",
-        "ILLUFLY_DOCS": "__DOCS__", # 从这个目录自动加载 RAG 资料，为避免误将不必要的资料做 RAG，因此需要设置为 __DOCS__
-        "ILLUFLY_RESOURCE": "./", # 根据这个媒体文件夹上传文件，因此需要设置为当前目录
-        "ILLUFLY_LOCAL_FILE_MEMORY": os.path.join(FIXED_TEMP_DIR, "LOCAL_FILE_MEMORY"), # LocalFileMemory 记忆存储目录
-        "ILLUFLY_LOCAL_FILE_EVENTS": os.path.join(FIXED_TEMP_DIR, "LOCAL_FILE_EVENTS"), # LocalFileEvents 事件存储目录
-        "ILLUFLY_CHAT_LEARN": os.path.join(FIXED_TEMP_DIR, "CHART_LEARN"), # ChatLearn 自我进化经验的存储目录
-        "ILLUFLY_IDENT": os.path.join(FIXED_TEMP_DIR, "IDENT"), # 问题转换、意图识别的经验存储目录
-        "ILLUFLY_CACHE_EMBEDDINGS": os.path.join(FIXED_TEMP_DIR, "CACHE_EMBEDDINGS"), # 缓存 Embeddings 存储目录
-        "ILLUFLY_UPLOAD_CACHE": os.path.join(FIXED_TEMP_DIR, "UPLOAD_CACHE"), # 上传缓存目录
-        "FASTAPI_TOKEN_WHITELIST": os.path.join(FIXED_TEMP_DIR, "AUTH", "whitelist.json"),
+        # 缓存目录
+        "ILLUFLY_CACHE_CALL": os.path.join(FIXED_TEMP_DIR, "CACHE_CALL"), # 缓存调用结果存储目录
 
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
@@ -59,14 +46,6 @@ def get_env(key: str=None):
         "ILLUFLY_COLOR_FINAL": "青色",
         "ILLUFLY_COLOR_FRONT_MATTER": "品红",
 
-        # HTTP
-        "HTTP_CHECK_RESULT_SECONDS": 2,
-
-        # DashScope
-        "DASHSCOPE_BASE_URL": "https://dashscope.aliyuncs.com/api/v1",
-        # Zhipu
-        "ZHIPUAI_API_TOOLS_BASE_URL": "https://open.bigmodel.cn/api/paas/v4/tools",
-
         # Auth
         "FASTAPI_USERS_ADMIN_USERNAME": "admin",
         "FASTAPI_USERS_ADMIN_PASSWORD": "admin",
@@ -86,49 +65,6 @@ def get_env(key: str=None):
         "LOG_DATE_FORMAT": "%Y-%m-%d %H:%M:%S",
         "LOG_ENCODING": "utf-8",
         "LOG_MIN_FREE_SPACE": 100 * 1024 * 1024,
-
-        # JiaoziCache
-        "JIAOZI_BTREE_LRU_MAX_CACHE_SIZE": 1000,
-        "JIAOZI_INDEX_FIELD_MAX_TAGS": 20,
-        "JIAOZI_CACHE_STORE_DIR": os.path.join(FIXED_TEMP_DIR, "JIAOZI_CACHE"),  # 存储根目录
-        "JIAOZI_CACHE_READ_SIZE": 1000,      # 读缓存大小
-        "JIAOZI_CACHE_WRITE_SIZE": 1000,     # 写缓冲大小
-        "JIAOZI_CACHE_FLUSH_INTERVAL": 60,   # 刷新间隔（秒）
-        "JIAOZI_CACHE_FLUSH_THRESHOLD": 1000, # 刷新阈值
-
-        # RocksDB数据库配置
-        "ROCKSDB_BASE_DIR": os.path.join(FIXED_TEMP_DIR, "__ROCKSDB_STORE__"),  # 数据库根目录
-        
-        # 全局配置 - 内存相关
-        "ROCKSDB_BLOCK_CACHE_SIZE": 512,      # Block缓存大小(MB)，建议为可用内存的30%
-        "ROCKSDB_ROW_CACHE_SIZE": 128,        # 行缓存大小(MB)，建议为block cache的1/4
-        
-        # 全局配置 - 写入相关
-        "ROCKSDB_WRITE_BUFFER_SIZE": 64,      # 单个memtable大小(MB)
-        "ROCKSDB_MAX_WRITE_BUFFER_NUMBER": 4, # 最大memtable数量
-        "ROCKSDB_MIN_WRITE_BUFFER_NUMBER": 2, # 最小memtable数量
-        "ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER": 4,  # L0文件数量触发合并阈值
-        
-        # 全局配置 - 性能优化
-        "ROCKSDB_COMPRESSION": "lz4",         # 压缩算法(none/snappy/lz4/zstd)
-        "ROCKSDB_BLOOM_BITS": 10,            # 布隆过滤器位数(8-16)
-        "ROCKSDB_MAX_BACKGROUND_JOBS": 4,     # 后台任务线程数
-        "ROCKSDB_ENABLE_PIPELINED_WRITE": True,  # 启用流水线写入
-        
-        # 默认列族配置
-        "ROCKSDB_DEFAULT_CF_WRITE_BUFFER_SIZE": 32,  # 默认列族memtable大小(MB)
-        "ROCKSDB_DEFAULT_CF_MAX_WRITE_BUFFER_NUMBER": 3,  # 默认列族最大memtable数量
-        "ROCKSDB_DEFAULT_CF_COMPRESSION": "lz4",  # 默认列族压缩算法
-
-        # MQ总线配置
-        "ILLUFLY_MQ_MODE": "inproc",                # MQ运行模式：tcp 或 inproc
-        "ILLUFLY_MQ_FRONTEND_PORT": 5555,        # 前端端口(面向客户端)
-        "ILLUFLY_MQ_BACKEND_PORT": 5556,         # 后端端口(面向服务)
-        "ILLUFLY_MQ_REGISTRY_PORT": 5557,        # 注册中心端口
-        "ILLUFLY_MQ_HOST": "localhost",          # MQ主机地址
-        "ILLUFLY_MQ_MAX_WORKERS": 3,             # MQ线程池大小
-        "ILLUFLY_MQ_HEARTBEAT_INTERVAL": 30,     # 心跳间隔(秒)
-        "ILLUFLY_MQ_RECONNECT_TIMEOUT": 5000,    # 重连超时时间(毫秒)
     }
     if key:
         if key not in default_values:

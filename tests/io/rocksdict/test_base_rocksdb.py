@@ -111,11 +111,11 @@ class TestBasicOperations:
         assert db.not_exist("nonexistent")
         
         # 详细存在性检查
-        exists, value = db.exist("key1")
+        exists, value = db.may_exist("key1")
         assert exists
         assert value == "value1"
         
-        exists, value = db.exist("nonexistent")
+        exists, value = db.may_exist("nonexistent")
         assert not exists
         assert value is None
     

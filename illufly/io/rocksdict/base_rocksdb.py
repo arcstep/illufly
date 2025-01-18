@@ -73,7 +73,7 @@ class BaseRocksDB:
         target = rdict if rdict is not None else self._db
         return not target.key_may_exist(key, False, options)
 
-    def exist(
+    def may_exist(
         self,
         key: Any,
         *,
@@ -93,9 +93,9 @@ class BaseRocksDB:
                 - (False, None): 需要进一步确认
             
         Examples:
-            exists, value = db.exist("user:123")
+            exists, value = db.may_exist("user:123")
             if exists:
-                print("用户存在:", value)
+                print("用户可能存在:", value)
                 return value
         """
         target = rdict if rdict is not None else self._db

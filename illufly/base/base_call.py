@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 from functools import partial
 
 class BaseCall:
-    """支持同步异步方法互转的基类"""
+    """支持同步异步方法互转的基类"""    
     def __init__(self, logger: logging.Logger = None):
         self._logger = logger or logging.getLogger(__name__)
         self._methods: Dict[str, Tuple[Optional[Callable], Optional[Callable]]] = {}
