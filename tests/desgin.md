@@ -3,7 +3,7 @@
 ## *env 环境变量配置
 
 ## *mq 消息队列
-- BaseService 队列服务：包含客户端
+- LocalService 队列服务：包含客户端
 - ZmqServer 队列服务端
 
 ## *io/rocksdb：RocksDB

@@ -13,7 +13,7 @@ from ..async_utils import AsyncUtils
 from ..mq.message_bus import MessageBus, StreamingBlock, BlockType
 from .base_call import BaseCall
 
-class BaseService(BaseCall):
+class LocalService(BaseCall):
     """请求之后从 MessageBus 做出回应
     
     支持同步和异步调用：
@@ -22,7 +22,7 @@ class BaseService(BaseCall):
     
     使用示例:
     ```python
-    class MyService(BaseService):
+    class MyService(LocalService):
         def __init__(self, service_name: str = "test_service", message_bus_address: str = None):
             super().__init__(service_name, message_bus_address)
             self.register_method("server", async_handle=self._async_handler)
@@ -48,7 +48,6 @@ class BaseService(BaseCall):
         self,
         service_name: str=None,
         message_bus_address: str = None,
-        to_bind: bool = True,
         timeout: float = 30.0,
         **kwargs
     ):
@@ -61,11 +60,9 @@ class BaseService(BaseCall):
         super().__init__(**kwargs)
         self._service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
         self._message_bus_address = message_bus_address
-        self._to_bind = to_bind
         self._timeout = timeout
         self._message_bus = MessageBus(
             address=message_bus_address,
-            to_bind=to_bind,
             logger=self._logger
         )
         self._async_utils = AsyncUtils(logger=self._logger)
@@ -124,10 +121,6 @@ class BaseService(BaseCall):
             # 1. 先订阅并创建收集器
             client_bus.subscribe(thread_id)
             collector = client_bus.collect(timeout=self._timeout)
-
-            # 如果不需要绑定，则直接返回收集器
-            if not self._to_bind:
-                return self.Response(collector, [], self._async_utils, self._logger)
             
             # 2. 创建单个顺序任务
             with self._async_utils.managed_sync() as loop:
@@ -158,10 +151,6 @@ class BaseService(BaseCall):
             client_bus.subscribe(thread_id)
             collector = client_bus.async_collect(timeout=self._timeout)
             
-            # 如果不需要绑定，则直接返回收集器
-            if not self._to_bind:
-                return self.AsyncResponse(collector, [], self._logger)
-
             # 2. 创建单个顺序任务
             task = asyncio.create_task(
                 self._process_and_end(

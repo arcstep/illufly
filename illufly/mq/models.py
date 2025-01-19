@@ -59,6 +59,7 @@ class StreamingBlock(BaseModel):
     block_content: Optional[Union[Dict[str, Any], str, None]] = None  # 允许字典、字符串或 None
     content: Optional[Any] = None
     topic: Optional[str] = None
+    created_at: float = Field(default_factory=lambda: time.time())
 
     model_config = ConfigDict(use_enum_values=True)
 

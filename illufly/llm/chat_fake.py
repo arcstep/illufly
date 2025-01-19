@@ -2,10 +2,10 @@ from typing import Union, List, Optional, Dict, Any
 import asyncio
 import logging
 
-from ..base import BaseService
+from ..base import LocalService
 from ..mq import MessageBus, StreamingBlock, BlockType
 
-class ChatFake(BaseService):
+class ChatFake(LocalService):
     """Fake Chat Service"""
     def __init__(
         self,

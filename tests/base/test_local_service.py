@@ -1,12 +1,12 @@
 import pytest
 import asyncio
 import logging
-from illufly.base.base_service import BaseService
+from illufly.base import LocalService
 from illufly.mq.models import StreamingBlock, BlockType
 
 logger = logging.getLogger(__name__)
 
-class MyService(BaseService):
+class MyService(LocalService):
     """用于测试的服务类"""
     def __init__(self, response="test", sleep=0.01, **kwargs):
         super().__init__(**kwargs)
@@ -31,8 +31,8 @@ class MyService(BaseService):
             topic=thread_id
         ))
 
-class TestBaseServiceResponse:
-    """测试 BaseService 的响应处理"""
+class TestLocalServiceResponse:
+    """测试 LocalService 的响应处理"""
     
     def test_sync_response_auto_close(self):
         """测试同步响应"""
@@ -74,7 +74,25 @@ class TestBaseServiceResponse:
 
         assert len(messages) == 3
 
-class MyServiceWithError(BaseService):
+    @pytest.mark.asyncio
+    async def test_async_response_recollect(self):
+        """测试异步响应"""
+        service = MyService()
+        response = await service.async_call("test")
+        
+        # 部分消费消息
+        messages = []
+        async for msg in response:
+            messages.append(msg)
+
+        assert len(messages) == 3
+
+        messages2 = []
+        async for msg in response:
+            messages2.append(msg)
+        assert len(messages2) == 3
+
+class MyServiceWithError(LocalService):
     """用于测试的服务类"""
     def __init__(self, response="test", sleep=0.01, **kwargs):
         super().__init__(**kwargs)
@@ -86,8 +104,8 @@ class MyServiceWithError(BaseService):
         """测试处理器"""
         raise ValueError("Test error")
 
-class TestBaseServiceException:
-    """测试 BaseService 的异常处理"""
+class TestLocalServiceException:
+    """测试 LocalService 的异常处理"""
     
     @pytest.fixture
     def error_service(self):

@@ -1,11 +1,11 @@
 import pytest
 import asyncio
 import time
-from illufly.base.base_service import BaseService
+from illufly.base import LocalService
 from illufly.mq.message_bus import MessageBus
 from illufly.mq.models import StreamingBlock, BlockType
 
-class StreamService(BaseService):
+class StreamService(LocalService):
     """用于测试的流处理服务"""
     def __init__(self, service_name: str = "stream_service", message_bus_address: str = None):
         super().__init__(service_name, message_bus_address)

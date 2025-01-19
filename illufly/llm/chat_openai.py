@@ -1,10 +1,10 @@
 import os
 from typing import List, Dict, Any, Union
 from ..mq import MessageBus, StreamingBlock, BlockType
-from ..base import BaseService, CallContext, call_with_cache
+from ..base import LocalService, CallContext, call_with_cache
 from openai import OpenAI
 
-class ChatOpenAI(BaseService):
+class ChatOpenAI(LocalService):
     DEFAULT_MODEL = {
         "OPENAI": "gpt-4-vision-preview",
         "QWEN": "qwen-vl-plus",
