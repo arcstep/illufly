@@ -81,27 +81,19 @@ def exist_ipc_file(address):
         return os.path.exists(path)
     return False
 
-def init_bound_socket(context, socket_type,  address, logger) -> tuple[bool, zmq.Socket]:
+def init_bound_socket(context, socket_type, address, logger) -> zmq.Socket:
     """初始化绑定socket
     
     Returns:
-        tuple[bool, zmq.Socket]: 是否已绑定，socket
+        zmq.Socket: 绑定的socket
     """
     try:
-        if exist_ipc_file(address):
-            logger.warning(f"IPC file exists: {address}, treating as bound by another process")
-            return (True, None)
-        # 创建socket并尝试绑定
         socket = context.socket(socket_type)
         socket.bind(address)
-        return (False, socket)
+        return socket
     except zmq.ZMQError as e:
-        socket.close()  # 关闭失败的socket
-        if e.errno == zmq.EADDRINUSE:
-            logger.warning(f"Address {address} in use by another process")
-            return (True, None)  # 标记为外部绑定
-        else:
-            raise
+        socket.close()
+        raise  # 让调用者处理异常
 
 def cleanup_ipc_file(address, logger):
     """清理IPC文件"""
