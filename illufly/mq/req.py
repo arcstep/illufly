@@ -1,7 +1,10 @@
 from typing import Optional, Dict, Any
-import json
+
 from .models import StreamingBlock
 from .base import BaseMQ
+
+import zmq
+import asyncio
 
 class Requester(BaseMQ):
     """ZMQ REQ 请求者"""
@@ -27,12 +30,12 @@ class Requester(BaseMQ):
         try:
             # 发送请求
             message = StreamingBlock.create_chunk(content=data)
-            await self._connected_socket.send_string(message.json())
+            await self._connected_socket.send_string(message.model_dump_json())
             
             # 等待响应
             if await self._connected_socket.poll(timeout=timeout * 1000 if timeout else None):
                 response = await self._connected_socket.recv_string()
-                return StreamingBlock.parse_raw(response)
+                return StreamingBlock.model_validate_json(response)
             else:
                 self._logger.warning("Request timeout")
                 return StreamingBlock.create_error("Request timeout")

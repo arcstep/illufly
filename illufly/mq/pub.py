@@ -18,9 +18,8 @@ class Publisher(BaseMQ):
     def to_binding(self):
         """初始化发布者socket"""
         try:
-            socket = self._context.socket(zmq.PUB)
-            socket.bind(self._address)
-            self._bound_socket = socket
+            self._bound_socket = self._context.socket(zmq.PUB)
+            self._bound_socket.bind(self._address)
             self._logger.debug(f"Publisher socket bound to {self._address}")
         except zmq.ZMQError as e:
             self._logger.error(f"Failed to bind publisher socket: {e}")

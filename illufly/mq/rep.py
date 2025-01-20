@@ -1,7 +1,10 @@
 from typing import AsyncGenerator, Callable, Awaitable, Any, Dict
-import json
+
 from .models import StreamingBlock
 from .base import BaseMQ
+
+import asyncio
+import zmq
 
 class Replier(BaseMQ):
     """ZMQ REP 响应者"""
@@ -19,7 +22,7 @@ class Replier(BaseMQ):
             self._logger.error(f"Failed to bind replier socket: {e}")
             raise
 
-    async def async_serve(self, handler: Callable[[Dict[str, Any]], Awaitable[Any]]):
+    async def async_reply(self, handler: Callable[[Dict[str, Any]], Awaitable[Any]]):
         """开始服务，处理请求"""
         if not self._bound_socket:
             raise RuntimeError("Replier not bound")
@@ -29,7 +32,7 @@ class Replier(BaseMQ):
                 try:
                     # 等待请求
                     request_str = await self._bound_socket.recv_string()
-                    request = StreamingBlock.parse_raw(request_str)
+                    request = StreamingBlock.model_validate_json(request_str)
                     
                     try:
                         # 调用处理函数
@@ -40,7 +43,7 @@ class Replier(BaseMQ):
                         response = StreamingBlock.create_error(str(e))
                     
                     # 发送响应
-                    await self._bound_socket.send_string(response.json())
+                    await self._bound_socket.send_string(response.model_dump_json())
                     
                 except zmq.ZMQError as e:
                     self._logger.error(f"ZMQ error: {e}")
@@ -55,13 +58,13 @@ class Replier(BaseMQ):
         finally:
             self.cleanup()
 
-    def serve(self, handler: Callable[[Dict[str, Any]], Any]):
+    def reply(self, handler: Callable[[Dict[str, Any]], Any]):
         """同步服务"""
         async def async_handler(data):
             return handler(data)
             
         return self._async_utils.run_async(
-            self.async_serve(async_handler)
+            self.async_reply(async_handler)
         )
 
     def cleanup(self):
