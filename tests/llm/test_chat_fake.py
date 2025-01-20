@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 @pytest.fixture(autouse=True)
 def setup_logging(caplog):
     """设置日志级别"""
-    caplog.set_level(logging.DEBUG)
+    caplog.set_level(logging.INFO)
 
 @pytest.fixture
 def chat():
@@ -40,7 +40,8 @@ async def test_chat_initialization(chat):
 async def test_chat_response(chat):
     """测试聊天响应"""
     events = []
-    response = await chat.async_call("test prompt")
+    sub = await chat.async_call("test prompt")
+    response = sub.async_collect()
     async for event in response:
         logger.info(f"event: {event}")
         events.append(event)
@@ -59,7 +60,9 @@ async def test_chat_response(chat):
 async def test_chat_multiple_responses(chat_with_list):
     """测试多轮对话"""
     blocks = []
-    async for block in await chat_with_list.async_call("Test prompt"):
+    sub = await chat_with_list.async_call("Test prompt")
+    response = sub.async_collect()
+    async for block in response:
         blocks.append(block)
     
     assert len(blocks) > 0
@@ -69,8 +72,9 @@ async def test_chat_multiple_responses(chat_with_list):
 @pytest.mark.asyncio
 async def test_chat_sleep_timing(chat):
     start_time = asyncio.get_event_loop().time()
-        
-    async for _ in await chat.async_call("test"):
+    sub = await chat.async_call("test")
+    response = sub.async_collect()
+    async for _ in response:
         pass
         
     end_time = asyncio.get_event_loop().time()
@@ -81,13 +85,20 @@ async def test_chat_sleep_timing(chat):
 def test_sync_chat_response(chat):
     """测试同步聊天响应"""
     # 使用同步调用
-    response = chat.call("test prompt")
-    events = []
+    sub = chat.call("test prompt")
     
     # 使用 with 语句自动管理资源
-    for event in response:
+    events = []
+    for event in sub.collect():
         events.append(event)
-    
+
+    assert len(events) > 0
+
+    # 重复收集
+    events = []
+    for event in sub.collect():
+        events.append(event)
+
     assert len(events) > 0
     assert events[0].block_type == BlockType.CHUNK
     

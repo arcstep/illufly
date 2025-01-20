@@ -61,14 +61,11 @@ class Subscriber(BaseMQ):
 
     async def async_collect(self) -> AsyncGenerator[StreamingBlock, None]:
         """异步收集消息"""
-        self._logger.info(f"Starting async_collect for thread: {self._thread_id}, is_collected: {self._is_collected}")
-        
+        self._logger.info(f"Starting async_collect with is_collected={self._is_collected}, cached blocks={len(self._blocks)}")
         if self._is_collected:
-            self._logger.info(f"Using cached blocks for thread {self._thread_id}, cached count: {len(self._blocks)}")
+            self._logger.info("Using cached blocks")
             for block in self._blocks:
-                self._logger.debug(f"Yielding cached block: {block}")
                 yield block
-            self._logger.info("Finished yielding cached blocks")
             return
 
         try:

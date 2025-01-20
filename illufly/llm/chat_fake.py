@@ -2,10 +2,10 @@ from typing import Union, List, Optional, Dict, Any
 import asyncio
 import logging
 
-from ..base import LocalService
-from ..mq import MessageBus, StreamingBlock, BlockType
+from ..base import LocalService, SimpleService
+from ..mq import Publisher, StreamingBlock, BlockType
 
-class ChatFake(LocalService):
+class ChatFake(SimpleService):
     """Fake Chat Service"""
     def __init__(
         self,
@@ -32,10 +32,7 @@ class ChatFake(LocalService):
             f"sleep: {self.sleep}s"
         )
 
-        # 注册流式处理方法
-        self.register_method("server", async_handle=self._async_handler)
-
-    async def _async_handler(self, messages: Union[str, List[Dict[str, Any]]], thread_id: str, message_bus: MessageBus, **kwargs):
+    async def _async_handler(self, messages: Union[str, List[Dict[str, Any]]], thread_id: str, publisher: Publisher, **kwargs):
         """异步生成响应"""
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
@@ -54,4 +51,4 @@ class ChatFake(LocalService):
         # 逐字符发送响应
         for content in resp:
             await asyncio.sleep(self.sleep)
-            message_bus.publish(thread_id, StreamingBlock.create_chunk(content=content, topic=thread_id))
+            publisher.publish(thread_id, StreamingBlock.create_chunk(content=content, topic=thread_id))
