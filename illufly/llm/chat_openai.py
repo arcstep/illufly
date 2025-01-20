@@ -22,7 +22,7 @@ class ChatOpenAI(SimpleService):
         "GROQ": "https://api.groq.com/openai/v1",
     }
 
-    def __init__(self, model: str = None, prefix: str = None, extra_args: dict = {}, enable_cache: bool = False, **kwargs):
+    def __init__(self, model: str = None, prefix: str = None, extra_args: dict = {}, **kwargs):
         prefix = (prefix or "").upper() or "OPENAI"
         
         # 设置默认模型和基础URL
@@ -39,9 +39,6 @@ class ChatOpenAI(SimpleService):
         }
         self.provider = prefix
         self.client = AsyncOpenAI(**self.model_args)
-
-        # 启用接口级别的缓存命中
-        self._enable_cache = enable_cache
 
         super().__init__(**kwargs)
 
@@ -146,27 +143,10 @@ class ChatOpenAI(SimpleService):
             # 发送开始标记
             publisher.publish(thread_id, StreamingBlock.create_start(thread_id))
 
-            # 启用缓存
-            # 缓存在生产系统中可能丢失随机性，因此主要用于测试、开发或功能演示
-            if self._enable_cache:
-                completion = call_with_cache(
-                    self.client.chat.completions.create,
-                    context=CallContext(context={
-                        "service_name": self._service_name,
-                        "provider": self.provider,
-                        "base_url": self.model_args.get("base_url", ""),
-                        "api_key": self.model_args.get("api_key", ""),
-                        "model": self.default_call_args.get("model", ""),
-                    }),
-                    logger=self._logger,
-                    **_kwargs
-                )
-                self._logger.info(f"openai calling kwargs: {_kwargs}")
-            else:
-                completion = await self.client.chat.completions.create(**_kwargs)
+            completion = await self.client.chat.completions.create(**_kwargs)
             
-            for response in completion:
-                self._logger.warning(f"openai response: {response}")
+            async for response in completion:
+                self._logger.info(f"openai response: {response}")
                 if response.choices:
                     delta = response.choices[0].delta
                     

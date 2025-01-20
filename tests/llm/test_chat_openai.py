@@ -10,7 +10,7 @@ from illufly.envir import get_env
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-cache_dir = get_env("ILLUFLY_CACHE_CALL")
+cache_dir = get_env("ILLUFLY_CACHE_ROOT")
 
 @pytest.fixture(autouse=True)
 def setup_logging(caplog):
@@ -19,34 +19,28 @@ def setup_logging(caplog):
 
 @pytest.fixture
 def chat_with_invalid_model():
-    os.environ["ILLUFLY_CACHE_CALL"] = os.path.join(cache_dir, "chat_cache_invalid_model")
     return ChatOpenAI(
         prefix="QWEN",
         model="qwen-test",
         service_name="test_chat_openai",
         logger=logger,
-        enable_cache=True
     )
 
 @pytest.fixture
 def chat_with_invalid_api_key():
-    os.environ["ILLUFLY_CACHE_CALL"] = os.path.join(cache_dir, "chat_cache_invalid_api_key")
     return ChatOpenAI(
         prefix="QWEN",
         api_key="invalid_key",
         service_name="test_chat_openai",
         logger=logger,
-        enable_cache=True
     )
 
 @pytest.fixture
 def chat():
-    os.environ["ILLUFLY_CACHE_CALL"] = os.path.join(cache_dir, "chat_cache_normal")
     return ChatOpenAI(
         prefix="QWEN",
         service_name="test_chat_openai",
         logger=logger,
-        enable_cache=True
     )
 
 def test_invalid_model(chat_with_invalid_model):

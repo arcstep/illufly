@@ -15,6 +15,7 @@ def get_env(key: str=None):
 
     default_values = {
         # 缓存目录
+        "ILLUFLY_CACHE_ROOT": FIXED_TEMP_DIR, # 缓存调用结果存储目录
         "ILLUFLY_CACHE_CALL": os.path.join(FIXED_TEMP_DIR, "CACHE_CALL"), # 缓存调用结果存储目录
 
         # 提示语
