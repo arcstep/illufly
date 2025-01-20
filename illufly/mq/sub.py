@@ -30,6 +30,10 @@ class Subscriber(BaseMQ):
         self._poll_interval = poll_interval  # 新增轮询间隔参数
         self._timeout = timeout
         self.to_connecting()
+        self._logger.info(f"Subscriber initialized with thread_id: {self._thread_id}")
+
+        # 订阅任务结束之后，执行清理
+        self.on_exit = lambda: None
 
     def to_connecting(self):
         """初始化订阅者"""
@@ -45,35 +49,42 @@ class Subscriber(BaseMQ):
 
     def cleanup(self):
         """清理资源"""
+        self._logger.info(f"Cleaning up subscriber for thread: {self._thread_id}")
         if self._connected_socket:
             cleanup_connected_socket(self._connected_socket, self._address, self._logger)
             self._connected_socket = None
 
     def __del__(self):
         """析构函数，确保资源被清理"""
+        self._logger.info(f"Subscriber being destroyed for thread: {self._thread_id}")
         self.cleanup()
 
     async def async_collect(self) -> AsyncGenerator[StreamingBlock, None]:
         """异步收集消息"""
+        self._logger.info(f"Starting async_collect for thread: {self._thread_id}, is_collected: {self._is_collected}")
+        
         if self._is_collected:
+            self._logger.info(f"Using cached blocks for thread {self._thread_id}, cached count: {len(self._blocks)}")
             for block in self._blocks:
+                self._logger.debug(f"Yielding cached block: {block}")
                 yield block
+            self._logger.info("Finished yielding cached blocks")
             return
 
         try:
             last_message_time = time.time()
+            self._logger.info(f"Starting new collection for thread: {self._thread_id}")
             
             while True:
                 try:
-                    # 使用配置的轮询间隔
                     if await self._connected_socket.poll(timeout=self._poll_interval):
                         [topic_bytes, payload] = await self._connected_socket.recv_multipart()
                         message = json.loads(payload.decode())
                         block = StreamingBlock(**message)
                         
-                        current_time = time.time()
+                        self._logger.debug(f"Received block: {block}")
                         
-                        # 检查消息间隔是否超时
+                        current_time = time.time()
                         if self._timeout and (current_time - last_message_time > self._timeout):
                             self._logger.warning(f"Message interval exceeded timeout of {self._timeout}s")
                             error_block = StreamingBlock.create_error("Message timeout")
@@ -87,6 +98,7 @@ class Subscriber(BaseMQ):
                         yield block
                         
                         if block.block_type == BlockType.END:
+                            self._logger.info(f"Received END block for thread: {self._thread_id}")
                             self._is_collected = True
                             break
                             
@@ -99,18 +111,23 @@ class Subscriber(BaseMQ):
                         break
                         
                 except zmq.error.ZMQError as e:
-                    self._logger.error(f"ZMQ error: {e}")
+                    self._logger.error(f"ZMQ error for thread {self._thread_id}: {e}")
                     error_block = StreamingBlock.create_error(str(e))
                     self._blocks.append(error_block)
                     yield error_block
                     self._is_collected = True
                     break
-                    
+        
+        except Exception as e:
+            self._logger.error(f"Collection error for thread {self._thread_id}: {e}")
+            raise
         finally:
-            self.cleanup()
+            self.on_exit()
+            self._logger.info(f"Collection finished for thread {self._thread_id}, collected blocks: {len(self._blocks)}")
 
     def collect(self) -> Generator[StreamingBlock, None, None]:
         """同步收集消息"""
+        self._logger.info(f"Starting sync collect for thread: {self._thread_id}")
         return self._async_utils.wrap_async_generator(
             self.async_collect()
         )

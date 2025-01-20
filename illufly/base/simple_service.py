@@ -38,13 +38,11 @@ class SimpleService(BaseCall):
         self._address = address
         self._timeout = timeout
         self._poll_interval = poll_interval
-
-        # 使用新的 Publisher
+        self._tasks = set()
+        self._logger.info(f"SimpleService initialized with service_name={service_name}, address={address}")
+        
         if self._address:
-            self._publisher = Publisher(
-                address=self._address,
-                logger=self._logger
-            )
+            self._publisher = Publisher(address=self._address, logger=self._logger)
         else:
             self._publisher = DEFAULT_PUBLISHER
 
@@ -58,8 +56,12 @@ class SimpleService(BaseCall):
         pass
 
     def __del__(self):
-        """析构函数，确保资源被清理"""
-        self.cleanup()
+        """析构函数"""
+        self._logger.info("SimpleService being destroyed")
+        try:
+            self.cleanup()
+        except Exception as e:
+            self._logger.info(f"Error during cleanup in __del__: {e}")
 
     def __call__(self, *args, **kwargs):
         return self.call(*args, **kwargs)
@@ -70,12 +72,28 @@ class SimpleService(BaseCall):
 
     def cleanup(self):
         """清理资源"""
-        if hasattr(self, '_publisher') and self._address:
-            self._publisher.cleanup()
+        try:
+            loop = asyncio.get_running_loop()
+            self._logger.info(f"Got running loop {id(loop)}")
+            if not loop.is_closed():
+                self._logger.info(f"Cleaning up {len(self._tasks)} tasks")
+                for task in self._tasks:
+                    if not task.done():
+                        self._logger.info(f"Cancelling task {id(task)}")
+                        task.cancel()
+        except RuntimeError as e:
+            self._logger.info(f"No running event loop available: {e}")
+        except Exception as e:
+            self._logger.info(f"Error during cleanup: {e}")
+        finally:
+            if self._address and hasattr(self, '_publisher'):
+                self._logger.info("Cleaning up publisher")
+                self._publisher.cleanup()
 
     async def _process_and_end(self, *args, thread_id: str, **kwargs):
         """将处理和结束标记合并为一个顺序任务"""
-        self._logger.info(f"Starting process for thread: {thread_id}")
+        task_id = id(asyncio.current_task())
+        self._logger.info(f"Process task {task_id} starting for thread {thread_id}")
         try:
             # 执行实际的服务方法
             await self.async_method(
@@ -85,21 +103,21 @@ class SimpleService(BaseCall):
                 publisher=self._publisher,
                 **kwargs
             )
+            self._logger.info(f"Process task {task_id} completed normally for thread_id={thread_id}")
         except Exception as e:
-            self._logger.error(f"Processing error: {e}")
+            self._logger.error(f"Process task {task_id} failed with error: {e}")
             self._publisher.publish(
                 topic=thread_id,
                 message=StreamingBlock.create_error(str(e))
             )
         finally:
             self._publisher.end(topic=thread_id)
-            self._logger.info(f"Process finished for thread: {thread_id}")
+            self._logger.info(f"Process task {task_id} entering finished for thread: {thread_id}")
 
     def call(self, *args, thread_id: str = None, **kwargs):
         """同步调用服务方法"""
         thread_id = thread_id or self._get_thread_id()
         
-        # 创建订阅者
         subscriber = Subscriber(
             thread_id,
             address=self._address,
@@ -109,7 +127,6 @@ class SimpleService(BaseCall):
         )
         
         try:
-            # 创建处理任务
             with self._async_utils.managed_sync() as loop:
                 task = loop.create_task(
                     self._process_and_end(
@@ -118,19 +135,18 @@ class SimpleService(BaseCall):
                         **kwargs
                     )
                 )
-                
-                # 直接返回订阅者的收集结果
-                return subscriber.collect()
+                self._tasks.add(task)                
+                task.add_done_callback(self._tasks.discard)
+                subscriber.on_exit = lambda: task.cancel()
+                return subscriber
                 
         except Exception as e:
             self._logger.error(f"Error in sync call: {e}")
             raise
 
     async def async_call(self, *args, thread_id: str = None, **kwargs):
-        """异步调用服务方法"""
         thread_id = thread_id or self._get_thread_id()
         
-        # 创建订阅者
         subscriber = Subscriber(
             thread_id,
             address=self._address,
@@ -139,31 +155,15 @@ class SimpleService(BaseCall):
             timeout=self._timeout
         )
         
-        # 创建处理任务
-        process_task = asyncio.create_task(
+        task = asyncio.create_task(
             self._process_and_end(
                 *args,
                 thread_id=thread_id,
                 **kwargs
             )
         )
-        
-        try:
-            # 收集结果
-            async for msg in subscriber.async_collect():
-                yield msg
-                
-            # 确保处理任务完成
-            await process_task
-            
-        except Exception as e:
-            self._logger.error(f"Call error: {e}")
-            raise
-        finally:
-            if not process_task.done():
-                process_task.cancel()
-                try:
-                    await process_task
-                except asyncio.CancelledError:
-                    pass
-            
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        subscriber.on_exit = lambda: task.cancel()        
+        return subscriber
+
