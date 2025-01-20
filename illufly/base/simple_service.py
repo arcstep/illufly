@@ -19,28 +19,30 @@ class SimpleService(BaseCall):
     def __init__(
         self,
         service_name: str=None,
-        publisher_address: str = None,
-        subscriber_address: str = None,
+        address: str = None,
         timeout: float = 30.0,
+        poll_interval: int = 500,
         **kwargs
     ):
         """初始化服务
         
         Args:
             service_name: 服务名称
-            publisher_address: 发布者地址
+            address: 发布和订阅的 ZMQ 地址
             subscriber_address: 订阅者地址
             timeout: 超时时间
+            poll_interval: 轮询间隔(毫秒)，默认500ms
         """
         super().__init__(**kwargs)
         self._service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
-        self._publisher_address = publisher_address
-        self._subscriber_address = subscriber_address
+        self._address = address
         self._timeout = timeout
+        self._poll_interval = poll_interval
 
-        if self._publisher_address:
+        # 使用新的 Publisher
+        if self._address:
             self._publisher = Publisher(
-                address=self._publisher_address,
+                address=self._address,
                 logger=self._logger
             )
         else:
@@ -48,6 +50,12 @@ class SimpleService(BaseCall):
 
         self._async_utils = AsyncUtils(logger=self._logger)
         self._processing_events = {}  # 用于跟踪每个调用的处理状态
+
+        self.register_method("reply_handler", async_handle=self._async_handler)
+    
+    async def _async_handler(self, *args, thread_id: str, publisher, **kwargs):
+        """回复处理函数"""
+        pass
 
     def __del__(self):
         """析构函数，确保资源被清理"""
@@ -57,53 +65,51 @@ class SimpleService(BaseCall):
         return self.call(*args, **kwargs)
 
     def _get_thread_id(self):
-        return f"{self._service_name}.{uuid.uuid1()}"
+        """生成唯一的线程ID"""
+        return f"{self._service_name}.{uuid.uuid4()}"  # 使用uuid4而不是uuid1
 
     def cleanup(self):
         """清理资源"""
-        self._publisher.cleanup()
+        if hasattr(self, '_publisher') and self._address:
+            self._publisher.cleanup()
 
     async def _process_and_end(self, *args, thread_id: str, **kwargs):
         """将处理和结束标记合并为一个顺序任务"""
-        self._logger.info(f"Starting _process_and_end for thread: {thread_id}")
+        self._logger.info(f"Starting process for thread: {thread_id}")
         try:
+            # 执行实际的服务方法
             await self.async_method(
-                "server",
+                "reply_handler",
                 *args,
                 thread_id=thread_id,
-                message_bus=self._publisher,
+                publisher=self._publisher,
                 **kwargs
             )
         except Exception as e:
-            self._logger.error(f"Processing resulted in error state: {e}")
+            self._logger.error(f"Processing error: {e}")
             self._publisher.publish(
-                thread_id,
-                StreamingBlock.create_error(
-                    error=str(e),
-                    topic=thread_id
-                )
+                topic=thread_id,
+                message=StreamingBlock.create_error(str(e))
             )
         finally:
-            self._publisher.publish(
-                thread_id,
-                StreamingBlock.create_end(thread_id)
-            )
-            self._logger.info(f"Send <<END>> flag for thread: {thread_id}")
+            self._publisher.end(topic=thread_id)
+            self._logger.info(f"Process finished for thread: {thread_id}")
 
     def call(self, *args, thread_id: str = None, **kwargs):
         """同步调用服务方法"""
         thread_id = thread_id or self._get_thread_id()
+        
+        # 创建订阅者
         subscriber = Subscriber(
-            address=self._subscriber_address,
-            logger=self._logger
+            thread_id,
+            address=self._address,
+            logger=self._logger,
+            poll_interval=self._poll_interval,
+            timeout=self._timeout
         )
         
         try:
-            # 1. 先订阅并创建收集器
-            subscriber.subscribe(thread_id)
-            collector = subscriber.collect(timeout=self._timeout)
-            
-            # 2. 创建单个顺序任务
+            # 创建处理任务
             with self._async_utils.managed_sync() as loop:
                 task = loop.create_task(
                     self._process_and_end(
@@ -112,37 +118,52 @@ class SimpleService(BaseCall):
                         **kwargs
                     )
                 )
-                return self.Response(collector, [task], self._async_utils, self._logger)
+                
+                # 直接返回订阅者的收集结果
+                return subscriber.collect()
                 
         except Exception as e:
             self._logger.error(f"Error in sync call: {e}")
-            subscriber.cleanup()
             raise
 
     async def async_call(self, *args, thread_id: str = None, **kwargs):
         """异步调用服务方法"""
         thread_id = thread_id or self._get_thread_id()
-        client_bus = MessageBus(
-            address=self._message_bus_address,
-            logger=self._logger
+        
+        # 创建订阅者
+        subscriber = Subscriber(
+            thread_id,
+            address=self._address,
+            logger=self._logger,
+            poll_interval=self._poll_interval,
+            timeout=self._timeout
+        )
+        
+        # 创建处理任务
+        process_task = asyncio.create_task(
+            self._process_and_end(
+                *args,
+                thread_id=thread_id,
+                **kwargs
+            )
         )
         
         try:
-            # 1. 先订阅并创建收集器
-            client_bus.subscribe(thread_id)
-            collector = client_bus.async_collect(timeout=self._timeout)
-            
-            # 2. 创建单个顺序任务
-            task = asyncio.create_task(
-                self._process_and_end(
-                    *args,
-                    thread_id=thread_id,
-                    **kwargs
-                )
-            )            
-            return self.AsyncResponse(collector, [task], self._logger)
+            # 收集结果
+            async for msg in subscriber.async_collect():
+                yield msg
+                
+            # 确保处理任务完成
+            await process_task
             
         except Exception as e:
-            self._logger.error(f"Error in async call: {e}")
-            client_bus.cleanup()
+            self._logger.error(f"Call error: {e}")
             raise
+        finally:
+            if not process_task.done():
+                process_task.cancel()
+                try:
+                    await process_task
+                except asyncio.CancelledError:
+                    pass
+            
