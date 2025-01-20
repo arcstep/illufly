@@ -2,7 +2,7 @@ import pytest
 import asyncio
 import logging
 from illufly.llm.chat_fake import ChatFake
-from illufly.mq import MessageBus, BlockType
+from illufly.mq import BlockType
 logger = logging.getLogger(__name__)
 
 @pytest.fixture(autouse=True)

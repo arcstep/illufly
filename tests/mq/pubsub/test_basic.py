@@ -78,23 +78,44 @@ async def test_subscriber_reuse():
     """测试订阅者重用缓存"""
     subscriber = Subscriber("reuse_topic")
     
-    # 第一次收集
-    messages1 = []
-    collection_task = asyncio.create_task(collect_messages(subscriber, messages1))
-    
+    # 发布消息
     await asyncio.sleep(0.1)
     DEFAULT_PUBLISHER.publish("reuse_topic", "Test message")
     DEFAULT_PUBLISHER.end("reuse_topic")
     
-    await collection_task
+    # 第一次收集
+    messages1 = []
+    async for msg in subscriber.async_collect():
+        messages1.append(msg)
+    assert len(messages1) == 2
     
     # 第二次收集（应该从缓存获取）
     messages2 = []
     async for msg in subscriber.async_collect():
         messages2.append(msg)
+    assert len(messages2) == 2
+
+@pytest.mark.asyncio
+async def test_collect_with_block_types():
+    """测试订阅者重用缓存"""
+    subscriber = Subscriber("reuse_topic")
     
-    assert messages1 == messages2
-    assert len(messages1) == 2
+    # 发布消息
+    await asyncio.sleep(0.1)
+    DEFAULT_PUBLISHER.publish("reuse_topic", "Test message")
+    DEFAULT_PUBLISHER.end("reuse_topic")
+    
+    # 第一次收集
+    messages1 = []
+    async for msg in subscriber.async_collect(block_types=[BlockType.CHUNK]):
+        messages1.append(msg)
+    assert len(messages1) == 1
+    
+    # 第二次收集（应该从缓存获取）
+    messages2 = []
+    async for msg in subscriber.async_collect(block_types=[BlockType.END]):
+        messages2.append(msg)
+    assert len(messages2) == 1
 
 @pytest.mark.asyncio
 async def test_custom_publisher():

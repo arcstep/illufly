@@ -1,4 +1,4 @@
-from typing import AsyncGenerator, List, Generator
+from typing import AsyncGenerator, List, Generator, Union
 
 import zmq
 import asyncio
@@ -59,12 +59,16 @@ class Subscriber(BaseMQ):
         self._logger.info(f"Subscriber being destroyed for thread: {self._thread_id}")
         self.cleanup()
 
-    async def async_collect(self) -> AsyncGenerator[StreamingBlock, None]:
+    async def async_collect(self, block_types: Union[List[BlockType], BlockType]=None) -> AsyncGenerator[StreamingBlock, None]:
         """异步收集消息"""
+        if isinstance(block_types, (BlockType, str)):
+            block_types = [block_types]
+
         self._logger.info(f"Starting async_collect with is_collected={self._is_collected}, cached blocks={len(self._blocks)}")
         if self._is_collected:
-            self._logger.info("Using cached blocks")
-            for block in self._blocks:
+            self._logger.info(f"Using cached blocks, block_types={block_types}")
+            filtered_blocks = [block for block in self._blocks if block_types is None or block.block_type in block_types]
+            for block in filtered_blocks:
                 yield block
             return
 
@@ -92,7 +96,8 @@ class Subscriber(BaseMQ):
                         
                         last_message_time = current_time
                         self._blocks.append(block)
-                        yield block
+                        if block_types is None or block.block_type in block_types:
+                            yield block
                         
                         if block.block_type == BlockType.END:
                             self._logger.info(f"Received END block for thread: {self._thread_id}")
@@ -122,11 +127,14 @@ class Subscriber(BaseMQ):
             self.on_exit()
             self._logger.info(f"Collection finished for thread {self._thread_id}, collected blocks: {len(self._blocks)}")
 
-    def collect(self) -> Generator[StreamingBlock, None, None]:
+    def collect(self, block_types: Union[List[BlockType], BlockType]=None) -> Generator[StreamingBlock, None, None]:
         """同步收集消息"""
+        if isinstance(block_types, (BlockType, str)):
+            block_types = [block_types]
+
         self._logger.info(f"Starting sync collect for thread: {self._thread_id}")
         return self._async_utils.wrap_async_generator(
-            self.async_collect()
+            self.async_collect(block_types)
         )
 
     @property

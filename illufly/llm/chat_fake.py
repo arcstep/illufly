@@ -2,7 +2,7 @@ from typing import Union, List, Optional, Dict, Any
 import asyncio
 import logging
 
-from ..base import LocalService, SimpleService
+from ..base import SimpleService
 from ..mq import Publisher, StreamingBlock, BlockType
 
 class ChatFake(SimpleService):
