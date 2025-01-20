@@ -52,8 +52,9 @@ def chat():
 def test_invalid_model(chat_with_invalid_model):
     """测试无效模型场景"""
     messages = [{"role": "user", "content": "你好"}]
+    sub = chat_with_invalid_model(messages)
     blocks = []
-    for block in chat_with_invalid_model(messages):  # 直接使用 chat 实例
+    for block in sub.collect():  # 直接使用 chat 实例
         blocks.append(block)
         logger.info(f"Received block: {block}")
     
@@ -63,8 +64,9 @@ def test_invalid_model(chat_with_invalid_model):
 def test_normal_chat(chat):
     """测试正常对话场景"""
     messages = [{"role": "user", "content": "你好"}]
+    sub = chat(messages)
     blocks = []
-    for block in chat(messages):  # 直接使用 chat 实例
+    for block in sub.collect():  # 直接使用 chat 实例
         blocks.append(block)
         logger.info(f"Received block: {block}")
     
@@ -81,8 +83,9 @@ def test_invalid_message_format(chat):
     ]
     for message in invalid_messages:
         messages = [message]
+        sub = chat(messages)
         blocks = []
-        for block in chat(messages):
+        for block in sub.collect():
             blocks.append(block)
             logger.info(f"Received block: {block}")
         
@@ -92,9 +95,10 @@ def test_invalid_message_format(chat):
 def test_invalid_api_key(chat_with_invalid_api_key):
     """测试无效的 API Key"""
     messages = [{"role": "user", "content": "你好"}]
+    sub = chat_with_invalid_api_key(messages)
     blocks = []
     logger.warning(f"OpenAI client: {chat_with_invalid_api_key.client}, model_args: {chat_with_invalid_api_key.model_args}")
-    for block in chat_with_invalid_api_key(messages):
+    for block in sub.collect():
         blocks.append(block)
         logger.info(f"Received block: {block}")
     

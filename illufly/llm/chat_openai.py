@@ -1,10 +1,10 @@
 import os
 from typing import List, Dict, Any, Union
-from ..mq import MessageBus, StreamingBlock, BlockType
-from ..base import LocalService, CallContext, call_with_cache
-from openai import OpenAI
+from ..mq import Publisher, StreamingBlock, BlockType
+from ..base import SimpleService, CallContext, call_with_cache
+from openai import AsyncOpenAI
 
-class ChatOpenAI(LocalService):
+class ChatOpenAI(SimpleService):
     DEFAULT_MODEL = {
         "OPENAI": "gpt-4-vision-preview",
         "QWEN": "qwen-vl-plus",
@@ -38,13 +38,12 @@ class ChatOpenAI(LocalService):
             **extra_args
         }
         self.provider = prefix
-        self.client = OpenAI(**self.model_args)
+        self.client = AsyncOpenAI(**self.model_args)
 
         # 启用接口级别的缓存命中
         self._enable_cache = enable_cache
 
         super().__init__(**kwargs)
-        self.register_method("server", async_handle=self._async_handler)
 
     def validate_messages(self, messages: List[Dict[str, Any]]) -> None:
         """验证消息格式
@@ -111,7 +110,7 @@ class ChatOpenAI(LocalService):
         self,
         messages: Union[List[dict], str],
         thread_id: str,
-        message_bus: MessageBus,
+        publisher: Publisher,
         **kwargs
     ):
         try:
@@ -145,7 +144,7 @@ class ChatOpenAI(LocalService):
             })
 
             # 发送开始标记
-            message_bus.publish(thread_id, StreamingBlock.create_start(thread_id))
+            publisher.publish(thread_id, StreamingBlock.create_start(thread_id))
 
             # 启用缓存
             # 缓存在生产系统中可能丢失随机性，因此主要用于测试、开发或功能演示
@@ -164,10 +163,10 @@ class ChatOpenAI(LocalService):
                 )
                 self._logger.info(f"openai calling kwargs: {_kwargs}")
             else:
-                completion = self.client.chat.completions.create(**_kwargs)
+                completion = await self.client.chat.completions.create(**_kwargs)
             
             for response in completion:
-                self._logger.info(f"openai response: {response}")
+                self._logger.warning(f"openai response: {response}")
                 if response.choices:
                     delta = response.choices[0].delta
                     
@@ -182,34 +181,31 @@ class ChatOpenAI(LocalService):
                                     "arguments": tool_call.function.arguments
                                 }
                             }
-                            message_bus.publish(
+                            publisher.publish(
                                 thread_id,
                                 StreamingBlock.create_tools_call(tool_data, thread_id)
                             )
                     
                     # 处理文本内容
                     if delta.content:
-                        message_bus.publish(
+                        publisher.publish(
                             thread_id,
                             StreamingBlock.create_chunk(delta.content, thread_id)
                         )
 
-                # # 处理使用情况
-                # if response.usage:
-                #     usage_data = {
-                #         "prompt_tokens": response.usage.prompt_tokens,
-                #         "completion_tokens": response.usage.completion_tokens,
-                #         "total_tokens": response.usage.total_tokens,
-                #         "model": self.default_call_args["model"],
-                #         "provider": self.provider
-                #     }
-                #     message_bus.publish(
-                #         thread_id,
-                #         StreamingBlock.create_usage(usage_data, thread_id)
-                #     )
-
-            # 发送结束标记
-            # message_bus.publish(thread_id, StreamingBlock.create_end(thread_id))
+                # 处理使用情况
+                if hasattr(response, 'usage') and response.usage:
+                    usage_data = {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens,
+                        "model": self.default_call_args["model"],
+                        "provider": self.provider
+                    }
+                    publisher.publish(
+                        thread_id,
+                        StreamingBlock.create_usage(usage_data, thread_id)
+                    )
 
         except ValueError as e:
             raise
