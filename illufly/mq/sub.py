@@ -11,12 +11,24 @@ from .base import BaseMQ
 
 class Subscriber(BaseMQ):
     """针对特定 thread_id 的 ZMQ 订阅者实例"""
-    def __init__(self, thread_id: str=None, address: str=None, logger=None):
+    def __init__(self, thread_id: str=None, address: str=None, logger=None, poll_interval: int=500, timeout: float=None):
+        """初始化订阅者
+        
+        Args:
+            thread_id: 线程ID
+            address: ZMQ地址
+            logger: 日志记录器
+            poll_interval: 轮询间隔(毫秒)，默认500ms
+            timeout: 消息之间的最大间隔时间(秒)
+        """
         address = normalize_address(address or "inproc://message_bus")
         super().__init__(address, logger)
         self._thread_id = thread_id or ""
         self._blocks = []  # 缓存的消息
         self._is_collected = False  # 是否完成收集
+        self._connected_socket = None
+        self._poll_interval = poll_interval  # 新增轮询间隔参数
+        self._timeout = timeout
         self.to_connecting()
 
     def to_connecting(self):
@@ -41,74 +53,66 @@ class Subscriber(BaseMQ):
         """析构函数，确保资源被清理"""
         self.cleanup()
 
-    async def async_collect(self, timeout: float = None) -> AsyncGenerator[StreamingBlock, None]:
-        """异步收集消息
-        
-        Args:
-            timeout: float, 消息之间的最大间隔时间，而不是总收集时间
-        """
-        # 如果已经收集完成，直接返回缓存
+    async def async_collect(self) -> AsyncGenerator[StreamingBlock, None]:
+        """异步收集消息"""
         if self._is_collected:
             for block in self._blocks:
                 yield block
             return
 
-        if not self._connected_socket:
-            self.to_connecting()  # 确保连接就绪
-
         try:
+            last_message_time = time.time()
+            
             while True:
                 try:
-                    # 使用较短的轮询间隔，但确保不超过用户设置的超时
-                    poll_timeout = min(100, timeout * 1000) if timeout else 100
-                    
-                    if await self._connected_socket.poll(timeout=poll_timeout):
+                    # 使用配置的轮询间隔
+                    if await self._connected_socket.poll(timeout=self._poll_interval):
                         [topic_bytes, payload] = await self._connected_socket.recv_multipart()
                         message = json.loads(payload.decode())
                         block = StreamingBlock(**message)
                         
-                        # 缓存并yield消息
+                        current_time = time.time()
+                        
+                        # 检查消息间隔是否超时
+                        if self._timeout and (current_time - last_message_time > self._timeout):
+                            self._logger.warning(f"Message interval exceeded timeout of {self._timeout}s")
+                            error_block = StreamingBlock.create_error("Message timeout")
+                            self._blocks.append(error_block)
+                            yield error_block
+                            self._is_collected = True
+                            break
+                        
+                        last_message_time = current_time
                         self._blocks.append(block)
                         yield block
                         
-                        # 遇到结束标记，结束收集
                         if block.block_type == BlockType.END:
                             self._is_collected = True
-                            self.cleanup()
-                            break
-                    else:
-                        # 如果设置了超时且没有收到消息，认为是超时
-                        if timeout:
-                            self._logger.warning(f"Message timeout after {timeout}s")
-                            self._blocks.append(StreamingBlock.create_error("Message timeout"))
-                            yield self._blocks[-1]
-                            self._is_collected = True
-                            self.cleanup()
                             break
                             
+                    elif self._timeout and (time.time() - last_message_time > self._timeout):
+                        self._logger.warning(f"No message received for {self._timeout}s")
+                        error_block = StreamingBlock.create_error("Message timeout")
+                        self._blocks.append(error_block)
+                        yield error_block
+                        self._is_collected = True
+                        break
+                        
                 except zmq.error.ZMQError as e:
-                    self._logger.error(f"ZMQ error during collection: {e}")
-                    self._blocks.append(StreamingBlock.create_error(str(e)))
-                    yield self._blocks[-1]
+                    self._logger.error(f"ZMQ error: {e}")
+                    error_block = StreamingBlock.create_error(str(e))
+                    self._blocks.append(error_block)
+                    yield error_block
                     self._is_collected = True
-                    self.cleanup()
                     break
-
-        except asyncio.CancelledError:
-            self._logger.debug("Collection cancelled")
-            self.cleanup()
-            raise
-        except Exception as e:
-            self._logger.error(f"Unexpected error during collection: {e}")
-            self._blocks.append(StreamingBlock.create_error(str(e)))
-            yield self._blocks[-1]
-            self._is_collected = True
+                    
+        finally:
             self.cleanup()
 
-    def collect(self, timeout: float = None) -> Generator[StreamingBlock, None, None]:
+    def collect(self) -> Generator[StreamingBlock, None, None]:
         """同步收集消息"""
         return self._async_utils.wrap_async_generator(
-            self.async_collect(timeout=timeout)
+            self.async_collect()
         )
 
     @property

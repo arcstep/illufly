@@ -62,11 +62,11 @@ async def test_multiple_subscribers():
 @pytest.mark.asyncio
 async def test_subscriber_timeout():
     """测试订阅者超时"""
-    subscriber = Subscriber("timeout_topic")
+    subscriber = Subscriber("timeout_topic", timeout=0.5)
     messages = []
     
     # 设置较短的超时时间
-    async for msg in subscriber.async_collect(timeout=0.5):
+    async for msg in subscriber.async_collect():
         messages.append(msg)
     
     assert len(messages) == 1

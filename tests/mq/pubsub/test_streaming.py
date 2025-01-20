@@ -64,7 +64,8 @@ async def test_streaming_collection():
 async def test_streaming_with_timeout():
     """测试带超时的流式处理"""
     publisher = DEFAULT_PUBLISHER
-    subscriber = Subscriber("timeout_stream")
+    # 为测试设置更短的轮询间隔和超时阈值
+    subscriber = Subscriber("timeout_stream", poll_interval=50, timeout=0.3)  # 50ms
     
     received_messages = []
     received_times = []
@@ -81,7 +82,7 @@ async def test_streaming_with_timeout():
     publish_task = asyncio.create_task(delayed_publish())
     
     # 设置较短的超时时间
-    async for msg in subscriber.async_collect(timeout=0.3):
+    async for msg in subscriber.async_collect():
         received_messages.append(msg)
         received_times.append(time.time())
     
