@@ -1,15 +1,18 @@
 import json
+import zmq
+
 from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
-import async_timeout
 from enum import Enum, auto
 
 from .models import StreamingBlock, BlockType
+from .utils import cleanup_bound_socket, normalize_address
 from .base import BaseMQ
 
 class Publisher(BaseMQ):
     """ZMQ 发布者，可直接使用默认实例"""
     def __init__(self, address=None, logger=None):
-        super().__init__(address, logger)        
+        address = normalize_address(address or "inproc://message_bus")
+        super().__init__(address, logger)
         self.to_binding()
 
     def to_binding(self):
@@ -53,7 +56,17 @@ class Publisher(BaseMQ):
             self._logger.error(f"Publish failed: {e}")
             raise
 
+    def end(self, topic: str):
+        """发送结束标记"""
+        self.publish(topic, StreamingBlock.create_end())
+
+    def cleanup(self):
+        """清理资源"""
+        cleanup_bound_socket(self._bound_socket, self._address, self._logger)
+
+    def __del__(self):
+        """析构函数，确保资源被清理"""
+        self.cleanup()
 
 # 创建默认实例
 DEFAULT_PUBLISHER = Publisher()
-

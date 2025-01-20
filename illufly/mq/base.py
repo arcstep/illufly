@@ -8,7 +8,7 @@ class BaseMQ:
     """MQ基类"""
     def __init__(self, address=None, logger=None):
         self._logger = logger or logging.getLogger(__name__)
-        self._address = normalize_address(address or "inproc://message_bus")
+        self._address = address
         self._context = zmq.asyncio.Context.instance()
         self._bound_socket = None
         self._connected_socket = None
@@ -25,9 +25,14 @@ class BaseMQ:
     def cleanup(self):
         """清理资源"""
         if self._bound_socket:
-            cleanup_bound_socket(self._bound_socket, self._address, self._logger)
+            self._bound_socket.close()
             self._bound_socket = None
+            self._logger.debug(f"Publisher socket closed")
 
     def __del__(self):
         """析构函数确保资源被清理"""
-        self.cleanup()
+        try:
+            self.cleanup()
+        except Exception as e:
+            if self._logger:
+                self._logger.warning(f"Error during Publisher cleanup: {e}")
