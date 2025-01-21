@@ -4,8 +4,7 @@ import os
 import tempfile
 from urllib.parse import urlparse
 
-from illufly.mq.pub import Publisher
-from illufly.mq.sub import Subscriber
+from illufly.mq import Publisher, Subscriber
 from illufly.mq.models import StreamingBlock, BlockType
 
 @pytest.mark.asyncio

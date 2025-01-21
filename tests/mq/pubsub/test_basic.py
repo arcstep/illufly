@@ -1,7 +1,6 @@
 import pytest
 import asyncio
-from illufly.mq.pub import Publisher, DEFAULT_PUBLISHER
-from illufly.mq.sub import Subscriber
+from illufly.mq import DEFAULT_PUBLISHER, Publisher, Subscriber
 from illufly.mq.models import StreamingBlock, BlockType
 
 async def collect_messages(subscriber: Subscriber, messages: list):
@@ -107,7 +106,7 @@ async def test_collect_with_block_types():
     
     # 第一次收集
     messages1 = []
-    async for msg in subscriber.async_collect(block_types=[BlockType.CHUNK]):
+    async for msg in subscriber.async_collect(block_types=[BlockType.TEXT_CHUNK]):
         messages1.append(msg)
     assert len(messages1) == 1
     

@@ -106,7 +106,7 @@ class Subscriber(BaseMQ):
                             
                     elif self._timeout and (time.time() - last_message_time > self._timeout):
                         self._logger.warning(f"No message received for {self._timeout}s")
-                        error_block = StreamingBlock.create_error("Message timeout")
+                        error_block = ErrorBlock(error="Message timeout")
                         self._blocks.append(error_block)
                         yield error_block
                         self._is_collected = True
@@ -114,7 +114,7 @@ class Subscriber(BaseMQ):
                         
                 except zmq.error.ZMQError as e:
                     self._logger.error(f"ZMQ error for thread {self._thread_id}: {e}")
-                    error_block = StreamingBlock.create_error(str(e))
+                    error_block = ErrorBlock(error=str(e))
                     self._blocks.append(error_block)
                     yield error_block
                     self._is_collected = True

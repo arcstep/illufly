@@ -62,12 +62,19 @@ class TextChunk(StreamingBlock):
     seq: int = 0
     text: str
 
+    @property
+    def content(self) -> str:
+        return self.text
 
 class TextFinal(StreamingBlock):
     """文本结束块"""
     block_type: BlockType = BlockType.TEXT_FINAL
     text: str
     chunks: List[TextChunk] = []
+
+    @property
+    def content(self) -> str:
+        return self.text
 
 class ToolCallChunk(StreamingBlock):
     """工具调用块"""
@@ -76,12 +83,26 @@ class ToolCallChunk(StreamingBlock):
     name: str
     arguments: str
 
+    @property
+    def content(self) -> str:
+        return {
+            "name": self.name,
+            "arguments": self.arguments
+        }
+
 class ToolCallFinal(StreamingBlock):
     """工具调用结束块"""
     block_type: BlockType = BlockType.TOOL_CALL_FINAL
     name: str
     arguments: str
     chunks: List[ToolCallChunk] = []
+
+    @property
+    def content(self) -> str:
+        return {
+            "name": self.name,
+            "arguments": self.arguments
+        }
 
 class UsageBlock(StreamingBlock):
     """使用情况块"""

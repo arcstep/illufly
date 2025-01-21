@@ -8,7 +8,7 @@ import threading
 
 from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
 
-from ..mq import StreamingBlock, BlockType, Publisher, Replier
+from ..mq import StreamingBlock, BlockType, Publisher, Replier, ErrorBlock
 from .base_call import BaseCall
 
 class RemoteServer(BaseCall):
@@ -106,7 +106,7 @@ class RemoteServer(BaseCall):
             self._logger.error(f"Process task {task_id} failed with error: {e}")
             self._publisher.publish(
                 topic=thread_id,
-                message=StreamingBlock.create_error(str(e))
+                message=ErrorBlock(error=str(e))
             )
         finally:
             self._publisher.end(topic=thread_id)
@@ -121,7 +121,7 @@ class RemoteServer(BaseCall):
                 thread_id = data.get("thread_id", None)
                 if not thread_id:
                     self._logger.error("thread_id is required")
-                    self._publisher.publish(topic=thread_id, message=StreamingBlock.create_error("thread_id is required"))
+                    self._publisher.publish(topic=thread_id, message=ErrorBlock(error="thread_id is required"))
                     return
 
                 args = data.get("args", [])

@@ -107,7 +107,7 @@ class SimpleService(BaseCall):
             self._logger.error(f"Process task {task_id} failed with error: {e}")
             self._publisher.publish(
                 topic=thread_id,
-                message=StreamingBlock.create_error(str(e))
+                message=ErrorBlock(thread_id=thread_id, error=str(e))
             )
         finally:
             self._publisher.end(topic=thread_id)

@@ -47,11 +47,11 @@ async def test_chat_response(chat):
         events.append(event)
         
     assert len(events) > 0
-    assert events[0].block_type == BlockType.CHUNK
+    assert events[0].block_type == BlockType.TEXT_CHUNK
     
     # 验证每个字符都是单独的chunk
     for i, char in enumerate("Hello World!"):
-        assert events[i].block_type == BlockType.CHUNK
+        assert events[i].block_type == BlockType.TEXT_CHUNK
         assert events[i].content == char
     
     assert events[-1].block_type == BlockType.END
@@ -66,7 +66,7 @@ async def test_chat_multiple_responses(chat_with_list):
         blocks.append(block)
     
     assert len(blocks) > 0
-    assert blocks[0].block_type == BlockType.CHUNK
+    assert blocks[0].block_type == BlockType.TEXT_CHUNK
     assert blocks[-1].block_type == BlockType.END
 
 @pytest.mark.asyncio
@@ -100,11 +100,11 @@ def test_sync_chat_response(chat):
         events.append(event)
 
     assert len(events) > 0
-    assert events[0].block_type == BlockType.CHUNK
+    assert events[0].block_type == BlockType.TEXT_CHUNK
     
     # 验证每个字符都是单独的chunk
     for i, char in enumerate("Hello World!"):
-        assert events[i].block_type == BlockType.CHUNK
+        assert events[i].block_type == BlockType.TEXT_CHUNK
         assert events[i].content == char
     
     assert events[-1].block_type == BlockType.END

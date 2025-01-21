@@ -3,8 +3,7 @@ import asyncio
 import time
 import logging
 
-from illufly.mq.pub import Publisher, DEFAULT_PUBLISHER
-from illufly.mq.sub import Subscriber
+from illufly.mq import DEFAULT_PUBLISHER, Publisher, Subscriber
 from illufly.mq.models import StreamingBlock, BlockType
 
 logger = logging.getLogger(__name__)

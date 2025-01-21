@@ -64,7 +64,7 @@ def test_normal_chat(chat):
         blocks.append(block)
         logger.info(f"Received block: {block}")
     
-    assert blocks[-2].block_type == BlockType.CHUNK
+    assert blocks[-2].block_type == BlockType.TEXT_CHUNK
     assert blocks[-1].block_type == BlockType.END
 
 def test_invalid_message_format(chat):
