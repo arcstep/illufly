@@ -73,12 +73,9 @@ class SimpleService(BaseCall):
         """清理资源"""
         try:
             loop = asyncio.get_running_loop()
-            self._logger.info(f"Got running loop {id(loop)}")
             if not loop.is_closed():
-                self._logger.info(f"Cleaning up {len(self._tasks)} tasks")
                 for task in self._tasks:
                     if not task.done():
-                        self._logger.info(f"Cancelling task {id(task)}")
                         task.cancel()
         except RuntimeError as e:
             self._logger.info(f"No running event loop available: {e}")
@@ -86,7 +83,6 @@ class SimpleService(BaseCall):
             self._logger.info(f"Error during cleanup: {e}")
         finally:
             if self._address and hasattr(self, '_publisher'):
-                self._logger.info("Cleaning up publisher")
                 self._publisher.cleanup()
 
     async def _process_and_end(self, *args, thread_id: str, **kwargs):
@@ -102,21 +98,15 @@ class SimpleService(BaseCall):
                 publisher=self._publisher,
                 **kwargs
             )
-            self._logger.info(f"Process task {task_id} completed normally for thread_id={thread_id}")
         except Exception as e:
             self._logger.error(f"Process task {task_id} failed with error: {e}")
-            self._publisher.publish(
-                topic=thread_id,
-                message=ErrorBlock(thread_id=thread_id, error=str(e))
-            )
+            self._publisher.error(thread_id=thread_id, error=str(e))
         finally:
-            self._publisher.end(topic=thread_id)
-            self._logger.info(f"Process task {task_id} entering finished for thread: {thread_id}")
+            self._publisher.end(thread_id=thread_id)
 
     def call(self, *args, thread_id: str = None, **kwargs):
         """同步调用服务方法"""
-        thread_id = thread_id or self._get_thread_id()
-        
+        thread_id = thread_id or self._get_thread_id()        
         subscriber = Subscriber(
             thread_id,
             address=self._address,
@@ -144,8 +134,7 @@ class SimpleService(BaseCall):
             raise
 
     async def async_call(self, *args, thread_id: str = None, **kwargs):
-        thread_id = thread_id or self._get_thread_id()
-        
+        thread_id = thread_id or self._get_thread_id()        
         subscriber = Subscriber(
             thread_id,
             address=self._address,
@@ -165,4 +154,3 @@ class SimpleService(BaseCall):
         task.add_done_callback(self._tasks.discard)
         subscriber.on_exit = lambda: task.cancel()        
         return subscriber
-

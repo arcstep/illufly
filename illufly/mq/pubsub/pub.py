@@ -4,7 +4,7 @@ import zmq
 from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
 from enum import Enum, auto
 
-from ..models import StreamingBlock, BlockType, TextChunk, EndBlock
+from ..models import StreamingBlock, BlockType, TextChunk, EndBlock, ErrorBlock
 from ..utils import cleanup_bound_socket, normalize_address
 from ..base_mq import BaseMQ
 
@@ -52,6 +52,10 @@ class Publisher(BaseMQ):
         except Exception as e:
             self._logger.error(f"Publish failed: {e}")
             raise
+
+    def error(self, thread_id: str, error: str):
+        """发送错误标记"""
+        self.publish(thread_id, ErrorBlock(thread_id=thread_id, error=error))
 
     def end(self, thread_id: str):
         """发送结束标记"""
