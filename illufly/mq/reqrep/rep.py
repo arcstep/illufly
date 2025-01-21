@@ -1,13 +1,14 @@
 from typing import AsyncGenerator, Callable, Awaitable, Any, Dict
 
-from .models import StreamingBlock
-from .base import BaseMQ
+from ..models import Request, Reply, ReplyState
+from ..base_mq import BaseMQ
 
 import asyncio
 import zmq
 
 class Replier(BaseMQ):
-    """ZMQ REP 响应者"""
+    """ZMQ REP 响应者
+    """
     def __init__(self, address=None, logger=None):
         super().__init__(address, logger)
         self.to_binding()
@@ -30,20 +31,18 @@ class Replier(BaseMQ):
         try:
             while True:
                 try:
-                    # 等待请求
-                    request_str = await self._bound_socket.recv_string()
-                    request = StreamingBlock.model_validate_json(request_str)
-                    
                     try:
+                        # 等待请求
+                        data = await self._bound_socket.recv_json()
+                        request = Request.model_validate(data)
                         # 调用处理函数
-                        result = await handler(request.content)
-                        response = StreamingBlock.create_chunk(content=result)
+                        result = await handler(*request.args, **request.kwargs)
+                        response = Reply(thread_id=request.thread_id, state=ReplyState.SUCCESS, result=result)
                     except Exception as e:
                         self._logger.error(f"Handler error: {e}")
-                        response = StreamingBlock.create_error(str(e))
-                    
+                        response = Reply(thread_id=request.thread_id, state=ReplyState.ERROR, result=str(e))                    
                     # 发送响应
-                    await self._bound_socket.send_string(response.model_dump_json())
+                    await self._bound_socket.send_json(response.model_dump())
                     
                 except zmq.ZMQError as e:
                     self._logger.error(f"ZMQ error: {e}")

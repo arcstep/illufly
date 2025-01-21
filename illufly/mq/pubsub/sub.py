@@ -5,9 +5,9 @@ import asyncio
 import time
 import json
 
-from .utils import cleanup_connected_socket, normalize_address
-from .models import BlockType, StreamingBlock
-from .base import BaseMQ
+from ..utils import cleanup_connected_socket, normalize_address
+from ..models import BlockType, StreamingBlock, EndBlock, TextChunk, ErrorBlock
+from ..base_mq import BaseMQ
 
 class Subscriber(BaseMQ):
     """针对特定 thread_id 的 ZMQ 订阅者实例"""
@@ -80,15 +80,15 @@ class Subscriber(BaseMQ):
                 try:
                     if await self._connected_socket.poll(timeout=self._poll_interval):
                         [topic_bytes, payload] = await self._connected_socket.recv_multipart()
-                        message = json.loads(payload.decode())
-                        block = StreamingBlock(**message)
+                        data = json.loads(payload.decode())
+                        block = StreamingBlock.create_block(**data)
                         
                         self._logger.debug(f"Received block: {block}")
                         
                         current_time = time.time()
                         if self._timeout and (current_time - last_message_time > self._timeout):
                             self._logger.warning(f"Message interval exceeded timeout of {self._timeout}s")
-                            error_block = StreamingBlock.create_error("Message timeout")
+                            error_block = ErrorBlock(error="Message timeout")
                             self._blocks.append(error_block)
                             yield error_block
                             self._is_collected = True

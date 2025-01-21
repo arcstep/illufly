@@ -1,7 +1,7 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
-from .models import StreamingBlock
-from .base import BaseMQ
+from ..models import Request, Reply, StreamingBlock
+from ..base_mq import BaseMQ
 
 import zmq
 import asyncio
@@ -22,32 +22,32 @@ class Requester(BaseMQ):
             self._logger.error(f"Connection error: {e}")
             raise
 
-    async def async_request(self, data: Dict[str, Any], timeout: float = None) -> Optional[StreamingBlock]:
+    async def async_request(self, thread_id: str, args: List[Any] = [], kwargs: Dict[str, Any] = {}, timeout: float = None) -> Optional[StreamingBlock]:
         """发送请求并等待响应"""
         if not self._connected_socket:
             raise RuntimeError("Requester not connected")
 
         try:
             # 发送请求
-            message = StreamingBlock.create_chunk(content=data)
-            await self._connected_socket.send_string(message.model_dump_json())
+            request = Request(thread_id=thread_id, args=args, kwargs=kwargs)
+            await self._connected_socket.send_json(request.model_dump())
             
             # 等待响应
             if await self._connected_socket.poll(timeout=timeout * 1000 if timeout else None):
-                response = await self._connected_socket.recv_string()
-                return StreamingBlock.model_validate_json(response)
+                reply = await self._connected_socket.recv_json()
+                return Reply.model_validate(reply)
             else:
                 self._logger.warning("Request timeout")
-                return StreamingBlock.create_error("Request timeout")
+                return Reply(thread_id=thread_id, state=ReplyState.ERROR, result="Request timeout")
                 
         except Exception as e:
             self._logger.error(f"Request failed: {e}")
-            return StreamingBlock.create_error(str(e))
+            return ErrorBlock(error=str(e))
 
-    def request(self, data: Dict[str, Any], timeout: float = None) -> Optional[StreamingBlock]:
+    def request(self, thread_id: str, args: List[Any] = [], kwargs: Dict[str, Any] = {}, timeout: float = None) -> Optional[StreamingBlock]:
         """同步请求"""
         return self._async_utils.run_async(
-            self.async_request(data, timeout=timeout)
+            self.async_request(thread_id, args, kwargs, timeout)
         )
 
     def cleanup(self):

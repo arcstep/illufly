@@ -4,9 +4,9 @@ import zmq
 from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
 from enum import Enum, auto
 
-from .models import StreamingBlock, BlockType
-from .utils import cleanup_bound_socket, normalize_address
-from .base import BaseMQ
+from ..models import StreamingBlock, BlockType, TextChunk, EndBlock
+from ..utils import cleanup_bound_socket, normalize_address
+from ..base_mq import BaseMQ
 
 class Publisher(BaseMQ):
     """ZMQ 发布者，可直接使用默认实例"""
@@ -25,7 +25,7 @@ class Publisher(BaseMQ):
             self._logger.error(f"Failed to bind publisher socket: {e}")
             raise
 
-    def publish(self, topic: str, message: Union[dict, str, StreamingBlock]):
+    def publish(self, topic: str, message: Union[str, StreamingBlock]):
         """发布消息，如果存在订阅套接字则自动订阅"""
         if not isinstance(topic, str):
             raise ValueError("Topic must be a string")
@@ -34,17 +34,15 @@ class Publisher(BaseMQ):
 
         if message:
             if isinstance(message, str):
-                message = StreamingBlock.create_chunk(content=message)
-            elif isinstance(message, dict):
-                message = StreamingBlock(**message)
+                message = TextChunk(text=message)
             
             if not isinstance(message, StreamingBlock):
-                raise ValueError("Message must be a StreamingBlock, a string or a dict")
+                raise ValueError("Message must be a StreamingBlock or a string")
         else:
             raise ValueError("Message is required")
 
         try:
-            # 使用multipart发送消息
+            # 使用 multipart 发送消息
             self._bound_socket.send_multipart([
                 topic.encode(),
                 json.dumps(message.model_dump()).encode()
@@ -57,7 +55,7 @@ class Publisher(BaseMQ):
 
     def end(self, topic: str):
         """发送结束标记"""
-        self.publish(topic, StreamingBlock.create_end())
+        self.publish(topic, EndBlock())
 
     def cleanup(self):
         """清理资源"""
@@ -66,6 +64,3 @@ class Publisher(BaseMQ):
     def __del__(self):
         """析构函数，确保资源被清理"""
         self.cleanup()
-
-# 创建默认实例
-DEFAULT_PUBLISHER = Publisher()
