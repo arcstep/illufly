@@ -66,7 +66,7 @@ async def test_streaming_with_timeout():
     """测试带超时的流式处理"""
     publisher = DEFAULT_PUBLISHER
     # 为测试设置更短的轮询间隔和超时阈值
-    subscriber = Subscriber("timeout_stream", poll_interval=50, timeout=0.3)  # 50ms
+    subscriber = Subscriber("timeout_stream", timeout=300)
     
     received_messages = []
     received_times = []

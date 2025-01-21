@@ -19,8 +19,7 @@ class SimpleService(BaseCall):
         self,
         service_name: str=None,
         address: str = None,
-        timeout: float = 30.0,
-        poll_interval: int = 500,
+        timeout: int = 30*1000,
         **kwargs
     ):
         """初始化服务
@@ -30,13 +29,11 @@ class SimpleService(BaseCall):
             address: 发布和订阅的 ZMQ 地址
             subscriber_address: 订阅者地址
             timeout: 超时时间
-            poll_interval: 轮询间隔(毫秒)，默认500ms
         """
         super().__init__(**kwargs)
         self._service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
         self._address = address
         self._timeout = timeout
-        self._poll_interval = poll_interval
         self._tasks = set()
         self._logger.info(f"SimpleService initialized with service_name={service_name}, address={address}")
         
@@ -111,7 +108,6 @@ class SimpleService(BaseCall):
             thread_id,
             address=self._address,
             logger=self._logger,
-            poll_interval=self._poll_interval,
             timeout=self._timeout
         )
         
@@ -139,7 +135,6 @@ class SimpleService(BaseCall):
             thread_id,
             address=self._address,
             logger=self._logger,
-            poll_interval=self._poll_interval,
             timeout=self._timeout
         )
         

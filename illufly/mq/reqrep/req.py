@@ -22,7 +22,7 @@ class Requester(BaseMQ):
             self._logger.error(f"Connection error: {e}")
             raise
 
-    async def async_request(self, thread_id: str, args: List[Any] = [], kwargs: Dict[str, Any] = {}, timeout: float = None) -> Optional[ReplyBlock]:
+    async def async_request(self, thread_id: str, args: List[Any] = [], kwargs: Dict[str, Any] = {}, timeout: int = None) -> Optional[ReplyBlock]:
         """发送请求并等待响应"""
         if not self._connected_socket:
             raise RuntimeError("Requester not connected")
@@ -33,7 +33,7 @@ class Requester(BaseMQ):
             await self._connected_socket.send_json(request.model_dump())
             
             # 等待响应
-            if await self._connected_socket.poll(timeout=timeout * 1000 if timeout else None):
+            if await self._connected_socket.poll(timeout=timeout if timeout else None):
                 reply = await self._connected_socket.recv_json()
                 return ReplyBlock.model_validate(reply)
             else:

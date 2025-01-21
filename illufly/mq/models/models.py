@@ -8,7 +8,7 @@ from .enum import BlockType, ReplyState
 
 class BaseBlock(BaseModel):
     """基础数据块"""
-    thread_id: Optional[str] = None
+    thread_id: Optional[str]
     created_at: float = Field(default_factory=lambda: time.time())
 
     model_config = ConfigDict(use_enum_values=True)
@@ -48,9 +48,9 @@ class StreamingBlock(BaseBlock):
         elif block_type == BlockType.PROGRESS:
             return ProgressBlock(**kwargs)
         elif block_type == BlockType.START:
-            return StartBlock()
+            return StartBlock(**kwargs)
         elif block_type == BlockType.END:
-            return EndBlock()
+            return EndBlock(**kwargs)
         elif block_type == BlockType.ERROR:
             return ErrorBlock(**kwargs)
 

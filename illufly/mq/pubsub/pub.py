@@ -57,9 +57,13 @@ class Publisher(BaseMQ):
         """发送错误标记"""
         self.publish(thread_id, ErrorBlock(thread_id=thread_id, error=error))
 
+    def text_chunk(self, thread_id: str, text: str):
+        """发送文本块"""
+        self.publish(thread_id, TextChunk(thread_id=thread_id, text=text))
+
     def end(self, thread_id: str):
         """发送结束标记"""
-        self.publish(thread_id, EndBlock())
+        self.publish(thread_id, EndBlock(thread_id=thread_id))
 
     def cleanup(self):
         """清理资源"""

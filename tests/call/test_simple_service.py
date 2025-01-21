@@ -100,7 +100,7 @@ def test_sync_call_with_cache():
 @pytest.mark.asyncio
 async def test_timeout():
     """测试超时处理"""
-    service = SlowService(timeout=0.5, poll_interval=50, logger=logger)
+    service = SlowService(timeout=500, logger=logger)
     messages = []
     
     sub = await service.async_call(delay=0.3)
