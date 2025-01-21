@@ -54,8 +54,10 @@ async def test_streaming_collection():
     assert messages[-1].block_type == BlockType.END
     
     # 验证消息是流式接收的（只检查实际消息的间隔）
-    time_intervals = [received_times[i+1] - received_times[i] 
-                     for i in range(len(received_times)-1)]
+    time_intervals = [
+        received_times[i+1] - received_times[i] 
+        for i in range(len(received_times)-1)
+    ]
     logger.info(f"Time intervals: {time_intervals}")
     assert all(interval >= 0.08 for interval in time_intervals)  # 考虑一些误差
 

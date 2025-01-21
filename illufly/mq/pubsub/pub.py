@@ -25,37 +25,37 @@ class Publisher(BaseMQ):
             self._logger.error(f"Failed to bind publisher socket: {e}")
             raise
 
-    def publish(self, topic: str, message: Union[str, StreamingBlock]):
+    def publish(self, thread_id: str, block: Union[str, StreamingBlock]):
         """发布消息，如果存在订阅套接字则自动订阅"""
-        if not isinstance(topic, str):
+        if not isinstance(thread_id, str):
             raise ValueError("Topic must be a string")
         if not self._bound_socket:
             raise RuntimeError("No bound socket found")
 
-        if message:
-            if isinstance(message, str):
-                message = TextChunk(text=message)
+        if block:
+            if isinstance(block, str):
+                block = TextChunk(thread_id=thread_id, text=block)
             
-            if not isinstance(message, StreamingBlock):
-                raise ValueError("Message must be a StreamingBlock or a string")
+            if not isinstance(block, StreamingBlock):
+                raise ValueError("Block must be a StreamingBlock or a string")
         else:
-            raise ValueError("Message is required")
+            raise ValueError("Block is required")
 
         try:
             # 使用 multipart 发送消息
             self._bound_socket.send_multipart([
-                topic.encode(),
-                json.dumps(message.model_dump()).encode()
+                thread_id.encode(),
+                json.dumps(block.model_dump()).encode()
             ])
-            self._logger.debug(f"Published to {topic}: {message}")
+            self._logger.debug(f"Published to {thread_id}: {block}")
 
         except Exception as e:
             self._logger.error(f"Publish failed: {e}")
             raise
 
-    def end(self, topic: str):
+    def end(self, thread_id: str):
         """发送结束标记"""
-        self.publish(topic, EndBlock())
+        self.publish(thread_id, EndBlock())
 
     def cleanup(self):
         """清理资源"""

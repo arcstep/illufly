@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 import logging
-from illufly.base.simple_service import SimpleService
+from illufly.call.simple_service import SimpleService
 from illufly.mq.models import StreamingBlock, BlockType
 
 logger = logging.getLogger(__name__)

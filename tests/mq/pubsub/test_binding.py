@@ -16,14 +16,14 @@ async def test_ipc_binding():
         
         # 创建发布者和订阅者
         publisher = Publisher(ipc_path)
-        subscriber = Subscriber("test_topic", ipc_path)
+        subscriber = Subscriber("test_thread", ipc_path)
         
         messages = []
         collection_task = asyncio.create_task(collect_messages(subscriber, messages))
         
         await asyncio.sleep(0.1)  # 等待连接建立
-        publisher.publish("test_topic", "IPC test")
-        publisher.end("test_topic")
+        publisher.publish("test_thread", "IPC test")
+        publisher.end("test_thread")
         
         await collection_task
         
@@ -38,14 +38,14 @@ async def test_tcp_binding():
     
     # 创建发布者和订阅者
     publisher = Publisher(tcp_address)
-    subscriber = Subscriber("test_topic", tcp_address)
+    subscriber = Subscriber("test_thread", tcp_address)
     
     messages = []
     collection_task = asyncio.create_task(collect_messages(subscriber, messages))
     
     await asyncio.sleep(0.1)
-    publisher.publish("test_topic", "TCP test")
-    publisher.end("test_topic")
+    publisher.publish("test_thread", "TCP test")
+    publisher.end("test_thread")
     
     await collection_task
     
@@ -60,14 +60,14 @@ async def test_inproc_binding():
     
     # 创建发布者和订阅者
     publisher = Publisher(inproc_address)
-    subscriber = Subscriber("test_topic", inproc_address)
+    subscriber = Subscriber("test_thread", inproc_address)
     
     messages = []
     collection_task = asyncio.create_task(collect_messages(subscriber, messages))
     
     await asyncio.sleep(0.1)
-    publisher.publish("test_topic", "Inproc test")
-    publisher.end("test_topic")
+    publisher.publish("test_thread", "Inproc test")
+    publisher.end("test_thread")
     
     await collection_task
     
@@ -84,7 +84,7 @@ async def test_multiple_bindings():
     ]
     
     publishers = [Publisher(addr) for addr in addresses]
-    subscribers = [Subscriber("test_topic", addr) for addr in addresses]
+    subscribers = [Subscriber("test_thread", addr) for addr in addresses]
     
     all_messages = [[] for _ in addresses]
     tasks = [
@@ -96,8 +96,8 @@ async def test_multiple_bindings():
     
     # 每个发布者发送不同消息
     for i, pub in enumerate(publishers):
-        pub.publish("test_topic", f"Message from {i}")
-        pub.end("test_topic")
+        pub.publish("test_thread", f"Message from {i}")
+        pub.end("test_thread")
     
     await asyncio.gather(*tasks)
     
@@ -118,4 +118,4 @@ def test_invalid_address():
         Publisher("invalid://address")
     
     with pytest.raises(Exception):
-        Subscriber("topic", "invalid://address") 
+        Subscriber("thread", "invalid://address") 

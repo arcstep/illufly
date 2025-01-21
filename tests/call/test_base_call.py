@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from illufly.base.base_call import BaseCall
+from illufly.call.base_call import BaseCall
 
 class SyncHandler(BaseCall):
     def __init__(self):

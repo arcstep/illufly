@@ -12,7 +12,7 @@ async def collect_messages(subscriber: Subscriber, messages: list):
 async def test_basic_pubsub():
     """测试基本的发布订阅功能"""
     # 创建订阅者
-    subscriber = Subscriber("test_topic")
+    subscriber = Subscriber("test_thread")
     
     # 使用默认发布者
     messages = []
@@ -20,9 +20,9 @@ async def test_basic_pubsub():
     
     # 发送消息
     await asyncio.sleep(0.1)  # 确保订阅已建立
-    DEFAULT_PUBLISHER.publish("test_topic", "Hello")
-    DEFAULT_PUBLISHER.publish("test_topic", "World")
-    DEFAULT_PUBLISHER.end("test_topic")
+    DEFAULT_PUBLISHER.publish("test_thread", "Hello")
+    DEFAULT_PUBLISHER.publish("test_thread", "World")
+    DEFAULT_PUBLISHER.end("test_thread")
     
     # 等待收集完成
     await collection_task
@@ -36,8 +36,8 @@ async def test_basic_pubsub():
 @pytest.mark.asyncio
 async def test_multiple_subscribers():
     """测试多个订阅者"""
-    sub1 = Subscriber("topic1")
-    sub2 = Subscriber("topic2")
+    sub1 = Subscriber("thread1")
+    sub2 = Subscriber("thread2")
     
     messages1, messages2 = [], []
     task1 = asyncio.create_task(collect_messages(sub1, messages1))
@@ -46,10 +46,10 @@ async def test_multiple_subscribers():
     await asyncio.sleep(0.1)
     
     # 发送到不同主题
-    DEFAULT_PUBLISHER.publish("topic1", "Message for 1")
-    DEFAULT_PUBLISHER.publish("topic2", "Message for 2")
-    DEFAULT_PUBLISHER.end("topic1")
-    DEFAULT_PUBLISHER.end("topic2")
+    DEFAULT_PUBLISHER.publish("thread1", "Message for 1")
+    DEFAULT_PUBLISHER.publish("thread2", "Message for 2")
+    DEFAULT_PUBLISHER.end("thread1")
+    DEFAULT_PUBLISHER.end("thread2")
     
     await asyncio.gather(task1, task2)
     
@@ -61,7 +61,7 @@ async def test_multiple_subscribers():
 @pytest.mark.asyncio
 async def test_subscriber_timeout():
     """测试订阅者超时"""
-    subscriber = Subscriber("timeout_topic", timeout=0.5)
+    subscriber = Subscriber("timeout_thread", timeout=0.5)
     messages = []
     
     # 设置较短的超时时间
@@ -75,12 +75,12 @@ async def test_subscriber_timeout():
 @pytest.mark.asyncio
 async def test_subscriber_reuse():
     """测试订阅者重用缓存"""
-    subscriber = Subscriber("reuse_topic")
+    subscriber = Subscriber("reuse_thread")
     
     # 发布消息
     await asyncio.sleep(0.1)
-    DEFAULT_PUBLISHER.publish("reuse_topic", "Test message")
-    DEFAULT_PUBLISHER.end("reuse_topic")
+    DEFAULT_PUBLISHER.publish("reuse_thread", "Test message")
+    DEFAULT_PUBLISHER.end("reuse_thread")
     
     # 第一次收集
     messages1 = []
@@ -97,12 +97,12 @@ async def test_subscriber_reuse():
 @pytest.mark.asyncio
 async def test_collect_with_block_types():
     """测试订阅者重用缓存"""
-    subscriber = Subscriber("reuse_topic")
+    subscriber = Subscriber("reuse_thread")
     
     # 发布消息
     await asyncio.sleep(0.1)
-    DEFAULT_PUBLISHER.publish("reuse_topic", "Test message")
-    DEFAULT_PUBLISHER.end("reuse_topic")
+    DEFAULT_PUBLISHER.publish("reuse_thread", "Test message")
+    DEFAULT_PUBLISHER.end("reuse_thread")
     
     # 第一次收集
     messages1 = []
@@ -120,14 +120,14 @@ async def test_collect_with_block_types():
 async def test_custom_publisher():
     """测试自定义发布者"""
     publisher = Publisher("inproc://custom_test")
-    subscriber = Subscriber("test_topic", "inproc://custom_test")
+    subscriber = Subscriber("test_thread", "inproc://custom_test")
     
     messages = []
     collection_task = asyncio.create_task(collect_messages(subscriber, messages))
     
     await asyncio.sleep(0.1)
-    publisher.publish("test_topic", "Custom message")
-    publisher.end("test_topic")
+    publisher.publish("test_thread", "Custom message")
+    publisher.end("test_thread")
     
     await collection_task
     
