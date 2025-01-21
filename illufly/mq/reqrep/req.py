@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any, List
 
-from ..models import Request, Reply, StreamingBlock
+from ..models import RequestBlock, ReplyBlock, ReplyState
 from ..base_mq import BaseMQ
 
 import zmq
@@ -22,29 +22,29 @@ class Requester(BaseMQ):
             self._logger.error(f"Connection error: {e}")
             raise
 
-    async def async_request(self, thread_id: str, args: List[Any] = [], kwargs: Dict[str, Any] = {}, timeout: float = None) -> Optional[StreamingBlock]:
+    async def async_request(self, thread_id: str, args: List[Any] = [], kwargs: Dict[str, Any] = {}, timeout: float = None) -> Optional[ReplyBlock]:
         """发送请求并等待响应"""
         if not self._connected_socket:
             raise RuntimeError("Requester not connected")
 
         try:
             # 发送请求
-            request = Request(thread_id=thread_id, args=args, kwargs=kwargs)
+            request = RequestBlock(thread_id=thread_id, args=args, kwargs=kwargs)
             await self._connected_socket.send_json(request.model_dump())
             
             # 等待响应
             if await self._connected_socket.poll(timeout=timeout * 1000 if timeout else None):
                 reply = await self._connected_socket.recv_json()
-                return Reply.model_validate(reply)
+                return ReplyBlock.model_validate(reply)
             else:
                 self._logger.warning("Request timeout")
-                return Reply(thread_id=thread_id, state=ReplyState.ERROR, result="Request timeout")
+                return ReplyBlock(thread_id=thread_id, state=ReplyState.ERROR, result="Request timeout")
                 
         except Exception as e:
             self._logger.error(f"Request failed: {e}")
-            return ErrorBlock(error=str(e))
+            return ReplyBlock(thread_id=thread_id, state=ReplyState.ERROR, result=str(e))
 
-    def request(self, thread_id: str, args: List[Any] = [], kwargs: Dict[str, Any] = {}, timeout: float = None) -> Optional[StreamingBlock]:
+    def request(self, thread_id: str, args: List[Any] = [], kwargs: Dict[str, Any] = {}, timeout: float = None) -> Optional[ReplyBlock]:
         """同步请求"""
         return self._async_utils.run_async(
             self.async_request(thread_id, args, kwargs, timeout)

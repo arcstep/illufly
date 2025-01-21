@@ -2,9 +2,8 @@ import pytest
 import asyncio
 import os
 import tempfile
-from illufly.mq.req import Requester
-from illufly.mq.rep import Replier
-from illufly.mq.models import StreamingBlock, BlockType
+from illufly.mq.reqrep import Requester, Replier
+from illufly.mq.models import BlockType, ReplyBlock, ReplyState
 
 class TestReqRep:
     @pytest.fixture
@@ -27,9 +26,9 @@ class TestReqRep:
         """获取进程内通信地址"""
         return "inproc://test"
 
-    async def echo_handler(self, data):
+    async def echo_handler(self, message: str):
         """简单的回显处理函数"""
-        return data
+        return message
 
     async def async_test_communication(self, address):
         """测试基本通信"""
@@ -43,12 +42,26 @@ class TestReqRep:
         try:
             # 发送测试数据
             test_data = {"message": "hello world"}
-            response = await requester.async_request(test_data)
+            response = await requester.async_request(
+                thread_id="test-id",
+                kwargs={"message": "hello world"}
+            )
             
             assert response is not None
-            assert isinstance(response, StreamingBlock)
-            assert response.content == test_data
+            assert isinstance(response, ReplyBlock)
+            assert response.result == test_data['message']
+
+            # 再次发送测试数据
+            test_data = {"message": "hello world 2"}
+            response = await requester.async_request(
+                thread_id="test-id",
+                kwargs={"message": "hello world 2"}
+            )
             
+            assert response is not None
+            assert isinstance(response, ReplyBlock)
+            assert response.result == test_data['message']
+
         finally:
             # 清理
             server_task.cancel()
@@ -77,9 +90,9 @@ class TestReqRep:
     @pytest.mark.asyncio
     async def test_timeout(self, tcp_address):
         """测试请求超时"""
-        async def slow_handler(data):
+        async def slow_handler(message: str):
             await asyncio.sleep(2)
-            return data
+            return message
 
         replier = Replier(address=tcp_address)
         requester = Requester(address=tcp_address)
@@ -88,11 +101,15 @@ class TestReqRep:
         
         try:
             # 设置较短的超时时间
-            response = await requester.async_request({"test": "data"}, timeout=0.1)
+            response = await requester.async_request(
+                thread_id="test-id",
+                kwargs={"message": "hello world"},
+                timeout=0.1
+            )
             
             assert response is not None
-            assert response.block_type == BlockType.ERROR
-            assert "timeout" in response.content.lower()
+            assert response.state == ReplyState.ERROR
+            assert "timeout" in response.result.lower()
             
         finally:
             server_task.cancel()
@@ -106,7 +123,7 @@ class TestReqRep:
     @pytest.mark.asyncio
     async def test_error_handling(self, tcp_address):
         """测试错误处理"""
-        async def error_handler(data):
+        async def error_handler(message: str):
             raise ValueError("测试错误")
 
         replier = Replier(address=tcp_address)
@@ -115,11 +132,14 @@ class TestReqRep:
         server_task = asyncio.create_task(replier.async_reply(error_handler))
         
         try:
-            response = await requester.async_request({"test": "data"})
+            response = await requester.async_request(
+                thread_id="test-id",
+                kwargs={"message": "hello world"}
+            )
             
             assert response is not None
-            assert response.block_type == BlockType.ERROR
-            assert "测试错误" in response.content
+            assert response.state == ReplyState.ERROR
+            assert "测试错误" in response.result
             
         finally:
             server_task.cancel()

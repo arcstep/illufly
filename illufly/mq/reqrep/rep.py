@@ -1,6 +1,6 @@
 from typing import AsyncGenerator, Callable, Awaitable, Any, Dict
 
-from ..models import Request, Reply, ReplyState
+from ..models import RequestBlock, ReplyBlock, ReplyState
 from ..base_mq import BaseMQ
 
 import asyncio
@@ -22,7 +22,7 @@ class Replier(BaseMQ):
         except zmq.ZMQError as e:
             self._logger.error(f"Failed to bind replier socket: {e}")
             raise
-
+    
     async def async_reply(self, handler: Callable[[Dict[str, Any]], Awaitable[Any]]):
         """开始服务，处理请求"""
         if not self._bound_socket:
@@ -34,13 +34,13 @@ class Replier(BaseMQ):
                     try:
                         # 等待请求
                         data = await self._bound_socket.recv_json()
-                        request = Request.model_validate(data)
+                        request = RequestBlock.model_validate(data)
                         # 调用处理函数
                         result = await handler(*request.args, **request.kwargs)
-                        response = Reply(thread_id=request.thread_id, state=ReplyState.SUCCESS, result=result)
+                        response = ReplyBlock(thread_id=request.thread_id, state=ReplyState.SUCCESS, result=result)
                     except Exception as e:
                         self._logger.error(f"Handler error: {e}")
-                        response = Reply(thread_id=request.thread_id, state=ReplyState.ERROR, result=str(e))                    
+                        response = ReplyBlock(thread_id=request.thread_id, state=ReplyState.ERROR, result=str(e))                    
                     # 发送响应
                     await self._bound_socket.send_json(response.model_dump())
                     

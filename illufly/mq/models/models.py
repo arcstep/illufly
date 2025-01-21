@@ -13,12 +13,12 @@ class BaseBlock(BaseModel):
 
     model_config = ConfigDict(use_enum_values=True)
 
-class Request(BaseBlock):
+class RequestBlock(BaseBlock):
     """请求块"""
     args: List[Any] = []
     kwargs: Dict[str, Any] = {}
 
-class Reply(BaseBlock):
+class ReplyBlock(BaseBlock):
     """响应块"""
     state: ReplyState = ReplyState.SUCCESS
     result: Any = None
