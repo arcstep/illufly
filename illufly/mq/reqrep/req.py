@@ -1,10 +1,10 @@
 from typing import Optional, Dict, Any, List
 
-from ..models import RequestBlock, ReplyBlock, ReplyState
+from ..models import RequestBlock, ReplyBlock, ReplyState, ReplyReadyBlock, ReplyAcceptedBlock, RequestStep
 from ..base_mq import BaseMQ
+from ..pubsub import Subscriber
 
 import zmq
-import asyncio
 
 class Requester(BaseMQ):
     """ZMQ REQ 请求者"""
@@ -24,38 +24,48 @@ class Requester(BaseMQ):
             self._logger.error(f"Connection error: {e}")
             raise
 
-    async def async_request(self, thread_id: str, args: List[Any] = [], kwargs: Dict[str, Any] = {}) -> Optional[ReplyBlock]:
+    async def async_request(self, args: List[Any] = [], kwargs: Dict[str, Any] = {}, thread_id: str = "") -> Optional[Subscriber]:
         """发送请求并等待响应"""
         if not self._connected_socket:
             raise RuntimeError("Requester not connected")
 
         try:
-            try:
-                # 发送请求
-                request = RequestBlock(thread_id=thread_id, args=args, kwargs=kwargs)
-                await self._connected_socket.send_json(request.model_dump())
-                # 等待响应
-                reply = await self._connected_socket.recv_json()
-                return ReplyBlock.model_validate(reply)
+            # STEP 1: 发送请求
+            request = RequestBlock(
+                thread_id=thread_id,
+                request_step=RequestStep.INIT,
+            )
+            await self._connected_socket.send_json(request.model_dump())
+            # STEP 2: 等待服务端确认，并获得 thread_id 和 subscribe_address
+            reply_data = await self._connected_socket.recv_json()
+            self._logger.debug(f"Client received accepted reply: {reply_data}")
+            accepted_block = ReplyAcceptedBlock.model_validate(reply_data)
+            # STEP 3: 根据上面后的关键信息创建订阅
+            sub = Subscriber(
+                thread_id=accepted_block.thread_id,
+                address=accepted_block.subscribe_address,
+                timeout=self._timeout
+            )
+            # STEP 4: 订阅准备已就绪
+            ready = RequestBlock(
+                thread_id=accepted_block.thread_id,
+                request_step=RequestStep.READY,
+                args=args,
+                kwargs=kwargs
+            )
+            await self._connected_socket.send_json(ready.model_dump())
+            self._logger.debug(f"Client sent ready reply: {ready}")
+            # STEP 5: 等待异步处理完成
+            processing_data = await self._connected_socket.recv_json()
+            return sub
 
-            except zmq.error.ZMQError as e:
-                if e.errno == zmq.EAGAIN:
-                    # ZMQ 接收超时
-                    timeout_info = f"Request timeout after {self._timeout} ms"
-                    self._logger.warning(timeout_info)
-                    return ReplyBlock(thread_id=thread_id, state=ReplyState.ERROR, result=timeout_info)
-                else:
-                    raise
-                
         except Exception as e:
             self._logger.error(f"Request failed: {e}")
-            return ReplyBlock(thread_id=thread_id, state=ReplyState.ERROR, result=str(e))
+            raise
 
-    def request(self, thread_id: str, args: List[Any] = [], kwargs: Dict[str, Any] = {}) -> Optional[ReplyBlock]:
+    def request(self, args: List[Any] = [], kwargs: Dict[str, Any] = {}) -> Optional[ReplyBlock]:
         """同步请求"""
-        return self._async_utils.run_async(
-            self.async_request(thread_id, args, kwargs)
-        )
+        return self._async_utils.wrap_async_func(self.async_request)(args, kwargs)
 
     def cleanup(self):
         """清理资源"""

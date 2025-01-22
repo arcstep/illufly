@@ -4,24 +4,43 @@ from pydantic import BaseModel, Field, model_validator, ConfigDict
 import time
 import json
 
-from .enum import BlockType, ReplyState
+from .enum import BlockType, ReplyState, RequestStep
 
 class BaseBlock(BaseModel):
     """基础数据块"""
-    thread_id: Optional[str]
+    thread_id: str
     created_at: float = Field(default_factory=lambda: time.time())
 
     model_config = ConfigDict(use_enum_values=True)
 
-class RequestBlock(BaseBlock):
-    """请求块"""
-    args: List[Any] = []
-    kwargs: Dict[str, Any] = {}
-
 class ReplyBlock(BaseBlock):
     """响应块"""
-    state: ReplyState = ReplyState.SUCCESS
+    state: ReplyState
     result: Any = None
+
+class ReplyAcceptedBlock(ReplyBlock):
+    """响应块"""
+    state: ReplyState = ReplyState.ACCEPTED
+    subscribe_address: Union[str, None]
+
+class ReplyReadyBlock(ReplyBlock):
+    """响应块"""
+    state: ReplyState = ReplyState.READY
+
+class ReplyProcessingBlock(ReplyBlock):
+    """响应块"""
+    state: ReplyState = ReplyState.PROCESSING
+
+class ReplyErrorBlock(ReplyBlock):
+    """响应块"""
+    state: ReplyState = ReplyState.ERROR
+    error: str
+
+class RequestBlock(BaseBlock):
+    """请求块"""
+    request_step: RequestStep = RequestStep.INIT
+    args: List[Any] = []
+    kwargs: Dict[str, Any] = {}
 
 class StreamingBlock(BaseBlock):
     """流式数据块基类"""

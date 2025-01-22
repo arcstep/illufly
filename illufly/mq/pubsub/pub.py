@@ -52,6 +52,10 @@ class Publisher(BaseMQ):
         except Exception as e:
             self._logger.error(f"Publish failed: {e}")
             raise
+    
+    def processing(self, thread_id: str):
+        """发送处理中标记"""
+        self.publish(thread_id, ProcessingBlock(thread_id=thread_id))
 
     def error(self, thread_id: str, error: str):
         """发送错误标记"""

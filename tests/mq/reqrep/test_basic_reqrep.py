@@ -2,10 +2,20 @@ import pytest
 import asyncio
 import os
 import tempfile
+import logging
+
+from illufly.mq.pubsub import Publisher
 from illufly.mq.reqrep import Requester, Replier
 from illufly.mq.models import BlockType, ReplyBlock, ReplyState
 
+logger = logging.getLogger(__name__)
+
 class TestReqRep:
+    @pytest.fixture(autouse=True)
+    def setup_logger(self, caplog):
+        """设置日志记录器"""
+        caplog.set_level(logging.DEBUG)
+
     @pytest.fixture
     def temp_ipc_path(self):
         """创建临时IPC文件路径"""
@@ -26,9 +36,12 @@ class TestReqRep:
         """获取进程内通信地址"""
         return "inproc://test"
 
-    async def echo_handler(self, message: str):
+    async def echo_handler(self, message: str, thread_id: str, publisher: Publisher, **kwargs):
         """简单的回显处理函数"""
-        return message
+        echo_message = f"echo: {message}"
+        logger.info(f"echo_handler input: {echo_message}, {kwargs}")
+        publisher.text_chunk(thread_id, echo_message)
+        return echo_message
 
     async def async_test_communication(self, address):
         """测试基本通信"""
@@ -42,25 +55,25 @@ class TestReqRep:
         try:
             # 发送测试数据
             test_data = {"message": "hello world"}
-            response = await requester.async_request(
-                thread_id="test-id",
+            sub = await requester.async_request(
                 kwargs={"message": "hello world"}
             )
-            
-            assert response is not None
-            assert isinstance(response, ReplyBlock)
-            assert response.result == test_data['message']
+            response = list(sub.collect())
+            logger.info(f"first response: {response}")
+            assert len(response) == 2
+            assert 'hello world' in response[0].content
+            assert response[0].block_type == BlockType.TEXT_CHUNK
+            assert response[1].block_type == BlockType.END
 
             # 再次发送测试数据
             test_data = {"message": "hello world 2"}
-            response = await requester.async_request(
-                thread_id="test-id",
+            sub = await requester.async_request(
                 kwargs={"message": "hello world 2"}
             )
-            
-            assert response is not None
-            assert isinstance(response, ReplyBlock)
-            assert response.result == test_data['message']
+            response = list(sub.collect())
+            logger.info(f"second response: {response}")
+            assert len(response) == 2
+            assert 'hello world 2' in response[0].content
 
         finally:
             # 清理
@@ -102,14 +115,13 @@ class TestReqRep:
         server_task = asyncio.create_task(replier.async_reply(slow_handler))
         
         try:
-            response = await requester.async_request(
-                thread_id="test-id",
+            sub = await requester.async_request(
                 kwargs={"message": "hello world"}
             )
-            
-            assert response is not None
-            assert response.state == ReplyState.ERROR
-            assert "timeout" in response.result.lower()
+            response = list(sub.collect())
+            logger.info(f"timeout response: {response}")
+            assert len(response) == 2
+            assert "timeout" in response[0].content.lower()
             
         finally:
             server_task.cancel()
@@ -123,7 +135,7 @@ class TestReqRep:
     @pytest.mark.asyncio
     async def test_error_handling(self, tcp_address):
         """测试错误处理"""
-        async def error_handler(message: str):
+        async def error_handler(message: str, thread_id: str, publisher: Publisher, **kwargs):
             raise ValueError("测试错误")
 
         replier = Replier(address=tcp_address)
@@ -132,14 +144,14 @@ class TestReqRep:
         server_task = asyncio.create_task(replier.async_reply(error_handler))
         
         try:
-            response = await requester.async_request(
-                thread_id="test-id",
+            sub = await requester.async_request(
                 kwargs={"message": "hello world"}
             )
-            
-            assert response is not None
-            assert response.state == ReplyState.ERROR
-            assert "测试错误" in response.result
+            response = list(sub.collect())
+            logger.info(f"error response: {response}")
+            assert len(response) == 2
+            assert response[0].block_type == BlockType.ERROR
+            assert "测试错误" in response[0].content
             
         finally:
             server_task.cancel()

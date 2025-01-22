@@ -18,5 +18,16 @@ class BlockType(str, Enum):
     CONTENT = "content"
 
 class ReplyState(str, Enum):
+    ACCEPTED = "accepted"
+    PREPARED = "prepared"
+    PROCESSING = "processing"
+    WAITING = "waiting"
+    READY = "ready"
     SUCCESS = "success"
     ERROR = "error"
+
+class RequestStep(str, Enum):
+    """请求步骤"""
+    INIT = "init"
+    READY = "ready"
+
