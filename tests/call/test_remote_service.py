@@ -32,14 +32,11 @@ class TestRemoteService:
             server_address=service_config["server_address"]
         )
         yield server
-        await server.async_cleanup()  # 使用异步清理
 
     @pytest.fixture
     async def client(self, service_config):
         """创建客户端"""
         client = RemoteClient(
-            service_name=service_config["service_name"],
-            subscriber_address=service_config["subscriber_address"],
             server_address=service_config["server_address"]
         )
         yield client
@@ -52,12 +49,24 @@ class TestRemoteService:
     @pytest.mark.asyncio
     async def test_basic_communication(self, server, client):
         """测试基本通信"""
-        sub = await client.async_call(thread_id="test_thread_id", hello="world")
+        sub = client.call(hello="world")
         response = list(sub.collect())
         
         logger.info(f"response: {response}")
         assert response[0].block_type == BlockType.TEXT_CHUNK
         assert "world" in response[0].text
+        assert response[-1].block_type == BlockType.END
+
+    def test_sync_call(self, server, client):
+        """测试同步调用"""
+        test_args = ("sync_test",)
+        test_kwargs = {"sync": True}
+        
+        sub = client.call(*test_args, **test_kwargs)
+        response = list(sub.collect())
+        
+        assert response[0].block_type == BlockType.TEXT_CHUNK
+        assert "sync_test" in response[0].text
         assert response[-1].block_type == BlockType.END
 
     @pytest.mark.asyncio
@@ -68,15 +77,11 @@ class TestRemoteService:
         
         async def make_call(i):
             client = RemoteClient(
-                service_name=service_config["service_name"],
-                subscriber_address=service_config["subscriber_address"],
                 server_address=service_config["server_address"]
             )            
 
-            thread_id = f"test_thread_{i}"
             message = f"message_{i}"
             sub = await client.async_call(
-                thread_id=thread_id,
                 message=message
             )
             return thread_id, sub
@@ -108,7 +113,7 @@ class TestRemoteService:
         """测试超时情况"""
         class SlowServer(RemoteServer):
             async def _async_handler(self, *args, thread_id: str, publisher, **kwargs):
-                await asyncio.sleep(2)  # 模拟慢处理
+                await asyncio.sleep(10)  # 模拟慢处理
                 return {"result": "timeout"}
 
         server = SlowServer(
@@ -118,10 +123,8 @@ class TestRemoteService:
         )
 
         client = RemoteClient(
-            service_name=service_config["service_name"],
-            subscriber_address=service_config["subscriber_address"],
             server_address=service_config["server_address"],
-            timeout=1000  # 设置较短的超时时间
+            timeout=500  # 设置较短的超时时间
         )
 
         sub = await client.async_call("test")
@@ -129,7 +132,7 @@ class TestRemoteService:
         logger.info(f"response: {response}")
         
         assert response[0].block_type == BlockType.ERROR
-        assert "timeout" in response[0].error
+        assert "timeout" in response[0].error.lower()
 
         server.cleanup()
 
@@ -147,8 +150,6 @@ class TestRemoteService:
         )
 
         client = RemoteClient(
-            service_name=service_config["service_name"],
-            subscriber_address=service_config["subscriber_address"],
             server_address=service_config["server_address"]
         )
 
@@ -158,13 +159,3 @@ class TestRemoteService:
         assert "测试错误" in str(exc_info.value)
 
         server.cleanup()
-
-    def test_sync_call(self, server, client):
-        """测试同步调用"""
-        test_args = ("sync_test",)
-        test_kwargs = {"sync": True}
-        
-        response = client.call(*test_args, **test_kwargs)
-        
-        assert response["args"] == test_args
-        assert response["kwargs"]["sync"] == test_kwargs["sync"] 

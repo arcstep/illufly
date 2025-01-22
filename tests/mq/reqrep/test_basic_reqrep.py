@@ -160,4 +160,68 @@ class TestReqRep:
             except asyncio.CancelledError:
                 pass
             replier.cleanup()
+            requester.cleanup()
+
+    @pytest.mark.asyncio
+    async def test_concurrent_limit(self, inproc_address):
+        """测试并发限制"""
+        max_tasks = 3
+        replier = Replier(
+            address=inproc_address, 
+            max_concurrent_tasks=max_tasks
+        )
+        requester = Requester(address=inproc_address)
+        
+        async def slow_handler(*args, thread_id: str, publisher: Publisher, **kwargs):
+            publisher.text_chunk(thread_id, "Start")
+            await asyncio.sleep(0.5)
+            publisher.text_chunk(thread_id, "End")
+        
+        server_task = asyncio.create_task(replier.async_reply(slow_handler))
+        
+        try:
+            # 发送超过限制的并发请求
+            tasks = []
+            for _ in range(max_tasks + 2):
+                sub = await requester.async_request()
+                tasks.append(sub)
+            
+            # 验证实际并发数不超过限制
+            assert len(replier._pending_tasks) <= max_tasks
+            
+        finally:
+            server_task.cancel()
+            await server_task
+            replier.cleanup()
+            requester.cleanup()
+
+    @pytest.mark.asyncio
+    async def test_task_cleanup(self, inproc_address):
+        """测试任务清理"""
+        replier = Replier(address=inproc_address)
+        requester = Requester(address=inproc_address)
+        
+        async def simple_handler(*args, thread_id: str, publisher: Publisher, **kwargs):
+            publisher.text_chunk(thread_id, "Start")
+            await asyncio.sleep(0.1)
+            publisher.text_chunk(thread_id, "End")
+        
+        server_task = asyncio.create_task(replier.async_reply(simple_handler))
+        
+        try:
+            # 发送请求
+            sub = await requester.async_request()
+            
+            # 取消服务
+            server_task.cancel()
+            try:
+                await server_task
+            except asyncio.CancelledError:
+                pass  # 预期会收到取消异常
+            
+            # 验证任务被清理
+            assert len(replier._pending_tasks) == 0
+            
+        finally:
+            replier.cleanup()
             requester.cleanup() 

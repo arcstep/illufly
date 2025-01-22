@@ -98,8 +98,28 @@ def test_sync_call_with_cache():
     assert messages[2].block_type == BlockType.END
 
 @pytest.mark.asyncio
-async def test_timeout():
-    """测试超时处理"""
+async def test_timeout1():
+    """
+    测试超时处理：
+    超时时间设置为500ms，每步延迟1s，应该只能超时错误，所有实际处理消息都将被丢弃
+    """
+    service = SlowService(timeout=500, logger=logger)
+    messages = []
+    
+    sub = await service.async_call(delay=1)
+    async for msg in sub.async_collect():
+        messages.append(msg)
+    
+    assert len(messages) == 1
+    assert messages[0].block_type == BlockType.ERROR
+    assert "timeout" in messages[0].content.lower()
+
+@pytest.mark.asyncio
+async def test_timeout2():
+    """
+    测试超时处理：
+    超时时间设置为500ms，每步延迟0.3秒，应该能收到第一条消息，紧接着是超时错误消息，其他处理消息将被丢弃
+    """
     service = SlowService(timeout=500, logger=logger)
     messages = []
     
