@@ -95,16 +95,16 @@ class TestReqRep:
             return message
 
         replier = Replier(address=tcp_address)
-        requester = Requester(address=tcp_address)
+
+        # 设置较短的超时时间
+        requester = Requester(address=tcp_address, timeout=100)
 
         server_task = asyncio.create_task(replier.async_reply(slow_handler))
         
         try:
-            # 设置较短的超时时间
             response = await requester.async_request(
                 thread_id="test-id",
-                kwargs={"message": "hello world"},
-                timeout=0.1
+                kwargs={"message": "hello world"}
             )
             
             assert response is not None

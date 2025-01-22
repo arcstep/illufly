@@ -11,7 +11,7 @@ from ..base_mq import BaseMQ
 
 class Subscriber(BaseMQ):
     """针对特定 thread_id 的 ZMQ 订阅者实例"""
-    def __init__(self, thread_id: str=None, address: str=None, logger=None, timeout: float=30*1000):
+    def __init__(self, thread_id: str=None, address: str=None, logger=None, timeout: int=30*1000):
         """初始化订阅者
         
         Args:
@@ -93,8 +93,9 @@ class Subscriber(BaseMQ):
                     except zmq.error.ZMQError as e:
                         if e.errno == zmq.EAGAIN:
                             # ZMQ 接收超时
-                            self._logger.warning(f"ZMQ receive timeout after {self._timeout}s")
-                            error_block = ErrorBlock(thread_id=self._thread_id, error="Message timeout")
+                            timeout_info = f"ZMQ receive timeout after {self._timeout} ms"
+                            self._logger.warning(timeout_info)
+                            error_block = ErrorBlock(thread_id=self._thread_id, error=timeout_info)
                             self._blocks.append(error_block)
                             yield error_block
                             self._is_collected = True
