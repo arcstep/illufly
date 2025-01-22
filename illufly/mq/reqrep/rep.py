@@ -1,7 +1,7 @@
 from typing import AsyncGenerator, Callable, Awaitable, Any, Dict, List
 from pydantic import BaseModel
 
-from ..models import RequestBlock, ReplyBlock, ReplyAcceptedBlock, ReplyProcessingBlock, ReplyReadyBlock, ReplyState, RequestStep
+from ..models import RequestBlock, ReplyBlock, ReplyAcceptedBlock, ReplyProcessingBlock, ReplyReadyBlock, ReplyState, RequestStep, ReplyErrorBlock
 from ..base_mq import BaseMQ
 from ..pubsub import Publisher, DEFAULT_PUBLISHER
 from ..utils import cleanup_bound_socket
@@ -15,7 +15,6 @@ class Replier(BaseMQ):
     """
     def __init__(self, address=None, message_bus_address=None, logger=None, timeout=None, max_concurrent_tasks=None, service_name=None):
         super().__init__(address, logger)
-        self.to_binding()
         self._timeout = timeout
         self._max_concurrent_tasks = max_concurrent_tasks or 10
         self._service_name = service_name or f"service_{self.__hash__()}"
@@ -28,11 +27,17 @@ class Replier(BaseMQ):
 
         self._task_semaphore = asyncio.Semaphore(self._max_concurrent_tasks)
         self._pending_tasks = set()  # 跟踪所有pending的任务
+        self._active_tasks = 0
+        self._tasks_lock = asyncio.Lock()
+
+        self.to_binding()
 
     def to_binding(self):
         """初始化响应socket"""
         try:
             self._bound_socket = self._context.socket(zmq.REP)
+            # 设置 HWM 为并发限制的 2 倍，确保有足够缓冲空间
+            self._bound_socket.set_hwm(self._max_concurrent_tasks * 2)
             self._bound_socket.bind(self._address)
             self._logger.debug(f"Replier bound to {self._address}")
         except zmq.ZMQError as e:
@@ -51,20 +56,33 @@ class Replier(BaseMQ):
         try:
             while True:
                 try:
-                    # 等待请求
                     request_data = await self._bound_socket.recv_json()
                     request_block = RequestBlock.model_validate(request_data)
-                    self._logger.debug(f"Received request: {request_block}")
-
                     thread_id = request_block.thread_id or self._get_thread_id()
                     
                     if request_block.request_step == RequestStep.INIT:
+                        self._logger.info(f"Received INIT request for thread: {thread_id}")
                         await self._bound_socket.send_json(ReplyAcceptedBlock(
                             thread_id=thread_id,
                             subscribe_address=self._publisher._address
                         ).model_dump())
+                        
                     elif request_block.request_step == RequestStep.READY:
-                        # 创建并跟踪任务
+                        async with self._tasks_lock:
+                            current_tasks = len(self._pending_tasks)
+                            self._logger.info(f"Received READY request for thread: {thread_id}, current tasks: {current_tasks}, max: {self._max_concurrent_tasks}")
+                            
+                            if current_tasks >= self._max_concurrent_tasks:
+                                self._logger.warning(f"Max concurrent tasks reached: {current_tasks}/{self._max_concurrent_tasks}")
+                                self._publisher.error(thread_id, "Max concurrent tasks reached")
+                                await self._bound_socket.send_json(ReplyErrorBlock(
+                                    thread_id=thread_id,
+                                    error="Max concurrent tasks reached"
+                                ).model_dump())
+                                continue
+                            
+                            self._active_tasks += 1
+                        
                         task = asyncio.create_task(
                             self._handle_request(
                                 handler,
@@ -74,7 +92,8 @@ class Replier(BaseMQ):
                             )
                         )
                         self._pending_tasks.add(task)
-                        task.add_done_callback(self._pending_tasks.discard)
+                        self._logger.info(f"Created task for thread: {thread_id}, pending tasks: {len(self._pending_tasks)}")
+                        task.add_done_callback(self._task_done_callback)
                         
                         await self._bound_socket.send_json(ReplyProcessingBlock(
                             thread_id=thread_id
@@ -83,28 +102,38 @@ class Replier(BaseMQ):
                         raise ValueError(f"Invalid request step: {request_block.request_step}")
 
                 except asyncio.CancelledError:
-                    self._logger.debug("Service cancelled")
-                    raise  # 直接抛出取消异常，让 finally 处理清理
+                    self._logger.info("Service cancelled, cleaning up")
+                    raise
                 except Exception as e:
                     self._logger.error(f"Unexpected error: {e}")
                     continue
 
         finally:
-            # 在 finally 中处理所有清理工作
-            await self._cleanup_tasks()  # 等待或取消所有任务
-            self.cleanup()  # 清理其他资源
+            await self._cleanup_tasks()
+            self.cleanup()
+
+    def _task_done_callback(self, task):
+        """任务完成时的回调"""
+        self._pending_tasks.discard(task)
+        self._logger.info(f"Task completed, remaining tasks: {len(self._pending_tasks)}")
+        asyncio.create_task(self._decrease_active_tasks())
+
+    async def _decrease_active_tasks(self):
+        """减少活跃任务计数"""
+        async with self._tasks_lock:
+            self._active_tasks -= 1
+            self._logger.info(f"Active tasks decreased to: {self._active_tasks}")
 
     async def _cleanup_tasks(self):
         """清理所有pending任务"""
         if not self._pending_tasks:
             return
 
-        # 取消所有任务
+        self._logger.info(f"Cleaning up {len(self._pending_tasks)} pending tasks")
         for task in self._pending_tasks:
             if not task.done():
                 task.cancel()
 
-        # 等待所有任务完成
         await asyncio.gather(*self._pending_tasks, return_exceptions=True)
         self._pending_tasks.clear()
 
@@ -125,12 +154,15 @@ class Replier(BaseMQ):
     async def _handle_request(self, handler: Callable, thread_id: str, args: List[Any], kwargs: Dict[str, Any]):
         """异步处理请求"""
         try:
-            async with self._task_semaphore:  # 使用信号量控制并发
-                self._logger.debug(f"Handling request: {thread_id}")
+            if self._timeout:
+                await asyncio.wait_for(
+                    handler(*args, thread_id=thread_id, publisher=self._publisher, **kwargs),
+                    timeout=self._timeout
+                )
+            else:
                 await handler(*args, thread_id=thread_id, publisher=self._publisher, **kwargs)
-        except asyncio.CancelledError:
-            self._logger.debug(f"Task cancelled: {thread_id}")
-            raise
+        except asyncio.TimeoutError:
+            self._publisher.error(thread_id, "Request timeout")
         except Exception as e:
             self._logger.error(f"Handler error: {e}")
             self._publisher.error(thread_id, str(e))

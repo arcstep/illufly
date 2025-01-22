@@ -14,7 +14,7 @@ class TestReqRep:
     @pytest.fixture(autouse=True)
     def setup_logger(self, caplog):
         """设置日志记录器"""
-        caplog.set_level(logging.DEBUG)
+        caplog.set_level(logging.INFO)
 
     @pytest.fixture
     def temp_ipc_path(self):
@@ -165,7 +165,7 @@ class TestReqRep:
     @pytest.mark.asyncio
     async def test_concurrent_limit(self, inproc_address):
         """测试并发限制"""
-        max_tasks = 3
+        max_tasks = 5
         replier = Replier(
             address=inproc_address, 
             max_concurrent_tasks=max_tasks
@@ -174,7 +174,7 @@ class TestReqRep:
         
         async def slow_handler(*args, thread_id: str, publisher: Publisher, **kwargs):
             publisher.text_chunk(thread_id, "Start")
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1)
             publisher.text_chunk(thread_id, "End")
         
         server_task = asyncio.create_task(replier.async_reply(slow_handler))
@@ -182,7 +182,7 @@ class TestReqRep:
         try:
             # 发送超过限制的并发请求
             tasks = []
-            for _ in range(max_tasks + 2):
+            for _ in range(max_tasks + 5):
                 sub = await requester.async_request()
                 tasks.append(sub)
             
@@ -190,8 +190,11 @@ class TestReqRep:
             assert len(replier._pending_tasks) <= max_tasks
             
         finally:
-            server_task.cancel()
-            await server_task
+            try:
+                server_task.cancel()
+                await server_task
+            except asyncio.CancelledError:
+                pass
             replier.cleanup()
             requester.cleanup()
 

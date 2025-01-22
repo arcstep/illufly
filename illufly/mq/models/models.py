@@ -38,7 +38,7 @@ class ReplyErrorBlock(ReplyBlock):
 
 class RequestBlock(BaseBlock):
     """请求块"""
-    request_step: RequestStep = RequestStep.INIT
+    request_step: RequestStep
     args: List[Any] = []
     kwargs: Dict[str, Any] = {}
 
