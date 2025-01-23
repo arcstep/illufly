@@ -50,6 +50,11 @@ class StreamingBlock(BaseBlock):
     def content(self) -> Any:
         """获取内容"""
         raise NotImplementedError
+    
+    @property
+    def is_error(self) -> bool:
+        """是否是错误块"""
+        return self.block_type == BlockType.ERROR
 
     @classmethod
     def create_block(cls, block_type: BlockType, **kwargs):

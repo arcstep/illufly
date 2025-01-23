@@ -6,86 +6,101 @@ import uuid
 import asyncio
 import threading
 import logging
-
 from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
+from pathlib import Path
 
-from ..mq import Publisher, Replier
+from ..mq import Publisher, Replier, DEFAULT_PUBLISHER
 from ..mq.utils import cleanup_bound_socket
+from ..async_utils import AsyncUtils
 from .base_call import BaseCall
 
 class RemoteServer(BaseCall):
-    """
-    远程服务端
-    """
-
+    """远程服务器基类，提供请求-响应模式的服务"""
+    
     def __init__(
         self,
-        publisher_address: str,
-        server_address: str,
-        timeout: int = 30*1000,
-        max_concurrent_tasks=100,
-        service_name: str=None,
-        logger: logging.Logger=None,
+        address: str,
+        max_concurrent_tasks: int = 10,
+        logger: Optional[logging.Logger] = None,
+        publisher: Optional[Publisher] = None,
+        service_name: str = None
     ):
-        """初始化服务
-        
-        Args:
-            service_name: 服务名称
-            publisher_address: 发布者地址
-            server_address: 服务端地址
-            timeout: 超时时间
-            max_concurrent_tasks: 最大并发任务数
-        """
-        super().__init__(logger=logger)
+        super().__init__(logger)
+        self.address = address
+        self.max_concurrent_tasks = max_concurrent_tasks
+        self.publisher = publisher or DEFAULT_PUBLISHER
+        self._server_task = None
+        self._stop_event = asyncio.Event()
+        self._ready_event = asyncio.Event()
         self._service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
-        self._publisher_address = publisher_address
-        self._server_address = server_address
-        self._timeout = timeout
-        self._max_concurrent_tasks = max_concurrent_tasks
 
-        self.register_method("reply_handler", async_handle=self._async_handler)
-        
-        # 初始化服务端
-        self._server = Replier(
-            address=self._server_address,
-            logger=self._logger,
-            timeout=self._timeout,
-            message_bus_address=self._publisher_address,
-            max_concurrent_tasks=self._max_concurrent_tasks,
-            service_name=self._service_name,
-        )
+        self._async_utils = AsyncUtils(logger=self._logger)
+        self.register_method("handle_request", async_handle=self._async_handler)
 
-        # 启动服务端
-        self.start_server()
-
-    async def _async_handler(self, *args, thread_id: str, publisher, **kwargs):
-        """回复处理函数"""
-        pass
-
-    def start_server(self):
-        """改进的服务启动方法"""
+    async def _async_handler(self, *args, thread_id: str, publisher: Publisher, **kwargs):
+        """默认的请求处理方法，子类应该重写此方法"""
+        raise NotImplementedError("Subclass must implement handle_request method")
+    
+    async def _start_server(self):
+        """启动服务器的核心逻辑"""
         try:
-            async def _process(*args, thread_id: str, publisher: Publisher, **kwargs):
-                return await self.async_method(
-                    "reply_handler",
-                    *args,
-                    thread_id=thread_id,
-                    publisher=publisher,
-                    **kwargs
-                )
+            self._logger.info(f"Starting server at {self.address}")
             
-            # 这里的任务创建后应该保存起来，以便后续管理
-            self._server_task = asyncio.create_task(self._server.async_reply(_process))
+            replier = Replier(
+                address=self.address,
+                max_concurrent_tasks=self.max_concurrent_tasks,
+                logger=self._logger,
+                publisher=self.publisher,
+                service_name=self._service_name
+            )
+            
+            self._ready_event.set()
+            self._logger.info("Server is ready to accept connections")
+            
+            _, async_handler = self._methods["handle_request"]
+            await replier.async_reply(async_handler)
             
         except Exception as e:
-            self._logger.error(f"Error starting server: {e}")
-            raise e
-
-    async def stop_server(self):
-        """添加停止服务的方法"""
-        if hasattr(self, '_server_task'):
+            self._logger.error(f"Server error: {e}", exc_info=True)
+            raise
+        finally:
+            self._ready_event.clear()
+    
+    async def start(self):
+        """启动服务器"""
+        self._server_task = asyncio.create_task(self._start_server())
+        try:
+            await self._stop_event.wait()
+        finally:
+            await self.stop()
+    
+    async def stop(self):
+        """停止服务器并清理资源"""
+        self._stop_event.set()
+        if self._server_task:
             self._server_task.cancel()
             try:
                 await self._server_task
             except asyncio.CancelledError:
                 pass
+            finally:
+                self._server_task = None
+                self._ready_event.clear()
+    
+    async def __aenter__(self):
+        """异步上下文管理器入口"""
+        asyncio.create_task(self.start())
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """异步上下文管理器出口"""
+        await self.stop()
+
+    async def wait_until_ready(self, timeout: float = 5.0):
+        """等待服务器就绪"""
+        try:
+            await asyncio.wait_for(self._ready_event.wait(), timeout)
+            return True
+        except asyncio.TimeoutError:
+            self._logger.error("Server failed to start within timeout")
+            return False
