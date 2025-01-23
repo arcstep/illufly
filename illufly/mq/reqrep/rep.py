@@ -58,30 +58,33 @@ class Replier(BaseMQ):
                     request_data = await self._bound_socket.recv_json()
                     request_block = RequestBlock.model_validate(request_data)
                     thread_id = request_block.thread_id or self._get_thread_id()
-                    
+
+                    # 检查是否达到最大并发任务数
+                    async with self._tasks_lock:
+                        current_tasks = len(self._pending_tasks)
+                        self._logger.info(f"Received READY request for thread: {thread_id}, current tasks: {current_tasks}, max: {self._max_concurrent_tasks}")
+                        
+                        if current_tasks >= self._max_concurrent_tasks:
+                            self._logger.warning(f"Max concurrent tasks reached: {current_tasks}/{self._max_concurrent_tasks}")
+                            self._publisher.error(thread_id, "Max concurrent tasks reached")
+                            await self._bound_socket.send_json(ReplyErrorBlock(
+                                thread_id=thread_id,
+                                error="Max concurrent tasks reached"
+                            ).model_dump())
+                            continue
+                        
+                        self._active_tasks += 1
+
+                    # 反馈 thread_id 和 subscribe_address
                     if request_block.request_step == RequestStep.INIT:
                         self._logger.info(f"Received INIT request for thread: {thread_id}")
                         await self._bound_socket.send_json(ReplyAcceptedBlock(
                             thread_id=thread_id,
                             subscribe_address=self._publisher._address
                         ).model_dump())
-                        
+                    
+                    # 受理
                     elif request_block.request_step == RequestStep.READY:
-                        async with self._tasks_lock:
-                            current_tasks = len(self._pending_tasks)
-                            self._logger.info(f"Received READY request for thread: {thread_id}, current tasks: {current_tasks}, max: {self._max_concurrent_tasks}")
-                            
-                            if current_tasks >= self._max_concurrent_tasks:
-                                self._logger.warning(f"Max concurrent tasks reached: {current_tasks}/{self._max_concurrent_tasks}")
-                                self._publisher.error(thread_id, "Max concurrent tasks reached")
-                                await self._bound_socket.send_json(ReplyErrorBlock(
-                                    thread_id=thread_id,
-                                    error="Max concurrent tasks reached"
-                                ).model_dump())
-                                continue
-                            
-                            self._active_tasks += 1
-                        
                         task = asyncio.create_task(
                             self._handle_request(
                                 handler,

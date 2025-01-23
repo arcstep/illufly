@@ -20,7 +20,7 @@ class RemoteServer(BaseCall):
     def __init__(
         self,
         address: str,
-        max_concurrent_tasks: int = 10,
+        max_concurrent_tasks: int = 100,
         logger: Optional[logging.Logger] = None,
         publisher: Optional[Publisher] = None,
         service_name: str = None

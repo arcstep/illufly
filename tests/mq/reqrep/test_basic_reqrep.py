@@ -182,10 +182,15 @@ class TestReqRep:
         try:
             # 发送超过限制的并发请求
             tasks = []
-            for _ in range(max_tasks + 5):
+            for _ in range(max_tasks):
                 sub = await requester.async_request()
                 tasks.append(sub)
-            
+
+            for _ in range(5):
+                with pytest.raises(Exception) as e:
+                    await requester.async_request()
+                assert e.value.args[0] == "Max concurrent tasks reached"
+
             # 验证实际并发数不超过限制
             assert len(replier._pending_tasks) <= max_tasks
             

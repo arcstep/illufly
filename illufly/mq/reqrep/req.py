@@ -36,16 +36,22 @@ class Requester(BaseMQ):
                 request_step=RequestStep.INIT,
             )
             await self._connected_socket.send_json(request.model_dump())
+
             # STEP 2: 等待服务端确认，并获得 thread_id 和 subscribe_address
             reply_data = await self._connected_socket.recv_json()
             self._logger.debug(f"Client received accepted reply: {reply_data}")
+            if reply_data.get("state") == ReplyState.ERROR.value:
+                raise Exception(reply_data.get("error"))
+
             accepted_block = ReplyAcceptedBlock.model_validate(reply_data)
+
             # STEP 3: 根据上面后的关键信息创建订阅
             sub = Subscriber(
                 thread_id=accepted_block.thread_id,
                 address=accepted_block.subscribe_address,
                 timeout=self._timeout
             )
+
             # STEP 4: 订阅准备已就绪
             ready = RequestBlock(
                 thread_id=accepted_block.thread_id,
@@ -55,8 +61,12 @@ class Requester(BaseMQ):
             )
             await self._connected_socket.send_json(ready.model_dump())
             self._logger.debug(f"Client sent ready reply: {ready}")
+
             # STEP 5: 等待异步处理完成
             processing_data = await self._connected_socket.recv_json()
+            if processing_data.get("state") == ReplyState.ERROR.value:
+                raise Exception(reply_data.get("error"))
+
             return sub
 
         except Exception as e:
