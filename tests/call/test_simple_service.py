@@ -3,6 +3,7 @@ import asyncio
 import logging
 from illufly.call.simple_service import SimpleService
 from illufly.mq.models import StreamingBlock, BlockType
+from illufly.mq.pubsub import Publisher
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,9 @@ def test_sync_call_with_cache():
     assert messages[0].content == "Processing: World"
     assert messages[1].content == "Done: World"
     assert messages[2].block_type == BlockType.END
+    
+    # 清理
+    service.cleanup()
 
 @pytest.mark.asyncio
 async def test_timeout1():
@@ -190,7 +194,7 @@ async def test_multiple_calls():
 async def test_custom_addresses():
     """测试自定义地址"""
     service = EchoService(
-        address="tcp://127.0.0.1:5555",
+        publisher=Publisher(address="tcp://127.0.0.1:5555"),
         logger=logger
     )
     messages = []

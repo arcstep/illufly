@@ -18,7 +18,7 @@ class SimpleService(BaseCall):
     def __init__(
         self,
         service_name: str=None,
-        address: str = None,
+        publisher: Publisher = None,
         timeout: int = 30*1000,
         **kwargs
     ):
@@ -26,22 +26,16 @@ class SimpleService(BaseCall):
         
         Args:
             service_name: 服务名称
-            address: 发布和订阅的 ZMQ 地址
-            subscriber_address: 订阅者地址
+            publisher: 发布者
             timeout: 超时时间
         """
         super().__init__(**kwargs)
         self._service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
-        self._address = address
+        self._publisher = publisher or DEFAULT_PUBLISHER
         self._timeout = timeout
         self._tasks = set()
-        self._logger.info(f"SimpleService initialized with service_name={service_name}, address={address}")
+        self._logger.info(f"SimpleService initialized with service_name={service_name}, address={self._publisher._address}")
         
-        if self._address:
-            self._publisher = Publisher(address=self._address, logger=self._logger)
-        else:
-            self._publisher = DEFAULT_PUBLISHER
-
         self._async_utils = AsyncUtils(logger=self._logger)
         self._processing_events = {}  # 用于跟踪每个调用的处理状态
 
@@ -79,7 +73,7 @@ class SimpleService(BaseCall):
         except Exception as e:
             self._logger.info(f"Error during cleanup: {e}")
         finally:
-            if self._address and hasattr(self, '_publisher'):
+            if self._publisher._address != DEFAULT_PUBLISHER._address and hasattr(self, '_publisher'):
                 self._publisher.cleanup()
 
     async def _process_and_end(self, *args, thread_id: str, **kwargs):
@@ -106,7 +100,7 @@ class SimpleService(BaseCall):
         thread_id = thread_id or self._get_thread_id()        
         subscriber = Subscriber(
             thread_id,
-            address=self._address,
+            address=self._publisher._address,
             logger=self._logger,
             timeout=self._timeout
         )
@@ -133,7 +127,7 @@ class SimpleService(BaseCall):
         thread_id = thread_id or self._get_thread_id()        
         subscriber = Subscriber(
             thread_id,
-            address=self._address,
+            address=self._publisher._address,
             logger=self._logger,
             timeout=self._timeout
         )

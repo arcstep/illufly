@@ -13,36 +13,35 @@ import uuid
 class Replier(BaseMQ):
     """ZMQ REP 响应者
     """
-    def __init__(self, address=None, message_bus_address=None, logger=None, timeout=None, max_concurrent_tasks=None, service_name=None):
+    def __init__(self, address=None, publisher=None, logger=None, timeout=None, max_concurrent_tasks=None, service_name=None, connect_mode=False):
         super().__init__(address, logger)
         self._timeout = timeout
         self._max_concurrent_tasks = max_concurrent_tasks or 10
         self._service_name = service_name or f"service_{self.__hash__()}"
+        self._connect_mode = connect_mode
 
-        self._message_bus_address = message_bus_address
-        if self._message_bus_address:
-            self._publisher = Publisher(address=self._message_bus_address, logger=self._logger)
-        else:
-            self._publisher = DEFAULT_PUBLISHER
+        self._publisher = publisher or DEFAULT_PUBLISHER
 
         self._task_semaphore = asyncio.Semaphore(self._max_concurrent_tasks)
         self._pending_tasks = set()  # 跟踪所有pending的任务
         self._active_tasks = 0
         self._tasks_lock = asyncio.Lock()
 
-        self.to_binding()
+        self._init_socket()
 
-    def to_binding(self):
-        """初始化响应socket"""
-        try:
-            self._bound_socket = self._context.socket(zmq.REP)
-            # 设置 HWM 为并发限制的 2 倍，确保有足够缓冲空间
-            self._bound_socket.set_hwm(self._max_concurrent_tasks * 2)
+    def _init_socket(self):
+        """初始化 socket"""
+        self._bound_socket = self._context.socket(zmq.REP)
+        self._bound_socket.set_hwm(self._max_concurrent_tasks * 2)
+        
+        if self._connect_mode:
+            # 作为后端服务连接到路由器
+            self._bound_socket.connect(self._address)
+            self._logger.info(f"Replier connected to router: {self._address}")
+        else:
+            # 传统模式：直接绑定地址
             self._bound_socket.bind(self._address)
-            self._logger.debug(f"Replier bound to {self._address}")
-        except zmq.ZMQError as e:
-            self._logger.error(f"Failed to bind replier socket: {e}")
-            raise
+            self._logger.info(f"Replier bound to: {self._address}")
 
     def _get_thread_id(self):
         """生成唯一的线程ID"""
