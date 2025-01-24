@@ -34,19 +34,8 @@ class TestRemoteService:
             publisher=Publisher(address=service_config["publisher_address"]),
             max_concurrent_tasks=100
         )
-        task = asyncio.create_task(server.start())
-        
-        # 等待服务器就绪
-        if not await server.wait_until_ready(timeout=5.0):
-            pytest.fail("Server failed to start")
-        
         yield server
-        
         await server.stop()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
 
     @pytest.fixture
     async def client(self, service_config):
@@ -59,10 +48,7 @@ class TestRemoteService:
     @pytest.mark.asyncio
     async def test_basic_communication(self, client, server, service_config):
         try:
-            sub = await asyncio.wait_for(
-                client.async_call("hello", "world"),
-                timeout=5.0  # 添加超时
-            )
+            sub = await client.async_call("hello", "world")
             response = list(sub.collect())
             logger.info(f"response: {response}")
             assert response[0].block_type == BlockType.TEXT_CHUNK
@@ -70,6 +56,24 @@ class TestRemoteService:
             assert response[-1].block_type == BlockType.END
         except asyncio.TimeoutError:
             pytest.fail("Request timed out")
+
+    @pytest.mark.asyncio
+    async def test_simple_mode(self, service_config):
+        """测试错误处理"""
+        class SimpleServer(RemoteServer):
+            async def _async_handler(self, *args, thread_id: str, publisher: Publisher, **kwargs):
+                await asyncio.sleep(0.5)
+                publisher.text_chunk(thread_id, f"Echo: {args} {kwargs}")
+
+        simple = SimpleServer()        
+
+        sub = await simple.async_call("test")
+        responses = list(sub.collect())
+        assert responses[0].block_type == BlockType.TEXT_CHUNK
+        assert "test" in responses[0].text
+        assert responses[-1].block_type == BlockType.END
+
+        await simple.stop()
 
     def test_sync_call(self, server, client):
         """测试同步调用"""
@@ -119,8 +123,6 @@ class TestRemoteService:
             service_name=service_config["service_name"],
             publisher=Publisher(address=service_config["publisher_address"])
         )
-        task = asyncio.create_task(server.start())
-        await server.wait_until_ready()
 
         try:
             client = RemoteClient(
@@ -138,10 +140,6 @@ class TestRemoteService:
 
         finally:
             await server.stop()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
 
     @pytest.mark.asyncio
     async def test_error_handling(self, service_config):
@@ -154,14 +152,7 @@ class TestRemoteService:
             address=service_config["server_address"],
             service_name=service_config["service_name"],
             publisher=Publisher(address=service_config["publisher_address"])
-        )
-
-        task = asyncio.create_task(server.start())
-        
-        # 等待服务器就绪
-        if not await server.wait_until_ready(timeout=5.0):
-            pytest.fail("Server failed to start")
-        
+        )        
         client = RemoteClient(
             server_address=service_config["server_address"]
         )
@@ -172,7 +163,4 @@ class TestRemoteService:
         assert "测试错误" in responses[0].error
 
         await server.stop()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+

@@ -9,9 +9,8 @@ import logging
 from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
 from pathlib import Path
 
-from ..mq import Publisher, Replier, DEFAULT_PUBLISHER
-from ..mq.utils import cleanup_bound_socket
 from ..async_utils import AsyncUtils
+from ..mq import Publisher, Replier, Requester, DEFAULT_PUBLISHER
 from .base_call import BaseCall
 
 class RemoteServer(BaseCall):
@@ -19,23 +18,42 @@ class RemoteServer(BaseCall):
     
     def __init__(
         self,
-        address: str,
+        address: str = None,
         max_concurrent_tasks: int = 100,
         logger: Optional[logging.Logger] = None,
         publisher: Optional[Publisher] = None,
-        service_name: str = None
+        service_name: str = None,
+        request_timeout: int = 30*1000
     ):
         super().__init__(logger)
-        self.address = address
         self.max_concurrent_tasks = max_concurrent_tasks
         self.publisher = publisher or DEFAULT_PUBLISHER
+        self.service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
+        self.address = address or f"inproc://{self.service_name}"
+        self.request_timeout = request_timeout
+
         self._server_task = None
         self._stop_event = asyncio.Event()
         self._ready_event = asyncio.Event()
-        self._service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
+
+        self.register_method("handle_request", async_handle=self._async_handler)
 
         self._async_utils = AsyncUtils(logger=self._logger)
-        self.register_method("handle_request", async_handle=self._async_handler)
+        asyncio.create_task(self.start())
+        self._async_utils.wrap_async_func(self.wait_until_ready)()
+        self._requester = Requester(address=self.address, timeout=self.request_timeout, logger=self._logger)
+
+    def __call__(self, *args, **kwargs):
+        """使对象可调用，默认使用同步调用"""
+        return self.call(*args, **kwargs)
+
+    async def async_call(self, *args, **kwargs):
+        """异步调用远程服务"""
+        return await self._requester.async_request(args=args, kwargs=kwargs)
+
+    def call(self, *args, **kwargs):
+        """同步调用远程服务"""
+        return self._requester.request(args=args, kwargs=kwargs)
 
     async def _async_handler(self, *args, thread_id: str, publisher: Publisher, **kwargs):
         """默认的请求处理方法，子类应该重写此方法"""
@@ -51,7 +69,7 @@ class RemoteServer(BaseCall):
                 max_concurrent_tasks=self.max_concurrent_tasks,
                 logger=self._logger,
                 publisher=self.publisher,
-                service_name=self._service_name
+                service_name=self.service_name
             )
             
             self._ready_event.set()
@@ -86,7 +104,10 @@ class RemoteServer(BaseCall):
             finally:
                 self._server_task = None
                 self._ready_event.clear()
-    
+        if self._requester:
+            self._requester.cleanup()
+            self._requester = None
+
     async def __aenter__(self):
         """异步上下文管理器入口"""
         asyncio.create_task(self.start())
