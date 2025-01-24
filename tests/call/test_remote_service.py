@@ -73,6 +73,13 @@ class TestRemoteService:
         assert "test" in responses[0].text
         assert responses[-1].block_type == BlockType.END
 
+        # 重复调用
+        sub = await simple.async_call("test")
+        responses = list(sub.collect())
+        assert responses[0].block_type == BlockType.TEXT_CHUNK
+        assert "test" in responses[0].text
+        assert responses[-1].block_type == BlockType.END
+
         await simple.stop()
 
     def test_sync_call(self, server, client):

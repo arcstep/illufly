@@ -47,6 +47,14 @@ async def test_chat_response(chat):
     async for event in response:
         logger.info(f"event: {event}")
         events.append(event)
+
+    # 重复执行        
+    events = []
+    sub = await chat.async_call("test prompt")
+    response = sub.async_collect()
+    async for event in response:
+        logger.info(f"event: {event}")
+        events.append(event)
         
     assert len(events) > 0
     assert events[0].block_type == BlockType.TEXT_CHUNK

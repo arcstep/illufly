@@ -23,7 +23,8 @@ class RemoteServer(BaseCall):
         logger: Optional[logging.Logger] = None,
         publisher: Optional[Publisher] = None,
         service_name: str = None,
-        request_timeout: int = 30*1000
+        request_timeout: int = 30*1000,
+        connect_mode: bool = False
     ):
         super().__init__(logger)
         self.max_concurrent_tasks = max_concurrent_tasks
@@ -31,6 +32,7 @@ class RemoteServer(BaseCall):
         self.service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
         self.address = address or f"inproc://{self.service_name}"
         self.request_timeout = request_timeout
+        self.connect_mode = connect_mode
 
         self._server_task = None
         self._stop_event = asyncio.Event()
@@ -73,7 +75,8 @@ class RemoteServer(BaseCall):
                 max_concurrent_tasks=self.max_concurrent_tasks,
                 logger=self._logger,
                 publisher=self.publisher,
-                service_name=self.service_name
+                service_name=self.service_name,
+                connect_mode=self.connect_mode
             )
             
             self._ready_event.set()

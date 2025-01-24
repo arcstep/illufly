@@ -13,6 +13,18 @@ class ChatOpenAI(ChatBase):
         "QWEN": {
             "text": "qwen-plus",
             "vision": "qwen-vl-plus"
+        },
+        "ZHIPU": {
+            "text": "glm-4-flash",
+            "vision": "glm-4v-flash"
+        },
+        "DEEPSEEK": {
+            "text": "deepseek-chat",
+            "vision": "deepseek-chat-v2"
+        },
+        "MOONSHOT": {
+            "text": "moon-shot-chat",
+            "vision": "moon-shot-chat-v2"
         }
     }
 

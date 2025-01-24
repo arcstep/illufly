@@ -22,7 +22,7 @@ class ChatFake(ChatBase):
             self.response = [response]
         else:
             self.response = response
-            
+
         self.sleep = sleep
         self.current_response_index = 0
         
@@ -40,7 +40,7 @@ class ChatFake(ChatBase):
         self._logger.debug(f"Processing prompt: {str(messages)[:50]}...")
         
         # 获取响应内容
-        resp_content = "\n".join([m["content"] for m in messages])
+        resp_content = messages[-1]["content"]
         if not self.response:
             # 使用默认响应
             resp = f"Reply >> {resp_content}"
@@ -49,6 +49,10 @@ class ChatFake(ChatBase):
             self.current_response_index = (self.current_response_index + 1) % len(self.response)
         
         # 逐字符发送响应
+        final_text = ""
         for content in resp:
             await asyncio.sleep(self.sleep)
+            final_text += content
             publisher.publish(thread_id, TextChunk(text=content, thread_id=thread_id))
+
+        return final_text
