@@ -28,16 +28,10 @@ class AsyncUtils:
             if loop.is_running():
                 import nest_asyncio
                 nest_asyncio.apply()
-            logging.getLogger(__name__).debug(
-                f"Got existing loop: {id(loop)}, is_closed={loop.is_closed()}, is_running={loop.is_running()}"
-            )
             return loop
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            logging.getLogger(__name__).debug(
-                f"Created new loop: {id(loop)}"
-            )
             return loop
             
     def _track_task(self, task: asyncio.Task) -> asyncio.Task:
@@ -58,23 +52,19 @@ class AsyncUtils:
             current_task = asyncio.current_task()
             
             async with self._cleanup_lock:
-                active_tasks = [t for t in self._tasks 
-                              if not t.done() and t != current_task]
+                active_tasks = [
+                    t 
+                    for t in self._tasks
+                    if not t.done() and t != current_task
+                ]
                 
                 if not active_tasks:
                     return
                     
-                self._logger.debug(f"Cleaning up {len(active_tasks)} tasks")
                 for task in active_tasks:
                     task.cancel()
                     try:
                         await asyncio.wait([task], timeout=0.1)
-                        if not task.done():
-                            self._logger.warning(f"Task {task.get_name()} failed to cancel in time")
-                        elif task.cancelled():
-                            self._logger.debug(f"Task cancelled: {task.get_name()}")
-                        else:
-                            self._logger.debug(f"Task completed: {task.get_name()}")
                     except Exception as e:
                         self._logger.error(f"Error cleaning up task: {e}")
                     finally:
@@ -104,7 +94,6 @@ class AsyncUtils:
         task = asyncio.current_task()
         if task:
             self._track_task(task)
-            self._logger.debug(f"Managing async task: {task.get_name()}")
         try:
             yield
         finally:
@@ -124,23 +113,18 @@ class AsyncUtils:
             
     def wrap_async_generator(self, agen: AsyncGenerator[T, None]) -> Generator[T, None, None]:
         """包装异步生成器为同步生成器"""
-        loop = self.get_or_create_loop()
-        self._logger.debug(f"wrap_async_generator using loop: {id(loop)}")
-        
         async def managed_agen():
             try:
                 async for item in agen:
                     yield item
             finally:
-                self._logger.debug(f"managed_agen cleanup with loop: {id(loop)}, is_closed={loop.is_closed()}")
                 await self._cleanup_tasks()
                 
         ait = managed_agen()
+        loop = self.get_or_create_loop()
         while True:
             try:
-                self._logger.debug(f"Before run_until_complete with loop: {id(loop)}, is_closed={loop.is_closed()}")
                 yield loop.run_until_complete(ait.__anext__())
-                self._logger.debug(f"After run_until_complete with loop: {id(loop)}, is_closed={loop.is_closed()}")
             except StopAsyncIteration:
                 self._logger.debug(f"Generator finished with loop: {id(loop)}, is_closed={loop.is_closed()}")
                 break
@@ -150,14 +134,12 @@ class AsyncUtils:
 
     def wrap_sync_func(self, func: Callable[..., T]) -> Callable[..., Awaitable[T]]:
         """将同步函数包装为异步函数"""
-        self._logger.debug(f"Wrapping sync function: {func.__name__}")
         async def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
         return wrapper
 
     def wrap_async_func(self, func: Callable[..., Awaitable[T]]) -> Callable[..., T]:
         """将异步函数包装为同步函数"""
-        self._logger.debug(f"Wrapping async function: {func.__name__}")
         def wrapper(*args, **kwargs):
             loop = self.get_or_create_loop()
             return loop.run_until_complete(func(*args, **kwargs))

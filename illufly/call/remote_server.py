@@ -39,9 +39,13 @@ class RemoteServer(BaseCall):
         self.register_method("handle_request", async_handle=self._async_handler)
 
         self._async_utils = AsyncUtils(logger=self._logger)
-        asyncio.create_task(self.start())
-        self._async_utils.wrap_async_func(self.wait_until_ready)()
+        loop = self._async_utils.get_or_create_loop()
+        loop.create_task(self.start())
+        loop.run_until_complete(self.wait_until_ready())
         self._requester = Requester(address=self.address, timeout=self.request_timeout, logger=self._logger)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(address={self.address}, service_name={self.service_name})"
 
     def __call__(self, *args, **kwargs):
         """使对象可调用，默认使用同步调用"""
@@ -125,3 +129,7 @@ class RemoteServer(BaseCall):
         except asyncio.TimeoutError:
             self._logger.error("Server failed to start within timeout")
             return False
+
+    def __del__(self):
+        """清理资源"""
+        self._async_utils.wrap_async_func(self.stop)()

@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Union
 
-from ..call import SimpleService
+from ..call import RemoteServer
 from ..mq import Publisher, StreamingBlock, BlockType, TextChunk
 
-class ChatBase(SimpleService, ABC):
+class ChatBase(RemoteServer, ABC):
     """Base Chat Service"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

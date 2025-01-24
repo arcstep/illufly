@@ -11,7 +11,7 @@ def setup_logging(caplog):
     caplog.set_level(logging.INFO)
 
 @pytest.fixture
-def chat():
+async def chat():
     """异步 fixture"""
     chat = ChatFake(
         response="Hello World!",
@@ -19,16 +19,18 @@ def chat():
         service_name="test_chat",
         logger=logger
     )
-    return chat
+    yield chat
+    await chat.stop()
 
 @pytest.fixture
-def chat_with_list():
+async def chat_with_list():
     chat = ChatFake(
         response=["Response 1", "Response 2"],
         sleep=0.1,
         logger=logger
     )
-    return chat
+    yield chat
+    await chat.stop()
 
 @pytest.mark.asyncio
 async def test_chat_initialization(chat):
