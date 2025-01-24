@@ -104,28 +104,36 @@ class ToolCallChunk(StreamingBlock):
     """工具调用块"""
     block_type: BlockType = BlockType.TOOL_CALL_CHUNK
     seq: int = 0
-    name: str
-    arguments: str
+    id: Optional[str] = None  # 工具调用ID
+    name: Optional[str] = None  # 工具名称
+    arguments: str = ""  # 工具参数（逐步累积）
+    index: Optional[int] = None  # 工具调用的索引
 
     @property
-    def content(self) -> str:
+    def content(self) -> Dict[str, Any]:
         return {
+            "id": self.id,
             "name": self.name,
-            "arguments": self.arguments
+            "arguments": self.arguments,
+            "index": self.index
         }
 
 class ToolCallFinal(StreamingBlock):
     """工具调用结束块"""
     block_type: BlockType = BlockType.TOOL_CALL_FINAL
-    name: str
-    arguments: str
-    chunks: List[ToolCallChunk] = []
+    id: str  # 工具调用ID
+    name: str  # 工具名称
+    arguments: str  # 完整的工具参数
+    index: int  # 工具调用的索引
+    chunks: List[ToolCallChunk] = []  # 包含的所有chunk
 
     @property
-    def content(self) -> str:
+    def content(self) -> Dict[str, Any]:
         return {
+            "id": self.id,
             "name": self.name,
-            "arguments": self.arguments
+            "arguments": self.arguments,
+            "index": self.index
         }
 
 class UsageBlock(StreamingBlock):

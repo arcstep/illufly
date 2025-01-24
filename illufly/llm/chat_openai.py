@@ -1,17 +1,19 @@
 import os
 from typing import List, Dict, Any, Union
-from ..mq import Publisher, StreamingBlock
+from ..mq import Publisher, StreamingBlock, TextChunk, UsageBlock, StartBlock, ToolCallChunk, ToolCallFinal
 from ..call import SimpleService
 from openai import AsyncOpenAI
 
 class ChatOpenAI(SimpleService):
-    DEFAULT_MODEL = {
-        "OPENAI": "gpt-4-vision-preview",
-        "QWEN": "qwen-vl-plus",
-        "BAIDU": "ernie-bot-4",
-        "ZHIPU": "glm-4v",
-        "MOONSHOT": "moonshot-v1-8k",
-        "GROQ": "mixtral-8x7b-32768",
+    DEFAULT_MODELS = {
+        "OPENAI": {
+            "text": "gpt-4-turbo-preview",
+            "vision": "gpt-4-vision-preview"
+        },
+        "QWEN": {
+            "text": "qwen-plus",
+            "vision": "qwen-vl-plus"
+        }
     }
 
     PROVIDER_URLS = {
@@ -25,15 +27,16 @@ class ChatOpenAI(SimpleService):
     def __init__(self, model: str = None, prefix: str = None, extra_args: dict = {}, **kwargs):
         prefix = (prefix or "").upper() or "OPENAI"
         
-        # 设置默认模型和基础URL
-        model = model or self.DEFAULT_MODEL.get(prefix, "gpt-4-turbo-preview")
-        base_url = kwargs.pop("base_url", None) or os.getenv(f"{prefix}_BASE_URL") or self.PROVIDER_URLS.get(prefix)
+        # 加载默认模型
+        self.text_model = self.DEFAULT_MODELS.get(prefix, {}).get("text", "gpt-4-turbo-preview")
+        self.vision_model = self.DEFAULT_MODELS.get(prefix, {}).get("vision", "gpt-4-vision-preview")
         
+        # 如果用户指定了模型，优先使用
         self.default_call_args = {
             "model": model,
         }
         self.model_args = {
-            "base_url": base_url,
+            "base_url": kwargs.pop("base_url", None) or os.getenv(f"{prefix}_BASE_URL") or self.PROVIDER_URLS.get(prefix),
             "api_key": kwargs.pop("api_key", os.getenv(f"{prefix}_API_KEY")),
             **extra_args
         }
@@ -43,7 +46,7 @@ class ChatOpenAI(SimpleService):
         super().__init__(**kwargs)
 
     def validate_messages(self, messages: List[Dict[str, Any]]) -> None:
-        """验证消息格式
+        """验证消息格式，支持简单文本和多模态格式
         Args:
             messages: 消息列表
         Raises:
@@ -65,42 +68,120 @@ class ChatOpenAI(SimpleService):
                     f"第{i+1}条消息缺少必要的键: {missing_keys}"
                 )
             
+            # 验证 role
             if not isinstance(msg["role"], str):
                 raise ValueError(
                     f"第{i+1}条消息的 role 必须是字符串, 得到 {type(msg['role'])}"
                 )
             
-            if not isinstance(msg["content"], str):
+            # 验证 content
+            content = msg["content"]
+            if isinstance(content, str):
+                # 简单文本格式
+                pass
+            elif isinstance(content, list):
+                # 多模态格式
+                for idx, item in enumerate(content):
+                    if not isinstance(item, dict):
+                        raise ValueError(
+                            f"第{i+1}条消息的第{idx+1}个内容项必须是字典, 得到 {type(item)}"
+                        )
+                    if "type" not in item:
+                        raise ValueError(
+                            f"第{i+1}条消息的第{idx+1}个内容项缺少 type 字段"
+                        )
+                    if item["type"] == "text":
+                        if "text" not in item:
+                            raise ValueError(
+                                f"第{i+1}条消息的第{idx+1}个文本内容项缺少 text 字段"
+                            )
+                    elif item["type"] == "image_url":
+                        if "image_url" not in item:
+                            raise ValueError(
+                                f"第{i+1}条消息的第{idx+1}个图片内容项缺少 image_url 字段"
+                            )
+                    else:
+                        raise ValueError(
+                            f"第{i+1}条消息的第{idx+1}个内容项包含不支持的 type: {item['type']}"
+                        )
+            else:
                 raise ValueError(
-                    f"第{i+1}条消息的 content 必须是字符串, 得到 {type(msg['content'])}"
+                    f"第{i+1}条消息的 content 必须是字符串或列表, 得到 {type(content)}"
                 )
 
+    async def _process_tool_calls(self, delta, current_tool_calls, thread_id, publisher):
+        """处理工具调用"""
+        for idx, tool_call in enumerate(delta.tool_calls):
+            tool_id = tool_call.id
+            
+            # 如果工具调用不存在，初始化
+            if tool_id not in current_tool_calls:
+                current_tool_calls[tool_id] = {
+                    "id": tool_id,
+                    "name": "",  # 初始化为空
+                    "arguments": "",
+                    "index": idx,
+                    "chunks": []
+                }
+            
+            # 更新工具调用信息
+            # 只有当函数名称存在且不为空时才更新
+            if tool_call.function.name and tool_call.function.name.strip():
+                current_tool_calls[tool_id]["name"] = tool_call.function.name
+            
+            # 更新参数（即使为空也更新，因为可能是有效的空参数）
+            if tool_call.function.arguments is not None:
+                current_tool_calls[tool_id]["arguments"] += tool_call.function.arguments
+            
+            # 创建并发送工具调用块
+            chunk = ToolCallChunk(
+                id=tool_id,
+                name=current_tool_calls[tool_id]["name"],  # 使用当前确定的名称
+                arguments=tool_call.function.arguments or "",  # 处理可能的None
+                index=idx,
+                thread_id=thread_id
+            )
+            current_tool_calls[tool_id]["chunks"].append(chunk)
+            publisher.publish(thread_id, chunk)
+
     async def _process_vision_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """处理包含视觉内容的消息"""
+        """处理消息，仅在包含图片时转换为多模态格式"""
         processed_messages = []
+        
         for msg in messages:
+            # 如果已经是多模态格式，直接使用
             if isinstance(msg.get("content"), list):
-                # 处理多模态内容
-                content_list = []
-                for content in msg["content"]:
-                    if content.get("type") == "text":
-                        content_list.append({"type": "text", "text": content["text"]})
-                    elif content.get("type") == "image":
+                processed_messages.append(msg)
+                continue
+                
+            # 处理纯文本消息
+            if isinstance(msg.get("content"), str):
+                # 检查是否包含图片
+                if hasattr(msg, "images") and msg.images:
+                    # 转换为多模态格式
+                    content_list = [{"type": "text", "text": msg["content"]}]
+                    for image in msg.images:
                         image_content = {
-                            "type": "image",
-                            "image_url": content.get("image_url"),
-                            "detail": content.get("detail", "auto")
+                            "type": "image_url",
+                            "image_url": {
+                                "url": image.url,
+                                "detail": getattr(image, "detail", "auto")
+                            }
                         }
                         # 处理 base64 图片
-                        if content.get("image_base64"):
-                            image_content["image_url"] = f"data:image/jpeg;base64,{content['image_base64']}"
+                        if hasattr(image, "base64"):
+                            image_content["image_url"]["url"] = f"data:image/jpeg;base64,{image.base64}"
                         content_list.append(image_content)
-                processed_messages.append({
-                    "role": msg["role"],
-                    "content": content_list
-                })
+                    processed_messages.append({
+                        "role": msg["role"],
+                        "content": content_list
+                    })
+                else:
+                    # 不包含图片，保持简单格式
+                    processed_messages.append(msg)
             else:
-                processed_messages.append(msg)
+                raise ValueError(f"不支持的 content 类型: {type(msg.get('content'))}")
+                
         return processed_messages
 
     async def _async_handler(
@@ -120,18 +201,18 @@ class ChatOpenAI(SimpleService):
             # 处理多模态消息
             messages = await self._process_vision_messages(messages)
             
-            # 检查是否包含视觉内容
-            has_vision = any(
-                isinstance(msg.get("content"), list) and 
-                any(c.get("type") == "image" for c in msg["content"])
-                for msg in messages
-            )
-            
-            # 如果包含视觉内容，确保使用支持视觉的模型
-            if has_vision and "vision" not in self.default_call_args["model"]:
-                vision_model = self.DEFAULT_MODEL.get(self.provider, "").replace("-plus", "-vision")
-                if vision_model:
-                    self.default_call_args["model"] = vision_model
+            # 自动选择模型
+            if not self.default_call_args['model']:
+                # 检查是否包含视觉内容
+                has_vision = any(
+                    isinstance(msg.get("content"), list) and 
+                    any(c.get("type") == "image_url" for c in msg["content"])
+                    for msg in messages
+                )                
+                if has_vision:
+                    self.default_call_args["model"] = self.vision_model
+                else:
+                    self.default_call_args["model"] = self.text_model
 
             _kwargs = self.default_call_args.copy()
             _kwargs.update({
@@ -141,10 +222,13 @@ class ChatOpenAI(SimpleService):
             })
 
             # 发送开始标记
-            publisher.publish(thread_id, StreamingBlock.create_start(thread_id))
+            publisher.publish(thread_id, StartBlock(thread_id=thread_id))
 
+            self._logger.info(f"openai call model: {_kwargs['model']}")
             completion = await self.client.chat.completions.create(**_kwargs)
             
+            current_tool_calls = {}
+
             async for response in completion:
                 self._logger.info(f"openai response: {response}")
                 if response.choices:
@@ -152,25 +236,13 @@ class ChatOpenAI(SimpleService):
                     
                     # 处理工具调用
                     if delta.tool_calls:
-                        for tool_call in delta.tool_calls:
-                            tool_data = {
-                                "id": tool_call.id,
-                                "type": tool_call.type,
-                                "function": {
-                                    "name": tool_call.function.name,
-                                    "arguments": tool_call.function.arguments
-                                }
-                            }
-                            publisher.publish(
-                                thread_id,
-                                StreamingBlock.create_tools_call(tool_data, thread_id)
-                            )
+                        await self._process_tool_calls(delta, current_tool_calls, thread_id, publisher)
                     
                     # 处理文本内容
                     if delta.content:
                         publisher.publish(
                             thread_id,
-                            StreamingBlock.create_chunk(delta.content, thread_id)
+                            TextChunk(text=delta.content, thread_id=thread_id)
                         )
 
                 # 处理使用情况
@@ -184,8 +256,20 @@ class ChatOpenAI(SimpleService):
                     }
                     publisher.publish(
                         thread_id,
-                        StreamingBlock.create_usage(usage_data, thread_id)
+                        UsageBlock(**usage_data, thread_id=thread_id)
                     )
+
+            # 流结束时处理工具调用
+            for tool_data in current_tool_calls.values():
+                final = ToolCallFinal(
+                    id=tool_data["id"],
+                    name=tool_data["name"],
+                    arguments=tool_data["arguments"],
+                    index=tool_data["index"],
+                    chunks=tool_data["chunks"],
+                    thread_id=thread_id
+                )
+                publisher.publish(thread_id, final)
 
         except ValueError as e:
             raise
