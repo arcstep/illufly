@@ -2,8 +2,8 @@ from typing import Union, List, Optional, Dict, Any
 import asyncio
 import logging
 
-from ..base import SimpleService
-from ..mq import Publisher, StreamingBlock, BlockType
+from ..call import SimpleService
+from ..mq import Publisher, StreamingBlock, BlockType, TextChunk
 
 class ChatFake(SimpleService):
     """Fake Chat Service"""
@@ -51,4 +51,4 @@ class ChatFake(SimpleService):
         # 逐字符发送响应
         for content in resp:
             await asyncio.sleep(self.sleep)
-            publisher.publish(thread_id, StreamingBlock.create_chunk(content=content, topic=thread_id))
+            publisher.publish(thread_id, TextChunk(text=content, thread_id=thread_id))

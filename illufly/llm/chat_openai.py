@@ -1,7 +1,7 @@
 import os
 from typing import List, Dict, Any, Union
-from ..mq import Publisher, StreamingBlock, BlockType
-from ..base import SimpleService, CallContext, call_with_cache
+from ..mq import Publisher, StreamingBlock
+from ..call import SimpleService
 from openai import AsyncOpenAI
 
 class ChatOpenAI(SimpleService):
