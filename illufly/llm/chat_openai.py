@@ -1,10 +1,10 @@
 import os
 from typing import List, Dict, Any, Union
 from ..mq import Publisher, StreamingBlock, TextChunk, UsageBlock, StartBlock, ToolCallChunk, ToolCallFinal
-from ..call import SimpleService
+from .chat_base import ChatBase
 from openai import AsyncOpenAI
 
-class ChatOpenAI(SimpleService):
+class ChatOpenAI(ChatBase):
     DEFAULT_MODELS = {
         "OPENAI": {
             "text": "gpt-4-turbo-preview",
@@ -184,7 +184,7 @@ class ChatOpenAI(SimpleService):
                 
         return processed_messages
 
-    async def _async_handler(
+    async def _async_generate_from_llm(
         self,
         messages: Union[List[dict], str],
         thread_id: str,

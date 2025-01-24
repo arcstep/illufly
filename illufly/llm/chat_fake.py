@@ -2,10 +2,10 @@ from typing import Union, List, Optional, Dict, Any
 import asyncio
 import logging
 
-from ..call import SimpleService
+from .chat_base import ChatBase
 from ..mq import Publisher, StreamingBlock, BlockType, TextChunk
 
-class ChatFake(SimpleService):
+class ChatFake(ChatBase):
     """Fake Chat Service"""
     def __init__(
         self,
@@ -32,7 +32,7 @@ class ChatFake(SimpleService):
             f"sleep: {self.sleep}s"
         )
 
-    async def _async_handler(self, messages: Union[str, List[Dict[str, Any]]], thread_id: str, publisher: Publisher, **kwargs):
+    async def _async_generate_from_llm(self, messages: Union[str, List[Dict[str, Any]]], thread_id: str, publisher: Publisher, **kwargs):
         """异步生成响应"""
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
