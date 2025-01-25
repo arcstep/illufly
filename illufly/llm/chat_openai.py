@@ -240,6 +240,7 @@ class ChatOpenAI(ChatBase):
             completion = await self.client.chat.completions.create(**_kwargs)
             
             current_tool_calls = {}
+            final_text = ""
 
             async for response in completion:
                 self._logger.info(f"openai response: {response}")
@@ -256,6 +257,7 @@ class ChatOpenAI(ChatBase):
                             thread_id,
                             TextChunk(text=delta.content, thread_id=thread_id)
                         )
+                        final_text += delta.content
 
                 # 处理使用情况
                 if hasattr(response, 'usage') and response.usage:
@@ -283,6 +285,7 @@ class ChatOpenAI(ChatBase):
                 )
                 publisher.publish(thread_id, final)
 
+            return final_text
         except ValueError as e:
             raise
         except Exception as e:

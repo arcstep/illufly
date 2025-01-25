@@ -5,8 +5,8 @@ import logging
 
 from ..call import RemoteServer
 from ..mq import Publisher, StreamingBlock, BlockType, TextChunk
-from .contexts import ShortMemoryContext
-
+from .contexts import ShortMemoryContext, BaseContext
+from .system_template import SystemTemplate
 class ChatBase(RemoteServer, ABC):
     """Base Chat Service
 
@@ -22,17 +22,32 @@ class ChatBase(RemoteServer, ABC):
     - 数据集描述
     ...
     """
-    def __init__(self, **kwargs):
+    def __init__(self, context_managers: List[Union[str, BaseContext]] = None, **kwargs):
         super().__init__(**kwargs)
-
-        self.context_managers = [
-            ShortMemoryContext()
-        ]
+        self.context_managers = self._init_context_managers(context_managers)
 
         self._logger = logging.getLogger(__name__)
 
+        # 初始化历史记录
         self.last_input = []
         self.last_output = []
+
+    def _init_context_managers(self, context_managers):
+        """初始化上下文管理器"""
+        managers = []
+        if context_managers is None:
+            # 默认使用短期记忆
+            context_managers = ["memory"]
+            
+        for context_manager in context_managers:
+            if isinstance(context_manager, str):
+                if context_manager == "memory":
+                    managers.append(ShortMemoryContext())
+                else:
+                    raise ValueError(f"Unknown context manager: {context_manager}")
+            else:
+                managers.append(context_manager)
+        return managers
 
     @abstractmethod
     async def _async_generate_from_llm(self, messages: Union[str, List[Dict[str, Any]]], thread_id: str, publisher: Publisher, **kwargs):
@@ -44,9 +59,9 @@ class ChatBase(RemoteServer, ABC):
 
         # 规范化消息
         normalized_messages = self.normalize_messages(messages)
+        self._logger.info(f"raw messages: {normalized_messages}")
 
         # 处理消息上下文
-        self._logger.info(f"Input messages from: {normalized_messages}")
         messages_with_context = self.handle_input_messages(normalized_messages)
         self.last_input = messages_with_context
         self._logger.info(f"last input: {messages_with_context}")
