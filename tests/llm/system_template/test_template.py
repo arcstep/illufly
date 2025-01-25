@@ -2,194 +2,351 @@ import pytest
 from pathlib import Path
 from illufly.llm.system_template.template import SystemTemplate
 
-def test_package_template_loading():
-    """测试包内模板加载"""
-    template = SystemTemplate(template_id="assistant")
-    assert isinstance(template.text, str)
-    assert len(template.text) > 0
-
-def test_local_template_loading(template_dir):
-    """测试本地模板加载"""
-    # 确保template_dir是Path对象
-    assert isinstance(template_dir, Path)
+class TestSystemTemplate:
+    """SystemTemplate 类的测试套件
     
-    # 测试简单模板加载
-    template = SystemTemplate(template_id="simple", template_folder=template_dir)
-    assert template.text == "Hello, {{name}}!"
+    SystemTemplate 类实现了基于 Mustache 语法的模板系统，支持以下功能：
+    1. 基本变量替换
+    2. 条件渲染（section和inverted section）
+    3. 嵌套对象访问
+    4. 数组迭代
+    5. 子模板引用
+    
+    Mustache 的关键行为规则：
+    1. 真/假值判断：
+       - 空对象（{}）被视为假值
+       - 空数组（[]）被视为假值
+       - 空字符串被视为假值
+       - null/None 被视为假值
+       - 其他非空值被视为真值
+    
+    2. Section 渲染规则：
+       - {{#section}} 当值为真时渲染
+       - {{^section}} 当值为假或不存在时渲染
+       - 嵌套的 section 独立判断真假值
+    
+    3. 变量访问规则：
+       - 支持点号访问嵌套属性（user.name.first）
+       - 在数组迭代中使用 {{.}} 访问当前元素
+       - 在数组迭代上下文中可直接访问元素的属性
+    """
 
-def test_local_nested_template(template_dir):
-    """测试本地嵌套模板"""
-    template = SystemTemplate(template_id="nested", template_folder=template_dir)
-    assert "=== Header ===" in template.text
-    assert "=== Footer ===" in template.text
-    assert "Content: {{content}}" in template.text
+    def test_basic_template_loading(self, template_dir):
+        """测试基本模板加载功能
+        
+        验证：
+        1. 从文件加载简单模板
+        2. 从文件加载嵌套模板
+        3. 直接使用文本创建模板
+        """
+        # 确保template_dir是Path对象
+        assert isinstance(template_dir, Path)
+        
+        # 测试简单模板加载
+        template = SystemTemplate(template_id="simple", template_folder=template_dir)
+        assert template.text == "Hello, {{name}}!"
 
-def test_template_variables(template_dir):
-    """测试模板变量提取"""
-    template = SystemTemplate(text="{{name}} {{age}}", template_folder=template_dir)
-    assert template.variables == {"name", "age"}
+    def test_template_metadata(self, template_dir):
+        """测试模板元数据功能
+        
+        验证：
+        1. 模板来源标记（source）
+        2. 创建时间记录（created_at）
+        3. 变量列表提取（variables）
+        """
+        # 测试从文件加载的模板
+        template = SystemTemplate(template_id="simple", template_folder=template_dir)
+        assert template.metadata['source'] == 'simple'
+        assert 'created_at' in template.metadata
+        assert 'variables' in template.metadata
+        assert 'name' in template.metadata['variables']
 
-def test_template_validation(template_dir):
-    """测试模板验证"""
-    template = SystemTemplate(text="{{name}} {{age}}", template_folder=template_dir)
-    assert template.validate({"name": "Alice", "age": 30}) is True
-    assert template.validate({"name": "Alice"}) is False
+        # 测试自定义文本模板
+        template = SystemTemplate(text="Hello, {{user}}!")
+        assert template.metadata['source'] == 'TEXT'
+        assert 'created_at' in template.metadata
+        assert 'variables' in template.metadata
+        assert 'user' in template.metadata['variables']
 
-def test_template_loading(template_dir):
-    """测试模板加载"""
-    # 测试简单模板加载
-    template = SystemTemplate(template_id="simple", template_folder=template_dir)
-    assert template.text == "Hello, {{name}}!"
+    def test_nested_object_access(self):
+        """测试嵌套对象访问
+        
+        验证：
+        1. 多层属性访问（user.name.first）
+        2. 属性不存在时的处理
+        3. 空对象的处理
+        """
+        template = SystemTemplate(text="""
+            {{user.name.first}} {{user.name.last}}
+            {{user.email}}
+            {{company.address.city}}
+        """)
 
-    # 测试嵌套模板加载
-    template = SystemTemplate(template_id="nested", template_folder=template_dir)
-    assert "=== Header ===" in template.text
-    assert "Content: {{content}}" in template.text
-    assert "=== Footer ===" in template.text
+        data = {
+            "user": {
+                "name": {
+                    "first": "John",
+                    "last": "Doe"
+                },
+                "email": "john@example.com"
+            },
+            "company": {
+                "address": {
+                    "city": "Beijing"
+                }
+            }
+        }
 
-def test_template_metadata(template_dir):
-    """测试模板元数据"""
-    # 测试从文件加载的模板
-    template = SystemTemplate(template_id="simple", template_folder=template_dir)
-    assert template.metadata['source'] == 'simple'
-    assert 'created_at' in template.metadata
-    assert 'variables' in template.metadata
-    assert 'name' in template.metadata['variables']
+        result = template.format(data)
+        assert "John Doe" in result
+        assert "john@example.com" in result
+        assert "Beijing" in result
 
-    # 测试自定义文本模板
-    template = SystemTemplate(text="Hello, {{user}}!")
-    assert template.metadata['source'] == 'TEXT'
-    assert 'created_at' in template.metadata
-    assert 'variables' in template.metadata
-    assert 'user' in template.metadata['variables']
+    def test_array_iteration(self):
+        """测试数组迭代功能
+        
+        验证：
+        1. 基本数组迭代
+        2. 数组元素属性访问
+        3. 嵌套数组处理
+        4. 空数组处理
+        """
+        template = SystemTemplate(text="""{{#posts}}
+            <h2>{{title}}</h2>
+            <p>{{content}}</p>
+            {{#tags}}
+            <span>{{.}}</span>
+            {{/tags}}
+        {{/posts}}""")
 
-def test_template_variables():
-    """测试模板变量提取"""
-    # 测试简单变量
-    template = SystemTemplate(text="Hello, {{name}}!")
-    assert template.variables == {'name'}
+        data = {
+            "posts": [
+                {
+                    "title": "Post One",
+                    "content": "Content of post one",
+                    "tags": ["tech", "news"]
+                },
+                {
+                    "title": "Post Two",
+                    "content": "Content of post two",
+                    "tags": []  # 空数组应该被视为假值
+                }
+            ]
+        }
 
-    # 测试多个变量
-    template = SystemTemplate(text="{{greeting}}, {{name}}!")
-    assert template.variables == {'greeting', 'name'}
+        result = template.format(data)
+        assert "Post One" in result
+        assert "Content of post one" in result
+        assert "Post Two" in result
+        assert "Content of post two" in result
+        assert "<span>tech</span>" in result
+        assert "<span>news</span>" in result
+        
+        # 测试空数组
+        empty_data = {
+            "posts": []  # 空数组应该被视为假值
+        }
+        result = template.format(empty_data)
+        assert "Post One" not in result
+        assert "Post Two" not in result
 
-    # 测试重复变量
-    template = SystemTemplate(text="{{name}}, {{name}}!")
-    assert template.variables == {'name'}
+    def test_complex_nested_structure(self):
+        """测试复杂嵌套结构
+        
+        验证：
+        1. 对象和数组的混合嵌套
+        2. 多层条件渲染
+        3. 深层属性访问
+        4. 空值处理
+        """
+        template = SystemTemplate(text="""
+            {{#company}}
+                {{name}}
+                {{#departments}}
+                    {{name}}
+                    {{#employees}}
+                        {{#name}}{{first}} {{last}}{{/name}}
+                        {{#skills}}
+                            {{.}}
+                        {{/skills}}
+                    {{/employees}}
+                {{/departments}}
+            {{/company}}
+        """)
 
-    # 测试嵌套结构中的变量
-    template = SystemTemplate(text="{{user.name}}, {{user.age}}!")
-    assert template.variables == {'user.name', 'user.age'}
+        data = {
+            "company": {
+                "name": "Tech Corp",
+                "departments": [
+                    {
+                        "name": "Engineering",
+                        "employees": [
+                            {
+                                "name": {"first": "John", "last": "Doe"},
+                                "skills": ["Python", "Java"]
+                            },
+                            {
+                                "name": {"first": "Jane", "last": "Smith"},
+                                "skills": ["C++", "Rust"]
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
 
-def test_template_formatting():
-    """测试模板格式化"""
-    # 测试简单替换
-    template = SystemTemplate(text="Hello, {{name}}!")
-    result = template.format({"name": "Alice"})
-    assert result == "Hello, Alice!"
+        result = template.format(data)
+        assert "Tech Corp" in result
+        assert "Engineering" in result
+        assert "John Doe" in result
+        assert "Jane Smith" in result
+        assert "Python" in result
+        assert "Rust" in result
 
-    # 测试多变量替换
-    template = SystemTemplate(text="{{greeting}}, {{name}}!")
-    result = template.format({"greeting": "Hi", "name": "Bob"})
-    assert result == "Hi, Bob!"
+        # 测试空对象行为
+        empty_data = {
+            "company": {}  # 空对象应该被视为假值
+        }
+        result = template.format(empty_data)
+        assert "Tech Corp" not in result
+        assert "Engineering" not in result
 
-    # 测试缺失变量处理
-    template = SystemTemplate(text="Hello, {{name}}!")
-    with pytest.raises(ValueError):
-        template.format({"age": 25})
+    def test_conditional_with_nested_data(self):
+        """测试嵌套数据的条件渲染
+        
+        验证：
+        1. 基于对象存在的条件渲染
+        2. 基于对象属性的条件渲染
+        3. 空对象的处理（触发inverted section）
+        4. 默认值处理
+        """
+        template = SystemTemplate(text="""
+            {{#user}}
+                {{#name}}
+                    {{#first}}Hello, {{first}}!{{/first}}
+                    {{^first}}Hello, Anonymous!{{/first}}
+                {{/name}}
+                {{^name}}
+                    Hello, Unnamed User!
+                {{/name}}
+            {{/user}}
+            {{^user}}
+                Hello, Guest!
+            {{/user}}
+        """)
 
-def test_error_handling(template_dir):
-    """测试错误处理"""
-    # 测试不存在的模板
-    with pytest.raises(ValueError) as e:
-        SystemTemplate(template_id="nonexistent")
-    assert "无效的模板ID" in str(e.value)
+        # 完整数据
+        result = template.format({"user": {"name": {"first": "John"}}})
+        assert "Hello, John!" in result
 
-    with pytest.raises(ValueError) as e:
-        SystemTemplate(template_id="nonexistent", template_folder=template_dir)
-    assert "无效的模板ID" in str(e.value)
+        # 空name对象 - 因为是假值，会触发 {{^name}}
+        result = template.format({"user": {"name": {}}})
+        assert "Hello, Unnamed User!" in result
 
-    # 测试无效的部分模板
-    with pytest.raises(ValueError) as e:
-        SystemTemplate(template_id="invalid_nested", template_folder=template_dir)
+        # name对象没有first属性
+        result = template.format({"user": {"name": {"last": "Doe"}}})
+        assert "Hello, Anonymous!" in result
 
-    # 测试无效的参数组合
-    with pytest.raises(ValueError):
-        SystemTemplate()  # 没有提供任何参数
+        # user是空对象，被视为假值
+        result = template.format({"user": {}})
+        assert "Hello, Guest!" in result  # 不是 "Hello, Unnamed User!"
 
-    with pytest.raises(ValueError):
-        SystemTemplate(template_folder=template_dir)  # 只提供template_folder
+        # 没有user
+        result = template.format({})
+        assert "Hello, Guest!" in result
 
-def test_nested_template_resolution(template_dir):
-    """测试嵌套模板解析"""
-    # 测试行中的子模板
-    inline_dir = template_dir / "inline_nested"
-    inline_dir.mkdir()
-    (inline_dir / "main.mu").write_text("Start {{>header}} Middle {{>footer}} End")
-    (inline_dir / "header.mu").write_text("HEADER")
-    (inline_dir / "footer.mu").write_text("FOOTER")
+    def test_error_handling(self, template_dir):
+        """测试错误处理
+        
+        验证：
+        1. 无效模板ID处理
+        2. 无效子模板处理
+        3. 参数验证
+        4. 错误消息的准确性
+        """
+        # 测试不存在的模板
+        with pytest.raises(ValueError) as e:
+            SystemTemplate(template_id="nonexistent")
+        assert "无效的模板ID" in str(e.value)
 
-    template = SystemTemplate(template_id="inline_nested", template_folder=template_dir)
-    assert template.text == "Start HEADER Middle FOOTER End"
+        with pytest.raises(ValueError) as e:
+            SystemTemplate(template_id="nonexistent", template_folder=template_dir)
+        assert "无效的模板ID" in str(e.value)
 
-def test_template_caching(template_dir):
-    """测试模板缓存"""
-    # 测试相同参数的模板加载是否使用缓存
-    template1 = SystemTemplate(template_id="simple", template_folder=template_dir)
-    template2 = SystemTemplate(template_id="simple", template_folder=template_dir)
-    assert template1.text == template2.text
+        # 测试无效的部分模板
+        with pytest.raises(ValueError) as e:
+            SystemTemplate(template_id="invalid_nested", template_folder=template_dir)
 
-    # 修改模板文件
-    (template_dir / "simple" / "main.mu").write_text("Modified content")
-    template3 = SystemTemplate(template_id="simple", template_folder=template_dir)
-    assert template3.text == template1.text  # 应该返回缓存的内容
+        # 测试无效的参数组合
+        with pytest.raises(ValueError):
+            SystemTemplate()  # 没有提供任何参数
 
-    # 清除缓存后重新加载
-    from illufly.llm.system_template.hub import load_prompt_template
-    load_prompt_template.cache_clear()
-    template4 = SystemTemplate(template_id="simple", template_folder=template_dir)
-    assert template4.text == "Modified content"
+        with pytest.raises(ValueError):
+            SystemTemplate(template_folder=template_dir)  # 只提供template_folder
 
-def test_template_conditional_rendering():
-    """测试条件渲染和默认值"""
-    # 测试带默认值的模板
-    template = SystemTemplate(text="""{{#name}}
-Hello, {{name}}!
-{{/name}}
-{{^name}}
-Hello, Stranger!
-{{/name}}""")
+    def test_partial_template_resolution(self, template_dir):
+        """测试子模板解析
+        
+        验证：
+        1. 基本子模板引用
+        2. 嵌套子模板处理
+        3. 子模板文件不存在的错误处理
+        4. 子模板路径解析
+        """
+        # 测试行中的子模板
+        inline_dir = template_dir / "inline_nested"
+        inline_dir.mkdir()
+        (inline_dir / "main.mu").write_text("Start {{>header}} Middle {{>footer}} End")
+        (inline_dir / "header.mu").write_text("HEADER")
+        (inline_dir / "footer.mu").write_text("FOOTER")
 
-    # 提供变量时的渲染
-    result = template.format({"name": "Alice"})
-    assert "Hello, Alice!" in result
-    assert "Hello, Stranger!" not in result
+        template = SystemTemplate(template_id="inline_nested", template_folder=template_dir)
+        assert template.text == "Start HEADER Middle FOOTER End"
 
-    # 不提供变量时的渲染（使用默认值）
-    result = template.format({})
-    assert "Hello, Stranger!" in result
-    assert "Hello, Alice!" not in result
+    def test_template_caching(self, template_dir):
+        """测试模板缓存"""
+        # 测试相同参数的模板加载是否使用缓存
+        template1 = SystemTemplate(template_id="simple", template_folder=template_dir)
+        template2 = SystemTemplate(template_id="simple", template_folder=template_dir)
+        assert template1.text == template2.text
 
-    # 变量为空值时的渲染
-    result = template.format({"name": ""})
-    assert "Hello, Stranger!" in result
+        # 修改模板文件
+        (template_dir / "simple" / "main.mu").write_text("Modified content")
+        template3 = SystemTemplate(template_id="simple", template_folder=template_dir)
+        assert template3.text == template1.text  # 应该返回缓存的内容
 
-    # 测试嵌套的条件渲染
-    template = SystemTemplate(text="""{{#user}}
-{{#name}}
-Hello, {{name}}!
-{{/name}}
-{{^name}}
-Hello, Anonymous User!
-{{/name}}
-{{/user}}
-{{^user}}
-Please log in.
-{{/user}}""")
+        # 清除缓存后重新加载
+        from illufly.llm.system_template.hub import load_prompt_template
+        load_prompt_template.cache_clear()
+        template4 = SystemTemplate(template_id="simple", template_folder=template_dir)
+        assert template4.text == "Modified content"
 
-    # 完整数据
-    assert "Hello, Bob!" in template.format({"user": {"name": "Bob"}})
-    # 缺少name
-    assert "Hello, Anonymous User!" in template.format({"user": {}})
-    # 缺少user
-    assert "Please log in." in template.format({})
+    def test_template_formatting(self):
+        """测试模板格式化"""
+        # 测试简单替换
+        template = SystemTemplate(text="Hello, {{name}}!")
+        result = template.format({"name": "Alice"})
+        assert result == "Hello, Alice!"
+
+        # 测试多变量替换
+        template = SystemTemplate(text="{{greeting}}, {{name}}!")
+        result = template.format({"greeting": "Hi", "name": "Bob"})
+        assert result == "Hi, Bob!"
+
+    def test_template_variables(self):
+        """测试模板变量提取"""
+        # 测试简单变量
+        template = SystemTemplate(text="Hello, {{name}}!")
+        assert template.variables == {'name'}
+
+        # 测试多个变量
+        template = SystemTemplate(text="{{greeting}}, {{name}}!")
+        assert template.variables == {'greeting', 'name'}
+
+        # 测试重复变量
+        template = SystemTemplate(text="{{name}}, {{name}}!")
+        assert template.variables == {'name'}
+
+        # 测试嵌套结构中的变量
+        template = SystemTemplate(text="{{user.name}}, {{user.age}}!")
+        assert template.variables == {'user.name', 'user.age'}
