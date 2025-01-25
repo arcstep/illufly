@@ -7,6 +7,7 @@ from ..call import RemoteServer
 from ..mq import Publisher, StreamingBlock, BlockType, TextChunk
 from .contexts import ShortMemoryContext, BaseContext
 from .system_template import SystemTemplate
+
 class ChatBase(RemoteServer, ABC):
     """Base Chat Service
 
@@ -54,7 +55,14 @@ class ChatBase(RemoteServer, ABC):
         """要求在子类中实现"""
         pass
 
-    async def _async_handler(self, messages: Union[str, List[Dict[str, Any]]], thread_id: str, publisher: Publisher, **kwargs):
+    async def _async_handler(
+        self,
+        messages: Union[str, List[Dict[str, Any]]],
+        thread_id: str,
+        publisher: Publisher,
+        template: SystemTemplate = None,
+        **kwargs
+    ):
         """转换提问的问题"""
 
         # 规范化消息
