@@ -4,7 +4,7 @@ from illufly.llm.system_template.template import SystemTemplate
 
 def test_package_template_loading():
     """测试包内模板加载"""
-    template = SystemTemplate(template_id="roles/assistant")
+    template = SystemTemplate(template_id="assistant")
     assert isinstance(template.text, str)
     assert len(template.text) > 0
 
@@ -38,9 +38,15 @@ def test_template_validation(template_dir):
 def test_error_handling(template_dir):
     """测试错误处理"""
     # 测试不存在的模板
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError) as e:
+        SystemTemplate(template_id="nonexistent")
+    assert "无效的模板ID" in str(e.value)
+
+    with pytest.raises(ValueError) as e:
         SystemTemplate(template_id="nonexistent", template_folder=template_dir)
+    assert "无效的模板ID" in str(e.value)
 
     # 测试无效的部分模板
-    with pytest.raises(FileNotFoundError):
-        SystemTemplate(text="{{>invalid_partial}}", template_folder=template_dir)
+    with pytest.raises(ValueError) as e:
+        SystemTemplate(template_id="invalid_nested", template_folder=template_dir)
+    assert "无效的子模板标识" in str(e.value)

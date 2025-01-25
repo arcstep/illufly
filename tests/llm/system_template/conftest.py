@@ -12,7 +12,12 @@ def template_dir(tmp_path):
     simple_dir = test_template_dir / "simple"
     simple_dir.mkdir()
     (simple_dir / "main.mu").write_text("Hello, {{name}}!")
-    
+
+    # 无效嵌套模板
+    invalid_nested_dir = test_template_dir / "invalid_nested"
+    invalid_nested_dir.mkdir()
+    (invalid_nested_dir / "main.mu").write_text("Hello, {{>invalid_nested}}!")
+
     # 嵌套模板
     nested_dir = test_template_dir / "nested"
     nested_dir.mkdir()
