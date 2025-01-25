@@ -58,7 +58,7 @@ def test_template_metadata(template_dir):
 
     # 测试自定义文本模板
     template = SystemTemplate(text="Hello, {{user}}!")
-    assert template.metadata['source'] == 'custom'
+    assert template.metadata['source'] == 'TEXT'
     assert 'created_at' in template.metadata
     assert 'variables' in template.metadata
     assert 'user' in template.metadata['variables']
@@ -149,3 +149,47 @@ def test_template_caching(template_dir):
     load_prompt_template.cache_clear()
     template4 = SystemTemplate(template_id="simple", template_folder=template_dir)
     assert template4.text == "Modified content"
+
+def test_template_conditional_rendering():
+    """测试条件渲染和默认值"""
+    # 测试带默认值的模板
+    template = SystemTemplate(text="""{{#name}}
+Hello, {{name}}!
+{{/name}}
+{{^name}}
+Hello, Stranger!
+{{/name}}""")
+
+    # 提供变量时的渲染
+    result = template.format({"name": "Alice"})
+    assert "Hello, Alice!" in result
+    assert "Hello, Stranger!" not in result
+
+    # 不提供变量时的渲染（使用默认值）
+    result = template.format({})
+    assert "Hello, Stranger!" in result
+    assert "Hello, Alice!" not in result
+
+    # 变量为空值时的渲染
+    result = template.format({"name": ""})
+    assert "Hello, Stranger!" in result
+
+    # 测试嵌套的条件渲染
+    template = SystemTemplate(text="""{{#user}}
+{{#name}}
+Hello, {{name}}!
+{{/name}}
+{{^name}}
+Hello, Anonymous User!
+{{/name}}
+{{/user}}
+{{^user}}
+Please log in.
+{{/user}}""")
+
+    # 完整数据
+    assert "Hello, Bob!" in template.format({"user": {"name": "Bob"}})
+    # 缺少name
+    assert "Hello, Anonymous User!" in template.format({"user": {}})
+    # 缺少user
+    assert "Please log in." in template.format({})

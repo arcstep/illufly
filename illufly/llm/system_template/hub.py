@@ -9,8 +9,6 @@
 
 from typing import List, Dict, Any, Union, Set
 from importlib.resources import files
-from chevron.renderer import render as mustache_render
-from chevron.tokenizer import tokenize as mustache_tokenize
 from pathlib import Path
 from functools import lru_cache
 
@@ -137,22 +135,6 @@ def load_prompt_template(template_id: str, template_folder: str = None) -> str:
             return load_resource_template(template_id)
         except Exception as e:
             raise ValueError(f"无效的模板ID: {template_id}")
-
-def get_template_variables(template_text: str):
-    vars: Set[str] = set()
-    section_depth = 0
-    for token_type, key in mustache_tokenize(template_text):
-        if token_type == "end":
-            section_depth -= 1
-        elif (
-            token_type in ("variable", "section", "inverted section", "no escape")
-            and key != "."
-            and section_depth == 0
-        ):
-            vars.add(key.split(".")[0])
-        if token_type in ("section", "inverted section"):
-            section_depth += 1
-    return vars
 
 def clone_prompt_template(template_id: str, template_folder: str, force: bool = False):
     """

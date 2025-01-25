@@ -4,10 +4,11 @@ from datetime import datetime
 import chevron
 import re
 import logging
+from chevron import tokenizer
 
 logger = logging.getLogger(__name__)
 
-from .hub import load_resource_template, load_prompt_template, get_template_variables, clone_prompt_template
+from .hub import load_resource_template, load_prompt_template, clone_prompt_template
 
 class SystemTemplate():
     """
@@ -36,22 +37,36 @@ class SystemTemplate():
 
         # 添加模板元数据
         self.metadata = {
-            'created_at': datetime.now(),
-            'source': template_id if template_id else 'custom',
+            'created_at': str(datetime.now()),
+            'source': template_id if template_id else 'TEXT',
             'variables': self.variables
         }
 
     @property
     def variables(self) -> Set[str]:
-        """提取模板中的变量名"""
-        pattern = r'\{\{([^}>]+)\}\}'  # 修改正则以排除>号
-        matches = re.finditer(pattern, self.text)
-        return {match.group(1).strip() for match in matches}
+        """提取模板中的变量名，不包括控制标记"""
+        variables = set()
+        for token in tokenizer.tokenize(self.text):
+            token_type, token_value = token
+            # 只提取变量类型的token
+            if token_type == 'variable':
+                variables.add(token_value)
+        return variables
 
-    def format(self, variables: Dict[str, Any]) -> str:
-        """格式化模板"""
-        # 检查所有必需的变量是否存在
-        template_vars = self.variables
+    def format(self, variables: Dict[str, Any] = {}) -> str:
+        """
+        格式化模板
+        支持条件渲染和默认值语法
+        """
+        # 提取所有必需的变量（不包括带有默认值的变量）
+        required_vars = set()
+        for var in self.variables:
+            # 检查变量是否有默认值处理
+            has_default = f"{{^{var}}}" in self.text or f"{{#{var}}}" in self.text
+            if not has_default:
+                required_vars.add(var)
+
+        # 检查必需变量是否存在
         provided_vars = set()
         for key in variables.keys():
             # 处理嵌套结构
@@ -59,10 +74,21 @@ class SystemTemplate():
             provided_vars.add(key)
             for i in range(len(parts)):
                 provided_vars.add('.'.join(parts[:i+1]))
-        missing_vars = template_vars - provided_vars
+
+        missing_vars = required_vars - provided_vars
         if missing_vars:
             raise ValueError(f"缺少必要的变量: {missing_vars}")
-        return chevron.render(self.text, variables)
+
+        # 预处理变量，确保空字典被视为有效值
+        processed_vars = {}
+        for key, value in variables.items():
+            if isinstance(value, dict):
+                # 空字典也被视为真值
+                processed_vars[key] = value if value else {'_empty': True}
+            else:
+                processed_vars[key] = value
+
+        return chevron.render(self.text, processed_vars)
 
     def validate(self, data: Dict[str, Any]) -> bool:
         """
