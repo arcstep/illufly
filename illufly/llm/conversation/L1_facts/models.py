@@ -16,15 +16,15 @@ class FactSummary(BaseModel):
     window_end: datetime    # 滚动窗口结束时间
 
     @field_validator('title')
-    def validate_title(cls, v):
+    def validate_title_length(cls, v):
         if len(v) > 30:
-            raise ValueError("Title must be less than 30 characters")
+            raise ValueError("标题长度不能超过30个字符")
         return v
     
     @field_validator('content')
-    def validate_content(cls, v):
+    def validate_content_length(cls, v):
         if len(v) > 200:
-            raise ValueError("Content must be less than 200 characters")
+            raise ValueError("内容长度不能超过200个字符")
         return v
 
 class FactQueue(BaseModel):

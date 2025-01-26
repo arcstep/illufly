@@ -25,10 +25,23 @@ class ThematicGraph(BaseModel):
 
     def to_dot(self) -> str:
         """导出为 DOT 语法的概念图说明"""
-        dot_content = ""
-        for concept in self.concepts:
-            dot_content += f"{concept.concept_id} [label=\"{concept.concept_name}\"];\n"
-        return f"digraph G {{\n{dot_content}\n}}"
+        dot_content = ["digraph G {"]
+        
+        # 添加节点
+        for concept_id in self.concepts:
+            dot_content.append(f'    "{concept_id}" [label="{concept_id}"];')
+            
+        # 添加关系
+        for relation in self.relations:
+            source = relation["source"]
+            target = relation["target"]
+            rel_type = relation["type"]
+            dot_content.append(
+                f'    "{source}" -> "{target}" [label="{rel_type}"];'
+            )
+            
+        dot_content.append("}")
+        return "\n".join(dot_content)
 
     def update_with_new_concepts(self, new_concepts: List[Concept]) -> None:
         """增量更新概念图"""

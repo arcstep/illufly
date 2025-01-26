@@ -9,7 +9,11 @@ class Message(BaseModel):
     """
     thread_id: str = Field(..., description="对话ID")
     request_id: str = Field(..., description="调用ID")
-    role: str = Field(..., description="消息角色：user/assistant/system/tool")
+    role: str = Field(
+        ..., 
+        description="消息角色：user/assistant/system/tool",
+        pattern="^(user|assistant|system|tool)$"
+    )
     content: Union[str, Dict[str, Any]] = Field(..., description="消息内容")
     timestamp: datetime = Field(default_factory=datetime.now)
 
