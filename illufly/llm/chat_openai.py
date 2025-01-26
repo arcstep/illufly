@@ -121,7 +121,7 @@ class ChatOpenAI(ChatBase):
                     f"第{i+1}条消息的 content 必须是字符串或列表, 得到 {type(content)}"
                 )
 
-    async def _process_tool_calls(self, delta, current_tool_calls, thread_id, publisher):
+    async def _process_tool_calls(self, delta, current_tool_calls, request_id, publisher):
         """处理工具调用"""
         for idx, tool_call in enumerate(delta.tool_calls):
             tool_id = tool_call.id
@@ -151,10 +151,10 @@ class ChatOpenAI(ChatBase):
                 name=current_tool_calls[tool_id]["name"],  # 使用当前确定的名称
                 arguments=tool_call.function.arguments or "",  # 处理可能的None
                 index=idx,
-                thread_id=thread_id
+                request_id=request_id
             )
             current_tool_calls[tool_id]["chunks"].append(chunk)
-            publisher.publish(thread_id, chunk)
+            publisher.publish(request_id, chunk)
 
     async def _process_vision_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """处理消息，仅在包含图片时转换为多模态格式"""
@@ -199,7 +199,7 @@ class ChatOpenAI(ChatBase):
     async def _async_generate_from_llm(
         self,
         messages: Union[List[dict], str],
-        thread_id: str,
+        request_id: str,
         publisher: Publisher,
         **kwargs
     ):
@@ -234,7 +234,7 @@ class ChatOpenAI(ChatBase):
             })
 
             # 发送开始标记
-            publisher.publish(thread_id, StartBlock(thread_id=thread_id))
+            publisher.publish(request_id, StartBlock(request_id=request_id))
 
             self._logger.info(f"openai call model: {_kwargs['model']}")
             completion = await self.client.chat.completions.create(**_kwargs)
@@ -249,13 +249,13 @@ class ChatOpenAI(ChatBase):
                     
                     # 处理工具调用
                     if delta.tool_calls:
-                        await self._process_tool_calls(delta, current_tool_calls, thread_id, publisher)
+                        await self._process_tool_calls(delta, current_tool_calls, request_id, publisher)
                     
                     # 处理文本内容
                     if delta.content:
                         publisher.publish(
-                            thread_id,
-                            TextChunk(text=delta.content, thread_id=thread_id)
+                            request_id,
+                            TextChunk(text=delta.content, request_id=request_id)
                         )
                         final_text += delta.content
 
@@ -269,8 +269,8 @@ class ChatOpenAI(ChatBase):
                         "provider": self.provider
                     }
                     publisher.publish(
-                        thread_id,
-                        UsageBlock(**usage_data, thread_id=thread_id)
+                        request_id,
+                        UsageBlock(**usage_data, request_id=request_id)
                     )
 
             # 流结束时处理工具调用
@@ -281,9 +281,9 @@ class ChatOpenAI(ChatBase):
                     arguments=tool_data["arguments"],
                     index=tool_data["index"],
                     chunks=tool_data["chunks"],
-                    thread_id=thread_id
+                    request_id=request_id
                 )
-                publisher.publish(thread_id, final)
+                publisher.publish(request_id, final)
 
             return final_text
         except ValueError as e:

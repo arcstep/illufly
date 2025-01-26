@@ -25,16 +25,16 @@ class Publisher(BaseMQ):
             self._logger.error(f"Failed to bind publisher socket: {e}")
             raise
 
-    def publish(self, thread_id: str, block: Union[str, StreamingBlock]):
+    def publish(self, request_id: str, block: Union[str, StreamingBlock]):
         """发布消息，如果存在订阅套接字则自动订阅"""
-        if not isinstance(thread_id, str):
+        if not isinstance(request_id, str):
             raise ValueError("Topic must be a string")
         if not self._bound_socket:
             raise RuntimeError("No bound socket found")
 
         if block:
             if isinstance(block, str):
-                block = TextChunk(thread_id=thread_id, text=block)
+                block = TextChunk(request_id=request_id, text=block)
             
             if not isinstance(block, StreamingBlock):
                 raise ValueError("Block must be a StreamingBlock or a string")
@@ -44,30 +44,30 @@ class Publisher(BaseMQ):
         try:
             # 使用 multipart 发送消息
             self._bound_socket.send_multipart([
-                thread_id.encode(),
+                request_id.encode(),
                 json.dumps(block.model_dump()).encode()
             ])
-            self._logger.debug(f"Published to {thread_id}: {block}")
+            self._logger.debug(f"Published to {request_id}: {block}")
 
         except Exception as e:
             self._logger.error(f"Publish failed: {e}")
             raise
     
-    def processing(self, thread_id: str):
+    def processing(self, request_id: str):
         """发送处理中标记"""
-        self.publish(thread_id, ProcessingBlock(thread_id=thread_id))
+        self.publish(request_id, ProcessingBlock(request_id=request_id))
 
-    def error(self, thread_id: str, error: str):
+    def error(self, request_id: str, error: str):
         """发送错误标记"""
-        self.publish(thread_id, ErrorBlock(thread_id=thread_id, error=error))
+        self.publish(request_id, ErrorBlock(request_id=request_id, error=error))
 
-    def text_chunk(self, thread_id: str, text: str):
+    def text_chunk(self, request_id: str, text: str):
         """发送文本块"""
-        self.publish(thread_id, TextChunk(thread_id=thread_id, text=text))
+        self.publish(request_id, TextChunk(request_id=request_id, text=text))
 
-    def end(self, thread_id: str):
+    def end(self, request_id: str):
         """发送结束标记"""
-        self.publish(thread_id, EndBlock(thread_id=thread_id))
+        self.publish(request_id, EndBlock(request_id=request_id))
 
     def cleanup(self):
         """清理资源"""

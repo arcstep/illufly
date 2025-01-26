@@ -43,7 +43,7 @@ class Replier(BaseMQ):
             self._bound_socket.bind(self._address)
             self._logger.info(f"Replier bound to: {self._address}")
 
-    def _get_thread_id(self):
+    def _get_request_id(self):
         """生成唯一的线程ID"""
         return f"{self._service_name}.{uuid.uuid4()}"  # 使用uuid4而不是uuid1
 
@@ -57,29 +57,29 @@ class Replier(BaseMQ):
                 try:
                     request_data = await self._bound_socket.recv_json()
                     request_block = RequestBlock.model_validate(request_data)
-                    thread_id = request_block.thread_id or self._get_thread_id()
+                    request_id = request_block.request_id or self._get_request_id()
 
                     # 检查是否达到最大并发任务数
                     async with self._tasks_lock:
                         current_tasks = len(self._pending_tasks)
-                        self._logger.info(f"Received READY request for thread: {thread_id}, current tasks: {current_tasks}, max: {self._max_concurrent_tasks}")
+                        self._logger.info(f"Received READY request for thread: {request_id}, current tasks: {current_tasks}, max: {self._max_concurrent_tasks}")
                         
                         if current_tasks >= self._max_concurrent_tasks:
                             self._logger.warning(f"Max concurrent tasks reached: {current_tasks}/{self._max_concurrent_tasks}")
-                            self._publisher.error(thread_id, "Max concurrent tasks reached")
+                            self._publisher.error(request_id, "Max concurrent tasks reached")
                             await self._bound_socket.send_json(ReplyErrorBlock(
-                                thread_id=thread_id,
+                                request_id=request_id,
                                 error="Max concurrent tasks reached"
                             ).model_dump())
                             continue
                         
                         self._active_tasks += 1
 
-                    # 反馈 thread_id 和 subscribe_address
+                    # 反馈 request_id 和 subscribe_address
                     if request_block.request_step == RequestStep.INIT:
-                        self._logger.info(f"Received INIT request for thread: {thread_id}")
+                        self._logger.info(f"Received INIT request for thread: {request_id}")
                         await self._bound_socket.send_json(ReplyAcceptedBlock(
-                            thread_id=thread_id,
+                            request_id=request_id,
                             subscribe_address=self._publisher._address
                         ).model_dump())
                     
@@ -88,17 +88,17 @@ class Replier(BaseMQ):
                         task = asyncio.create_task(
                             self._handle_request(
                                 handler,
-                                thread_id=thread_id,
+                                request_id=request_id,
                                 args=request_block.args,
                                 kwargs=request_block.kwargs
                             )
                         )
                         self._pending_tasks.add(task)
-                        self._logger.info(f"Created task for thread: {thread_id}, pending tasks: {len(self._pending_tasks)}")
+                        self._logger.info(f"Created task for thread: {request_id}, pending tasks: {len(self._pending_tasks)}")
                         task.add_done_callback(self._task_done_callback)
                         
                         await self._bound_socket.send_json(ReplyProcessingBlock(
-                            thread_id=thread_id
+                            request_id=request_id
                         ).model_dump())
                     else:
                         raise ValueError(f"Invalid request step: {request_block.request_step}")
@@ -153,23 +153,23 @@ class Replier(BaseMQ):
         """析构函数"""
         self.cleanup()
 
-    async def _handle_request(self, handler: Callable, thread_id: str, args: List[Any], kwargs: Dict[str, Any]):
+    async def _handle_request(self, handler: Callable, request_id: str, args: List[Any], kwargs: Dict[str, Any]):
         """异步处理请求"""
         try:
             if self._timeout:
                 await asyncio.wait_for(
-                    handler(*args, thread_id=thread_id, publisher=self._publisher, **kwargs),
+                    handler(*args, request_id=request_id, publisher=self._publisher, **kwargs),
                     timeout=self._timeout
                 )
             else:
-                await handler(*args, thread_id=thread_id, publisher=self._publisher, **kwargs)
+                await handler(*args, request_id=request_id, publisher=self._publisher, **kwargs)
         except asyncio.TimeoutError:
-            self._publisher.error(thread_id, "Request timeout")
+            self._publisher.error(request_id, "Request timeout")
         except Exception as e:
             self._logger.error(f"Handler error: {e}")
-            self._publisher.error(thread_id, str(e))
+            self._publisher.error(request_id, str(e))
         finally:
-            self._publisher.end(thread_id)
+            self._publisher.end(request_id)
 
     def reply(self, handler: Callable[[Dict[str, Any]], Any]):
         """同步服务"""

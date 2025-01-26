@@ -18,30 +18,30 @@ class StreamingCalling(BaseModel):
 
     def add_thread(self, thread: StreamingThread) -> None:
         """添加一个新的计算线程"""
-        if any(t.thread_id == thread.thread_id for t in self.threads):
-            raise ValueError(f"Thread {thread.thread_id} already exists")
+        if any(t.request_id == thread.request_id for t in self.threads):
+            raise ValueError(f"Thread {thread.request_id} already exists")
         self.threads.append(thread)
 
-    def get_or_create_thread(self, thread_id: str) -> StreamingThread:
+    def get_or_create_thread(self, request_id: str) -> StreamingThread:
         """获取或创建一个计算线程"""
         for thread in self.threads:
-            if thread.thread_id == thread_id:
+            if thread.request_id == request_id:
                 return thread
-        new_thread = StreamingThread(thread_id=thread_id)
+        new_thread = StreamingThread(request_id=request_id)
         self.add_thread(new_thread)
         return new_thread
 
     def add_block(self, block: StreamingBlock) -> None:
         """添加一个数据块到指定的线程中"""
-        if not block.thread_id:
-            raise ValueError("Block must have a thread_id")
-        thread = self.get_or_create_thread(block.thread_id)
+        if not block.request_id:
+            raise ValueError("Block must have a request_id")
+        thread = self.get_or_create_thread(block.request_id)
         thread.add_block(block)
 
-    def get_thread(self, thread_id: str) -> Optional[StreamingThread]:
+    def get_thread(self, request_id: str) -> Optional[StreamingThread]:
         """获取指定的计算线程"""
         for thread in self.threads:
-            if thread.thread_id == thread_id:
+            if thread.request_id == request_id:
                 return thread
         return None
 
@@ -51,9 +51,9 @@ class StreamingCalling(BaseModel):
             return [thread for thread in self.threads if thread.is_completed()]
         return self.threads
 
-    def get_blocks(self, thread_id: str, block_type: Optional[BlockType] = None) -> List[StreamingBlock]:
+    def get_blocks(self, request_id: str, block_type: Optional[BlockType] = None) -> List[StreamingBlock]:
         """获取指定线程的所有数据块，可以按类型过滤"""
-        thread = self.get_thread(thread_id)
+        thread = self.get_thread(request_id)
         if thread:
             return thread.get_blocks(block_type)
         return []

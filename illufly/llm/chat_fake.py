@@ -32,7 +32,7 @@ class ChatFake(ChatBase):
             f"sleep: {self.sleep}s"
         )
 
-    async def _async_generate_from_llm(self, messages: Union[str, List[Dict[str, Any]]], thread_id: str, publisher: Publisher, **kwargs):
+    async def _async_generate_from_llm(self, messages: Union[str, List[Dict[str, Any]]], request_id: str, publisher: Publisher, **kwargs):
         """异步生成响应"""
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
@@ -53,6 +53,6 @@ class ChatFake(ChatBase):
         for content in resp:
             await asyncio.sleep(self.sleep)
             final_text += content
-            publisher.publish(thread_id, TextChunk(text=content, thread_id=thread_id))
+            publisher.publish(request_id, TextChunk(text=content, request_id=request_id))
 
         return final_text

@@ -9,10 +9,10 @@ from illufly.mq import BlockType, Publisher
 
 class EchoServer(RemoteServer):
     """简单的回显服务，用于测试"""
-    async def _async_handler(self, *args, thread_id: str, publisher, **kwargs):
+    async def _async_handler(self, *args, request_id: str, publisher, **kwargs):
         """简单的回显处理函数"""
         await asyncio.sleep(0.5)
-        publisher.text_chunk(thread_id, f"Echo: {args} {kwargs}")
+        publisher.text_chunk(request_id, f"Echo: {args} {kwargs}")
 
 class TestRemoteService:
     @pytest.fixture
@@ -61,9 +61,9 @@ class TestRemoteService:
     async def test_simple_mode(self, service_config):
         """测试错误处理"""
         class SimpleServer(RemoteServer):
-            async def _async_handler(self, *args, thread_id: str, publisher: Publisher, **kwargs):
+            async def _async_handler(self, *args, request_id: str, publisher: Publisher, **kwargs):
                 await asyncio.sleep(0.5)
-                publisher.text_chunk(thread_id, f"Echo: {args} {kwargs}")
+                publisher.text_chunk(request_id, f"Echo: {args} {kwargs}")
 
         simple = SimpleServer()        
 
@@ -121,7 +121,7 @@ class TestRemoteService:
     async def test_timeout(self, service_config):
         """测试超时情况"""
         class SlowServer(RemoteServer):
-            async def _async_handler(self, *args, thread_id: str, publisher, **kwargs):
+            async def _async_handler(self, *args, request_id: str, publisher, **kwargs):
                 await asyncio.sleep(10)  # 模拟慢处理
                 return {"result": "timeout"}
 
@@ -152,7 +152,7 @@ class TestRemoteService:
     async def test_error_handling(self, service_config):
         """测试错误处理"""
         class ErrorServer(RemoteServer):
-            async def _async_handler(self, *args, thread_id: str, publisher: Publisher, **kwargs):
+            async def _async_handler(self, *args, request_id: str, publisher: Publisher, **kwargs):
                 raise ValueError("测试错误")
 
         server = ErrorServer(

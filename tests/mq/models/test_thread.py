@@ -6,32 +6,32 @@ from illufly.mq.models.thread import StreamingThread
 class TestStreamingThread:
     @pytest.fixture
     def thread(self):
-        return StreamingThread(thread_id="test_thread")
+        return StreamingThread(request_id="test_thread")
 
     def test_add_block(self, thread):
         """测试添加数据块"""
-        # 添加一个没有 thread_id 的块
+        # 添加一个没有 request_id 的块
         block1 = StreamingBlock.create_block(BlockType.TEXT_CHUNK, text="test", seq=0)
         thread.add_block(block1)
-        assert block1.thread_id == thread.thread_id
+        assert block1.request_id == thread.request_id
         assert len(thread.blocks) == 1
 
-        # 添加一个有匹配 thread_id 的块
+        # 添加一个有匹配 request_id 的块
         block2 = StreamingBlock.create_block(
             BlockType.TEXT_CHUNK, 
             text="test2", 
             seq=1, 
-            thread_id="test_thread"
+            request_id="test_thread"
         )
         thread.add_block(block2)
         assert len(thread.blocks) == 2
 
-        # 测试添加不匹配的 thread_id
+        # 测试添加不匹配的 request_id
         with pytest.raises(ValueError):
             wrong_block = StreamingBlock.create_block(
                 BlockType.TEXT_CHUNK,
                 text="test3",
-                thread_id="wrong_thread"
+                request_id="wrong_thread"
             )
             thread.add_block(wrong_block)
 

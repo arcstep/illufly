@@ -10,16 +10,16 @@ class StreamingThread(BaseModel):
     """
     每个线程可以有多个 StreamingBlock 块，代表一次完整的计算过程
     """
-    thread_id: str
+    request_id: str
     blocks: List[StreamingBlock] = []
     created_at: float = Field(default_factory=lambda: time.time())
 
     def add_block(self, block: StreamingBlock) -> None:
         """添加一个数据块到线程中"""
-        if not block.thread_id:
-            block.thread_id = self.thread_id
-        elif block.thread_id != self.thread_id:
-            raise ValueError(f"Block thread_id {block.thread_id} does not match thread {self.thread_id}")
+        if not block.request_id:
+            block.request_id = self.request_id
+        elif block.request_id != self.request_id:
+            raise ValueError(f"Block request_id {block.request_id} does not match thread {self.request_id}")
         self.blocks.append(block)
 
     def get_blocks(self, block_type: Optional[BlockType] = None) -> List[StreamingBlock]:

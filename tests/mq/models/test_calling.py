@@ -11,7 +11,7 @@ class TestStreamingCalling:
 
     def test_add_thread(self, calling):
         """测试添加线程"""
-        thread = StreamingThread(thread_id="test_thread")
+        thread = StreamingThread(request_id="test_thread")
         calling.add_thread(thread)
         assert len(calling.threads) == 1
 
@@ -23,7 +23,7 @@ class TestStreamingCalling:
         """测试获取或创建线程"""
         # 获取新线程
         thread1 = calling.get_or_create_thread("thread1")
-        assert thread1.thread_id == "thread1"
+        assert thread1.request_id == "thread1"
         assert len(calling.threads) == 1
 
         # 获取已存在的线程
@@ -33,7 +33,7 @@ class TestStreamingCalling:
 
     def test_add_block(self, calling):
         """测试添加数据块"""
-        # 测试没有 thread_id 的情况
+        # 测试没有 request_id 的情况
         with pytest.raises(ValueError):
             block = StreamingBlock.create_block(BlockType.TEXT_CHUNK, text="test")
             calling.add_block(block)
@@ -42,7 +42,7 @@ class TestStreamingCalling:
         block = StreamingBlock.create_block(
             BlockType.TEXT_CHUNK,
             text="test",
-            thread_id="thread1"
+            request_id="thread1"
         )
         calling.add_block(block)
         assert len(calling.threads) == 1
@@ -54,15 +54,15 @@ class TestStreamingCalling:
         assert calling.get_thread("nonexistent") is None
 
         # 获取存在的线程
-        thread = StreamingThread(thread_id="test_thread")
+        thread = StreamingThread(request_id="test_thread")
         calling.add_thread(thread)
         assert calling.get_thread("test_thread") == thread
 
     def test_get_threads(self, calling):
         """测试获取线程列表"""
         # 添加测试线程
-        thread1 = StreamingThread(thread_id="thread1")
-        thread2 = StreamingThread(thread_id="thread2")
+        thread1 = StreamingThread(request_id="thread1")
+        thread2 = StreamingThread(request_id="thread2")
         calling.add_thread(thread1)
         calling.add_thread(thread2)
 
@@ -77,7 +77,7 @@ class TestStreamingCalling:
         # 测试只获取已完成的线程
         completed_threads = calling.get_threads(completed_only=True)
         assert len(completed_threads) == 1
-        assert completed_threads[0].thread_id == "thread1"
+        assert completed_threads[0].request_id == "thread1"
 
     def test_get_blocks(self, calling):
         """测试获取数据块"""
@@ -86,12 +86,12 @@ class TestStreamingCalling:
         block1 = StreamingBlock.create_block(
             BlockType.TEXT_CHUNK,
             text="test1",
-            thread_id="test_thread"
+            request_id="test_thread"
         )
         block2 = StreamingBlock.create_block(
             BlockType.ERROR,
             error="error",
-            thread_id="test_thread"
+            request_id="test_thread"
         )
         thread.add_block(block1)
         thread.add_block(block2)
@@ -115,8 +115,8 @@ class TestStreamingCalling:
         assert calling.get_last_thread() is None
 
         # 添加线程后测试
-        thread1 = StreamingThread(thread_id="thread1")
-        thread2 = StreamingThread(thread_id="thread2")
+        thread1 = StreamingThread(request_id="thread1")
+        thread2 = StreamingThread(request_id="thread2")
         calling.add_thread(thread1)
         calling.add_thread(thread2)
         assert calling.get_last_thread() == thread2
@@ -127,7 +127,7 @@ class TestStreamingCalling:
         assert calling.is_completed()
 
         # 添加未完成线程
-        thread1 = StreamingThread(thread_id="thread1")
+        thread1 = StreamingThread(request_id="thread1")
         calling.add_thread(thread1)
         assert not calling.is_completed()
 
@@ -137,6 +137,6 @@ class TestStreamingCalling:
         assert calling.is_completed()
 
         # 添加第二个未完成线程
-        thread2 = StreamingThread(thread_id="thread2")
+        thread2 = StreamingThread(request_id="thread2")
         calling.add_thread(thread2)
         assert not calling.is_completed() 

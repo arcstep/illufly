@@ -24,7 +24,7 @@ class Requester(BaseMQ):
             self._logger.error(f"Connection error: {e}")
             raise
 
-    async def async_request(self, args: List[Any] = [], kwargs: Dict[str, Any] = {}, thread_id: str = "") -> Optional[Subscriber]:
+    async def async_request(self, args: List[Any] = [], kwargs: Dict[str, Any] = {}, request_id: str = "") -> Optional[Subscriber]:
         """发送请求并等待响应"""
         if not self._connected_socket:
             raise RuntimeError("Requester not connected")
@@ -32,12 +32,12 @@ class Requester(BaseMQ):
         try:
             # STEP 1: 发送请求
             request = RequestBlock(
-                thread_id=thread_id,
+                request_id=request_id,
                 request_step=RequestStep.INIT,
             )
             await self._connected_socket.send_json(request.model_dump())
 
-            # STEP 2: 等待服务端确认，并获得 thread_id 和 subscribe_address
+            # STEP 2: 等待服务端确认，并获得 request_id 和 subscribe_address
             reply_data = await self._connected_socket.recv_json()
             self._logger.debug(f"Client received accepted reply: {reply_data}")
             if reply_data.get("state") == ReplyState.ERROR.value:
@@ -47,14 +47,14 @@ class Requester(BaseMQ):
 
             # STEP 3: 根据上面后的关键信息创建订阅
             sub = Subscriber(
-                thread_id=accepted_block.thread_id,
+                request_id=accepted_block.request_id,
                 address=accepted_block.subscribe_address,
                 timeout=self._timeout
             )
 
             # STEP 4: 订阅准备已就绪
             ready = RequestBlock(
-                thread_id=accepted_block.thread_id,
+                request_id=accepted_block.request_id,
                 request_step=RequestStep.READY,
                 args=args,
                 kwargs=kwargs

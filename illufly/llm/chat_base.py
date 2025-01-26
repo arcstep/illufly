@@ -51,14 +51,14 @@ class ChatBase(RemoteServer, ABC):
         return managers
 
     @abstractmethod
-    async def _async_generate_from_llm(self, messages: Union[str, List[Dict[str, Any]]], thread_id: str, publisher: Publisher, **kwargs):
+    async def _async_generate_from_llm(self, messages: Union[str, List[Dict[str, Any]]], request_id: str, publisher: Publisher, **kwargs):
         """要求在子类中实现"""
         pass
 
     async def _async_handler(
         self,
         messages: Union[str, List[Dict[str, Any]]],
-        thread_id: str,
+        request_id: str,
         publisher: Publisher,
         template: SystemTemplate = None,
         **kwargs
@@ -75,7 +75,7 @@ class ChatBase(RemoteServer, ABC):
         self._logger.info(f"last input: {messages_with_context}")
 
         # 调用 LLM 生成回答
-        final_text = await self._async_generate_from_llm(messages_with_context, thread_id, publisher, **kwargs)
+        final_text = await self._async_generate_from_llm(messages_with_context, request_id, publisher, **kwargs)
         self.last_output = final_text
         self._logger.info(f"last output: {final_text}")
 

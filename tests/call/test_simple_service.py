@@ -9,16 +9,16 @@ logger = logging.getLogger(__name__)
 
 class EchoService(SimpleService):
     """简单的回显服务，用于测试"""
-    async def _async_handler(self, message: str, *args, thread_id: str, publisher, **kwargs):
+    async def _async_handler(self, message: str, *args, request_id: str, publisher, **kwargs):
         # 模拟一些处理延迟
         await asyncio.sleep(0.1)
-        publisher.publish(thread_id, f"Processing: {message}")
+        publisher.publish(request_id, f"Processing: {message}")
         await asyncio.sleep(0.1)
-        publisher.publish(thread_id, f"Done: {message}")
+        publisher.publish(request_id, f"Done: {message}")
 
 class SlowService(SimpleService):
     """模拟慢速处理的服务"""
-    async def _async_handler(self, delay: float, *args, thread_id: str, publisher, **kwargs):
+    async def _async_handler(self, delay: float, *args, request_id: str, publisher, **kwargs):
         try:
             for i in range(3):
                 # 检查是否收到取消信号
@@ -33,7 +33,7 @@ class SlowService(SimpleService):
                     self._logger.info(f"SlowService sleep cancelled at step {i}")
                     return
 
-                publisher.publish(thread_id, f"Step {i+1}")
+                publisher.publish(request_id, f"Step {i+1}")
                 
         except asyncio.CancelledError:
             self._logger.info("SlowService handler cancelled")
@@ -44,8 +44,8 @@ class SlowService(SimpleService):
 
 class ErrorService(SimpleService):
     """模拟错误处理的服务"""
-    async def _async_handler(self, *args, thread_id: str, publisher, **kwargs):
-        publisher.publish(thread_id, "Starting...")
+    async def _async_handler(self, *args, request_id: str, publisher, **kwargs):
+        publisher.publish(request_id, "Starting...")
         await asyncio.sleep(0.1)
         raise ValueError("Simulated error")
 
@@ -154,13 +154,13 @@ async def test_error_handling():
     assert messages[2].block_type == BlockType.END
 
 @pytest.mark.asyncio
-async def test_custom_thread_id():
+async def test_custom_request_id():
     """测试自定义线程ID"""
     service = EchoService(logger=logger)
     custom_id = "test_thread_123"
     messages = []
     
-    sub = await service.async_call(message="Test", thread_id=custom_id)
+    sub = await service.async_call(message="Test", request_id=custom_id)
     async for msg in sub.async_collect():
         messages.append(msg)
     

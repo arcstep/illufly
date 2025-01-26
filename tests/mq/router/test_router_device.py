@@ -26,8 +26,8 @@ class TestRouterDevice:
         router_task = asyncio.create_task(router.start())
         
         # 创建后端服务
-        async def echo_handler(*args, thread_id, publisher, **kwargs):
-            publisher.text_chunk(thread_id, "echo")
+        async def echo_handler(*args, request_id, publisher, **kwargs):
+            publisher.text_chunk(request_id, "echo")
         
         replier = Replier(backend_address, publisher=message_bus, connect_mode=True)
         replier_task = asyncio.create_task(replier.async_reply(echo_handler))
@@ -62,8 +62,8 @@ class TestRouterDevice:
         repliers = []
         replier_tasks = []
         
-        async def worker_handler(*args, thread_id, publisher, **kwargs):
-            publisher.text_chunk(thread_id, f"worker")
+        async def worker_handler(*args, request_id, publisher, **kwargs):
+            publisher.text_chunk(request_id, f"worker")
         
         for i in range(3):
             replier = Replier(backend_address, publisher=message_bus, connect_mode=True)

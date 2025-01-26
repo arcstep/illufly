@@ -61,7 +61,7 @@ class RemoteServer(BaseCall):
         """同步调用远程服务"""
         return self._requester.request(args=args, kwargs=kwargs)
 
-    async def _async_handler(self, *args, thread_id: str, publisher: Publisher, **kwargs):
+    async def _async_handler(self, *args, request_id: str, publisher: Publisher, **kwargs):
         """默认的请求处理方法，子类应该重写此方法"""
         raise NotImplementedError("Subclass must implement handle_request method")
     

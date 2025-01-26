@@ -36,11 +36,11 @@ class TestReqRep:
         """获取进程内通信地址"""
         return "inproc://test"
 
-    async def echo_handler(self, message: str, thread_id: str, publisher: Publisher, **kwargs):
+    async def echo_handler(self, message: str, request_id: str, publisher: Publisher, **kwargs):
         """简单的回显处理函数"""
         echo_message = f"echo: {message}"
         logger.info(f"echo_handler input: {echo_message}, {kwargs}")
-        publisher.text_chunk(thread_id, echo_message)
+        publisher.text_chunk(request_id, echo_message)
         return echo_message
 
     async def async_test_communication(self, address):
@@ -135,7 +135,7 @@ class TestReqRep:
     @pytest.mark.asyncio
     async def test_error_handling(self, tcp_address):
         """测试错误处理"""
-        async def error_handler(message: str, thread_id: str, publisher: Publisher, **kwargs):
+        async def error_handler(message: str, request_id: str, publisher: Publisher, **kwargs):
             raise ValueError("测试错误")
 
         replier = Replier(address=tcp_address)
@@ -172,10 +172,10 @@ class TestReqRep:
         )
         requester = Requester(address=inproc_address)
         
-        async def slow_handler(*args, thread_id: str, publisher: Publisher, **kwargs):
-            publisher.text_chunk(thread_id, "Start")
+        async def slow_handler(*args, request_id: str, publisher: Publisher, **kwargs):
+            publisher.text_chunk(request_id, "Start")
             await asyncio.sleep(1)
-            publisher.text_chunk(thread_id, "End")
+            publisher.text_chunk(request_id, "End")
         
         server_task = asyncio.create_task(replier.async_reply(slow_handler))
         
@@ -209,10 +209,10 @@ class TestReqRep:
         replier = Replier(address=inproc_address)
         requester = Requester(address=inproc_address)
         
-        async def simple_handler(*args, thread_id: str, publisher: Publisher, **kwargs):
-            publisher.text_chunk(thread_id, "Start")
+        async def simple_handler(*args, request_id: str, publisher: Publisher, **kwargs):
+            publisher.text_chunk(request_id, "Start")
             await asyncio.sleep(0.1)
-            publisher.text_chunk(thread_id, "End")
+            publisher.text_chunk(request_id, "End")
         
         server_task = asyncio.create_task(replier.async_reply(simple_handler))
         

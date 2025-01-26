@@ -41,7 +41,7 @@ class SimpleService(BaseCall):
 
         self.register_method("reply_handler", async_handle=self._async_handler)
     
-    async def _async_handler(self, *args, thread_id: str, publisher, **kwargs):
+    async def _async_handler(self, *args, request_id: str, publisher, **kwargs):
         """回复处理函数"""
         pass
 
@@ -56,7 +56,7 @@ class SimpleService(BaseCall):
     def __call__(self, *args, **kwargs):
         return self.call(*args, **kwargs)
 
-    def _get_thread_id(self):
+    def _get_request_id(self):
         """生成唯一的线程ID"""
         return f"{self._service_name}.{uuid.uuid4()}"  # 使用uuid4而不是uuid1
 
@@ -76,30 +76,30 @@ class SimpleService(BaseCall):
             if self._publisher._address != DEFAULT_PUBLISHER._address and hasattr(self, '_publisher'):
                 self._publisher.cleanup()
 
-    async def _process_and_end(self, *args, thread_id: str, **kwargs):
+    async def _process_and_end(self, *args, request_id: str, **kwargs):
         """将处理和结束标记合并为一个顺序任务"""
         task_id = id(asyncio.current_task())
-        self._logger.info(f"Process task {task_id} starting for thread {thread_id}")
+        self._logger.info(f"Process task {task_id} starting for thread {request_id}")
         try:
             # 执行实际的服务方法
             await self.async_method(
                 "reply_handler",
                 *args,
-                thread_id=thread_id,
+                request_id=request_id,
                 publisher=self._publisher,
                 **kwargs
             )
         except Exception as e:
             self._logger.error(f"Process task {task_id} failed with error: {e}")
-            self._publisher.error(thread_id=thread_id, error=str(e))
+            self._publisher.error(request_id=request_id, error=str(e))
         finally:
-            self._publisher.end(thread_id=thread_id)
+            self._publisher.end(request_id=request_id)
 
-    def call(self, *args, thread_id: str = None, **kwargs):
+    def call(self, *args, request_id: str = None, **kwargs):
         """同步调用服务方法"""
-        thread_id = thread_id or self._get_thread_id()        
+        request_id = request_id or self._get_request_id()        
         subscriber = Subscriber(
-            thread_id,
+            request_id,
             address=self._publisher._address,
             logger=self._logger,
             timeout=self._timeout
@@ -110,7 +110,7 @@ class SimpleService(BaseCall):
                 task = loop.create_task(
                     self._process_and_end(
                         *args,
-                        thread_id=thread_id,
+                        request_id=request_id,
                         **kwargs
                     )
                 )
@@ -123,10 +123,10 @@ class SimpleService(BaseCall):
             self._logger.error(f"Error in sync call: {e}")
             raise
 
-    async def async_call(self, *args, thread_id: str = None, **kwargs):
-        thread_id = thread_id or self._get_thread_id()        
+    async def async_call(self, *args, request_id: str = None, **kwargs):
+        request_id = request_id or self._get_request_id()        
         subscriber = Subscriber(
-            thread_id,
+            request_id,
             address=self._publisher._address,
             logger=self._logger,
             timeout=self._timeout
@@ -135,7 +135,7 @@ class SimpleService(BaseCall):
         task = asyncio.create_task(
             self._process_and_end(
                 *args,
-                thread_id=thread_id,
+                request_id=request_id,
                 **kwargs
             )
         )
