@@ -467,11 +467,15 @@ class IndexedRocksDB(BaseRocksDB):
         return [v for _, v in self.iter_items_with_indexes(*args, **kwargs)]
 
     def register_model(self, model_name: str, model_class: Type, cf_name: str=None):
-        """注册模型"""
+        """
+        注册模型
+
+        如果要使用 iter_model_keys 或 rebuild_indexes 方法，必须先注册模型。
+        """
         self.register_indexes(model_name, model_class=model_class, field_path="#", cf_name=cf_name)
 
     def iter_model_keys(self, model_name: str, cf_name: str=None):
-        """迭代模型的所有键"""
+        """迭代模型的所有键，即查找模型的所有实例。"""
         cf_name = cf_name or self.default_cf_name
         model_keys_prefix = self.MODEL_PREFIX_FORMAT.format(cf_name=cf_name, model_name=model_name) + ":#:"
         resp = self.iter_keys(prefix=model_keys_prefix, rdict=self.indexes_cf)
@@ -482,7 +486,7 @@ class IndexedRocksDB(BaseRocksDB):
             yield key
 
     def rebuild_indexes(self, model_name: str, cf_name: str=None):
-        """重建所有数据的索引"""
+        """重建模型所有实例的索引"""
         cf_name = cf_name or self.default_cf_name
         cf = self.get_column_family(cf_name)
 
