@@ -3,12 +3,11 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from typing import Dict, List
 
-from illufly.llm.conversation.L0_dialogue.models import Message, Dialogue
-from illufly.llm.conversation.L1_facts.models import Fact
-from illufly.llm.conversation.L2_concept.models import Concept
-from illufly.llm.conversation.L3_thematic_graph.models import ThematicGraph
-from illufly.llm.conversation.L4_core_view.models import CoreView
-from illufly.llm.conversation.models import ConversationCognitive, FinalCognitive
+from illufly.llm.memory.L0_dialogue.models import Message, Dialogue
+from illufly.llm.memory.L1_facts.models import Fact
+from illufly.llm.memory.L2_concept.models import Concept
+from illufly.llm.memory.L3_thematic_graph.models import ThematicGraph
+from illufly.llm.memory.L4_core_view.models import CoreView
 
 class TestL0Models:
     """L0层模型测试"""
@@ -17,18 +16,16 @@ class TestL0Models:
         """测试消息模型验证"""
         # 正常情况
         message = Message(
-            thread_id="test_thread",
             request_id="req1",
             role="user",
             content="测试消息"
         )
-        assert message.thread_id == "test_thread"
+        assert message.request_id == "req1"
         assert message.role == "user"
         
         # 测试无效角色
         with pytest.raises(ValueError) as e:
             Message(
-                thread_id="test_thread",
                 request_id="req1",
                 role="invalid_role",
                 content="测试消息"
@@ -36,7 +33,6 @@ class TestL0Models:
             
         # 测试复杂content
         message = Message(
-            thread_id="test_thread",
             request_id="req1",
             role="tool",
             content={"action": "search", "query": "测试查询"}
@@ -47,13 +43,11 @@ class TestL0Models:
         """测试对话模型验证"""
         messages = [
             Message(
-                thread_id="test_thread",
                 request_id="req1",
                 role="user",
                 content="你好"
             ),
             Message(
-                thread_id="test_thread",
                 request_id="req1",
                 role="assistant",
                 content="你好！很高兴见到你。"
@@ -62,6 +56,7 @@ class TestL0Models:
         
         # 正常情况
         dialogue = Dialogue(
+            user_id="test_user",
             thread_id="test_thread",
             input_text="你好",
             input_images=[],
@@ -88,6 +83,7 @@ class TestL1Models:
         
         # 正常情况
         fact = Fact(
+            user_id="test_user",
             thread_id="test_thread",
             title="测试事实",
             content="这是一个测试事实的内容",
@@ -100,6 +96,7 @@ class TestL1Models:
         # 测试标题长度限制
         with pytest.raises(ValueError) as e:
             Fact(
+                user_id="test_user",
                 thread_id="test_thread",
                 title="这是一个超过三十个字符的非常非常长的标题"*3,
                 content="内容",
@@ -111,6 +108,7 @@ class TestL1Models:
         # 测试内容长度限制
         with pytest.raises(ValueError) as e:
             Fact(
+                user_id="test_user",
                 thread_id="test_thread",
                 title="测试事实",
                 content="x" * 201,  # 超过200字符
@@ -126,7 +124,8 @@ class TestL2Models:
         """测试概念模型验证"""
         # 正常情况
         concept = Concept(
-            concept_id=str(uuid4()),
+            user_id="test_user",
+            thread_id="test_thread",
             concept_name="测试概念",
             description="这是一个测试概念",
             related_facts=["fact1", "fact2"],
@@ -148,7 +147,8 @@ class TestL3Models:
     def test_thematic_graph_validation(self):
         """测试主题图模型验证"""
         graph = ThematicGraph(
-            theme_id=str(uuid4()),
+            user_id="test_user",
+            thread_id="test_thread",
             theme_name="测试主题",
             concepts=["concept1", "concept2"],
             summary="测试主题的概念图",
@@ -170,7 +170,8 @@ class TestL3Models:
     def test_core_view_validation(self):
         """测试核心观点模型验证"""
         view = CoreView(
-            view_id=str(uuid4()),
+            user_id="test_user",
+            thread_id="test_thread",
             theme_id="theme1",
             statement="这是一个测试观点",
             scope={"domain": "test", "audience": "developer"},

@@ -2,13 +2,13 @@ from datetime import datetime
 from typing import Dict, List, Union, Any
 from pydantic import BaseModel, Field, computed_field
 
+from ..utils import generate_id
+
 class Message(BaseModel):
     """原始消息
 
     用于格式化，在内存中交换。
     """
-    user_id: str = Field(..., description="用户ID")
-    thread_id: str = Field(..., description="对话ID")
     request_id: str = Field(..., description="调用ID")
     role: str = Field(
         ..., 
@@ -52,13 +52,13 @@ class Dialogue(BaseModel):
 
     def model_post_init(self, __context) -> None:
         """在模型初始化后执行"""
-        # 如果没有提供摘要，则生成默认摘要
         if not self.summary:
             self.summary = f"human: {self.input_text}\nai: {self.output_text}"
         
-        # 如果没有提供used_time，则计算默认值
         if self.used_time == 0.0:
             self.used_time = (self.response_time - self.request_time).total_seconds()
 
+        # 如果没有提供dialogue_id，则自动生成
         if not self.dialogue_id:
-            self.dialogue_id = f"dialogue.{self.thread_id}.{self.request_time.timestamp()}"
+            self.dialogue_id = generate_id("dialogue", self.user_id, self.thread_id)
+

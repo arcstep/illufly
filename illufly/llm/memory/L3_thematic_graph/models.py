@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from ..L2_concept import Concept
+from ..utils import generate_id
 
 class ThematicGraph(BaseModel):
     """L3: 主题概念图
@@ -11,9 +12,9 @@ class ThematicGraph(BaseModel):
     概念图应当包含多个概念及其之间的关系，可导出为一个 DOT 语法的概念图说明。
     概念图是基于一次对话的概念认知梳理，是用户认知管理中最核心的结构。
     """
+    theme_id: str = Field(default=None, description="主题ID，如果为None，则自动生成")
     user_id: str = Field(..., description="用户ID")
     thread_id: str = Field(..., description="对话ID")
-    theme_id: str = Field(..., description="主题ID")
     theme_name: str = Field(..., description="主题名称")
     concepts: List[str] = Field(..., description="概念ID列表")
     relations: List[Dict] = Field(
@@ -23,6 +24,10 @@ class ThematicGraph(BaseModel):
     summary: str = Field(..., description="主题摘要")
     parent_theme: Optional[str] = Field(default=None, description="父主题ID")
     sub_themes: List[str] = Field(default_factory=list, description="子主题ID列表")
+
+    def model_post_init(self, __context) -> None:
+        """自动生成theme_id"""
+        self.theme_id = generate_id("theme", self.user_id, self.thread_id)
 
     def to_dot(self) -> str:
         """导出为 DOT 语法的概念图说明"""

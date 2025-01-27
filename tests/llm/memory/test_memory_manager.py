@@ -34,27 +34,38 @@ def db(db_path):
         db.close()
 
 @pytest.fixture
-def manager(db):
-    return MemoryManager(db)
+def user_id():
+    return "test_user"
+
+@pytest.fixture
+def thread_id():
+    return "test_thread"
+
+@pytest.fixture
+def manager(db, user_id, thread_id):
+    return MemoryManager(db, user_id, thread_id)
 
 @pytest.fixture
 def sample_dialogue():
     """创建示例对话"""
     return Dialogue(
-        thread_id="test_thread",
+        user_id=user_id,
+        thread_id=thread_id,
         input_text="你好",
         input_images=[],
         input_files=[],
         output_text="你好！很高兴见到你。",
         messages=[
             Message(
-                thread_id="test_thread",
+                user_id=user_id,
+                thread_id=thread_id,
                 request_id="req1",
                 role="user",
                 content="你好"
             ),
             Message(
-                thread_id="test_thread",
+                user_id=user_id,
+                thread_id=thread_id,
                 request_id="req1",
                 role="assistant",
                 content="你好！很高兴见到你。"
