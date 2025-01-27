@@ -3,6 +3,7 @@ from typing import List, Dict
 from pydantic import BaseModel, Field, field_validator
 
 from ..utils import generate_id
+from ..types import MemoryType
 
 class Fact(BaseModel):
     """L1: 单个事实摘要表示，从L0单次对话中提炼的事实
@@ -33,4 +34,4 @@ class Fact(BaseModel):
 
     def model_post_init(self, __context) -> None:
         """自动生成fact_id"""
-        self.fact_id = generate_id("fact", self.user_id, self.thread_id)
+        self.fact_id = generate_id(MemoryType.FACT, self.user_id, self.thread_id)

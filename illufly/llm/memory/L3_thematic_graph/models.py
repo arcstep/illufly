@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from ..L2_concept import Concept
 from ..utils import generate_id
-
+from ..types import MemoryType
 class ThematicGraph(BaseModel):
     """L3: 主题概念图
 
@@ -27,7 +27,7 @@ class ThematicGraph(BaseModel):
 
     def model_post_init(self, __context) -> None:
         """自动生成theme_id"""
-        self.theme_id = generate_id("theme", self.user_id, self.thread_id)
+        self.theme_id = generate_id(MemoryType.THEMATIC_GRAPH, self.user_id, self.thread_id)
 
     def to_dot(self) -> str:
         """导出为 DOT 语法的概念图说明"""

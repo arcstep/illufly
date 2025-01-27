@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 from ..utils import generate_id
-
+from ..types import MemoryType
 class Concept(BaseModel):
     """L2: 概念节点
 
@@ -26,4 +26,4 @@ class Concept(BaseModel):
 
     def model_post_init(self, __context) -> None:
         """自动生成concept_id"""
-        self.concept_id = generate_id("concept", self.user_id, self.thread_id)
+        self.concept_id = generate_id(MemoryType.CONCEPT, self.user_id, self.thread_id)

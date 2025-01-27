@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 from datetime import datetime
 from ..utils import generate_id
+from ..types import MemoryType
 
 class CoreView(BaseModel):
     """L4: 中心观点
@@ -23,4 +24,4 @@ class CoreView(BaseModel):
 
     def model_post_init(self, __context) -> None:
         """自动生成view_id"""
-        self.view_id = generate_id("view", self.user_id, self.thread_id)
+        self.view_id = generate_id(MemoryType.CORE_VIEW, self.user_id, self.thread_id)

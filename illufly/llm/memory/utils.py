@@ -1,6 +1,11 @@
 from datetime import datetime
 import random
 
-def generate_id(title: str, user_id: str, thread_id: str) -> str:
+def generate_key(*args) -> str:
+    """生成ID前缀"""
+    return ".".join(args)
+
+def generate_id() -> str:
     """生成ID"""
-    return f"{title}.{user_id}.{thread_id}.{datetime.timestamp(datetime.now())}.{random.randint(1000,9999)}"
+    timestamp = datetime.now().timestamp()
+    return f"{int(timestamp):010d}.{int((timestamp - int(timestamp)) * 1000000):06d}"

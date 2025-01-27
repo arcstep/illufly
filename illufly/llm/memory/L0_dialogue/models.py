@@ -2,14 +2,16 @@ from datetime import datetime
 from typing import Dict, List, Union, Any
 from pydantic import BaseModel, Field, computed_field
 
-from ..utils import generate_id
+import uuid
+
+from ..utils import generate_id, generate_key
+from ..types import MemoryType
 
 class Message(BaseModel):
     """原始消息
 
     用于格式化，在内存中交换。
     """
-    request_id: str = Field(..., description="调用ID")
     role: str = Field(
         ..., 
         description="消息角色：user/assistant/system/tool",
@@ -17,6 +19,28 @@ class Message(BaseModel):
     )
     content: Union[str, Dict[str, Any]] = Field(..., description="消息内容")
     timestamp: datetime = Field(default_factory=datetime.now)
+
+class Thread(BaseModel):
+    """连续对话跟踪"""
+    user_id: str = Field(..., description="用户ID")
+    thread_id: str = Field(..., description="对话ID")
+    title: str = Field(default="", description="对话标题")
+    description: str = Field(default="", description="对话描述")
+    created_at: datetime = Field(default_factory=datetime.now, description="对话创建时间")
+    updated_at: datetime = Field(default_factory=datetime.now, description="对话更新时间")
+
+    def model_post_init(self, __context) -> None:
+        """在模型初始化后执行"""
+        if not self.thread_id:
+            self.thread_id = uuid4().hex
+
+    @property
+    def key(self):
+        return generate_key(MemoryType.THREAD, self.user_id, self.thread_id)
+
+    @property
+    def parent_key(self):
+        return generate_key(MemoryType.THREAD, self.user_id)
 
 class Dialogue(BaseModel):
     """L0: 单次对话
@@ -50,6 +74,14 @@ class Dialogue(BaseModel):
         description="本轮对话的token使用情况"
     )
 
+    @property
+    def parent_key(self):
+        return generate_key(MemoryType.THREAD, self.user_id, self.thread_id)
+
+    @property
+    def key(self):
+        return generate_key(self.parent_key, self.dialogue_id)
+
     def model_post_init(self, __context) -> None:
         """在模型初始化后执行"""
         if not self.summary:
@@ -60,5 +92,5 @@ class Dialogue(BaseModel):
 
         # 如果没有提供dialogue_id，则自动生成
         if not self.dialogue_id:
-            self.dialogue_id = generate_id("dialogue", self.user_id, self.thread_id)
+            self.dialogue_id = generate_id()
 

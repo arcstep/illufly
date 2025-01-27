@@ -263,16 +263,24 @@ class IndexedRocksDB(BaseRocksDB):
 
         # 注册索引元数据
         base_type = self._get_base_type(model_class)
-
         cf_name = cf_name or self.default_cf_name
         key = self.INDEX_METADATA_FORMAT.format(
             cf_name=cf_name,
             model_name=model_name,
             field_path=field_path
         )
-        self.indexes_metadata_cf[key] = base_type
 
-        self._logger.debug(f"注册索引元数据: {key} -> {cf_name}.{model_name}#{field_path}")
+        # 使用确定性的检查
+        try:
+            existing_type = self.indexes_metadata_cf.get(key)
+            if existing_type is None:  # 确实不存在
+                self.indexes_metadata_cf[key] = base_type
+                self._logger.info(f"注册索引元数据: {key} -> {cf_name}.{model_name}#{field_path}")
+            else:
+                self._logger.info(f"索引元数据已存在: {key} -> {existing_type}")
+        except KeyError:  # 确实不存在
+            self.indexes_metadata_cf[key] = base_type
+            self._logger.info(f"注册索引元数据: {key} -> {cf_name}.{model_name}#{field_path}")
 
     def _make_index_key(self, model_name: str, field_path: str, field_value: Any, key: str, cf_name: str=None) -> str:
         """创建索引键"""

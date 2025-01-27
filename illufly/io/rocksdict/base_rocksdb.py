@@ -54,24 +54,14 @@ class BaseRocksDB:
         rdict: Optional[Rdict] = None,
         options: Optional[ReadOptions] = None,
     ) -> bool:
-        """快速检查键是否不存在（无 IO）
+        """快速检查键是否不存在
         
-        Args:
-            key: 要检查的键
-            rdict: 可选的Rdict实例（如列族等）
-            options: 读取选项
-            
         Returns:
             True: 键确定不存在
             False: 键可能存在（需要进一步确认）
-            
-        Examples:
-            if db.not_exist("user:123"):
-                print("用户不存在")
-                return
         """
         target = rdict if rdict is not None else self._db
-        return not target.key_may_exist(key, False, options)
+        return not target.key_may_exist(key, False, options)  # 直接使用返回的布尔值
 
     def may_exist(
         self,
@@ -80,29 +70,24 @@ class BaseRocksDB:
         rdict: Optional[Rdict] = None,
         options: Optional[ReadOptions] = None,
     ) -> Tuple[bool, Optional[Any]]:
-        """快速检查键是否存在（轻量级 IO）
+        """快速检查键是否存在
         
-        Args:
-            key: 要检查的键
-            rdict: 可选的Rdict实例（如列族等）
-            options: 读取选项
-            
         Returns:
             (exists, value):
-                - (True, value): 键存在，返回对应的值
-                - (False, None): 需要进一步确认
-            
-        Examples:
-            exists, value = db.may_exist("user:123")
-            if exists:
-                print("用户可能存在:", value)
-                return value
+                - (True, value): 键确定存在且返回值
+                - (False, None): 键可能存在但需要进一步确认
         """
         target = rdict if rdict is not None else self._db
-        exists, value = target.key_may_exist(key, True, options)
-        if exists and value is not None:
-            return True, value
-        return False, None 
+        if not target.key_may_exist(key, True, options):
+            # 布隆过滤器说不存在
+            return False, None
+        
+        # 可能存在，尝试获取
+        try:
+            value = target.get(key, options)
+            return True, value if value is not None else None
+        except KeyError:
+            return False, None
 
     def put(
         self,
