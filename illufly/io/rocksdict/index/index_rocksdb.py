@@ -272,7 +272,7 @@ class IndexedRocksDB(BaseRocksDB):
         )
         self.indexes_metadata_cf[key] = base_type
 
-        self._logger.info(f"注册索引元数据: {key} -> {cf_name}.{model_name}#{field_path}")
+        self._logger.debug(f"注册索引元数据: {key} -> {cf_name}.{model_name}#{field_path}")
 
     def _make_index_key(self, model_name: str, field_path: str, field_value: Any, key: str, cf_name: str=None) -> str:
         """创建索引键"""
@@ -289,7 +289,7 @@ class IndexedRocksDB(BaseRocksDB):
     
     def update_with_indexes(self, model_name: str, key: str, value: Any, cf_name: str=None):
         """更新键值，并自动更新索引"""
-        self._logger.info(f"开始更新索引: model_name={model_name}, key={key}, value={value}, cf_name={cf_name}")
+        self._logger.debug(f"开始更新索引: model_name={model_name}, key={key}, value={value}, cf_name={cf_name}")
 
         cf_name = cf_name or self.default_cf_name
         cf = self.get_column_family(cf_name)
@@ -308,7 +308,7 @@ class IndexedRocksDB(BaseRocksDB):
 
         if not all_paths:
             cf.put(key, value)
-            self._logger.info(f"值已更新，但没有索引注册")
+            self._logger.debug(f"值已更新，但没有索引注册")
             return
 
         # 处理删除操作
@@ -331,7 +331,7 @@ class IndexedRocksDB(BaseRocksDB):
                     cf_name=cf_name
                 )
                 batch.delete(old_index, indexes_cf_handle)
-                self._logger.info(f"准备删除旧索引: {old_index}")
+                self._logger.debug(f"准备删除旧索引: {old_index}")
             field_value = self.get_field_value(value, field_path, key)
             new_index = self._make_index_key(
                 model_name=model_name,
@@ -341,20 +341,20 @@ class IndexedRocksDB(BaseRocksDB):
                 cf_name=cf_name
             )
             batch.put(new_index, None, indexes_cf_handle)
-            self._logger.info(f"准备创建新索引: {new_index}")
+            self._logger.debug(f"准备创建新索引: {new_index}")
 
         self.write(batch)
-        self._logger.info(f"批处理任务提交完成，值和索引已更新")
+        self._logger.debug(f"批处理任务提交完成，值和索引已更新")
 
     def delete_with_indexes(self, model_name: str, key: str, cf_name: str=None):
         """删除键值，并自动删除索引"""
-        self._logger.info(f"开始删除索引: model_name={model_name}, key={key}, cf_name={cf_name}")
+        self._logger.debug(f"开始删除索引: model_name={model_name}, key={key}, cf_name={cf_name}")
 
         cf_name = cf_name or self.default_cf_name
         cf = self.get_column_family(cf_name)
         key_not_exist = self.not_exist(key, rdict=cf)
         if key_not_exist:
-            self._logger.info(f"不存在旧值，无需删除")
+            self._logger.debug(f"不存在旧值，无需删除")
             return
 
         old_value = self.get(key, rdict=cf)
@@ -373,7 +373,7 @@ class IndexedRocksDB(BaseRocksDB):
 
         if not all_paths:
             self.write(batch)
-            self._logger.info(f"批处理任务提交完成，值已删除，但没有索引注册")
+            self._logger.debug(f"批处理任务提交完成，值已删除，但没有索引注册")
             return
 
         # 处理对象所有属性访问路径的索引
@@ -389,10 +389,10 @@ class IndexedRocksDB(BaseRocksDB):
                 cf_name=cf_name
             )
             batch.delete(old_index, indexes_cf_handle)
-            self._logger.info(f"准备删除索引: {old_index}")
+            self._logger.debug(f"准备删除索引: {old_index}")
 
         self.write(batch)
-        self._logger.info(f"批处理任务提交完成，值和索引已删除")        
+        self._logger.debug(f"批处理任务提交完成，值和索引已删除")        
 
     def iter_keys_with_indexes(
         self,
@@ -440,7 +440,7 @@ class IndexedRocksDB(BaseRocksDB):
                 cf_name=cf_name
             )
 
-        self._logger.info(f"范围查询: start={start_key}, end={end_key}")
+        self._logger.debug(f"范围查询: start={start_key}, end={end_key}")
         resp = self.iter_keys(
             prefix=target_key,
             start=start_key,
@@ -479,10 +479,10 @@ class IndexedRocksDB(BaseRocksDB):
         cf_name = cf_name or self.default_cf_name
         model_keys_prefix = self.MODEL_PREFIX_FORMAT.format(cf_name=cf_name, model_name=model_name) + ":#:"
         resp = self.iter_keys(prefix=model_keys_prefix, rdict=self.indexes_cf)
-        self._logger.info(f"iter_model_keys: {resp}")
+        self._logger.debug(f"iter_model_keys: {resp}")
         for index in resp:
             key = self._fetch_key_from_index(index)
-            self._logger.info(f"iter_model_keys: {key}")
+            self._logger.debug(f"iter_model_keys: {key}")
             yield key
 
     def rebuild_indexes(self, model_name: str, cf_name: str=None):
@@ -497,4 +497,4 @@ class IndexedRocksDB(BaseRocksDB):
                 value=cf[key],
                 cf_name=cf_name
             )
-        self._logger.info(f"重建索引完成")
+        self._logger.debug(f"重建索引完成")

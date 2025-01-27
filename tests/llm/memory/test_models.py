@@ -4,9 +4,10 @@ from uuid import uuid4
 from typing import Dict, List
 
 from illufly.llm.conversation.L0_dialogue.models import Message, Dialogue
-from illufly.llm.conversation.L1_facts.models import FactSummary, FactQueue
+from illufly.llm.conversation.L1_facts.models import Fact
 from illufly.llm.conversation.L2_concept.models import Concept
-from illufly.llm.conversation.L3_concepts_map.models import ThematicGraph, CoreView
+from illufly.llm.conversation.L3_thematic_graph.models import ThematicGraph
+from illufly.llm.conversation.L4_core_view.models import CoreView
 from illufly.llm.conversation.models import ConversationCognitive, FinalCognitive
 
 class TestL0Models:
@@ -86,7 +87,7 @@ class TestL1Models:
         now = datetime.now()
         
         # 正常情况
-        fact = FactSummary(
+        fact = Fact(
             thread_id="test_thread",
             title="测试事实",
             content="这是一个测试事实的内容",
@@ -98,7 +99,7 @@ class TestL1Models:
         
         # 测试标题长度限制
         with pytest.raises(ValueError) as e:
-            FactSummary(
+            Fact(
                 thread_id="test_thread",
                 title="这是一个超过三十个字符的非常非常长的标题"*3,
                 content="内容",
@@ -109,7 +110,7 @@ class TestL1Models:
             
         # 测试内容长度限制
         with pytest.raises(ValueError) as e:
-            FactSummary(
+            Fact(
                 thread_id="test_thread",
                 title="测试事实",
                 content="x" * 201,  # 超过200字符
@@ -117,39 +118,7 @@ class TestL1Models:
                 window_start=now,
                 window_end=now + timedelta(hours=1)
             )
-            
-    def test_fact_queue_operations(self):
-        """测试事实队列操作"""
-        queue = FactQueue(thread_id="test_thread")
-        now = datetime.now()
-        
-        # 添加事实
-        fact1 = FactSummary(
-            thread_id="test_thread",
-            title="测试事实1",
-            content="内容1",
-            source_chat_threads=["thread1"],
-            window_start=now,
-            window_end=now + timedelta(hours=1)
-        )
-        queue.add_fact(fact1)
-        
-        # 添加同名事实
-        fact2 = FactSummary(
-            thread_id="test_thread",
-            title="测试事实1",
-            content="内容2",
-            source_chat_threads=["thread1"],
-            window_start=now + timedelta(hours=1),
-            window_end=now + timedelta(hours=2)
-        )
-        queue.add_fact(fact2)
-        
-        # 验证最新事实
-        latest_facts = queue.get_latest_facts()
-        assert len(latest_facts) == 1
-        assert latest_facts["测试事实1"].content == "内容2"
-        
+
 class TestL2Models:
     """L2层模型测试"""
     

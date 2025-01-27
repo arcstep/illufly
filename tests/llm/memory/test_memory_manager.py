@@ -1,14 +1,23 @@
 import pytest
-from datetime import datetime, timedelta
 import tempfile
 import shutil
-from uuid import uuid4
+import logging
+import uuid
+
+from enum import Enum
+from typing import Dict, List
+from datetime import datetime, timedelta
 
 from illufly.io.rocksdict import IndexedRocksDB
-from illufly.llm.conversation.conversation_manager import ConversationManager
-from illufly.llm.conversation.L0_dialogue.models import Dialogue, Message
-from illufly.llm.conversation.models import ConversationCognitive, FinalCognitive
-from illufly.llm.conversation.L2_concept.models import Concept
+from illufly.llm.memory.memory_manager import MemoryManager
+from illufly.llm.memory.models import ConversationCognitive, FinalCognitive
+from illufly.llm.memory.L0_dialogue.models import Dialogue, Message
+from illufly.llm.memory.L1_facts.models import Fact
+from illufly.llm.memory.L2_concept.models import Concept
+from illufly.llm.memory.L3_thematic_graph.models import ThematicGraph
+from illufly.llm.memory.L4_core_view.models import CoreView
+
+logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def db_path():
@@ -26,7 +35,7 @@ def db(db_path):
 
 @pytest.fixture
 def manager(db):
-    return ConversationManager(db)
+    return MemoryManager(db)
 
 @pytest.fixture
 def sample_dialogue():
@@ -58,7 +67,7 @@ def sample_dialogue():
         usage={"prompt_tokens": 10, "completion_tokens": 20}
     )
 
-class TestConversationManager:
+class TestMemoryManager:
     """对话管理器测试"""
     
     def test_create_thread(self, manager):
@@ -95,6 +104,7 @@ class TestConversationManager:
         
         # 修改时间创建第二个对话
         second_dialogue = sample_dialogue.model_copy()
+        second_dialogue.dialogue_id = "test_dialogue.2"
         second_dialogue.request_time += timedelta(minutes=5)
         second_dialogue.response_time += timedelta(minutes=5)
         manager.add_dialogue(second_dialogue)
@@ -148,6 +158,7 @@ class TestConversationManager:
         # 添加对话到第一个线程
         dialogue1 = sample_dialogue.model_copy()
         dialogue1.thread_id = thread_id1
+        dialogue1.dialogue_id = "test_dialogue.2"
         manager.add_dialogue(dialogue1)
         
         # 添加对话到第二个线程
@@ -172,3 +183,52 @@ class TestConversationManager:
         )
         assert len(threads) == 1
         assert thread_id1 in threads 
+
+    def test_continuse_chat(self, manager):
+        """测试连续对话"""
+        user_id = "test_user"
+        thread_id = manager.create_thread(user_id)
+
+        dummy_input = "你好"
+        dummy_output = "你好！很高兴见到你。"
+        def create_dummy_dialogue(input_text, output_text):
+            message_list = [
+                Message(
+                    thread_id=thread_id,
+                    request_id="req1",
+                    role="user",
+                    content=input_text
+                ),
+                Message(
+                    thread_id=thread_id,
+                    request_id="req1",
+                    role="assistant",
+                    content=output_text
+                )
+            ]
+            return Dialogue(
+                dialogue_id=str(uuid.uuid4()),
+                thread_id=thread_id,
+                input_text=input_text,
+                output_text=output_text,
+                messages=message_list,
+                summary="简单的问候对话"
+            )
+
+        # 添加对话并立即验证
+        for i in range(5):
+            dialogue = create_dummy_dialogue(dummy_input, dummy_output)
+            dialogue_id = manager.add_dialogue(dialogue)
+            logger.info(f"添加对话: {dialogue_id}")
+            # 立即验证单条对话
+            saved_dialogue = manager.get_dialogue(dialogue_id)
+            logger.info(f"获取对话: {saved_dialogue}")
+            assert saved_dialogue is not None
+            
+            # 验证认知状态
+            cognitive = manager.get_conversation_cognitive(thread_id)
+            logger.info(f"当前对话数量: {len(cognitive.dialogues)}")  # 添加调试信息
+            
+        # 最终验证
+        cognitive = manager.get_conversation_cognitive(thread_id)
+        assert len(cognitive.dialogues) == 5

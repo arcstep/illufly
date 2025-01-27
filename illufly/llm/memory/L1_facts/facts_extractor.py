@@ -2,9 +2,9 @@ from typing import List
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from .base_processor import BaseProcessor
+from ..tasks import BaseProcessor
 from ..L0_dialogue import Dialogue
-from ..L1_facts import FactSummary, FactQueue
+from ..L1_facts import Fact
 
 class DialogueProcessor(BaseProcessor):
     """对话处理器：L0 → L1"""
@@ -24,11 +24,8 @@ class DialogueProcessor(BaseProcessor):
                 facts = await self._extract_facts(dialogue)
                 
                 # 3. 获取或创建事实队列
-                fact_queue = await self._get_or_create_fact_queue(dialogue.thread_id)
                 
                 # 4. 合并新事实
-                for fact in facts:
-                    fact_queue.add_fact(fact)
                 
                 # 5. 创建下一层任务
                 await self.create_next_level_task(
@@ -46,7 +43,7 @@ class DialogueProcessor(BaseProcessor):
                     str(e)
                 )
                 
-    async def _extract_facts(self, dialogue: Dialogue) -> List[FactSummary]:
+    async def _extract_facts(self, dialogue: Dialogue) -> List[Fact]:
         """从对话中提取事实"""
         prompt = f"""
         从以下对话中提取关键事实，每个事实不超过200字符。
@@ -63,7 +60,7 @@ class DialogueProcessor(BaseProcessor):
         facts_data = json.loads(response)
         
         return [
-            FactSummary(
+            Fact(
                 thread_id=dialogue.thread_id,
                 title=item["title"],
                 content=item["content"],
@@ -75,10 +72,3 @@ class DialogueProcessor(BaseProcessor):
             for item in facts_data
         ]
         
-    async def _get_or_create_fact_queue(self, thread_id: str) -> FactQueue:
-        """获取或创建事实队列"""
-        key = f"fact_queue:{thread_id}"
-        data = await self.db.get(key)
-        if data:
-            return FactQueue(**data)
-        return FactQueue(thread_id=thread_id) 

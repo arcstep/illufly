@@ -48,9 +48,11 @@ class BaseProcessor:
                     
         return tasks
         
-    async def create_next_level_task(self, 
-                                    result: BaseModel,
-                                    thread_id: str):
+    async def create_next_level_task(
+        self,
+        result: BaseModel,
+        thread_id: str
+    ):
         """创建下一层任务"""
         task = ProcessingTask(
             task_id=str(uuid4()),
