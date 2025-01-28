@@ -30,8 +30,17 @@ class QAManager():
     
     def get_thread(self, thread_id: str):
         """获取一个对话"""
-        return self.db[generate_key(MemoryType.THREAD, self.user_id, thread_id)]
+        data = self.db[generate_key(MemoryType.THREAD, self.user_id, thread_id)]
+        if data:
+            return Thread(**data)
+        else:
+            return None
     
+    def last_thread(self):
+        """获取最后一个对话"""
+        threads = self.all_threads()
+        return threads[-1] if threads else None
+
     def all_threads(self):
         """获取所有对话"""
         prefix_key = generate_key(MemoryType.THREAD, self.user_id)
@@ -61,6 +70,7 @@ class QAManager():
         2. 提取所有 L0 级别的问答，追加到 short_memory 中
         3. 将 messages 中其他消息追加到 short_memory 中
         """
+        messages = messages or []
         short_memory = []
         has_system_message = True if messages and messages[0].role == "system" else False
 

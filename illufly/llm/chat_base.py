@@ -37,11 +37,22 @@ class ChatBase(RemoteServer, ABC):
         self._logger = logging.getLogger(__name__)
 
         self.l0_qa = QAManager(db=self.db, user_id=user_id)
-        self.thread = self.l0_qa.create_thread()
+        last_thread = self.l0_qa.last_thread()
+        if not last_thread:
+            last_thread = self.l0_qa.create_thread()
+        self.thread = last_thread
 
     @property
     def thread_id(self):
         return self.thread.thread_id
+
+    @property
+    def history(self):
+        return self.l0_qa.retrieve(self.thread_id)
+    
+    @property
+    def history_messages(self):
+        return [m.message_dict for m in self.history]
 
     def new_thread(self):
         """创建一个新的对话"""
@@ -49,7 +60,10 @@ class ChatBase(RemoteServer, ABC):
     
     def load_thread(self, thread_id: str):
         """从历史对话加载"""
-        self.thread = self.l0_qa.get_thread(thread_id)
+        thread = self.l0_qa.get_thread(thread_id)
+        if not thread:
+            raise ValueError(f"对话 {thread_id} 不存在")
+        self.thread = thread
 
     @abstractmethod
     async def _async_generate_from_llm(
@@ -101,12 +115,11 @@ class ChatBase(RemoteServer, ABC):
         self._logger.info(f"last output: {final_text}")
 
         # 处理输出消息
-        final_message = Message(role="assistant", content=final_text)
-        patched_messages.append(final_message)
+        final_messages = normalized_messages + [Message(role="assistant", content=final_text)]
         qa = QA(
             user_id=self.user_id,
             thread_id=self.thread_id,
-            messages=patched_messages
+            messages=final_messages
         )
         self.l0_qa.add_QA(qa)
 
