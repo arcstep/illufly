@@ -127,6 +127,15 @@ class Subscriber(BaseMQ):
         return self._async_utils.wrap_async_generator(
             self.async_collect(block_types)
         )
+    
+    def log(self, block_types: Union[List[BlockType], BlockType]=["text_chunk"]):
+        """打印日志"""
+        blocks = self.collect(block_types)
+        for b in blocks:
+            if isinstance(b, TextChunk):
+                print(b.content, end="", flush=True)
+            else:
+                print(b.content)
 
     @property
     def is_collected(self) -> bool:

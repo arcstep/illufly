@@ -34,12 +34,23 @@ class QAManager():
         if data:
             return Thread(**data)
         else:
+            if thread_id == "once":
+                desc = "\n".join([
+                    "该对话内所有访问都只有一次记忆。",
+                    "将大模型当作工具使用时往往需要这种特性，从而避免产生太多的 thread_id 污染数据存储。",
+                    "如果需要使用该特性，请将 thread_id 设置为 'once'。"
+                ])
+                return self.create_thread(title="once", description=desc, thread_id="once")
             return None
     
     def last_thread(self):
         """获取最后一个对话"""
         threads = self.all_threads()
-        return threads[-1] if threads else None
+        for thread in reversed(threads):
+            if thread.thread_id == "once":
+                continue
+            return thread
+        return None
 
     def all_threads(self):
         """获取所有对话"""
@@ -70,6 +81,9 @@ class QAManager():
         2. 提取所有 L0 级别的问答，追加到 short_memory 中
         3. 将 messages 中其他消息追加到 short_memory 中
         """
+        if thread_id == "once":
+            return messages
+        
         messages = messages or []
         short_memory = []
         has_system_message = True if messages and messages[0].role == "system" else False

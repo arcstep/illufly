@@ -234,7 +234,8 @@ class ChatOpenAI(ChatBase):
             })
 
             # 发送开始标记
-            publisher.publish(request_id, StartBlock(request_id=request_id))
+            if publisher:
+                publisher.publish(request_id, StartBlock(request_id=request_id))
 
             self._logger.info(f"openai call model: {_kwargs['model']}")
             completion = await self.client.chat.completions.create(**_kwargs)
@@ -253,10 +254,11 @@ class ChatOpenAI(ChatBase):
                     
                     # 处理文本内容
                     if delta.content:
-                        publisher.publish(
-                            request_id,
-                            TextChunk(text=delta.content, request_id=request_id)
-                        )
+                        if publisher:
+                            publisher.publish(
+                                request_id,
+                                TextChunk(text=delta.content, request_id=request_id)
+                            )
                         final_text += delta.content
 
                 # 处理使用情况
@@ -268,10 +270,11 @@ class ChatOpenAI(ChatBase):
                         "model": self.default_call_args["model"],
                         "provider": self.provider
                     }
-                    publisher.publish(
-                        request_id,
-                        UsageBlock(**usage_data, request_id=request_id)
-                    )
+                    if publisher:
+                        publisher.publish(
+                            request_id,
+                            UsageBlock(**usage_data, request_id=request_id)
+                        )
 
             # 流结束时处理工具调用
             for tool_data in current_tool_calls.values():
@@ -283,7 +286,8 @@ class ChatOpenAI(ChatBase):
                     chunks=tool_data["chunks"],
                     request_id=request_id
                 )
-                publisher.publish(request_id, final)
+                if publisher:
+                    publisher.publish(request_id, final)
 
             return final_text
         except ValueError as e:
