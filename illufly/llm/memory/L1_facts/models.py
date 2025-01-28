@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Dict
 from pydantic import BaseModel, Field, field_validator
 
-from ..utils import generate_id
+from ..utils import generate_id, generate_key
 from ..types import MemoryType
 
 class Fact(BaseModel):
@@ -34,4 +34,14 @@ class Fact(BaseModel):
 
     def model_post_init(self, __context) -> None:
         """自动生成fact_id"""
-        self.fact_id = generate_id(MemoryType.FACT, self.user_id, self.thread_id)
+        self.fact_id = generate_id()
+
+    @property
+    def key(self):
+        """生成事实的唯一键"""
+        return generate_key(MemoryType.FACT, self.user_id, self.thread_id, self.fact_id)
+
+    @property
+    def parent_key(self):
+        """生成事实的父键"""
+        return generate_key(MemoryType.THREAD, self.user_id, self.thread_id)

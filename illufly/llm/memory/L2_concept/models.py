@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
-from ..utils import generate_id
+from ..utils import generate_id, generate_key
 from ..types import MemoryType
 class Concept(BaseModel):
     """L2: 概念节点
@@ -26,4 +26,14 @@ class Concept(BaseModel):
 
     def model_post_init(self, __context) -> None:
         """自动生成concept_id"""
-        self.concept_id = generate_id(MemoryType.CONCEPT, self.user_id, self.thread_id)
+        self.concept_id = generate_id()
+
+    @property
+    def key(self):
+        """生成概念的唯一键"""
+        return generate_key(MemoryType.CONCEPT, self.user_id, self.thread_id, self.concept_id)
+
+    @property
+    def parent_key(self):
+        """生成概念的父键"""
+        return generate_key(MemoryType.CONCEPT, self.user_id, self.thread_id)

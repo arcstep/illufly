@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 from datetime import datetime
-from ..utils import generate_id
+from ..utils import generate_id, generate_key
 from ..types import MemoryType
 
 class CoreView(BaseModel):
@@ -24,4 +24,14 @@ class CoreView(BaseModel):
 
     def model_post_init(self, __context) -> None:
         """自动生成view_id"""
-        self.view_id = generate_id(MemoryType.CORE_VIEW, self.user_id, self.thread_id)
+        self.view_id = generate_id()
+
+    @property
+    def key(self):
+        """生成中心观点的唯一键"""
+        return generate_key(MemoryType.CORE_VIEW, self.user_id, self.thread_id, self.view_id)
+
+    @property
+    def parent_key(self):
+        """生成中心观点的父键"""
+        return generate_key(MemoryType.CORE_VIEW, self.user_id, self.thread_id)
