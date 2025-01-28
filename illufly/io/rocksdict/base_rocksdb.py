@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from itertools import islice
 
+from ...envir import get_env
+
 class BaseRocksDB:
     """RocksDB基础封装类
     
@@ -37,12 +39,19 @@ class BaseRocksDB:
 
     def __init__(
         self,
-        path: str,
+        path: str = None,
         options: Optional[Options] = None,
         logger: Optional[logging.Logger] = None,
     ):
-        self.path = path
-        self._db = Rdict(path, options)
+        """初始化BaseRocksDB
+        
+        Args:
+            path: 数据库路径
+            options: 可选的RocksDB配置
+            logger: 可选的日志记录器
+        """
+        self.path = path or get_env("ILLUFLY_ROCKSDB_TEMP")
+        self._db = Rdict(self.path, options)
         self._logger = logger or logging.getLogger(__name__)
         self._default_cf = self._db.get_column_family("default")
         self._default_cf_name = "default"

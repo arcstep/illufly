@@ -6,12 +6,12 @@ import logging
 from ....io.rocksdict import IndexedRocksDB
 from ..types import MemoryType
 from ..utils import generate_key
-from .models import QA, Thread
+from .models import Message, QA, Thread
 
 class QAManager():
     """问答管理器，保存一个 thread_id 的所有问答"""
-    def __init__(self, db: IndexedRocksDB, user_id: str = "default", logger: logging.Logger = None):
-        self.user_id = user_id
+    def __init__(self, db: IndexedRocksDB, user_id: str = None, logger: logging.Logger = None):
+        self.user_id = user_id or "default"
         self.db = db
         self.QAs: Dict[str, List[QA]] = {}
 
@@ -55,12 +55,26 @@ class QAManager():
         self._logger.info(f"获取问答对清单：{values}")
         return [QA(**value) for value in values]
 
-    def retrieve(self, thread_id: str):
-        """检索处理器"""
-
+    def retrieve(self, thread_id: str, messages: List[Message] = None):
+        """检索处理器
+        1. 如果 messages 包含 system 角色就先将 system 角色消息置顶到 short_memory 中
+        2. 提取所有 L0 级别的问答，追加到 short_memory 中
+        3. 将 messages 中其他消息追加到 short_memory 中
+        """
         short_memory = []
+        has_system_message = True if messages and messages[0].role == "system" else False
+
+        if has_system_message:
+            short_memory.append(messages[0])
+
         for dia in self.all_QAs(thread_id):
             if dia.level == "L0":
                 short_memory.extend(dia.qa_message)
+        
+        if has_system_message:
+            short_memory.extend(messages[1:])
+        else:
+            short_memory.extend(messages)
+        
         return short_memory
 

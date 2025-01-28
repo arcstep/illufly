@@ -18,11 +18,11 @@ class IndexedRocksDB(BaseRocksDB):
     在增加、删除、修改对象时根据注册的索引路径自动更新索引。
     """
 
-    def __init__(self, path: str, options: Optional[Options] = None, logger=None):
+    def __init__(self, path: str = None, options: Optional[Options] = None, logger=None):
         super().__init__(path, options, logger)
 
         # 创建索引元数据的列族
-        all_cfs = self.list_column_families(path)
+        all_cfs = self.list_column_families(self.path)
         if self.INDEX_METADATA_CF not in all_cfs:
             self.create_column_family(self.INDEX_METADATA_CF, options=self._get_indexes_cf_options())
         if self.INDEX_CF not in all_cfs:

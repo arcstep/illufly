@@ -37,7 +37,7 @@ class Message(BaseModel):
 class Thread(BaseModel):
     """连续对话跟踪"""
     user_id: str = Field(..., description="用户ID")
-    thread_id: str = Field(..., description="对话ID")
+    thread_id: Union[str, None] = Field(default=None, description="对话ID")
     title: str = Field(default="", description="对话标题")
     description: str = Field(default="", description="对话描述")
     created_at: datetime = Field(default_factory=datetime.now, description="对话创建时间")
@@ -46,7 +46,7 @@ class Thread(BaseModel):
     def model_post_init(self, __context) -> None:
         """在模型初始化后执行"""
         if not self.thread_id:
-            self.thread_id = uuid4().hex
+            self.thread_id = uuid.uuid4().hex
 
     @property
     def key(self):

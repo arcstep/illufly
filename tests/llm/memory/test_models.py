@@ -3,11 +3,20 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from typing import Dict, List
 
-from illufly.llm.memory.L0_QA.models import Message, QA
+from illufly.llm.memory.L0_QA.models import Message, QA, Thread
 from illufly.llm.memory.L1_facts.models import Fact
 from illufly.llm.memory.L2_concept.models import Concept
 from illufly.llm.memory.L3_thematic_graph.models import ThematicGraph
 from illufly.llm.memory.L4_core_view.models import CoreView
+
+class Test_thread_Models:
+    """Thread模型测试"""
+
+    def test_thread_validation(self):
+        """测试Thread模型验证"""
+        thread = Thread(user_id="test_user")
+        assert thread.user_id == "test_user"
+        assert thread.thread_id is not None
 
 class Test_L0_Models:
     """L0层模型测试"""

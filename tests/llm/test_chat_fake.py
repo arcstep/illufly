@@ -15,7 +15,7 @@ async def chat():
     """异步 fixture"""
     chat = ChatFake(
         response="Hello World!",
-        sleep=0.1,
+        sleep=0.01,
         service_name="test_chat",
         logger=logger
     )
@@ -26,7 +26,7 @@ async def chat():
 async def chat_with_list():
     chat = ChatFake(
         response=["Response 1", "Response 2"],
-        sleep=0.1,
+        sleep=0.01,
         logger=logger
     )
     yield chat
@@ -35,7 +35,7 @@ async def chat_with_list():
 @pytest.mark.asyncio
 async def test_chat_initialization(chat):
     """测试聊天初始化"""
-    assert chat.sleep == 0.1
+    assert chat.sleep == 0.01
     assert chat.response == ["Hello World!"]
 
 @pytest.mark.asyncio
@@ -88,7 +88,7 @@ async def test_chat_sleep_timing(chat):
         pass
         
     end_time = asyncio.get_event_loop().time()
-    expected_time = 0.1 * (len("Hello World!"))  # 每个字符的睡眠时间
+    expected_time = 0.01 * (len("Hello World!"))  # 每个字符的睡眠时间
     
     assert end_time - start_time >= expected_time
 

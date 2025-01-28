@@ -3,9 +3,10 @@ from typing import List, Dict, Any, Union
 
 import logging
 
+from ..io.rocksdict.index.index_rocksdb import IndexedRocksDB
+from ..llm.memory.L0_QA import QAManager, QA, Message
 from ..call import RemoteServer
 from ..mq import Publisher, StreamingBlock, BlockType, TextChunk
-from .contexts import ShortMemoryContext, BaseContext
 from .system_template import SystemTemplate
 
 class ChatBase(RemoteServer, ABC):
@@ -23,73 +24,97 @@ class ChatBase(RemoteServer, ABC):
     - 数据集描述
     ...
     """
-    def __init__(self, context_managers: List[Union[str, BaseContext]] = None, **kwargs):
+    def __init__(
+        self,
+        user_id: str = None,
+        db_path: str = None,
+        **kwargs
+    ):
         super().__init__(**kwargs)
-        self.context_managers = self._init_context_managers(context_managers)
+
+        self.db_path = db_path
+        self.db = IndexedRocksDB(self.db_path)        
 
         self._logger = logging.getLogger(__name__)
 
-        # 初始化历史记录
-        self.last_input = []
-        self.last_output = []
+        self.l0_qa = QAManager(db=self.db, user_id=user_id)
+        self.thread = self.l0_qa.create_thread()
 
-    def _init_context_managers(self, context_managers):
-        """初始化上下文管理器"""
-        managers = []
-        if context_managers is None:
-            # 默认使用短期记忆
-            context_managers = ["memory"]
-            
-        for context_manager in context_managers:
-            if isinstance(context_manager, str):
-                if context_manager == "memory":
-                    managers.append(ShortMemoryContext())
-                else:
-                    raise ValueError(f"Unknown context manager: {context_manager}")
-            else:
-                managers.append(context_manager)
-        return managers
+    @property
+    def thread_id(self):
+        return self.thread.thread_id
+
+    def new_thread(self):
+        """创建一个新的对话"""
+        self.thread = self.l0_qa.create_thread()
+    
+    def load_thread(self, thread_id: str):
+        """从历史对话加载"""
+        self.thread = self.l0_qa.get_thread(thread_id)
 
     @abstractmethod
-    async def _async_generate_from_llm(self, messages: Union[str, List[Dict[str, Any]]], request_id: str, publisher: Publisher, **kwargs):
-        """要求在子类中实现"""
+    async def _async_generate_from_llm(
+        self,
+        messages: Union[str, List[Dict[str, Any]]],
+        request_id: str, # RemoteServer 要求的参数
+        publisher: Publisher, # RemoteServer 要求的参数
+        **kwargs
+    ):
+        """要求在子类中实现
+        
+        Args:
+            messages: 输入消息
+            request_id: 请求ID（RemoteServer 要求的参数）
+            publisher: 发布者（RemoteServer 要求的参数）
+            **kwargs: 其他用户自定义参数
+        """
         pass
 
     async def _async_handler(
         self,
         messages: Union[str, List[Dict[str, Any]]],
-        request_id: str,
-        publisher: Publisher,
+        request_id: str, # RemoteServer 要求的参数
+        publisher: Publisher, # RemoteServer 要求的参数
         template: SystemTemplate = None,
         **kwargs
     ):
-        """转换提问的问题"""
+        """转换提问的问题
+        
+        Args:
+            messages: 输入消息
+            request_id: 请求ID（RemoteServer 要求的参数）
+            publisher: 发布者（RemoteServer 要求的参数）
+            template: 系统模板
+            **kwargs: 其他用户自定义参数
+        """
 
         # 规范化消息
         normalized_messages = self.normalize_messages(messages)
-        self._logger.info(f"raw messages: {normalized_messages}")
+        self._logger.info(f"normalized messages objects: {normalized_messages}")
 
-        # 处理消息上下文
-        messages_with_context = self.handle_input_messages(normalized_messages)
-        self.last_input = messages_with_context
-        self._logger.info(f"last input: {messages_with_context}")
+        # 补充认知上下文
+        patched_messages = self.l0_qa.retrieve(self.thread_id, messages=normalized_messages)
 
         # 调用 LLM 生成回答
+        messages_with_context = [m.message for m in patched_messages]
+        self._logger.info(f"last input: {messages_with_context}")
         final_text = await self._async_generate_from_llm(messages_with_context, request_id, publisher, **kwargs)
-        self.last_output = final_text
         self._logger.info(f"last output: {final_text}")
 
         # 处理输出消息
-        self.handle_output_messages([{"role": "assistant", "content": final_text}])
-        self._logger.info(f"now output: {self.context_managers[0].history}")
-
-        return final_text
+        final_message = Message(role="assistant", message=final_text)
+        patched_messages.append(final_message)
+        qa = QA(
+            user_id=self.user_id,
+            thread_id=self.thread_id,
+            qa_message=patched_messages
+        )
+        self.l0_qa.add_QA(qa)
 
     def normalize_messages(self, messages: Union[str, List[Dict[str, Any]]]):
         """规范化消息"""
-        if isinstance(messages, str):
-            messages = [{"role": "user", "content": messages}]
-        return messages
+        _messages = messages if isinstance(messages, list) else [messages]
+        return [Message.create(m) for m in _messages]
 
     def handle_input_messages(self, messages: List[Dict[str, Any]]):
         """处理输入消息"""

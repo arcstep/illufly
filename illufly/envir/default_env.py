@@ -1,5 +1,6 @@
 import os
 import platform
+import tempfile
 
 def get_env(key: str=None):
     """
@@ -17,6 +18,7 @@ def get_env(key: str=None):
         # 缓存目录
         "ILLUFLY_CACHE_ROOT": FIXED_TEMP_DIR, # 缓存调用结果存储目录
         "ILLUFLY_CACHE_CALL": os.path.join(FIXED_TEMP_DIR, "CACHE_CALL"), # 缓存调用结果存储目录
+        "ILLUFLY_ROCKSDB_TEMP": tempfile.mkdtemp(prefix="ILLUFLY_ROCKSDB_"), # RocksDB临时存储目录
 
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
