@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Union, Any
+from typing import Dict, List, Union, Any, Tuple
 from pydantic import BaseModel, Field, computed_field
 
 import uuid
@@ -23,6 +23,16 @@ class Message(BaseModel):
     @property
     def message(self):
         return self.model_dump(exclude={"timestamp"})
+    
+    @classmethod
+    def create(cls, data: Union[str, Tuple[str, str], Dict[str, Any], "Message"]):
+        if isinstance(data, str):
+            return cls(role="user", content=data)
+        elif isinstance(data, tuple):
+            return cls(role="assistant" if data[0] == "ai" else data[0], content=data[1])
+        elif isinstance(data, Message):
+            return data
+        return cls(**data)
 
 class Thread(BaseModel):
     """连续对话跟踪"""
@@ -62,7 +72,7 @@ class QA(BaseModel):
     level: str = Field(default="L0", description="对话层级")
     user_id: str = Field(..., description="用户ID")
     thread_id: str = Field(..., description="对话ID")
-    messages: List[Message] = Field(..., description="符合LLM标准的用户与AI的问答消息列表，包括系统提示语、用户输入、AI输出等")
+    messages: List[Union[Message, Tuple[str, str], Dict[str, Any], str]] = Field(..., description="符合LLM标准的用户与AI的问答消息列表，包括系统提示语、用户输入、AI输出等")
     summary: List[Message] = Field(
         default=[],  # 先设置空列表作为默认值
         description="本轮对话摘要，一般是精简后的问答对消息"
@@ -126,4 +136,6 @@ class QA(BaseModel):
         # 如果没有提供qa_id，则自动生成
         if not self.qa_id:
             self.qa_id = generate_id()
+        
+        self.messages = [Message.create(m) for m in self.messages]
 

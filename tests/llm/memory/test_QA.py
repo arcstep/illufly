@@ -15,8 +15,8 @@ class TestQA:
             thread_id=thread_id,
             level="L0",  # 显式设置为 L0
             messages=[
-                Message(role="user", content="你好"),
-                Message(role="assistant", content="你好！很高兴见到你。")
+                ("user", "你好"),
+                ("ai", "你好！很高兴见到你。")
             ]
         )
     
@@ -28,8 +28,8 @@ class TestQA:
             thread_id=thread_id,
             level="L1",  # 显式设置为 L1
             messages=[
-                Message(role="user", content="这是什么？"),
-                Message(role="assistant", content="这是一个测试对话。")
+                ("user", "这是什么？"),
+                ("ai", "这是一个测试对话。")
             ]
         )
 

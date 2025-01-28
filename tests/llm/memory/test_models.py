@@ -9,31 +9,27 @@ from illufly.llm.memory.L2_concept.models import Concept
 from illufly.llm.memory.L3_thematic_graph.models import ThematicGraph
 from illufly.llm.memory.L4_core_view.models import CoreView
 
-class TestL0Models:
+class Test_L0_Models:
     """L0层模型测试"""
     
     def test_message_validation(self):
         """测试消息模型验证"""
         # 正常情况
         message = Message(
-            request_id="req1",
             role="user",
             content="测试消息"
         )
-        assert message.request_id == "req1"
         assert message.role == "user"
         
         # 测试无效角色
         with pytest.raises(ValueError) as e:
             Message(
-                request_id="req1",
                 role="invalid_role",
                 content="测试消息"
             )
             
         # 测试复杂content
         message = Message(
-            request_id="req1",
             role="tool",
             content={"action": "search", "query": "测试查询"}
         )
@@ -43,38 +39,51 @@ class TestL0Models:
         """测试对话模型验证"""
         messages = [
             Message(
-                request_id="req1",
                 role="user",
                 content="你好"
             ),
             Message(
-                request_id="req1",
                 role="assistant",
                 content="你好！很高兴见到你。"
             )
         ]
         
         # 正常情况
-        QA = QA(
+        qa = QA(
             user_id="test_user",
             thread_id="test_thread",
-            input_text="你好",
-            input_images=[],
-            input_files=[],
-            output_text="你好！很高兴见到你。",
             messages=messages,
-            summary="简单的问候对话",
             used_time=1.0,
             usage={"prompt_tokens": 10, "completion_tokens": 20}
         )
-        assert QA.thread_id == "test_thread"
-        assert len(QA.messages) == 2
+        assert qa.thread_id == "test_thread"
+        assert len(qa.messages) == 2
         
         # 测试时间自动生成
-        assert isinstance(QA.request_time, datetime)
-        assert isinstance(QA.response_time, datetime)
+        assert isinstance(qa.request_time, datetime)
+        assert isinstance(qa.response_time, datetime)
+
+    def test_dialogue_with_simple_messages(self):
+        """测试对话模型验证"""
+        # 正常情况
+        qa = QA(
+            user_id="test_user",
+            thread_id="test_thread",
+            messages=[
+                ("user", "你好"),
+                ("ai", "你好！很高兴见到你。"),
+                ("user", "你叫什么名字？"),
+                ("ai", "我叫小明。")
+            ]
+        )
+        assert qa.thread_id == "test_thread"
+        assert len(qa.messages) == 4
         
-class TestL1Models:
+        # 测试时间自动生成
+        assert isinstance(qa.request_time, datetime)
+        assert isinstance(qa.response_time, datetime)
+
+class Test_L1_Models:
     """L1层模型测试"""
     
     def test_fact_summary_validation(self):
@@ -117,7 +126,7 @@ class TestL1Models:
                 window_end=now + timedelta(hours=1)
             )
 
-class TestL2Models:
+class Test_L2_Models:
     """L2层模型测试"""
     
     def test_concept_validation(self):
@@ -141,7 +150,7 @@ class TestL2Models:
         concept.relations["similar_to"] = ["related_concept"]
         assert len(concept.relations) == 3
         
-class TestL3Models:
+class Test_L3_Models:
     """L3层模型测试"""
     
     def test_thematic_graph_validation(self):
@@ -166,7 +175,10 @@ class TestL3Models:
         # 测试DOT导出
         dot = graph.to_dot()
         assert "digraph G" in dot
-        
+
+class Test_L4_Models:
+    """L4层模型测试"""
+    
     def test_core_view_validation(self):
         """测试核心观点模型验证"""
         view = CoreView(
