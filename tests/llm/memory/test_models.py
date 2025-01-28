@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from typing import Dict, List
 
-from illufly.llm.memory.L0_dialogue.models import Message, Dialogue
+from illufly.llm.memory.L0_QA.models import Message, QA
 from illufly.llm.memory.L1_facts.models import Fact
 from illufly.llm.memory.L2_concept.models import Concept
 from illufly.llm.memory.L3_thematic_graph.models import ThematicGraph
@@ -55,7 +55,7 @@ class TestL0Models:
         ]
         
         # 正常情况
-        dialogue = Dialogue(
+        QA = QA(
             user_id="test_user",
             thread_id="test_thread",
             input_text="你好",
@@ -67,12 +67,12 @@ class TestL0Models:
             used_time=1.0,
             usage={"prompt_tokens": 10, "completion_tokens": 20}
         )
-        assert dialogue.thread_id == "test_thread"
-        assert len(dialogue.messages) == 2
+        assert QA.thread_id == "test_thread"
+        assert len(QA.messages) == 2
         
         # 测试时间自动生成
-        assert isinstance(dialogue.request_time, datetime)
-        assert isinstance(dialogue.response_time, datetime)
+        assert isinstance(QA.request_time, datetime)
+        assert isinstance(QA.response_time, datetime)
         
 class TestL1Models:
     """L1层模型测试"""

@@ -3,13 +3,13 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from ..tasks import BaseProcessor
-from ..L0_dialogue import Dialogue
+from ..L0_QA import QA
 from ..L1_facts import Fact
 
 class DialogueProcessor(BaseProcessor):
     """对话处理器：L0 → L1"""
     def __init__(self, db: IndexedRocksDB, llm: ChatOpenAI):
-        super().__init__("dialogue", db, batch_size=5)
+        super().__init__("QA", db, batch_size=5)
         self.llm = llm
         self.next_level = "fact"
         
@@ -18,10 +18,10 @@ class DialogueProcessor(BaseProcessor):
         for task in tasks:
             try:
                 # 1. 获取对话数据
-                dialogue = Dialogue(**task.payload)
+                QA = QA(**task.payload)
                 
                 # 2. 提取事实
-                facts = await self._extract_facts(dialogue)
+                facts = await self._extract_facts(QA)
                 
                 # 3. 获取或创建事实队列
                 
@@ -30,7 +30,7 @@ class DialogueProcessor(BaseProcessor):
                 # 5. 创建下一层任务
                 await self.create_next_level_task(
                     fact_queue,
-                    dialogue.thread_id
+                    QA.thread_id
                 )
                 
                 # 6. 更新任务状态
@@ -43,13 +43,13 @@ class DialogueProcessor(BaseProcessor):
                     str(e)
                 )
                 
-    async def _extract_facts(self, dialogue: Dialogue) -> List[Fact]:
+    async def _extract_facts(self, QA: QA) -> List[Fact]:
         """从对话中提取事实"""
         prompt = f"""
         从以下对话中提取关键事实，每个事实不超过200字符。
         对话内容：
-        用户：{dialogue.input_text}
-        AI：{dialogue.output_text}
+        用户：{QA.input_text}
+        AI：{QA.output_text}
         
         请以JSON格式返回事实列表，每个事实包含：
         - title: 事实标题（30字以内）
@@ -61,13 +61,13 @@ class DialogueProcessor(BaseProcessor):
         
         return [
             Fact(
-                thread_id=dialogue.thread_id,
+                thread_id=QA.thread_id,
                 title=item["title"],
                 content=item["content"],
-                timestamp=dialogue.request_time,
-                source_chat_threads=[dialogue.thread_id],
-                window_start=dialogue.request_time,
-                window_end=dialogue.request_time + timedelta(hours=1)
+                timestamp=QA.request_time,
+                source_chat_threads=[QA.thread_id],
+                window_start=QA.request_time,
+                window_end=QA.request_time + timedelta(hours=1)
             )
             for item in facts_data
         ]

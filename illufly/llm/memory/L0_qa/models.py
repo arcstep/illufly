@@ -20,6 +20,10 @@ class Message(BaseModel):
     content: Union[str, Dict[str, Any]] = Field(..., description="消息内容")
     timestamp: datetime = Field(default_factory=datetime.now)
 
+    @property
+    def message(self):
+        return self.model_dump(exclude={"timestamp"})
+
 class Thread(BaseModel):
     """连续对话跟踪"""
     user_id: str = Field(..., description="用户ID")
@@ -42,26 +46,26 @@ class Thread(BaseModel):
     def parent_key(self):
         return generate_key(MemoryType.THREAD, self.user_id)
 
-class Dialogue(BaseModel):
+class QA(BaseModel):
     """L0: 单次对话
 
     持久化保存。
-    每次对话中，都通过 messages 向AI发送了完整的上下文信息；
-    但用户看到的UI中，一般只包含 input_text 和 output_text。
-
+    每次问答都通过 messages 向AI发送了完整的上下文信息。
     通常情况下，我们都需要对本轮对话做摘要处理，以便于后续提取事实和概念。
+
+    必要的构建要求：
+        - user_id
+        - thread_id
+        - messages
     """
-    dialogue_id: str = Field(default=None, description="对话ID，如果为None，则自动生成")
+    qa_id: str = Field(default=None, description="对话ID，如果为None，则自动生成")
+    level: str = Field(default="L0", description="对话层级")
     user_id: str = Field(..., description="用户ID")
     thread_id: str = Field(..., description="对话ID")
-    input_text: str = Field(..., description="用户输入消息")
-    input_images: List[str] = Field(default_factory=list, description="用户输入图片")
-    input_files: List[str] = Field(default_factory=list, description="用户输入文件")
-    output_text: str = Field(..., description="AI输出消息")
     messages: List[Message] = Field(..., description="符合LLM标准的用户与AI的问答消息列表，包括系统提示语、用户输入、AI输出等")
-    summary: str = Field(
-        default="",  # 先设置空字符串作为默认值
-        description="本轮对话摘要"
+    summary: List[Message] = Field(
+        default=[],  # 先设置空列表作为默认值
+        description="本轮对话摘要，一般是精简后的问答对消息"
     )
     request_time: datetime = Field(default_factory=datetime.now)
     response_time: datetime = Field(default_factory=datetime.now)
@@ -74,23 +78,52 @@ class Dialogue(BaseModel):
         description="本轮对话的token使用情况"
     )
 
-    @property
-    def parent_key(self):
-        return generate_key(MemoryType.THREAD, self.user_id, self.thread_id)
+    @classmethod
+    def generate_parent_key(cls, user_id: str, thread_id: str):
+        """用于 rocksdb 列举所有键值的 key"""
+        return generate_key(MemoryType.QA, user_id, thread_id)
 
     @property
     def key(self):
-        return generate_key(self.parent_key, self.dialogue_id)
+        """用于 rocksdb 保存的 key"""
+        return generate_key(self.generate_parent_key(self.user_id, self.thread_id), self.qa_id)
+
+    @property
+    def question(self):
+        for m in self.messages:
+            if m.role == "user":
+                return m.content
+        return ""
+
+    @property
+    def answer(self):
+        for m in reversed(self.messages):
+            if m.role == "assistant":
+                return m.content
+        return ""
+
+    @property
+    def qa_message(self):
+        if self.summary:
+            return [m.message for m in self.summary]
+        
+        return [
+            {
+                "role": "user",
+                "content": self.question
+            },
+            {
+                "role": "assistant",
+                "content": self.answer
+            }
+        ]
 
     def model_post_init(self, __context) -> None:
         """在模型初始化后执行"""
-        if not self.summary:
-            self.summary = f"human: {self.input_text}\nai: {self.output_text}"
-        
         if self.used_time == 0.0:
             self.used_time = (self.response_time - self.request_time).total_seconds()
 
-        # 如果没有提供dialogue_id，则自动生成
-        if not self.dialogue_id:
-            self.dialogue_id = generate_id()
+        # 如果没有提供qa_id，则自动生成
+        if not self.qa_id:
+            self.qa_id = generate_id()
 
