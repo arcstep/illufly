@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Union
 
 import logging
 
-from ..io.rocksdict.index.index_rocksdb import IndexedRocksDB
+from ..io.rocksdict import default_rocksdb, IndexedRocksDB
 from ..llm.memory.L0_QA import QAManager, QA, Message
 from ..call import RemoteServer
 from ..mq import Publisher, StreamingBlock, BlockType, TextChunk
@@ -27,14 +27,13 @@ class ChatBase(RemoteServer, ABC):
     def __init__(
         self,
         user_id: str = None,
-        db_path: str = None,
+        db: IndexedRocksDB = None,
         **kwargs
     ):
         super().__init__(**kwargs)
 
-        self.db_path = db_path
-        self.db = IndexedRocksDB(self.db_path)        
-
+        self.user_id = user_id or "default"
+        self.db = db or default_rocksdb
         self._logger = logging.getLogger(__name__)
 
         self.l0_qa = QAManager(db=self.db, user_id=user_id)
@@ -96,18 +95,18 @@ class ChatBase(RemoteServer, ABC):
         patched_messages = self.l0_qa.retrieve(self.thread_id, messages=normalized_messages)
 
         # 调用 LLM 生成回答
-        messages_with_context = [m.message for m in patched_messages]
+        messages_with_context = [m.message_dict for m in patched_messages]
         self._logger.info(f"last input: {messages_with_context}")
         final_text = await self._async_generate_from_llm(messages_with_context, request_id, publisher, **kwargs)
         self._logger.info(f"last output: {final_text}")
 
         # 处理输出消息
-        final_message = Message(role="assistant", message=final_text)
+        final_message = Message(role="assistant", content=final_text)
         patched_messages.append(final_message)
         qa = QA(
             user_id=self.user_id,
             thread_id=self.thread_id,
-            qa_message=patched_messages
+            messages=patched_messages
         )
         self.l0_qa.add_QA(qa)
 

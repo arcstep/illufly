@@ -21,7 +21,7 @@ class Message(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
 
     @property
-    def message(self):
+    def message_dict(self):
         return self.model_dump(exclude={"timestamp"})
     
     @classmethod

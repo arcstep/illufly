@@ -67,9 +67,9 @@ class QAManager():
         if has_system_message:
             short_memory.append(messages[0])
 
-        for dia in self.all_QAs(thread_id):
-            if dia.level == "L0":
-                short_memory.extend(dia.qa_message)
+        for qa in self.all_QAs(thread_id):
+            if qa.level == "L0":
+                short_memory.extend(qa.messages)
         
         if has_system_message:
             short_memory.extend(messages[1:])

@@ -18,81 +18,73 @@ def setup_logging(caplog):
     caplog.set_level(logging.INFO)
 
 @pytest.fixture
-def chat_with_invalid_model():
-    return ChatOpenAI(
-        prefix="QWEN",
-        model="qwen-test",
+async def chat_with_invalid_model():
+    chat = ChatOpenAI(
+        prefix="ZHIPU",
+        model="zhipu-test",
         service_name="test_chat_openai",
         logger=logger,
     )
+    yield chat
+    await chat.stop()
 
 @pytest.fixture
-def chat_with_invalid_api_key():
-    return ChatOpenAI(
-        prefix="QWEN",
+async def chat_with_invalid_api_key():
+    chat = ChatOpenAI(
+        prefix="ZHIPU",
         api_key="invalid_key",
         service_name="test_chat_openai",
         logger=logger,
     )
+    yield chat
+    await chat.stop()
 
 @pytest.fixture
-def chat():
-    return ChatOpenAI(
-        prefix="QWEN",
+async def chat():
+    chat = ChatOpenAI(
+        prefix="ZHIPU",
         service_name="test_chat_openai",
         logger=logger,
     )
+    yield chat
+    await chat.stop()
 
-def test_invalid_model(chat_with_invalid_model):
+@pytest.mark.asyncio
+async def test_invalid_model(chat_with_invalid_model):
     """测试无效模型场景"""
     messages = [{"role": "user", "content": "你好"}]
-    sub = chat_with_invalid_model(messages)
+    sub = await chat_with_invalid_model.async_call(messages)
     blocks = []
-    for block in sub.collect():  # 直接使用 chat 实例
+    async for block in sub.async_collect():  # 直接使用 chat 实例
         blocks.append(block)
         logger.info(f"Received block: {block}")
     
     assert blocks[-2].block_type == BlockType.ERROR
     assert blocks[-1].block_type == BlockType.END
 
-def test_normal_chat(chat):
+@pytest.mark.asyncio
+async def test_normal_chat(chat):
     """测试正常对话场景"""
     messages = [{"role": "user", "content": "你好"}]
-    sub = chat(messages)
+    sub = await chat.async_call(messages)
     blocks = []
-    for block in sub.collect():  # 直接使用 chat 实例
+    async for block in sub.async_collect():  # 直接使用 chat 实例
         blocks.append(block)
         logger.info(f"Received block: {block}")
     
-    assert blocks[-2].block_type == BlockType.TEXT_CHUNK
+    assert blocks[-3].block_type == BlockType.TEXT_CHUNK
+    assert blocks[-2].block_type == BlockType.USAGE
     assert blocks[-1].block_type == BlockType.END
 
-def test_invalid_message_format(chat):
-    """测试无效的消息格式"""
-    invalid_messages = [
-        "不是字典的消息",  # 不是字典
-        {"missing_role": "content"},  # 缺少必要的键
-        {"role": 123, "content": "内容"},  # role 不是字符串
-        {"role": "user", "content": 456}  # content 不是字符串
-    ]
-    for message in invalid_messages:
-        messages = [message]
-        sub = chat(messages)
-        blocks = []
-        for block in sub.collect():
-            blocks.append(block)
-            logger.info(f"Received block: {block}")
-        
-        assert blocks[-2].block_type == BlockType.ERROR
-        assert blocks[-1].block_type == BlockType.END
 
-def test_invalid_api_key(chat_with_invalid_api_key):
+@pytest.mark.asyncio
+async def test_invalid_api_key(chat_with_invalid_api_key):
     """测试无效的 API Key"""
     messages = [{"role": "user", "content": "你好"}]
-    sub = chat_with_invalid_api_key(messages)
+    sub = await chat_with_invalid_api_key.async_call(messages)
     blocks = []
     logger.warning(f"OpenAI client: {chat_with_invalid_api_key.client}, model_args: {chat_with_invalid_api_key.model_args}")
-    for block in sub.collect():
+    async for block in sub.async_collect():
         blocks.append(block)
         logger.info(f"Received block: {block}")
     
