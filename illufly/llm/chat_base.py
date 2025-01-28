@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Set
 
 import logging
 
@@ -28,42 +28,63 @@ class ChatBase(RemoteServer, ABC):
         self,
         user_id: str = None,
         db: IndexedRocksDB = None,
+        levels: Set[str] = None,
         **kwargs
     ):
         super().__init__(**kwargs)
 
         self.user_id = user_id or "default"
         self.db = db or default_rocksdb
-        self._logger = logging.getLogger(__name__)
 
-        self.l0_qa = QAManager(db=self.db, user_id=user_id)
-        last_thread = self.l0_qa.last_thread()
-        if not last_thread:
-            last_thread = self.l0_qa.create_thread()
-        self.thread = last_thread
+        self._levels = {"L0", "L1", "L2", "L3"} if levels is None else levels
+        self._logger = logging.getLogger(__name__)
+        self._l0_qa = QAManager(db=self.db, user_id=user_id)
+
+        self.thread = None
+
+        if "L0" in self._levels:
+            last_thread = self._l0_qa.last_thread()
+            if not last_thread:
+                last_thread = self._l0_qa.create_thread()
+            self.thread = last_thread
+
+    # L0 相关属性和方法
 
     @property
+    def all_threads(self):
+        return self._l0_qa.all_threads() if "L0" in self._levels else []
+    
+    @property
     def thread_id(self):
-        return self.thread.thread_id
+        return self.thread.thread_id if "L0" in self._levels else None
 
     @property
     def history(self):
-        return self.l0_qa.retrieve(self.thread_id)
+        return self._l0_qa.retrieve(self.thread_id) if "L0" in self._levels else []
     
     @property
     def history_messages(self):
-        return [m.message_dict for m in self.history]
+        return [m.message_dict for m in self.history] if "L0" in self._levels else []
+
+    @property
+    def all_QAs(self):
+        return self._l0_qa.all_QAs(self.thread_id) if "L0" in self._levels else []
 
     def new_thread(self):
         """创建一个新的对话"""
-        self.thread = self.l0_qa.create_thread()
+        self.thread = self._l0_qa.create_thread() if "L0" in self._levels else None
     
     def load_thread(self, thread_id: str):
         """从历史对话加载"""
-        thread = self.l0_qa.get_thread(thread_id)
-        if not thread:
-            raise ValueError(f"对话 {thread_id} 不存在")
-        self.thread = thread
+        if "L0" in self._levels:
+            thread = self._l0_qa.get_thread(thread_id)
+            if not thread:
+                raise ValueError(f"对话 {thread_id} 不存在")
+            self.thread = thread
+
+    # L1 相关属性和方法
+    # L2 相关属性和方法
+    # L3 相关属性和方法
 
     @abstractmethod
     async def _async_generate_from_llm(
@@ -106,7 +127,7 @@ class ChatBase(RemoteServer, ABC):
         self._logger.info(f"normalized messages objects: {normalized_messages}")
 
         # 补充认知上下文
-        patched_messages = self.l0_qa.retrieve(self.thread_id, messages=normalized_messages)
+        patched_messages = self._l0_qa.retrieve(self.thread_id, messages=normalized_messages) if "L0" in self._levels else normalized_messages
 
         # 调用 LLM 生成回答
         messages_with_context = [m.message_dict for m in patched_messages]
@@ -115,13 +136,14 @@ class ChatBase(RemoteServer, ABC):
         self._logger.info(f"last output: {final_text}")
 
         # 处理输出消息
-        final_messages = normalized_messages + [Message(role="assistant", content=final_text)]
-        qa = QA(
-            user_id=self.user_id,
-            thread_id=self.thread_id,
-            messages=final_messages
-        )
-        self.l0_qa.add_QA(qa)
+        if "L0" in self._levels:
+            qa_messages = normalized_messages + [Message(role="assistant", content=final_text)]
+            qa = QA(
+                user_id=self.user_id,
+                thread_id=self.thread_id,
+                messages=qa_messages
+            )
+            self._l0_qa.add_QA(qa)
 
     def normalize_messages(self, messages: Union[str, List[Dict[str, Any]]]):
         """规范化消息"""
