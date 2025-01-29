@@ -19,6 +19,10 @@ class ChatBase(RemoteServer, ABC):
     - 允许服务端独立，可以通过 Router 模式实现负载均衡的升级模式
     - 客户端在进程内管理 rocksdb 数据符合最佳实践，方便结合 fastapi 和 traefik 部署
 
+    最佳实践：
+    - 仅为 system 消息使用模板
+    - 模板中的变量可以在调用时由 bindings 指定，也可以由绑定到内置的上下文专有变量
+
     按照多种维度，根据问题转换上下文环境：
     - 多轮对话
     - 工具回调
@@ -90,15 +94,23 @@ class ChatBase(RemoteServer, ABC):
         _messages = messages if isinstance(messages, list) else [messages]
         return [Message.create(m) for m in _messages]
 
-    async def async_call(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
+    async def async_call(
+        self,
+        messages: Union[str, List[Dict[str, Any]]],
+        block_types: List[BlockType] = None,
+        system_template: SystemTemplate = None,
+        bindings: Dict[str, Any] = None,
+        **kwargs
+    ):
         """异步调用远程服务"""
+        block_types = block_types or [BlockType.TEXT_CHUNK, BlockType.USAGE, BlockType.ERROR]
         normalized_messages = self.normalize_messages(messages)
-        patched_messages = self.before_call(normalized_messages)
+        patched_messages = self.before_call(normalized_messages, system_template, bindings)
 
         # 远程调用
         sub = await self._requester.async_request(kwargs={"messages": patched_messages, **kwargs})
         final_text = ""
-        async for b in sub.async_collect():
+        async for b in sub.async_collect(block_types=block_types):
             if b.block_type == BlockType.TEXT_CHUNK:
                 final_text += b.text
             yield b
@@ -106,15 +118,23 @@ class ChatBase(RemoteServer, ABC):
         # 写入认知上下文
         self.after_call(normalized_messages, final_text, **kwargs)
 
-    def call(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
+    def call(
+        self,
+        messages: Union[str, List[Dict[str, Any]]],
+        block_types: List[BlockType] = None,
+        system_template: SystemTemplate = None,
+        bindings: Dict[str, Any] = None,
+        **kwargs
+    ):
         """同步调用远程服务"""
+        block_types = block_types or [BlockType.TEXT_CHUNK, BlockType.USAGE, BlockType.ERROR]
         normalized_messages = self.normalize_messages(messages)
-        patched_messages = self.before_call(normalized_messages)
+        patched_messages = self.before_call(normalized_messages, system_template, bindings)
 
         # 远程调用
         sub = self._requester.request(kwargs={"messages": patched_messages, **kwargs})
         final_text = ""
-        for b in sub.collect():
+        for b in sub.collect(block_types=block_types):
             if b.block_type == BlockType.TEXT_CHUNK:
                 final_text += b.text
             yield b
@@ -122,10 +142,18 @@ class ChatBase(RemoteServer, ABC):
         # 写入认知上下文
         self.after_call(normalized_messages, final_text, **kwargs)
 
-    def before_call(self, normalized_messages: List[Message]):
+    def before_call(self, normalized_messages: List[Message], system_template: SystemTemplate, bindings: Dict[str, Any]):
         """补充认知上下文"""
-        # 补充认知上下文
+
+        # 从认知上下文中获取消息
         patched_messages = self.l0_qa.retrieve(self.thread_id, messages=normalized_messages)
+
+        # 如果系统消息不存在，则补充系统消息
+        if patched_messages[0].role != "system" and system_template:
+            bindings = bindings or {}
+            system_message = system_template.format(variables=bindings)
+            patched_messages.insert(0, Message(role="system", content=system_message))
+
         return [m.message_dict for m in patched_messages]
 
     def after_call(self, normalized_messages: List[Message], final_text: str, **kwargs):

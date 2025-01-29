@@ -62,7 +62,7 @@ async def test_chat_response(chat):
         assert events[i].block_type == BlockType.TEXT_CHUNK
         assert events[i].content == char
     
-    assert events[-1].block_type == BlockType.END
+    assert events[-1].block_type == BlockType.TEXT_CHUNK
             
 @pytest.mark.asyncio
 async def test_chat_multiple_responses(chat_with_list):
@@ -74,7 +74,7 @@ async def test_chat_multiple_responses(chat_with_list):
     
     assert len(blocks) > 0
     assert blocks[0].block_type == BlockType.TEXT_CHUNK
-    assert blocks[-1].block_type == BlockType.END
+    assert blocks[-1].block_type == BlockType.TEXT_CHUNK
 
 @pytest.mark.asyncio
 async def test_chat_sleep_timing(chat):
@@ -105,4 +105,4 @@ def test_sync_chat_response(chat):
         assert events[i].block_type == BlockType.TEXT_CHUNK
         assert events[i].content == char
     
-    assert events[-1].block_type == BlockType.END
+    assert events[-1].block_type == BlockType.TEXT_CHUNK

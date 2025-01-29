@@ -58,8 +58,7 @@ async def test_invalid_model(chat_with_invalid_model):
         blocks.append(block)
         logger.info(f"Received block: {block}")
     
-    assert blocks[-2].block_type == BlockType.ERROR
-    assert blocks[-1].block_type == BlockType.END
+    assert blocks[-1].block_type == BlockType.ERROR
 
 @pytest.mark.asyncio
 async def test_normal_chat(chat):
@@ -70,9 +69,8 @@ async def test_normal_chat(chat):
         blocks.append(block)
         logger.info(f"Received block: {block}")
     
-    assert blocks[-3].block_type == BlockType.TEXT_CHUNK
-    assert blocks[-2].block_type == BlockType.USAGE
-    assert blocks[-1].block_type == BlockType.END
+    assert blocks[-2].block_type == BlockType.TEXT_CHUNK
+    assert blocks[-1].block_type == BlockType.USAGE
 
 
 @pytest.mark.asyncio
@@ -86,6 +84,5 @@ async def test_invalid_api_key(chat_with_invalid_api_key):
         blocks.append(block)
         logger.info(f"Received block: {block}")
     
-    assert blocks[-2].block_type == BlockType.ERROR
-    assert blocks[-1].block_type == BlockType.END
+    assert blocks[-1].block_type == BlockType.ERROR
 
