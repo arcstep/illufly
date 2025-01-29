@@ -196,7 +196,7 @@ class ChatOpenAI(ChatBase):
                 
         return processed_messages
 
-    async def _async_generate_from_llm(
+    async def _async_handler(
         self,
         messages: Union[List[dict], str],
         request_id: str,

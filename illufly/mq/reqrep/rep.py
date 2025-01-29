@@ -13,12 +13,21 @@ import uuid
 class Replier(BaseMQ):
     """ZMQ REP 响应者
     """
-    def __init__(self, address=None, publisher=None, logger=None, timeout=None, max_concurrent_tasks=None, service_name=None, connect_mode=False):
+    def __init__(
+        self,
+        address=None,
+        publisher=None,
+        logger=None,
+        timeout=None,
+        max_concurrent_tasks=None,
+        service_name=None,
+        enable_router=False
+    ):
         super().__init__(address, logger)
         self._timeout = timeout
         self._max_concurrent_tasks = max_concurrent_tasks or 10
         self._service_name = service_name or f"service_{self.__hash__()}"
-        self._connect_mode = connect_mode
+        self._enable_router = enable_router
 
         self._publisher = publisher or DEFAULT_PUBLISHER
 
@@ -34,7 +43,7 @@ class Replier(BaseMQ):
         self._bound_socket = self._context.socket(zmq.REP)
         self._bound_socket.set_hwm(self._max_concurrent_tasks * 2)
         
-        if self._connect_mode:
+        if self._enable_router:
             # 作为后端服务连接到路由器
             self._bound_socket.connect(self._address)
             self._logger.info(f"Replier connected to router: {self._address}")

@@ -24,7 +24,8 @@ class RemoteServer(BaseCall):
         publisher: Optional[Publisher] = None,
         service_name: str = None,
         request_timeout: int = 30*1000,
-        connect_mode: bool = False
+        enable_router: bool = False,
+        enable_server: bool = True
     ):
         super().__init__(logger)
         self.max_concurrent_tasks = max_concurrent_tasks
@@ -32,18 +33,23 @@ class RemoteServer(BaseCall):
         self.service_name = service_name or f"{self.__class__.__name__}.{self.__hash__()}"
         self.address = address or f"inproc://{self.service_name}"
         self.request_timeout = request_timeout
-        self.connect_mode = connect_mode
+        self.enable_router = enable_router
 
+        # 创建服务器端启动环境
         self._server_task = None
         self._stop_event = asyncio.Event()
         self._ready_event = asyncio.Event()
-
-        self.register_method("handle_request", async_handle=self._async_handler)
-
         self._async_utils = AsyncUtils(logger=self._logger)
-        loop = self._async_utils.get_or_create_loop()
-        loop.create_task(self.start())
-        loop.run_until_complete(self.wait_until_ready())
+
+        if enable_server:
+            # 注册请求处理方法
+            self.register_method("handle_request", async_handle=self._async_handler)
+            # 启动服务器
+            loop = self._async_utils.get_or_create_loop()
+            loop.create_task(self.start())
+            loop.run_until_complete(self.wait_until_ready())
+
+        # 创建客户端请求对象
         self._requester = Requester(address=self.address, timeout=self.request_timeout, logger=self._logger)
 
     def __repr__(self):
@@ -76,7 +82,7 @@ class RemoteServer(BaseCall):
                 logger=self._logger,
                 publisher=self.publisher,
                 service_name=self.service_name,
-                connect_mode=self.connect_mode
+                enable_router=self.enable_router
             )
             
             self._ready_event.set()

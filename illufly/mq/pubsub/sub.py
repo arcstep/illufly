@@ -15,7 +15,7 @@ class Subscriber(BaseMQ):
         """初始化订阅者
         
         Args:
-            request_id: 线程ID
+            request_id: 使用请求ID作为订阅主题
             address: ZMQ地址
             logger: 日志记录器
             timeout: 消息之间的最大间隔时间(秒)，如果设置为 -1 就是永远等待

@@ -12,6 +12,13 @@ from .system_template import SystemTemplate
 class ChatBase(RemoteServer, ABC):
     """Base Chat Service
 
+    注意，因为不在远程 REP 方法中持久化 Chat 相关数据，因此相关数据管理方法也在客户端实现。
+    服务端只负责分发请求，不负责请求数据持久化，就可以支持分布式的 Chat 服务部署。
+    分布式 Chat 部署可以带来的好处：
+    - 允许服务端独立，可以支持多用户访问时的背压控制，这在企业级场景中需要对资源使用授权时非常有用
+    - 允许服务端独立，可以通过 Router 模式实现负载均衡的升级模式
+    - 客户端在进程内管理 rocksdb 数据符合最佳实践，方便结合 fastapi 和 traefik 部署
+
     按照多种维度，根据问题转换上下文环境：
     - 多轮对话
     - 工具回调
@@ -77,8 +84,69 @@ class ChatBase(RemoteServer, ABC):
             raise ValueError(f"对话 {thread_id} 不存在")
         self.thread = thread
 
+    def normalize_messages(self, messages: Union[str, List[Dict[str, Any]]]):
+        """规范化消息"""
+        self._logger.info(f"messages: {messages}")
+        _messages = messages if isinstance(messages, list) else [messages]
+        return [Message.create(m) for m in _messages]
+
+    async def async_call(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
+        """异步调用远程服务"""
+        normalized_messages = self.normalize_messages(messages)
+        patched_messages = self.before_call(normalized_messages)
+
+        # 远程调用
+        sub = await self._requester.async_request(kwargs={"messages": patched_messages, **kwargs})
+        final_text = ""
+        async for b in sub.async_collect():
+            if b.block_type == BlockType.TEXT_CHUNK:
+                final_text += b.text
+            yield b
+        
+        # 写入认知上下文
+        self.after_call(normalized_messages, final_text, **kwargs)
+
+    def call(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
+        """同步调用远程服务"""
+        normalized_messages = self.normalize_messages(messages)
+        patched_messages = self.before_call(normalized_messages)
+
+        # 远程调用
+        sub = self._requester.request(kwargs={"messages": patched_messages, **kwargs})
+        final_text = ""
+        for b in sub.collect():
+            if b.block_type == BlockType.TEXT_CHUNK:
+                final_text += b.text
+            yield b
+        
+        # 写入认知上下文
+        self.after_call(normalized_messages, final_text, **kwargs)
+
+    def before_call(self, normalized_messages: List[Message]):
+        """补充认知上下文"""
+        # 补充认知上下文
+        patched_messages = self.l0_qa.retrieve(self.thread_id, messages=normalized_messages)
+        return [m.message_dict for m in patched_messages]
+
+    def after_call(self, normalized_messages: List[Message], final_text: str, **kwargs):
+        """回写认知上下文"""
+
+        # 处理输出消息
+        qa_messages = normalized_messages + [Message(role="assistant", content=final_text)]
+        qa = QA(
+            user_id=self.user_id,
+            thread_id=self.thread_id,
+            messages=qa_messages
+        )
+        self.l0_qa.add_QA(qa)
+
+    ## ***********************************************************************
+    ## 以下是 ZMQ 远程 REP 服务方法实现
+    ## 注意，远程方法中不使用 rocksdb 数据存储服务
+    ## ***********************************************************************
+
     @abstractmethod
-    async def _async_generate_from_llm(
+    async def _async_handler(
         self,
         messages: Union[str, List[Dict[str, Any]]],
         request_id: str, # RemoteServer 要求的参数
@@ -95,58 +163,3 @@ class ChatBase(RemoteServer, ABC):
         """
         pass
 
-    async def async_call(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
-        """异步调用远程服务"""
-        messages = [m.message_dict for m in self.normalize_messages(messages)]
-        return await self._requester.async_request(kwargs={"messages": messages, **kwargs})
-
-    def call(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
-        """同步调用远程服务"""
-        messages = [m.message_dict for m in self.normalize_messages(messages)]
-        return self._requester.request(kwargs={"messages": messages, **kwargs})
-
-    async def _async_handler(
-        self,
-        messages: Union[str, List[Dict[str, Any]]],
-        request_id: str, # RemoteServer 要求的参数
-        publisher: Publisher, # RemoteServer 要求的参数
-        template: SystemTemplate = None,
-        **kwargs
-    ):
-        """转换提问的问题
-        
-        Args:
-            messages: 输入消息
-            request_id: 请求ID（RemoteServer 要求的参数）
-            publisher: 发布者（RemoteServer 要求的参数）
-            template: 系统模板
-            **kwargs: 其他用户自定义参数
-        """
-
-        # 规范化消息
-        normalized_messages = self.normalize_messages(messages)
-        self._logger.info(f"normalized messages objects: {normalized_messages}")
-
-        # 补充认知上下文
-        patched_messages = self.l0_qa.retrieve(self.thread_id, messages=normalized_messages)
-
-        # 调用 LLM 生成回答
-        messages_with_context = [m.message_dict for m in patched_messages]
-        self._logger.info(f"last input: {messages_with_context}")
-        final_text = await self._async_generate_from_llm(messages_with_context, request_id, publisher, **kwargs)
-        self._logger.info(f"last output: {final_text}")
-
-        # 处理输出消息
-        qa_messages = normalized_messages + [Message(role="assistant", content=final_text)]
-        qa = QA(
-            user_id=self.user_id,
-            thread_id=self.thread_id,
-            messages=qa_messages
-        )
-        self.l0_qa.add_QA(qa)
-
-    def normalize_messages(self, messages: Union[str, List[Dict[str, Any]]]):
-        """规范化消息"""
-        self._logger.info(f"messages: {messages}")
-        _messages = messages if isinstance(messages, list) else [messages]
-        return [Message.create(m) for m in _messages]

@@ -32,7 +32,7 @@ class ChatFake(ChatBase):
             f"sleep: {self.sleep}s"
         )
 
-    async def _async_generate_from_llm(self, messages: Union[str, List[Dict[str, Any]]], request_id: str, publisher: Publisher, **kwargs):
+    async def _async_handler(self, messages: Union[str, List[Dict[str, Any]]], request_id: str, publisher: Publisher, **kwargs):
         """异步生成响应"""
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
