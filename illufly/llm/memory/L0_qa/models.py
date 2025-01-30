@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, computed_field
 import uuid
 
 from ..utils import generate_id, generate_key
-from ..types import MemoryType
+from ..types import MemoryType, TaskState
 
 class Message(BaseModel):
     """原始消息
@@ -81,6 +81,8 @@ class QA(BaseModel):
         default=None,  # 先设置空列表作为默认值
         description="本轮对话摘要，一般是精简后的问答对消息"
     )
+    task_summarize: TaskState = Field(default=TaskState.TODO, description="摘要任务执行状态")
+    task_extract_facts: TaskState = Field(default=TaskState.TODO, description="事实提取任务执行状态")
     request_time: datetime = Field(default_factory=datetime.now)
     response_time: datetime = Field(default_factory=datetime.now)
     used_time: float = Field(

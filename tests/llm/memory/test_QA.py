@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from illufly.llm.memory.L0_qa.models import QA, Message
 from illufly.llm.memory.L0_qa.qa_manager import QAManager
+from illufly.llm.memory.L0_qa.models import TaskState
 
 class TestQA:
     """问答测试"""
@@ -164,3 +165,126 @@ class TestQA:
         # 使用自定义限制检索
         messages = manager.retrieve(thread_id, limit=5)
         assert len(messages) <= 10  # 考虑到每个QA有两条消息
+
+    def test_task_flags_initial_state(self, sample_qa):
+        """测试任务标记的初始状态"""
+        assert sample_qa.task_summarize == TaskState.TODO
+        assert sample_qa.task_extract_facts == TaskState.TODO
+
+    def test_summarise_todo_list(self, user_id, db):
+        """测试摘要待办任务列表"""
+        thread_id = "test_thread_todo"
+        manager = QAManager(db, user_id=user_id)
+        manager.create_thread(thread_id=thread_id)
+        
+        # 创建多个QA，部分需要摘要
+        qas = [
+            QA(
+                qa_id=f"qa_{i}",
+                user_id=user_id,
+                thread_id=thread_id,
+                messages=[
+                    Message(role="user", content=f"问题{i}"),
+                    Message(role="assistant", content=f"回答{i}")
+                ],
+                task_summarize=TaskState.TODO if i % 2 == 0 else TaskState.DONE
+            )
+            for i in range(4)
+        ]
+        
+        for qa in qas:
+            manager.add_qa(qa)
+        
+        # 获取待办任务列表
+        todo_list = manager.summarise_todo_list()
+        assert len(todo_list) == 2  # 应该有2个待办任务
+        assert all(qa.task_summarize == TaskState.TODO for qa in todo_list)
+
+    def test_extract_facts_todo_list(self, user_id, db):
+        """测试事实提取待办任务列表"""
+        thread_id = "test_thread_facts"
+        manager = QAManager(db, user_id=user_id)
+        manager.create_thread(thread_id=thread_id)
+        
+        # 创建多个QA，部分需要提取事实
+        qas = [
+            QA(
+                qa_id=f"qa_{i}",
+                user_id=user_id,
+                thread_id=thread_id,
+                messages=[
+                    Message(role="user", content=f"问题{i}"),
+                    Message(role="assistant", content=f"回答{i}")
+                ],
+                task_extract_facts=TaskState.TODO if i % 3 == 0 else TaskState.DONE
+            )
+            for i in range(6)
+        ]
+        
+        for qa in qas:
+            manager.add_qa(qa)
+        
+        # 获取待办任务列表
+        todo_list = manager.extract_facts_todo_list()
+        assert len(todo_list) == 2  # 应该有2个待办任务
+        assert all(qa.task_extract_facts == TaskState.TODO for qa in todo_list)
+
+    def test_task_state_updates(self, user_id, db):
+        """测试任务状态更新"""
+        thread_id = "test_thread_updates"
+        manager = QAManager(db, user_id=user_id)
+        manager.create_thread(thread_id=thread_id)
+        
+        # 创建一个需要处理的QA
+        qa = QA(
+            qa_id="test_qa",
+            user_id=user_id,
+            thread_id=thread_id,
+            messages=[
+                Message(role="user", content="测试问题"),
+                Message(role="assistant", content="测试回答")
+            ]
+        )
+        manager.add_qa(qa)
+        
+        # 更新摘要状态
+        manager.summarise_set(qa, TaskState.DONE)
+        updated_qa = QA(**manager.get_qa(thread_id, qa.qa_id))
+        assert updated_qa.task_summarize == TaskState.DONE
+        assert updated_qa.task_extract_facts == TaskState.TODO  # 不应影响其他标记
+        
+        # 更新事实提取状态
+        manager.extract_facts_set(qa, TaskState.DONE)
+        updated_qa = QA(**manager.get_qa(thread_id, qa.qa_id))
+        assert updated_qa.task_extract_facts == TaskState.DONE
+        
+        # 验证待办列表更新
+        assert len(manager.summarise_todo_list()) == 0
+        assert len(manager.extract_facts_todo_list()) == 0
+
+    def test_task_state_error_handling(self, user_id, db):
+        """测试任务状态错误处理"""
+        thread_id = "test_thread_errors"
+        manager = QAManager(db, user_id=user_id)
+        manager.create_thread(thread_id=thread_id)
+        
+        qa = QA(
+            qa_id="test_qa",
+            user_id=user_id,
+            thread_id=thread_id,
+            messages=[
+                Message(role="user", content="测试问题"),
+                Message(role="assistant", content="测试回答")
+            ]
+        )
+        manager.add_qa(qa)
+        
+        # 测试设置错误状态
+        manager.summarise_set(qa, TaskState.ERROR)
+        updated_qa = QA(**manager.get_qa(thread_id, qa.qa_id))
+        assert updated_qa.task_summarize == TaskState.ERROR
+        
+        # 测试从错误状态恢复
+        manager.summarise_set(qa, TaskState.TODO)
+        updated_qa = QA(**manager.get_qa(thread_id, qa.qa_id))
+        assert updated_qa.task_summarize == TaskState.TODO

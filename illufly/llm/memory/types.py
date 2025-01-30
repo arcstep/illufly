@@ -8,3 +8,10 @@ class MemoryType(str, Enum):
     CONCEPT = "concept"
     THEMATIC_GRAPH = "thematic_graph"
     CORE_VIEW = "core_view"
+
+class TaskState(str, Enum):
+    """任务状态"""
+    TODO = "todo"
+    PROCESSING = "processing"
+    DONE = "done"
+    ERROR = "error"
