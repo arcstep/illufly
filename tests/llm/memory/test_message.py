@@ -84,7 +84,7 @@ class TestMessage:
     def test_message_property(self):
         """测试 message 属性（用于序列化）"""
         msg = Message(role="user", content="测试消息")
-        message_dict = msg.message
+        message_dict = msg.message_dict
         
         # 验证序列化结果
         assert isinstance(message_dict, dict)

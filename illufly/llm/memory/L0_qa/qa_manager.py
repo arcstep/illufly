@@ -25,11 +25,11 @@ class QAManager():
     def create_thread(self, title: str = "", description: str = "", thread_id: str = None):
         """创建一个对话"""
         thread = Thread(user_id=self.user_id, title=title, description=description, thread_id=thread_id)
-        self.db[thread.key] = thread.model_dump()
+        self.db.update_with_indexes(MemoryType.THREAD, thread.key, thread.model_dump())
         return thread
     
     def get_thread(self, thread_id: str):
-        """获取一个对话"""
+        """获取一个对话"""        
         data = self.db[generate_key(MemoryType.THREAD, self.user_id, thread_id)]
         if data:
             return Thread(**data)
@@ -62,7 +62,7 @@ class QAManager():
         """添加一个对话"""
         if self.user_id != qa.user_id:
             raise ValueError("对话的用户ID与管理器的用户ID不匹配")
-        self.db[qa.key] = qa.model_dump()
+        self.db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
 
     def get_QA(self, thread_id: str, qa_id: str):
         """获取一个对话"""
@@ -75,11 +75,12 @@ class QAManager():
         self._logger.info(f"获取问答对清单：{values}")
         return [QA(**value) for value in values]
 
-    def retrieve(self, thread_id: str, messages: List[Message] = None):
+    def retrieve(self, thread_id: str, messages: List[Message] = None, limit: int = 10):
         """检索处理器
         1. 如果 messages 包含 system 角色就先将 system 角色消息置顶到 short_memory 中
-        2. 提取所有 L0 级别的问答，追加到 short_memory 中
-        3. 将 messages 中其他消息追加到 short_memory 中
+        2. 默认返回最近的10轮对话
+        3. 优先返回摘要而不是原始对话
+        4. 更多对话应当通过概念、事实等方式提取到系统提示语中
         """
         if thread_id == "once":
             return messages
@@ -88,12 +89,14 @@ class QAManager():
         short_memory = []
         has_system_message = True if messages and messages[0].role == "system" else False
 
+        # 如果包含系统消息，则将系统消息置顶到 short_memory 中
         if has_system_message:
             short_memory.append(messages[0])
 
-        for qa in self.all_QAs(thread_id):
-            if qa.level == "L0":
-                short_memory.extend(qa.messages)
+        # 返回最近的10轮对话
+        for qa in self.all_QAs(thread_id)[:limit]:
+            # 优先返回摘要
+            short_memory.extend(qa.summary or qa.messages)
         
         if has_system_message:
             short_memory.extend(messages[1:])

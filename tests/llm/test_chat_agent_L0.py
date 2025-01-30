@@ -8,7 +8,7 @@ from illufly.mq import Publisher, StreamingBlock, BlockType, TextChunk
 
 class MockChatAgent(ChatBase):
     """模拟的聊天代理"""
-    async def _async_generate_from_llm(
+    async def _async_handler(
         self,
         messages: List[Dict[str, Any]],
         publisher: Publisher,
@@ -30,20 +30,12 @@ class TestChatAgentL0:
     @pytest.fixture
     async def agent(self, db):
         """创建测试用的聊天代理"""
-        chat = MockChatAgent(user_id="test_user", db=db, levels={"L0"})
+        chat = MockChatAgent(user_id="test_user", db=db)
         yield chat
         await chat.stop()
     
-    @pytest.fixture
-    async def agent_without_L0(self, db):
-        """创建不包含 L0 层级的聊天代理"""
-        chat = MockChatAgent(user_id="test_user", db=db, levels={"L1", "L2"})
-        yield chat
-        await chat.stop()
-
     def test_init_with_L0(self, agent):
         """测试初始化 L0 层级"""
-        assert "L0" in agent._levels
         assert agent.thread is not None
         assert agent.user_id == "test_user"
         
@@ -67,11 +59,13 @@ class TestChatAgentL0:
     def test_history_operations(self, agent):
         """测试历史记录操作"""
         # 初始状态
+        agent.new_thread()
         assert len(agent.history) == 0
         assert len(agent.all_QAs) == 0
         
         # 添加一些对话
         qa = QA(
+            qa_id=agent.create_request_id(),
             user_id=agent.user_id,
             thread_id=agent.thread_id,
             messages=[
@@ -79,7 +73,7 @@ class TestChatAgentL0:
                 Message(role="assistant", content="你好！")
             ]
         )
-        agent._l0_qa.add_QA(qa)
+        agent.l0_qa.add_QA(qa)
         
         # 验证历史记录
         assert len(agent.all_QAs) == 1
@@ -90,7 +84,9 @@ class TestChatAgentL0:
         """测试消息处理"""
         # 测试字符串输入
         await agent._async_handler(
-            messages="测试消息",
+            messages=[
+                {"role": "user", "content": "测试消息"},
+            ],
             publisher=None,
             request_id="test_req_1",
         )
@@ -143,14 +139,18 @@ class TestChatAgentL0:
         """测试上下文保持"""
         # 第一轮对话
         await agent._async_handler(
-            messages="第一条消息",
+            messages=[
+                {"role": "user", "content": "第一条消息"},
+            ],
             publisher=None,
             request_id="test_req_1",
         )
         
         # 第二轮对话
         await agent._async_handler(
-            messages="第二条消息",
+            messages=[
+                {"role": "user", "content": "第二条消息"},
+            ],
             publisher=None,
             request_id="test_req_2",
         )
@@ -181,67 +181,3 @@ class TestChatAgentL0:
         thread_ids = [t.thread_id for t in all_threads]
         for thread in threads:
             assert thread.thread_id in thread_ids 
-
-    def test_init_without_L0(self, agent_without_L0):
-        """测试初始化时不包含 L0 层级"""
-        assert "L0" not in agent_without_L0._levels
-        assert agent_without_L0.thread is None
-        assert agent_without_L0.thread_id is None
-        
-    def test_L0_operations_when_disabled(self, agent_without_L0):
-        """测试禁用 L0 时的操作行为"""
-        # 验证所有 L0 相关属性都返回空值
-        assert len(agent_without_L0.all_threads) == 0
-        assert len(agent_without_L0.history) == 0
-        assert len(agent_without_L0.history_messages) == 0
-        assert len(agent_without_L0.all_QAs) == 0
-        
-        # 验证线程操作无效
-        agent_without_L0.new_thread()  # 不应该创建新线程
-        assert agent_without_L0.thread is None
-        
-        # 验证加载线程无效
-        agent_without_L0.load_thread("some_thread_id")  # 不应该加载线程
-        assert agent_without_L0.thread is None
-        
-    @pytest.mark.asyncio
-    async def test_message_handling_without_L0(self, agent_without_L0):
-        """测试禁用 L0 时的消息处理"""
-        # 发送消息应该仍然工作，但不会保存历史
-        await agent_without_L0._async_handler(
-            messages="测试消息",
-            publisher=None,
-            request_id="test_req_1",
-        )
-        
-        # 验证没有保存历史记录
-        assert len(agent_without_L0.all_QAs) == 0
-        assert len(agent_without_L0.history) == 0
-        
-        # 测试复杂消息输入
-        await agent_without_L0._async_handler(
-            messages=[
-                {"role": "system", "content": "你是一个助手"},
-                {"role": "user", "content": "你好"}
-            ],
-            publisher=None,
-            request_id="test_req_2",
-        )
-        
-        # 验证仍然没有历史记录
-        assert len(agent_without_L0.all_QAs) == 0
-        
-    def test_mixed_levels_initialization(self, db):
-        """测试混合层级初始化"""
-        # 测试不同层级组合
-        agent_L1_only = MockChatAgent(user_id="test_user", db=db, levels={"L1"})
-        assert "L0" not in agent_L1_only._levels
-        assert agent_L1_only.thread is None
-        
-        agent_L0_L2 = MockChatAgent(user_id="test_user", db=db, levels={"L0", "L2"})
-        assert "L0" in agent_L0_L2._levels
-        assert agent_L0_L2.thread is not None
-        
-        agent_all = MockChatAgent(user_id="test_user", db=db, levels={"L0", "L1", "L2", "L3"})
-        assert "L0" in agent_all._levels
-        assert agent_all.thread is not None 

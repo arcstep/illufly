@@ -59,6 +59,7 @@ class Test_L0_Models:
         
         # 正常情况
         qa = QA(
+            qa_id="test_qa_id",
             user_id="test_user",
             thread_id="test_thread",
             messages=messages,
@@ -76,6 +77,7 @@ class Test_L0_Models:
         """测试对话模型验证"""
         # 正常情况
         qa = QA(
+            qa_id="test_qa_id",
             user_id="test_user",
             thread_id="test_thread",
             messages=[

@@ -73,9 +73,9 @@ class Requester(BaseMQ):
             self._logger.error(f"Request failed: {e}")
             raise
 
-    def request(self, args: List[Any] = [], kwargs: Dict[str, Any] = {}) -> Optional[ReplyBlock]:
+    def request(self, args: List[Any] = [], kwargs: Dict[str, Any] = {}, request_id: str = "") -> Optional[ReplyBlock]:
         """同步请求"""
-        return self._async_utils.wrap_async_func(self.async_request)(args, kwargs)
+        return self._async_utils.wrap_async_func(self.async_request)(args, kwargs, request_id)
 
     def cleanup(self):
         """清理资源"""

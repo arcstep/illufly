@@ -64,17 +64,21 @@ class QA(BaseModel):
     通常情况下，我们都需要对本轮对话做摘要处理，以便于后续提取事实和概念。
 
     必要的构建要求：
-        - user_id
-        - thread_id
-        - messages
+        - qa_id 对话的请求ID不做自动生成：一般需要提前生成，用于调用远程服务
+        - user_id 用户ID
+        - thread_id 对话ID
+        - messages 消息列表
+    
+    只读属性：
+        - key 保存键，用于保存到 rocksdb
+        - parent_key 父键，用于列举
     """
-    qa_id: str = Field(default=None, description="对话ID，如果为None，则自动生成")
-    level: str = Field(default="L0", description="对话层级")
+    qa_id: str = Field(..., description="对话的请求ID，一般需要")
     user_id: str = Field(..., description="用户ID")
     thread_id: str = Field(..., description="对话ID")
     messages: List[Union[Message, Tuple[str, str], Dict[str, Any], str]] = Field(..., description="符合LLM标准的用户与AI的问答消息列表，包括系统提示语、用户输入、AI输出等")
-    summary: List[Message] = Field(
-        default=[],  # 先设置空列表作为默认值
+    summary: Union[List[Message], None] = Field(
+        default=None,  # 先设置空列表作为默认值
         description="本轮对话摘要，一般是精简后的问答对消息"
     )
     request_time: datetime = Field(default_factory=datetime.now)
@@ -133,9 +137,5 @@ class QA(BaseModel):
         if self.used_time == 0.0:
             self.used_time = (self.response_time - self.request_time).total_seconds()
 
-        # 如果没有提供qa_id，则自动生成
-        if not self.qa_id:
-            self.qa_id = generate_id()
-        
         self.messages = [Message.create(m) for m in self.messages]
 

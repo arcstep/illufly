@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Union
 
+import uuid
 import logging
 
 from ..io.rocksdict import default_rocksdb, IndexedRocksDB
@@ -94,6 +95,12 @@ class ChatBase(RemoteServer, ABC):
         _messages = messages if isinstance(messages, list) else [messages]
         return [Message.create(m) for m in _messages]
 
+    def create_request_id(self, request_id: str = ""):
+        """创建请求ID"""
+        if not request_id:
+            request_id = f"{self.service_name}.{uuid.uuid4()}"
+        return request_id
+
     async def async_call(
         self,
         messages: Union[str, List[Dict[str, Any]]],
@@ -108,7 +115,11 @@ class ChatBase(RemoteServer, ABC):
         patched_messages = self.before_call(normalized_messages, system_template, bindings)
 
         # 远程调用
-        sub = await self._requester.async_request(kwargs={"messages": patched_messages, **kwargs})
+        request_id = self.create_request_id()
+        sub = await self._requester.async_request(
+            kwargs={"messages": patched_messages, **kwargs},
+            request_id=request_id
+        )
         final_text = ""
         async for b in sub.async_collect(block_types=block_types):
             if b.block_type == BlockType.TEXT_CHUNK:
@@ -116,7 +127,7 @@ class ChatBase(RemoteServer, ABC):
             yield b
         
         # 写入认知上下文
-        self.after_call(normalized_messages, final_text, **kwargs)
+        self.after_call(normalized_messages, final_text, request_id=request_id, **kwargs)
 
     def call(
         self,
@@ -132,7 +143,11 @@ class ChatBase(RemoteServer, ABC):
         patched_messages = self.before_call(normalized_messages, system_template, bindings)
 
         # 远程调用
-        sub = self._requester.request(kwargs={"messages": patched_messages, **kwargs})
+        request_id = self.create_request_id()
+        sub = self._requester.request(
+            kwargs={"messages": patched_messages, **kwargs},
+            request_id=request_id
+        )
         final_text = ""
         for b in sub.collect(block_types=block_types):
             if b.block_type == BlockType.TEXT_CHUNK:
@@ -140,7 +155,7 @@ class ChatBase(RemoteServer, ABC):
             yield b
         
         # 写入认知上下文
-        self.after_call(normalized_messages, final_text, **kwargs)
+        self.after_call(normalized_messages, final_text, request_id=request_id, **kwargs)
 
     def before_call(self, normalized_messages: List[Message], system_template: SystemTemplate, bindings: Dict[str, Any]):
         """补充认知上下文"""
@@ -156,12 +171,13 @@ class ChatBase(RemoteServer, ABC):
 
         return [m.message_dict for m in patched_messages]
 
-    def after_call(self, normalized_messages: List[Message], final_text: str, **kwargs):
+    def after_call(self, normalized_messages: List[Message], final_text: str, request_id: str, **kwargs):
         """回写认知上下文"""
 
         # 处理输出消息
         qa_messages = normalized_messages + [Message(role="assistant", content=final_text)]
         qa = QA(
+            qa_id=request_id,
             user_id=self.user_id,
             thread_id=self.thread_id,
             messages=qa_messages
@@ -170,7 +186,7 @@ class ChatBase(RemoteServer, ABC):
 
     ## ***********************************************************************
     ## 以下是 ZMQ 远程 REP 服务方法实现
-    ## 注意，远程方法中不使用 rocksdb 数据存储服务
+    ## 注意，客户端在请求后自己管理 rocksdb 数据，而不是通过远程方法
     ## ***********************************************************************
 
     @abstractmethod
