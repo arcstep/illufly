@@ -4,7 +4,7 @@ from uuid import uuid4
 from enum import Enum
 
 from ...io.rocksdict import IndexedRocksDB
-from .L0_QA import QA, Message, Thread, QAManager
+from .L0_qa import QA, Message, Thread, QAManager
 from .L1_facts import Fact
 from .L2_concept.models import Concept
 from .L3_thematic_graph.models import ThematicGraph

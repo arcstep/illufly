@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from enum import Enum
 from datetime import datetime
 
-from .L0_QA import Message, QA
+from .L0_qa import Message, QA
 from .L1_facts import Fact
 from .L2_concept import Concept
 from .L3_thematic_graph import ThematicGraph

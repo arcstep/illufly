@@ -13,7 +13,6 @@ class QAManager():
     def __init__(self, db: IndexedRocksDB, user_id: str = None, logger: logging.Logger = None):
         self.user_id = user_id or "default"
         self.db = db
-        self.QAs: Dict[str, List[QA]] = {}
 
         self.db.register_model(MemoryType.THREAD, Thread)
 
@@ -58,17 +57,17 @@ class QAManager():
         values = self.db.values(prefix=prefix_key)
         return [Thread(**value) for value in values]
 
-    def add_QA(self, qa: QA):
+    def add_qa(self, qa: QA):
         """添加一个对话"""
         if self.user_id != qa.user_id:
             raise ValueError("对话的用户ID与管理器的用户ID不匹配")
         self.db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
 
-    def get_QA(self, thread_id: str, qa_id: str):
+    def get_qa(self, thread_id: str, qa_id: str):
         """获取一个对话"""
         return self.db[generate_key(MemoryType.QA, self.user_id, thread_id, qa_id)]
     
-    def all_QAs(self, thread_id: str):
+    def get_all(self, thread_id: str):
         """获取所有对话"""
         parent_key = QA.generate_parent_key(self.user_id, thread_id)
         values = self.db.values(prefix=parent_key)
@@ -94,7 +93,7 @@ class QAManager():
             short_memory.append(messages[0])
 
         # 返回最近的10轮对话
-        for qa in self.all_QAs(thread_id)[:limit]:
+        for qa in self.get_all(thread_id)[:limit]:
             # 优先返回摘要
             short_memory.extend(qa.summary or qa.messages)
         

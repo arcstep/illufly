@@ -5,7 +5,7 @@ import uuid
 import logging
 
 from ..io.rocksdict import default_rocksdb, IndexedRocksDB
-from ..llm.memory.L0_QA import QAManager, QA, Message
+from ..llm.memory.L0_qa import QAManager, QA, Message
 from ..call import RemoteServer
 from ..mq import Publisher, StreamingBlock, BlockType, TextChunk
 from .system_template import SystemTemplate
@@ -75,8 +75,8 @@ class ChatBase(RemoteServer, ABC):
         return [m.message_dict for m in self.history]
 
     @property
-    def all_QAs(self):
-        return self.l0_qa.all_QAs(self.thread_id)
+    def all_qas(self):
+        return self.l0_qa.get_all(self.thread_id)
 
     def new_thread(self):
         """创建一个新的对话"""
@@ -127,7 +127,8 @@ class ChatBase(RemoteServer, ABC):
             yield b
         
         # 写入认知上下文
-        self.after_call(normalized_messages, final_text, request_id=request_id, **kwargs)
+        output_messages = [Message(role="assistant", content=final_text)]
+        self.after_call(normalized_messages, output_messages, request_id=request_id, **kwargs)
 
     def call(
         self,
@@ -155,13 +156,14 @@ class ChatBase(RemoteServer, ABC):
             yield b
         
         # 写入认知上下文
-        self.after_call(normalized_messages, final_text, request_id=request_id, **kwargs)
+        output_messages = [Message(role="assistant", content=final_text)]
+        self.after_call(normalized_messages, output_messages, request_id=request_id, **kwargs)
 
-    def before_call(self, normalized_messages: List[Message], system_template: SystemTemplate, bindings: Dict[str, Any]):
+    def before_call(self, input_messages: List[Message], system_template: SystemTemplate, bindings: Dict[str, Any]):
         """补充认知上下文"""
 
         # 从认知上下文中获取消息
-        patched_messages = self.l0_qa.retrieve(self.thread_id, messages=normalized_messages)
+        patched_messages = self.l0_qa.retrieve(self.thread_id, messages=input_messages)
 
         # 如果系统消息不存在，则补充系统消息
         if patched_messages[0].role != "system" and system_template:
@@ -171,18 +173,18 @@ class ChatBase(RemoteServer, ABC):
 
         return [m.message_dict for m in patched_messages]
 
-    def after_call(self, normalized_messages: List[Message], final_text: str, request_id: str, **kwargs):
+    def after_call(self, input_messages: List[Message], output_messages: List[Message], request_id: str, **kwargs):
         """回写认知上下文"""
 
         # 处理输出消息
-        qa_messages = normalized_messages + [Message(role="assistant", content=final_text)]
+        qa_messages = input_messages + output_messages
         qa = QA(
             qa_id=request_id,
             user_id=self.user_id,
             thread_id=self.thread_id,
             messages=qa_messages
         )
-        self.l0_qa.add_QA(qa)
+        self.l0_qa.add_qa(qa)
 
     ## ***********************************************************************
     ## 以下是 ZMQ 远程 REP 服务方法实现

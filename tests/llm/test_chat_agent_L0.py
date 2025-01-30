@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 from illufly.llm.chat_base import ChatBase
-from illufly.llm.memory.L0_QA.models import Message, QA, Thread
+from illufly.llm.memory.L0_qa.models import Message, QA, Thread
 from illufly.mq import Publisher, StreamingBlock, BlockType, TextChunk
 
 class MockChatAgent(ChatBase):
@@ -61,7 +61,7 @@ class TestChatAgentL0:
         # 初始状态
         agent.new_thread()
         assert len(agent.history) == 0
-        assert len(agent.all_QAs) == 0
+        assert len(agent.all_qas) == 0
         
         # 添加一些对话
         qa = QA(
@@ -73,36 +73,36 @@ class TestChatAgentL0:
                 Message(role="assistant", content="你好！")
             ]
         )
-        agent.l0_qa.add_QA(qa)
+        agent.l0_qa.add_qa(qa)
         
         # 验证历史记录
-        assert len(agent.all_QAs) == 1
+        assert len(agent.all_qas) == 1
         assert len(agent.history) > 0
         
     @pytest.mark.asyncio
     async def test_message_handling(self, agent):
         """测试消息处理"""
         # 测试字符串输入
-        await agent._async_handler(
+        async for x in agent.async_call(
             messages=[
                 {"role": "user", "content": "测试消息"},
             ],
             publisher=None,
-            request_id="test_req_1",
-        )
+        ):
+            pass
         
         # 测试消息列表输入
-        await agent._async_handler(
+        async for x in agent.async_call(
             messages=[
                 {"role": "system", "content": "你是一个助手"},
                 {"role": "user", "content": "你好"}
             ],
             publisher=None,
-            request_id="test_req_2",
-        )
+        ):
+            pass
         
         # 验证消息是否被正确保存
-        qas = agent.all_QAs
+        qas = agent.all_qas
         assert len(qas) == 2
         
         # 验证系统消息是否被正确处理
@@ -138,22 +138,22 @@ class TestChatAgentL0:
     async def test_context_preservation(self, agent):
         """测试上下文保持"""
         # 第一轮对话
-        await agent._async_handler(
+        async for x in agent.async_call(
             messages=[
                 {"role": "user", "content": "第一条消息"},
             ],
             publisher=None,
-            request_id="test_req_1",
-        )
+        ):
+            pass
         
         # 第二轮对话
-        await agent._async_handler(
+        async for x in agent.async_call(
             messages=[
                 {"role": "user", "content": "第二条消息"},
             ],
             publisher=None,
-            request_id="test_req_2",
-        )
+        ):
+            pass
         
         # 验证历史记录中包含两轮对话
         history = agent.history
