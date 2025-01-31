@@ -44,7 +44,7 @@ class Test_L0_Models:
         )
         assert isinstance(message.content, dict)
         
-    def test_dialogue_validation(self):
+    def test_qa_validation(self):
         """测试对话模型验证"""
         messages = [
             Message(
@@ -63,6 +63,7 @@ class Test_L0_Models:
             user_id="test_user",
             thread_id="test_thread",
             messages=messages,
+            summary=messages,
             used_time=1.0,
             usage={"prompt_tokens": 10, "completion_tokens": 20}
         )
@@ -73,7 +74,7 @@ class Test_L0_Models:
         assert isinstance(qa.request_time, datetime)
         assert isinstance(qa.response_time, datetime)
 
-    def test_dialogue_with_simple_messages(self):
+    def test_qa_with_simple_messages(self):
         """测试对话模型验证"""
         # 正常情况
         qa = QA(
@@ -85,6 +86,10 @@ class Test_L0_Models:
                 ("ai", "你好！很高兴见到你。"),
                 ("user", "你叫什么名字？"),
                 ("ai", "我叫小明。")
+            ],
+            summary=[
+                Message(role="user", content="你叫什么名字？"),
+                Message(role="assistant", content="我叫小明。")
             ]
         )
         assert qa.thread_id == "test_thread"

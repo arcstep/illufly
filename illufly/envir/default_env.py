@@ -20,6 +20,11 @@ def get_env(key: str=None):
         "ILLUFLY_CACHE_CALL": os.path.join(FIXED_TEMP_DIR, "CACHE_CALL"), # 缓存调用结果存储目录
         "ILLUFLY_ROCKSDB_TEMP": tempfile.mkdtemp(prefix="ILLUFLY_ROCKSDB_"), # RocksDB临时存储目录
 
+        # 任务配置
+        "ILLUFLY_L0_TASK_MODEL": "glm-4-flash",
+        "ILLUFLY_L0_TASK_PREFIX": "ZHIPU",
+        "ILLUFLY_L0_TASK_USER_ID": "L0-TASK-ROBOT",
+
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
         "ILLUFLY_FINAL_ANSWER_PROMPT": "最终答案",

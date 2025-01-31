@@ -75,26 +75,6 @@ class QAManager():
         self._logger.info(f"获取问答对清单：{values}")
         return [QA(**value) for value in values]
 
-    def summarise_todo_list(self, batch_size: int = 10):
-        """获取所有需要执行摘要任务的对话"""
-        values = self.db.values_with_indexes(
-            model_name=MemoryType.QA,
-            field_path="task_summarize",
-            field_value=TaskState.TODO,
-            limit=batch_size
-        )
-        return [QA(**value) for value in values]
-
-    def extract_facts_todo_list(self, batch_size: int = 10):
-        """获取所有需要执行事实提取任务的对话"""
-        values = self.db.values_with_indexes(
-            model_name=MemoryType.QA,
-            field_path="task_extract_facts",
-            field_value=TaskState.TODO,
-            limit=batch_size
-        )
-        return [QA(**value) for value in values]
-
     def retrieve(self, thread_id: str, messages: List[Message] = None, limit: int = 10):
         """检索处理器
         1. 如果 messages 包含 system 角色就先将 system 角色消息置顶到 short_memory 中
