@@ -66,17 +66,19 @@ class ChatBase(RemoteServer, ABC):
     def thread_id(self):
         return self.thread.thread_id
 
-    @property
-    def history(self):
-        return self.l0_qa.retrieve(self.thread_id)
-    
-    @property
-    def history_messages(self):
-        return [m.message_dict for m in self.history]
-
-    @property
-    def all_qas(self):
-        return self.l0_qa.get_all(self.thread_id)
+    def get_history(self, limit: int = 10):
+        all = self.l0_qa.get_all(self.thread_id, limit=limit)
+        messages = []
+        for qa in all:
+            messages.append({
+                "role": "user",
+                "content": qa.question
+            })
+            messages.append({
+                "role": "assistant",
+                "content": qa.answer
+            })
+        return messages
 
     def new_thread(self):
         """创建一个新的对话"""
@@ -184,7 +186,7 @@ class ChatBase(RemoteServer, ABC):
             thread_id=self.thread_id,
             messages=qa_messages
         )
-        self.l0_qa.add_qa(qa)
+        self.l0_qa.set_qa(qa)
 
     ## ***********************************************************************
     ## 以下是 ZMQ 远程 REP 服务方法实现

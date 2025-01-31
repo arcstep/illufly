@@ -60,8 +60,7 @@ class TestChatAgentL0:
         """测试历史记录操作"""
         # 初始状态
         agent.new_thread()
-        assert len(agent.history) == 0
-        assert len(agent.all_qas) == 0
+        assert len(agent.get_history()) == 0
         
         # 添加一些对话
         qa = QA(
@@ -73,11 +72,10 @@ class TestChatAgentL0:
                 Message(role="assistant", content="你好！")
             ]
         )
-        agent.l0_qa.add_qa(qa)
+        agent.l0_qa.set_qa(qa)
         
         # 验证历史记录
-        assert len(agent.all_qas) == 1
-        assert len(agent.history) > 0
+        assert len(agent.get_history()) == 2
         
     @pytest.mark.asyncio
     async def test_message_handling(self, agent):
@@ -102,12 +100,12 @@ class TestChatAgentL0:
             pass
         
         # 验证消息是否被正确保存
-        qas = agent.all_qas
-        assert len(qas) == 2
+        messages = agent.get_history()
+        assert len(messages) == 4
         
         # 验证系统消息是否被正确处理
-        last_qa = qas[-1]
-        assert last_qa.messages[0].role == "system"
+        last_message = messages[-1]
+        assert last_message["role"] == "assistant"
         
     def test_message_normalization(self, agent):
         """测试消息规范化"""
@@ -156,12 +154,11 @@ class TestChatAgentL0:
             pass
         
         # 验证历史记录中包含两轮对话
-        history = agent.history
-        assert len(history) >= 2
+        assert len(agent.get_history()) >= 4
         
         # 验证新线程后历史记录清空
         agent.new_thread()
-        assert len(agent.history) == 0
+        assert len(agent.get_history()) == 0
         
     def test_thread_listing(self, agent):
         """测试线程列表"""

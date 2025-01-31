@@ -52,7 +52,7 @@ class TestQA:
         # 验证存储
         manager = QAManager(db, user_id=user_id)
         manager.create_thread(thread_id=sample_qa.thread_id)
-        manager.add_qa(sample_qa)
+        manager.set_qa(sample_qa)
         
         # 验证检索
         stored_qa = manager.get_qa(sample_qa.thread_id, sample_qa.qa_id)
@@ -71,11 +71,6 @@ class TestQA:
         # 测试答案提取
         assert sample_qa.answer == "你好！很高兴见到你。"
         
-        # 测试QA消息格式
-        qa_msg = sample_qa.qa_message
-        assert len(qa_msg) == 2
-        assert qa_msg[0]["role"] == "user"
-        assert qa_msg[1]["role"] == "assistant"
 
     def test_retrieve_with_system_message(self, user_id, db, qa_with_system):
         """测试带系统消息的检索"""
@@ -84,7 +79,7 @@ class TestQA:
 
         manager = QAManager(db, user_id=user_id)
         manager.create_thread(thread_id=qa_with_system.thread_id)
-        manager.add_qa(qa_with_system)
+        manager.set_qa(qa_with_system)
         
         # 检索时带入新的系统消息
         new_system_msg = Message(role="system", content="新的系统提示")
@@ -132,7 +127,7 @@ class TestQA:
         
         manager = QAManager(db, user_id=user_id)
         manager.create_thread(thread_id=thread_id)
-        manager.add_qa(qa)
+        manager.set_qa(qa)
         
         # 检索并验证使用摘要
         messages = manager.retrieve(thread_id=thread_id)
@@ -156,7 +151,7 @@ class TestQA:
                     Message(role="assistant", content=f"回答{i}")
                 ]
             )
-            manager.add_qa(qa)
+            manager.set_qa(qa)
         
         # 使用默认限制检索
         messages = manager.retrieve(thread_id)
@@ -193,7 +188,7 @@ class TestQA:
         ]
         
         for qa in qas:
-            manager.add_qa(qa)
+            manager.set_qa(qa)
         
         # 获取待办任务列表
         todo_list = manager.summarise_todo_list()
@@ -222,7 +217,7 @@ class TestQA:
         ]
         
         for qa in qas:
-            manager.add_qa(qa)
+            manager.set_qa(qa)
         
         # 获取待办任务列表
         todo_list = manager.extract_facts_todo_list()
@@ -245,16 +240,21 @@ class TestQA:
                 Message(role="assistant", content="测试回答")
             ]
         )
-        manager.add_qa(qa)
+        qa.task_summarize = TaskState.DONE
+        manager.set_qa(qa)
+
+        # 验证待办列表
+        assert len(manager.summarise_todo_list()) == 0
+        assert len(manager.extract_facts_todo_list()) == 1
         
         # 更新摘要状态
-        manager.summarise_set(qa, TaskState.DONE)
         updated_qa = QA(**manager.get_qa(thread_id, qa.qa_id))
         assert updated_qa.task_summarize == TaskState.DONE
         assert updated_qa.task_extract_facts == TaskState.TODO  # 不应影响其他标记
         
         # 更新事实提取状态
-        manager.extract_facts_set(qa, TaskState.DONE)
+        qa.task_extract_facts = TaskState.DONE
+        manager.set_qa(qa)
         updated_qa = QA(**manager.get_qa(thread_id, qa.qa_id))
         assert updated_qa.task_extract_facts == TaskState.DONE
         
@@ -277,14 +277,15 @@ class TestQA:
                 Message(role="assistant", content="测试回答")
             ]
         )
-        manager.add_qa(qa)
+        qa.task_summarize = TaskState.ERROR
+        manager.set_qa(qa)
         
         # 测试设置错误状态
-        manager.summarise_set(qa, TaskState.ERROR)
         updated_qa = QA(**manager.get_qa(thread_id, qa.qa_id))
         assert updated_qa.task_summarize == TaskState.ERROR
         
         # 测试从错误状态恢复
-        manager.summarise_set(qa, TaskState.TODO)
+        qa.task_summarize = TaskState.TODO
+        manager.set_qa(qa)
         updated_qa = QA(**manager.get_qa(thread_id, qa.qa_id))
         assert updated_qa.task_summarize == TaskState.TODO

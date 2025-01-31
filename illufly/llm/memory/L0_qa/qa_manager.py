@@ -58,7 +58,7 @@ class QAManager():
         values = self.db.values(prefix=prefix_key)
         return [Thread(**value) for value in values]
 
-    def add_qa(self, qa: QA):
+    def set_qa(self, qa: QA):
         """添加一个对话"""
         if self.user_id != qa.user_id:
             raise ValueError("对话的用户ID与管理器的用户ID不匹配")
@@ -68,41 +68,32 @@ class QAManager():
         """获取一个对话"""
         return self.db[generate_key(MemoryType.QA, self.user_id, thread_id, qa_id)]
     
-    def get_all(self, thread_id: str):
+    def get_all(self, thread_id: str, limit: int = None):
         """获取所有对话"""
         parent_key = QA.generate_parent_key(self.user_id, thread_id)
-        values = self.db.values(prefix=parent_key)
+        values = self.db.values(prefix=parent_key, limit=limit)
         self._logger.info(f"获取问答对清单：{values}")
         return [QA(**value) for value in values]
 
-    def summarise_todo_list(self):
+    def summarise_todo_list(self, batch_size: int = 10):
         """获取所有需要执行摘要任务的对话"""
         values = self.db.values_with_indexes(
             model_name=MemoryType.QA,
             field_path="task_summarize",
             field_value=TaskState.TODO,
+            limit=batch_size
         )
         return [QA(**value) for value in values]
 
-    def summarise_set(self, qa: QA, state: TaskState):
-        """设定摘要已完成的标记"""
-        qa.task_summarize = state
-        self.db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
-
-
-    def extract_facts_todo_list(self):
+    def extract_facts_todo_list(self, batch_size: int = 10):
         """获取所有需要执行事实提取任务的对话"""
         values = self.db.values_with_indexes(
             model_name=MemoryType.QA,
             field_path="task_extract_facts",
             field_value=TaskState.TODO,
+            limit=batch_size
         )
         return [QA(**value) for value in values]
-
-    def extract_facts_set(self, qa: QA, state: TaskState):
-        """设定事实提取已完成的标记"""
-        qa.task_extract_facts = state
-        self.db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
 
     def retrieve(self, thread_id: str, messages: List[Message] = None, limit: int = 10):
         """检索处理器

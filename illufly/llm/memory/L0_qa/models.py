@@ -118,22 +118,6 @@ class QA(BaseModel):
                 return m.content
         return ""
 
-    @property
-    def qa_message(self):
-        if self.summary:
-            return [m.message for m in self.summary]
-        
-        return [
-            {
-                "role": "user",
-                "content": self.question
-            },
-            {
-                "role": "assistant",
-                "content": self.answer
-            }
-        ]
-
     def model_post_init(self, __context) -> None:
         """在模型初始化后执行"""
         if self.used_time == 0.0:

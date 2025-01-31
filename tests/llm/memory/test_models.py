@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from typing import Dict, List
 
-from illufly.llm.memory.L0_QA.models import Message, QA, Thread
+from illufly.llm.memory.L0_qa.models import Message, QA, Thread
 from illufly.llm.memory.L1_facts.models import Fact
 from illufly.llm.memory.L2_concept.models import Concept
 from illufly.llm.memory.L3_thematic_graph.models import ThematicGraph

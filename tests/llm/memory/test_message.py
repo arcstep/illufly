@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime
 from typing import Dict, Any
 
-from illufly.llm.memory.L0_QA.models import Message
+from illufly.llm.memory.L0_qa.models import Message
 
 class TestMessage:
     """消息测试"""
