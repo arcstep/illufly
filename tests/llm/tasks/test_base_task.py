@@ -212,4 +212,81 @@ class TestBaseTask:
         await run_batch_tasks(max_concurrent=5, expected_time=0.2)
         
         # 10个并发，10个任务，预期0.1秒完成（10/10 * 0.1）
-        await run_batch_tasks(max_concurrent=10, expected_time=0.1) 
+        await run_batch_tasks(max_concurrent=10, expected_time=0.1)
+
+    async def test_idle_cpu_usage(self, mock_db, reset_mock_task):
+        """测试空闲时的CPU使用情况"""
+        class IdleTask(BaseTask):
+            process_count = 0
+            has_task = True
+            
+            @classmethod
+            async def _process_task(cls, db: IndexedRocksDB, **kwargs):
+                if not cls.has_task:
+                    await asyncio.sleep(cls._sleep_time_when_idle)
+                    return None  # 返回None表示无任务，而不是抛出异常
+                cls.process_count += 1
+                return True
+        
+        # 启动任务处理器
+        IdleTask.start(db=mock_db, max_concurrent_tasks=2)
+        
+        # 等待一些任务处理完成
+        await asyncio.sleep(0.2)
+        initial_count = IdleTask.process_count
+        
+        # 模拟无任务可处理的情况
+        IdleTask.has_task = False
+        
+        # 等待一段时间
+        await asyncio.sleep(0.5)
+        
+        # 检查在无任务期间的处理次数
+        idle_attempts = IdleTask.process_count - initial_count
+        attempts_per_second = idle_attempts / 0.5
+        
+        await IdleTask.stop()
+        
+        # 验证空闲时的处理频率不会太高
+        assert attempts_per_second <= 20, \
+            f"空闲时任务尝试频率过高: {attempts_per_second:.1f}/秒"
+
+    async def test_idle_to_busy_transition(self, mock_db, reset_mock_task):
+        """测试从空闲到繁忙状态的转换"""
+        class TransitionTask(BaseTask):
+            process_count = 0
+            has_task = False
+            task_processed = asyncio.Event()  # 使用事件来通知任务处理
+            
+            @classmethod
+            async def _process_task(cls, db: IndexedRocksDB, **kwargs):
+                if not cls.has_task:
+                    await asyncio.sleep(cls._sleep_time_when_idle)
+                    return None  # 返回None表示无任务，而不是抛出异常
+                
+                cls.process_count += 1
+                cls.task_processed.set()  # 设置事件通知任务已处理
+                return True
+        
+        # 启动任务处理器
+        TransitionTask.start(db=mock_db, max_concurrent_tasks=2)
+        
+        # 等待系统进入空闲状态
+        await asyncio.sleep(0.2)
+        
+        # 记录开始时间并切换到有任务状态
+        start_time = asyncio.get_event_loop().time()
+        TransitionTask.has_task = True
+        
+        # 等待任务被处理（使用事件而不是轮询）
+        try:
+            await asyncio.wait_for(TransitionTask.task_processed.wait(), timeout=1.0)
+            end_time = asyncio.get_event_loop().time()
+            response_time = end_time - start_time
+            
+            # 验证响应时间不超过 sleep_time_when_idle 的 3 倍
+            max_response_time = TransitionTask._sleep_time_when_idle * 3
+            assert response_time < max_response_time, \
+                f"从空闲状态恢复处理任务的响应时间过长: {response_time:.2f}秒"
+        finally:
+            await TransitionTask.stop() 

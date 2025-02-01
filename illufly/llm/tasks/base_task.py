@@ -17,7 +17,7 @@ class BaseTask(ABC):
     
     # 控制空转的类变量
     _sleep_time_when_idle = 0.1  # 无任务时的等待时间
-    _sleep_time_on_error = 1.0   # 发生错误时的等待时间
+    _sleep_time_on_error = 0.5   # 发生错误时的等待时间
     
     def __init__(self):
         raise RuntimeError(f"请使用 {self.__class__.__name__}.start() 启动任务")
