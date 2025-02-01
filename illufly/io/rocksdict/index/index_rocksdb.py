@@ -275,12 +275,12 @@ class IndexedRocksDB(BaseRocksDB):
             existing_type = self.indexes_metadata_cf.get(key)
             if existing_type is None:  # 确实不存在
                 self.indexes_metadata_cf[key] = base_type
-                self._logger.info(f"注册索引元数据: {key} -> {cf_name}.{model_name}#{field_path}")
+                self._logger.debug(f"注册索引元数据: {key} -> {cf_name}.{model_name}#{field_path}")
             else:
-                self._logger.info(f"索引元数据已存在: {key} -> {existing_type}")
+                self._logger.debug(f"索引元数据已存在: {key} -> {existing_type}")
         except KeyError:  # 确实不存在
             self.indexes_metadata_cf[key] = base_type
-            self._logger.info(f"注册索引元数据: {key} -> {cf_name}.{model_name}#{field_path}")
+            self._logger.debug(f"注册索引元数据: {key} -> {cf_name}.{model_name}#{field_path}")
 
     def _make_index_key(self, model_name: str, field_path: str, field_value: Any, key: str, cf_name: str=None) -> str:
         """创建索引键"""

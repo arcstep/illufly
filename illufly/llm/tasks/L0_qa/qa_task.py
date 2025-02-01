@@ -68,7 +68,7 @@ class QaTask(BaseTask):
             qa.task_summarize = TaskState.PROCESSING
             db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
             updated_qa = QA(**db[qa.key])
-            logging.info(f"获取QA {qa.qa_id} 并设置为处理中: {updated_qa.task_summarize}")
+            logging.debug(f"获取QA {qa.qa_id} 并设置为处理中: {updated_qa.task_summarize}")
         return qa
 
     @classmethod
@@ -81,7 +81,7 @@ class QaTask(BaseTask):
         assistant: ChatOpenAI
     ):
         """处理摘要"""
-        # logger.info(f"开始处理摘要任务， memory: {messages}, content: {content}")
+        # logger.debug(f"开始处理摘要任务， memory: {messages}, content: {content}")
         chat = assistant
 
         template = SystemTemplate(template_id="summary")
@@ -93,7 +93,7 @@ class QaTask(BaseTask):
 
         final_text = ""
         async for chunk in resp:
-            # logger.info(f"摘要任务 {messages} 的响应: {chunk}")
+            # logger.debug(f"摘要任务 {messages} 的响应: {chunk}")
             if chunk.block_type == BlockType.TEXT_CHUNK:
                 final_text += chunk.text
 
@@ -138,7 +138,7 @@ class QaTask(BaseTask):
             task.task_summarize = TaskState.PROCESSING
             db.update_with_indexes(MemoryType.QA, task.key, task.model_dump())
             updated_task = QA(**db[task.key])
-            logging.info(f"获取QA {task.qa_id} 并设置为处理中: {updated_task.task_summarize}")
+            logging.debug(f"获取QA {task.qa_id} 并设置为处理中: {updated_task.task_summarize}")
         else:
             logging.warning(f"任务不是QA类型: {task}")
 
@@ -150,24 +150,24 @@ class QaTask(BaseTask):
         
         task_id = cls.get_task_id()
         logger = cls._loggers[task_id]
-        logger.info(f"开始处理QA {task.qa_id}")
+        # logger.debug(f"开始处理QA {task.qa_id}")
 
         try:
             if len(task.question) > 50:
-                logger.info(f"开始处理QA {task.qa_id} 的问题摘要")
+                # logger.debug(f"开始处理QA {task.qa_id} 的问题摘要")
                 messages = [m.message_dict for m in task.messages]
                 summary_question = await cls._process_summary(db, messages, task.question, logger, assistant)
             else:
                 summary_question = task.question
 
             if len(task.answer) > 50:
-                logger.info(f"开始处理QA {task.qa_id} 的回答摘要")
+                # logger.debug(f"开始处理QA {task.qa_id} 的回答摘要")
                 messages = [m.message_dict for m in task.messages]
                 summary_answer = await cls._process_summary(db, messages, task.answer, logger, assistant)
             else:
                 summary_answer = task.answer
 
-            # logger.info(f"处理QA {task.qa_id} 完成: {summary_question}, {summary_answer}")
+            # logger.debug(f"处理QA {task.qa_id} 完成: {summary_question}, {summary_answer}")
 
             task.summary = [
                 Message(role="user", content=str(summary_question)),
@@ -175,7 +175,7 @@ class QaTask(BaseTask):
             ]
             
             task.task_summarize = TaskState.DONE
-            logger.info(f"完成QA {task.qa_id} 的摘要处理")
+            # logger.debug(f"完成QA {task.qa_id} 的摘要处理")
             db.update_with_indexes(MemoryType.QA, task.key, task.model_dump())
 
         except Exception as e:

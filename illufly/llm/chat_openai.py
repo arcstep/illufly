@@ -244,7 +244,7 @@ class ChatOpenAI(ChatBase):
             final_text = ""
 
             async for response in completion:
-                self._logger.info(f"openai response: {response}")
+                # self._logger.info(f"openai response: {response}")
                 if response.choices:
                     delta = response.choices[0].delta
                     

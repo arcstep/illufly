@@ -102,7 +102,7 @@ class BaseTask(ABC):
                     
         finally:
             if cls._pending_tasks.get(task_id):
-                logger.info("等待所有任务完成...")
+                logger.debug("等待所有任务完成...")
                 pending = cls._pending_tasks[task_id]
                 if pending:
                     await asyncio.gather(*pending, return_exceptions=True)
@@ -149,7 +149,7 @@ class BaseTask(ABC):
             cls._run(db, max_concurrent_tasks, **kwargs)
         )
         
-        cls._loggers[task_id].info(f"{cls.__name__} 开始运行")
+        cls._loggers[task_id].debug(f"{cls.__name__} 开始运行")
     
     @classmethod
     async def stop(cls) -> None:
@@ -172,4 +172,4 @@ class BaseTask(ABC):
             finally:
                 cls._server_tasks[task_id] = None
                 cls._instances[task_id] = None
-                cls._loggers[task_id].info(f"{cls.__name__} 已停止") 
+                cls._loggers[task_id].debug(f"{cls.__name__} 已停止") 

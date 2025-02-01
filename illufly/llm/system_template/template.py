@@ -23,10 +23,10 @@ class SystemTemplate():
     ):
         if template_id:
             if template_id and template_folder:
-                logger.info(f"加载模板: {template_id} 从 {template_folder}")
+                logger.debug(f"加载模板: {template_id} 从 {template_folder}")
                 self.text = load_prompt_template(template_id, template_folder)
             elif template_id:
-                logger.info(f"加载模板: {template_id} 从包内资源")
+                logger.debug(f"加载模板: {template_id} 从包内资源")
                 self.text = load_resource_template(template_id)
             else:
                 raise ValueError('template_id or template_folder is required')
