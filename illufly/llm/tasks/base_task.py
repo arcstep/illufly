@@ -41,12 +41,6 @@ class BaseTask(ABC):
     
     @classmethod
     @abstractmethod
-    async def task_to_done(cls, db: IndexedRocksDB, task: Any) -> None:
-        """将任务状态更新为已完成"""
-        pass
-    
-    @classmethod
-    @abstractmethod
     async def process_todo_task(cls, db: IndexedRocksDB, task: Any, **kwargs) -> None:
         """处理具体的任务"""
         pass
@@ -88,7 +82,6 @@ class BaseTask(ABC):
                             try:
                                 await cls.task_to_processing(db, task)
                                 await cls.process_todo_task(db, task, **kwargs)
-                                await cls.task_to_done(db, task)
                             except Exception as e:
                                 logger.error(f"任务处理失败: {e}")
                                 await asyncio.sleep(cls._sleep_time_on_error)

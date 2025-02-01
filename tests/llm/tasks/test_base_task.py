@@ -21,12 +21,7 @@ class MockTask(BaseTask):
     async def task_to_processing(cls, db: IndexedRocksDB, task: Any) -> None:
         # 模拟任务状态更新
         pass
-        
-    @classmethod
-    async def task_to_done(cls, db: IndexedRocksDB, task: Any) -> None:
-        # 模拟任务完成
-        cls.process_count += 1
-        
+
     @classmethod
     async def process_todo_task(
         cls,
@@ -37,6 +32,7 @@ class MockTask(BaseTask):
         **kwargs
     ) -> None:
         # 模拟任务处理
+        cls.process_count += 1
         if raise_error:
             raise ValueError("测试错误")
         await asyncio.sleep(sleep_time)
@@ -186,13 +182,10 @@ class TestBaseTask:
                 pass
             
             @classmethod
-            async def task_to_done(cls, db: IndexedRocksDB, task: Any) -> None:
+            async def process_todo_task(cls, db: IndexedRocksDB, task: Any, **kwargs) -> None:
                 cls.completed_count += 1
                 if cls.completed_count >= cls._total_tasks:
                     cls._completion_event.set()
-            
-            @classmethod
-            async def process_todo_task(cls, db: IndexedRocksDB, task: Any, **kwargs) -> None:
                 await asyncio.sleep(0.05)  # 减少任务执行时间为0.05秒
 
         async def run_batch_tasks(max_concurrent, expected_time, task_count=10):
@@ -251,10 +244,6 @@ class TestBaseTask:
                 pass
             
             @classmethod
-            async def task_to_done(cls, db: IndexedRocksDB, task: Any) -> None:
-                pass
-            
-            @classmethod
             async def process_todo_task(cls, db: IndexedRocksDB, task: Any, **kwargs) -> None:
                 pass
         
@@ -296,12 +285,10 @@ class TestBaseTask:
                 pass
             
             @classmethod
-            async def task_to_done(cls, db: IndexedRocksDB, task: Any) -> None:
+            async def process_todo_task(cls, db: IndexedRocksDB, task: Any, **kwargs) -> None:
                 cls.process_count += 1
                 cls.task_processed.set()
             
-            @classmethod
-            async def process_todo_task(cls, db: IndexedRocksDB, task: Any, **kwargs) -> None:
                 await asyncio.sleep(0.1)  # 模拟任务处理时间
 
         # 启动任务处理器
@@ -349,12 +336,10 @@ class TestBaseTask:
                 await asyncio.sleep(0.1)  # 模拟状态更新耗时
             
             @classmethod
-            async def task_to_done(cls, db: IndexedRocksDB, task: Any) -> None:
+            async def process_todo_task(cls, db: IndexedRocksDB, task: Any, **kwargs) -> None:
                 cls.tasks_in_processing.remove(task)
                 cls.processed_tasks.append(task)
             
-            @classmethod
-            async def process_todo_task(cls, db: IndexedRocksDB, task: Any, **kwargs) -> None:
                 await asyncio.sleep(0.2)  # 模拟任务处理耗时
         
         # 启动任务处理器
@@ -393,11 +378,9 @@ class TestBaseTask:
                 pass
             
             @classmethod
-            async def task_to_done(cls, db: IndexedRocksDB, task: Any) -> None:
-                cls.success_count += 1
-            
-            @classmethod
             async def process_todo_task(cls, db: IndexedRocksDB, task: Any, **kwargs) -> None:
+                cls.success_count += 1
+
                 if task == "task_1" or task == "task_3":
                     cls.error_count += 1
                     raise Exception(f"模拟任务处理错误: {task}")
