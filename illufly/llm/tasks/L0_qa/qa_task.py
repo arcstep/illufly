@@ -18,15 +18,15 @@ class QaTask(BaseTask):
     """对话摘要任务"""
 
     @classmethod
-    def get_tasks(cls, db: IndexedRocksDB, batch_size: int):
+    def get_task(cls, db: IndexedRocksDB):
         """获取待处理的QA列表"""
         values = db.values_with_indexes(
             model_name=MemoryType.QA,
             field_path="task_summarize",
             field_value=TaskState.TODO,
-            limit=batch_size
+            limit=1
         )
-        return [QA(**value) for value in values]
+        return QA(**values[0])
 
     @classmethod
     async def _process_summary(
@@ -47,14 +47,14 @@ class QaTask(BaseTask):
             db=db,
             logger=logger
         )
+
         template = SystemTemplate(template_id="summary")
-        logger.info(f"摘要任务 {messages} 的模板: {template}")
-        logger.info(f"摘要任务 {messages} 的绑定: {bindings}")
         resp = chat.async_call(
             messages="请开始处理",
             template=template,
             bindings={"memory": messages, "content": content}
         )
+
         final_text = ""
         async for chunk in resp:
             logger.info(f"摘要任务 {messages} 的响应: {chunk}")
@@ -64,47 +64,48 @@ class QaTask(BaseTask):
         return final_text if final_text else content
 
     @classmethod
-    async def _process_batch(cls, db, batch_size: int = 10, assistant: Optional[ChatOpenAI] = None, **kwargs):
+    async def _process_task(cls, db, batch_size: int = 10, assistant: Optional[ChatOpenAI] = None, **kwargs):
         """处理一批摘要任务"""
         task_id = cls.get_task_id()
         logger = cls._loggers[task_id]
         
         # 获取待处理的QA列表
-        qa_list = cls.get_tasks(db, batch_size=batch_size)
-        if not qa_list:
+        qa = cls.get_task(db)
+        if not qa:
             logger.info("没有待处理的QA")
             return
         
         logger.debug(f"获取到 {len(qa_list)} 个待处理QA")
         
         # 处理每个QA
-        for qa in qa_list:
-            logger.info(f"开始处理QA {qa.qa_id}")
-            try:
-                if len(qa.question) > 50:
-                    messages = [m.message_dict for m in qa.messages]
-                    summary_question = await cls._process_summary(messages, qa.question, logger, assistant)
-                else:
-                    summary_question = qa.question
+        logger.info(f"开始处理QA {qa.qa_id}")
+        try:
+            if len(qa.question) > 50:
+                logger.info(f"开始处理QA {qa.qa_id} 的问题摘要")
+                messages = [m.message_dict for m in qa.messages]
+                summary_question = await cls._process_summary(db, messages, qa.question, logger, assistant)
+            else:
+                summary_question = qa.question
 
-                if len(qa.answer) > 50:
-                    messages = [m.message_dict for m in qa.messages]
-                    summary_answer = await cls._process_summary(messages, qa.answer, logger, assistant)
-                else:
-                    summary_answer = qa.answer
+            if len(qa.answer) > 50:
+                logger.info(f"开始处理QA {qa.qa_id} 的回答摘要")
+                messages = [m.message_dict for m in qa.messages]
+                summary_answer = await cls._process_summary(db, messages, qa.answer, logger, assistant)
+            else:
+                summary_answer = qa.answer
 
-                logger.info(f"处理QA {qa.qa_id} 完成: {summary_question}, {summary_answer}")
+            logger.info(f"处理QA {qa.qa_id} 完成: {summary_question}, {summary_answer}")
 
-                qa.summary = [
-                    Message(role="user", content=str(summary_question)),
-                    Message(role="assistant", content=str(summary_answer))
-                ]
-                
-                qa.task_summarize = TaskState.DONE
-                logger.info(f"准备写入 {qa.qa_id}: {qa.model_dump()}")
-                db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
+            qa.summary = [
+                Message(role="user", content=str(summary_question)),
+                Message(role="assistant", content=str(summary_answer))
+            ]
+            
+            qa.task_summarize = TaskState.DONE
+            logger.info(f"准备写入 {qa.qa_id}: {qa.model_dump()}")
+            db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
 
-            except Exception as e:
-                logger.error(f"处理QA {qa.qa_id} 时发生错误: {e}")
-                qa.task_summarize = TaskState.ERROR
-                db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
+        except Exception as e:
+            logger.error(f"处理QA {qa.qa_id} 时发生错误: {e}")
+            qa.task_summarize = TaskState.ERROR
+            db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
