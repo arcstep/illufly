@@ -78,23 +78,16 @@ class QaTask(BaseTask):
         messages: List[Dict[str, Any]],
         content: str,
         logger: logging.Logger,
-        assistant: Optional[ChatOpenAI] = None
+        assistant: ChatOpenAI
     ):
         """处理摘要"""
         # logger.info(f"开始处理摘要任务， memory: {messages}, content: {content}")
-        chat = assistant or ChatOpenAI(
-            model=get_env("ILLUFLY_L0_TASK_MODEL"),
-            prefix=get_env("ILLUFLY_L0_TASK_PREFIX"),
-            user_id=get_env("ILLUFLY_L0_TASK_USER_ID"),
-            thread_id="once",
-            db=db,
-            logger=logger
-        )
+        chat = assistant
 
         template = SystemTemplate(template_id="summary")
         resp = chat.async_call(
             messages="请开始处理",
-            template=template,
+            system_template=template,
             bindings={"memory": messages, "content": content}
         )
 

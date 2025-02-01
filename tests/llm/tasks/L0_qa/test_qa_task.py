@@ -7,6 +7,8 @@ from illufly.llm.tasks.L0_qa.qa_task import QaTask
 from illufly.llm.memory.L0_qa import QA, Message
 from illufly.llm.memory.types import TaskState, MemoryType
 from illufly.mq import TextChunk, BlockType
+from illufly.llm.chat_openai import ChatOpenAI
+from illufly.envir import get_env
 
 class TestQaTask:
     @pytest.fixture
@@ -64,7 +66,6 @@ class TestQaTask:
         # 启动任务，注入mock的chat实例
         QaTask.start(
             db=db,
-            sleep_time=0.1,
             assistant=mock_chat_openai  # 注入mock实例
         )
         await asyncio.sleep(0.3)
@@ -126,7 +127,7 @@ class TestQaTask:
             task_summarize=TaskState.TODO
         )
         db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
-        QaTask.start(db=db, sleep_time=0.1, assistant=mock_chat_openai)
+        QaTask.start(db=db, assistant=mock_chat_openai)
         await asyncio.sleep(0.3)
         
         # 验证长文本被处理
@@ -264,3 +265,51 @@ class TestQaTask:
         # 验证数据库中的状态也已更新
         updated_qa = QA.model_validate(db[qa.key])
         assert updated_qa.task_summarize == TaskState.PROCESSING 
+    
+    @pytest.fixture
+    async def chat_openai(self, db):
+        chat = ChatOpenAI(
+            model=get_env("ILLUFLY_L0_TASK_MODEL"),
+            prefix=get_env("ILLUFLY_L0_TASK_PREFIX"),
+            user_id=get_env("ILLUFLY_L0_TASK_USER_ID"),
+            thread_id="once",
+            db=db,
+            logger=logging.getLogger(__name__)
+        )
+        yield chat
+        await chat.stop()
+
+    async def test_process_summary_with_real_openai(self, db, chat_openai):
+        """测试使用真实OpenAI处理摘要"""
+        # 获取logger
+        logger = logging.getLogger(__name__)
+        # 准备测试数据
+        question = "我想请你最喜欢的小动物是什么？为什么喜欢它？"
+        answer = "我喜欢小猫，因为小猫很可爱，会抓老鼠，还会陪我玩。"*30  # 创建一个较长的文本
+        messages = [
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": answer}
+        ]
+        
+        try:
+            # 调用摘要处理方法
+            summary = await QaTask._process_summary(
+                db=db,
+                messages=messages,
+                content=answer,
+                logger=logger,
+                assistant=chat_openai
+            )
+            logger.info(f"摘要处理结果: {summary}")
+            
+            # 验证结果
+            assert summary is not None, "摘要不应为空"
+            assert isinstance(summary, str), "摘要应该是字符串"
+            assert len(summary) < len(answer), "摘要应该比原文短"
+            assert len(summary) > 0, "摘要不应为空字符串"
+            
+            # 验证摘要的质量（可选，根据实际需求调整）
+            # 例如：检查是否包含关键词、是否符合特定格式等
+            
+        except Exception as e:
+            pytest.fail(f"摘要处理失败: {e}")
