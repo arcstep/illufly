@@ -57,7 +57,7 @@ class TestQaTask:
         assert target_qa.task_summarize == TaskState.TODO
         
         # 确认任务列表
-        tasks = QaTask.get_tasks(db, 1)
+        tasks = QaTask.get_todo_tasks(db)
         assert len(tasks) == 1
         assert tasks[0].key == setup_qa.key
         
@@ -98,7 +98,7 @@ class TestQaTask:
             db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
             test_qas.append(qa)
         
-        QaTask.start(db=db, sleep_time=0.1, batch_size=2, assistant=mock_chat_openai)
+        QaTask.start(db=db, max_concurrent_tasks=10, assistant=mock_chat_openai)
         await asyncio.sleep(0.5)  # 给足够时间处理所有QA
         
         # 验证所有QA都被处理
@@ -136,4 +136,131 @@ class TestQaTask:
         assert updated_qa.task_summarize == TaskState.DONE
         assert updated_qa.summary[1].content == "测试摘要"
         
-        await QaTask.stop() 
+        await QaTask.stop()
+    
+    async def test_reset_processing_tasks(self, db, user_id, thread_id, reset_qa_task):
+        """测试重置处理中任务的功能"""
+        # 准备测试数据：创建多个不同状态的QA
+        db.register_model(MemoryType.QA, QA)
+        db.register_indexes(MemoryType.QA, QA, field_path="task_summarize")
+        
+        test_qas = []
+        states = [
+            TaskState.TODO,
+            TaskState.PROCESSING,
+            TaskState.PROCESSING,
+            TaskState.DONE,
+            TaskState.ERROR
+        ]
+        
+        for i, state in enumerate(states):
+            qa = QA(
+                qa_id=f"test_qa_{i}",
+                user_id=user_id,
+                thread_id=thread_id,
+                messages=[
+                    Message(role="user", content=f"问题{i}"),
+                    Message(role="assistant", content=f"回答{i}")
+                ],
+                task_summarize=state
+            )
+            db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
+            test_qas.append(qa)
+        
+        # 执行重置操作
+        QaTask.reset_processing_task(db)
+        
+        # 验证结果
+        for i, qa in enumerate(test_qas):
+            updated_qa = QA.model_validate(db[qa.key])
+            if states[i] == TaskState.PROCESSING:
+                # PROCESSING 状态应该被重置为 TODO
+                assert updated_qa.task_summarize == TaskState.TODO, \
+                    f"QA {i} 应该被重置为 TODO 状态"
+            else:
+                # 其他状态应该保持不变
+                assert updated_qa.task_summarize == states[i], \
+                    f"QA {i} 状态不应该改变"
+    
+    async def test_concurrent_task_processing(self, db, user_id, thread_id, mock_chat_openai):
+        """测试并发任务处理时的状态管理"""
+        # 准备测试数据
+        db.register_model(MemoryType.QA, QA)
+        db.register_indexes(MemoryType.QA, QA, field_path="task_summarize")
+        
+        # 创建多个待处理任务
+        test_qas = []
+        for i in range(5):
+            qa = QA(
+                qa_id=f"test_qa_{i}",
+                user_id=user_id,
+                thread_id=thread_id,
+                messages=[
+                    Message(role="user", content=f"问题{i}"),
+                    Message(role="assistant", content=f"回答{i}"*100)
+                ],
+                task_summarize=TaskState.TODO
+            )
+            db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
+            test_qas.append(qa)
+        
+        # 启动任务处理器，设置并发数
+        QaTask.start(
+            db=db,
+            max_concurrent_tasks=2,
+            assistant=mock_chat_openai
+        )
+        await asyncio.sleep(0.3)
+        
+        # 立即检查处理中的任务
+        processing_tasks = QaTask.get_processing_tasks(db)
+        logging.info(f"processing_tasks: {len(processing_tasks)}")
+        todo_tasks = QaTask.get_todo_tasks(db)
+        logging.info(f"todo_tasks: {len(todo_tasks)}")
+        
+        # 验证处理中的任务数量
+        assert len(processing_tasks) > 0, "应该有任务处于 PROCESSING 状态"
+        assert len(processing_tasks) <= 2, f"处理中的任务数量应该不超过并发数2，当前为{len(processing_tasks)}"
+        
+        # 等待所有任务完成
+        all_done = False
+        for _ in range(50):  # 最多等待1秒
+            await asyncio.sleep(0.02)
+            if all(
+                QA.model_validate(db[qa.key]).task_summarize == TaskState.DONE
+                for qa in test_qas
+            ):
+                all_done = True
+                break
+        
+        assert all_done, "部分任务未能完成"
+        
+        await QaTask.stop()
+    
+    async def test_task_state_transition(self, db, user_id, thread_id, reset_qa_task, mock_chat_openai):
+        """测试任务状态转换的完整性"""
+        # 准备测试数据
+        db.register_model(MemoryType.QA, QA)
+        db.register_indexes(MemoryType.QA, QA, field_path="task_summarize")
+        
+        # 创建一个测试任务
+        qa = QA(
+            qa_id="test_qa_transition",
+            user_id=user_id,
+            thread_id=thread_id,
+            messages=[
+                Message(role="user", content="测试问题"),
+                Message(role="assistant", content="测试回答")
+            ],
+            task_summarize=TaskState.TODO
+        )
+        db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
+        
+        # 获取任务并检查状态转换
+        fetched_qa = QaTask.fetch_task(db)
+        assert fetched_qa is not None
+        assert fetched_qa.task_summarize == TaskState.PROCESSING
+        
+        # 验证数据库中的状态也已更新
+        updated_qa = QA.model_validate(db[qa.key])
+        assert updated_qa.task_summarize == TaskState.PROCESSING 
