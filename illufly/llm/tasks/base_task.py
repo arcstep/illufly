@@ -1,4 +1,4 @@
-from typing import Optional, ClassVar, Any, Set
+from typing import List, Optional, ClassVar, Dict, Any
 from abc import ABC, abstractmethod
 import asyncio
 import logging
@@ -17,7 +17,7 @@ class BaseTask(ABC):
     
     # 控制空转的类变量
     _sleep_time_when_idle = 0.1  # 无任务时的等待时间
-    _sleep_time_on_error = 0.5   # 发生错误时的等待时间
+    _sleep_time_on_error = 0.3   # 发生错误时的等待时间
     
     def __init__(self):
         raise RuntimeError(f"请使用 {self.__class__.__name__}.start() 启动任务")
@@ -26,11 +26,29 @@ class BaseTask(ABC):
     def get_task_id(cls) -> str:
         """获取任务ID，默认使用类名"""
         return cls.__name__
+
+    @classmethod
+    @abstractmethod
+    async def fetch_todo_task(cls, db: IndexedRocksDB, **kwargs) -> Optional[Any]:
+        """获取一个待处理的任务，如果没有则返回None"""
+        pass
     
     @classmethod
     @abstractmethod
-    async def _process_task(cls, db: IndexedRocksDB, **kwargs) -> None:
-        """提取单个任务并进行处理，由子类实现"""
+    async def task_to_processing(cls, db: IndexedRocksDB, task: Any) -> None:
+        """将任务状态更新为处理中"""
+        pass
+    
+    @classmethod
+    @abstractmethod
+    async def task_to_done(cls, db: IndexedRocksDB, task: Any) -> None:
+        """将任务状态更新为已完成"""
+        pass
+    
+    @classmethod
+    @abstractmethod
+    async def process_todo_task(cls, db: IndexedRocksDB, task: Any, **kwargs) -> None:
+        """处理具体的任务"""
         pass
     
     @classmethod
@@ -44,53 +62,52 @@ class BaseTask(ABC):
         task_id = cls.get_task_id()
         logger = cls._loggers.get(task_id)
         
-        # 初始化任务集合
         cls._pending_tasks[task_id] = set()
         
         try:
             while not cls._stop_events[task_id].is_set():
                 try:
                     # 清理已完成的任务
-                    done_tasks = set()
-                    for task in cls._pending_tasks[task_id]:
-                        if task.done():
-                            try:
-                                await task
-                            except Exception as e:
-                                logger.error(f"任务执行错误: {e}")  # 保持原有的错误消息格式
-                                await asyncio.sleep(cls._sleep_time_on_error)
-                            done_tasks.add(task)
-                    
-                    # 移除已完成的任务
-                    cls._pending_tasks[task_id].difference_update(done_tasks)
-                    
-                    # 创建新任务直到达到最大并发数
-                    while (len(cls._pending_tasks[task_id]) < max_concurrent_tasks):
+                    done_tasks = {t for t in cls._pending_tasks[task_id] if t.done()}
+                    for task in done_tasks:
                         try:
-                            # 创建新任务
-                            task = asyncio.create_task(cls._process_task(db, **kwargs))
-                            cls._pending_tasks[task_id].add(task)
+                            await task
                         except Exception as e:
                             logger.error(f"任务执行错误: {e}")
                             await asyncio.sleep(cls._sleep_time_on_error)
-                            break
+                    cls._pending_tasks[task_id].difference_update(done_tasks)
                     
-                    # 如果有活跃任务，等待任意一个完成
-                    if cls._pending_tasks[task_id]:
-                        await asyncio.wait(
-                            cls._pending_tasks[task_id],
-                            return_when=asyncio.FIRST_COMPLETED
-                        )
-                    else:
-                        # 无任务时短暂等待
+                    # 检查是否可以创建新任务
+                    while len(cls._pending_tasks[task_id]) < max_concurrent_tasks:
+                        todo_task = await cls.fetch_todo_task(db, **kwargs)
+                        if not todo_task:
+                            break
+                            
+                        # 创建异步任务
+                        async def process_wrapper(task):
+                            try:
+                                await cls.task_to_processing(db, task)
+                                await cls.process_todo_task(db, task, **kwargs)
+                                await cls.task_to_done(db, task)
+                            except Exception as e:
+                                logger.error(f"任务处理失败: {e}")
+                                await asyncio.sleep(cls._sleep_time_on_error)
+
+                        task = asyncio.create_task(process_wrapper(todo_task))
+                        cls._pending_tasks[task_id].add(task)
+                    
+                    # 如果没有任务，等待一段时间
+                    if not cls._pending_tasks[task_id]:
                         await asyncio.sleep(cls._sleep_time_when_idle)
+                    else:
+                        # 短暂等待，让其他任务有机会执行
+                        await asyncio.sleep(0)
                         
                 except Exception as e:
                     logger.error(f"任务循环发生错误: {e}")
                     await asyncio.sleep(cls._sleep_time_on_error)
                     
         finally:
-            # 等待所有pending任务完成
             if cls._pending_tasks.get(task_id):
                 logger.info("等待所有任务完成...")
                 pending = cls._pending_tasks[task_id]
