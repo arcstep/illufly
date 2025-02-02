@@ -39,6 +39,7 @@ class ReplyErrorBlock(ReplyBlock):
 class RequestBlock(BaseBlock):
     """请求块"""
     request_step: RequestStep
+    func_name: str = "default"
     args: List[Any] = []
     kwargs: Dict[str, Any] = {}
 
@@ -196,3 +197,13 @@ class ErrorBlock(StreamingBlock):
     @property
     def content(self) -> str:
         return self.error
+
+# 消息类型注册表
+MESSAGE_TYPES = {
+    'TextChunk': TextChunk,
+    'StreamingBlock': StreamingBlock,
+    'EndBlock': EndBlock,
+    'ReplyBlock': ReplyBlock,
+    'ErrorBlock': ErrorBlock,
+    'RequestBlock': RequestBlock
+}
