@@ -37,6 +37,11 @@ def zmq_context():
 
 @pytest.fixture(scope="module")
 def router_address():
+    """返回路由器地址
+
+    - inproc 套接字地址必须使用相同的 Context 创建的 Router、Dealer 和 Client
+    - tcp 套接字地址可以跨 Context 使用
+    """
     # return "tcp://localhost:5555"
     return "inproc://router_abc"
 
@@ -56,16 +61,10 @@ async def router(router_address, zmq_context):
 @pytest.fixture(scope="module")
 async def service(router, router_address, zmq_context):
     """创建并启动服务"""
-    # 确保 Router 已经完全启动
-    assert router._running, "Router not running"
-    assert router._socket.closed == False, "Router socket closed"
-    
     service = EchoService(router_address, context=zmq_context)
     await service.start()
-    try:
-        yield service
-    finally:
-        await service.stop()
+    yield service
+    await service.stop()
 
 @pytest.fixture
 async def client(router, service, router_address, zmq_context):
@@ -79,12 +78,19 @@ async def client(router, service, router_address, zmq_context):
     finally:
         await client.close()
 
+@pytest.fixture
+async def second_service(router, router_address, zmq_context):
+    """创建第二个服务实例"""
+    service = EchoService(router_address, context=zmq_context)
+    await service.start()
+    yield service
+    await service.stop()
+
 class EchoService(ServiceDealer):
     """示例服务实现"""
     def __init__(self, router_address: str, context = None):
         super().__init__(
             router_address=router_address,
-            service_id="echo_service",
             context=context
         )
 
@@ -215,3 +221,118 @@ async def test_service_not_found(router, client):
         async for _ in client.call_service("non_existent", "test"):
             pass
     assert "not found" in str(exc_info.value)
+
+@pytest.mark.asyncio
+async def test_load_balancing(router, service, second_service, client):
+    """测试负载均衡功能"""
+    # 记录每个服务处理的请求
+    responses = []
+    
+    # 发送多个请求
+    for i in range(10):
+        async for response in client.call_service("echo", f"test_{i}"):
+            responses.append(response)
+            break
+    
+    # 检查服务发现，应该能看到两个服务
+    services = await client.discover_services()
+    assert len(services) == 2, "应该有两个服务注册"
+    
+    # 检查响应是否正确
+    assert len(responses) == 10, "应该收到所有请求的响应"
+    assert all(resp == f"test_{i}" for i, resp in enumerate(responses)), "响应内容应该正确"
+
+@pytest.mark.asyncio
+async def test_service_failover(router, service, second_service, client):
+    """测试服务故障转移"""
+    # 首先确认两个服务都在工作
+    async for response in client.call_service("echo", "test1"):
+        assert response == "test1"
+        break
+    
+    # 停止第一个服务
+    await service.stop()
+    await asyncio.sleep(0.1)  # 给路由器一点时间处理服务下线
+    
+    # 确认仍然可以通过第二个服务处理请求
+    async for response in client.call_service("echo", "test2"):
+        assert response == "test2"
+        break
+    
+    # 检查服务发现，应该只剩一个服务
+    services = await client.discover_services()
+    assert len(services) == 1, "应该只剩一个服务"
+
+@pytest.mark.asyncio
+async def test_concurrent_load_balancing(router, service, second_service, client):
+    """测试并发负载均衡"""
+    async def make_request(i: int):
+        async for response in client.call_service("echo", f"test_{i}"):
+            assert response == f"test_{i}"
+            break
+    
+    # 创建多个并发请求
+    tasks = [
+        make_request(i)
+        for i in range(20)
+    ]
+    await asyncio.gather(*tasks)
+
+@pytest.mark.asyncio
+async def test_service_registration_order(router, router_address, zmq_context):
+    """测试服务注册顺序不影响负载均衡"""
+    # 创建多个服务实例
+    services = []
+    try:
+        # 依次启动3个服务
+        for i in range(3):
+            service = EchoService(router_address, context=zmq_context)
+            await service.start()
+            services.append(service)
+            await asyncio.sleep(0.1)  # 给一点时间注册
+        
+        # 创建客户端
+        client = ClientDealer(router_address, context=zmq_context)
+        
+        # 发送请求并检查负载均衡
+        responses = []
+        for i in range(9):  # 发送9个请求，应该每个服务处理3个
+            async for response in client.call_service("echo", f"test_{i}"):
+                responses.append(response)
+                break
+        
+        # 验证所有请求都得到处理
+        assert len(responses) == 9, "应该收到所有请求的响应"
+        assert all(resp == f"test_{i}" for i, resp in enumerate(responses)), "响应内容应该正确"
+        
+        # 检查服务发现
+        services_info = await client.discover_services()
+        assert len(services_info) == 3, "应该有3个服务注册"
+        
+    finally:
+        # 清理服务实例
+        for service in services:
+            await service.stop()
+        await client.close()
+
+@pytest.mark.asyncio
+async def test_service_health_check(router, service, second_service, client):
+    """测试服务健康检查"""
+    # 首先确认两个服务都在工作
+    services = await client.discover_services()
+    assert len(services) == 2, "应该有两个服务注册"
+    
+    # 模拟服务故障（强制关闭socket）
+    service._socket.close()
+    
+    # 等待健康检查发现故障（超过心跳超时时间）
+    await asyncio.sleep(11)  # 健康检查超时是10秒
+    
+    # 检查服务发现，应该只剩一个服务
+    services = await client.discover_services()
+    assert len(services) == 1, "应该只剩一个服务"
+    
+    # 确认剩余服务仍然可用
+    async for response in client.call_service("echo", "test"):
+        assert response == "test"
+        break

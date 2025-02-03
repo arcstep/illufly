@@ -13,6 +13,7 @@ from ..models import (
 )
 from .utils import serialize_message, deserialize_message
 import time
+import uuid
 
 class ServiceDealer:
     """服务端 DEALER 实现，用于处理具体服务请求"""
@@ -22,19 +23,17 @@ class ServiceDealer:
     def __init__(
         self,
         router_address: str,
-        service_id: str,
         context: Optional[zmq.asyncio.Context] = None,
         hwm: int = 1000,        # 网络层面的背压控制
         max_concurrent: int = 100,  # 应用层面的背压控制
         logger = None
     ):
         self._router_address = router_address
-        self._service_id = service_id
         self._hwm = hwm
         self._max_concurrent = max_concurrent
         self._logger = logger or logging.getLogger(__name__)
         
-        self._context = context or zmq.asyncio.Context()
+        self._context = context or zmq.asyncio.Context.instance()
         self._socket = None
         self._running = False
         self._heartbeat_task = None
@@ -61,6 +60,9 @@ class ServiceDealer:
                 'metadata': {'system': True, 'stream': False},
             }
         }
+
+        # 生成一个随机的 UUID 作为服务标识
+        self._service_id = str(uuid.uuid4())
 
     @classmethod
     def service_method(cls, name: str = None, **metadata):
@@ -116,10 +118,11 @@ class ServiceDealer:
         try:
             self._running = True
             self._socket = self._context.socket(zmq.DEALER)
-            self._socket.identity = self._service_id.encode()
             self._socket.set_hwm(self._hwm)
+            # 设置 UUID 作为 identity
+            self._socket.identity = self._service_id.encode()
             
-            # 尝试连接
+            # 连接到路由器
             self._logger.info(f"Connecting to router at {self._router_address}")
             self._socket.connect(self._router_address)
             await asyncio.sleep(0.1)  # 给连接一点时间
@@ -182,7 +185,7 @@ class ServiceDealer:
             self._socket.close()
             self._socket = None
             
-        self._logger.info(f"Service {self._service_id} stopped")
+        self._logger.info(f"Service stopped")
 
     async def _register_to_router(self):
         """向路由器注册服务"""
@@ -196,7 +199,7 @@ class ServiceDealer:
             if method_name not in self._system_handlers
         }
         
-        self._logger.info(f"Registering service {self._service_id} with methods: {service_info}")
+        self._logger.info(f"Registering service with methods: {service_info}")
         await self._socket.send_multipart([
             b"register",
             json.dumps(service_info).encode()
@@ -210,7 +213,7 @@ class ServiceDealer:
             )
             self._logger.info(f"Got registration response: {response}")
             if response[0] == b"ok":
-                self._logger.info(f"Service {self._service_id} registered")
+                self._logger.info(f"Service registered")
                 return
             raise RuntimeError(f"Registration failed: {response}")
         except Exception as e:
