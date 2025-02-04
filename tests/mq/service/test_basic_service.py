@@ -249,8 +249,8 @@ async def test_load_balancing(router, service, second_service, client):
             break
     
     # 检查服务发现，应该能看到两个服务
-    services = await client.discover_services()
-    assert len(services) == 2, "应该有两个服务注册"
+    clusters = await client.discover_clusters()
+    assert len(clusters.keys()) == 2, "应该有两个服务注册"
     
     # 检查响应是否正确
     assert len(responses) == 10, "应该收到所有请求的响应"

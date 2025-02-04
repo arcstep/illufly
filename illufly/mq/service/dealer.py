@@ -139,7 +139,7 @@ class ServiceDealer:
             ])
             try:
                 response = await asyncio.wait_for(self._socket.recv_multipart(), timeout=1.0)
-                if len(response) >= 2 and response[0] == b"reply" and response[1] == b"pong":
+                if len(response) >= 2 and response[0] == b"ping_ack" and response[1] == b"pong":
                     self._logger.info("Connection established")
                 else:
                     raise RuntimeError("Invalid ping response")
@@ -193,6 +193,7 @@ class ServiceDealer:
 
         # 发送关闭请求
         if self._socket:
+            error = None
             try:
                 self._logger.info("Sending shutdown request to router")
                 await self._socket.send_multipart([
@@ -201,15 +202,21 @@ class ServiceDealer:
                 ])
                 try:
                     self._logger.debug("Waiting for shutdown acknowledgment")
-                    await asyncio.wait_for(
+                    multipart = await asyncio.wait_for(
                         self._socket.recv_multipart(),
                         timeout=0.5
                     )
-                    self._logger.info("Received shutdown acknowledgment")
+                    if multipart[0] == b"shutdown_ack":
+                        self._logger.info("Received shutdown acknowledgment")
+                    else:
+                        error = "Invalid shutdown acknowledgment"
                 except asyncio.TimeoutError:
-                    self._logger.warning("No shutdown acknowledgment from router")
+                    error = "Shutdown acknowledgment timeout"
             except Exception as e:
-                self._logger.error(f"Error sending shutdown notice: {e}")
+                error = f"Error sending shutdown notice: {e}"
+            finally:
+                if error:
+                    self._logger.error(error)
 
         # 关闭 socket
         if self._socket:
@@ -246,7 +253,7 @@ class ServiceDealer:
                 self._socket.recv_multipart(),
                 timeout=5.0
             )
-            if len(response) >= 2 and response[0] == b"reply":
+            if len(response) >= 2 and response[0] == b"register_ack":
                 router_config = json.loads(response[1].decode())
                 self._heartbeat_interval = router_config.get('heartbeat_interval', 1.0) 
                 self._logger.info(

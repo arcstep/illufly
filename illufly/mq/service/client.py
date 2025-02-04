@@ -32,9 +32,9 @@ class ClientDealer:
         self._lock = asyncio.Lock()
         self._connected = False
         self._client_id = str(uuid.uuid4())
-        self._available_methods = {}  # 缓存可用方法
+        self._available_methods = {}  # 缓存可用方法        
 
-    async def _connect(self):
+    async def connect(self):
         """连接到路由器"""
         if not self._socket:
             self._socket = self._context.socket(zmq.DEALER)
@@ -42,6 +42,7 @@ class ClientDealer:
             self._socket.set_hwm(self._hwm)
             self._socket.connect(self._router_address)
             self._connected = True
+
             # 连接后立即更新可用方法
             await self.discover_services()
             self._logger.debug(f"Connected to router at {self._router_address}")
@@ -58,7 +59,7 @@ class ClientDealer:
     async def connection(self):
         """连接上下文管理器"""
         try:
-            await self._connect()
+            await self.connect()
             yield self
         except Exception as e:
             self._logger.error(f"Connection error: {e}")
@@ -66,27 +67,24 @@ class ClientDealer:
             raise
 
     async def discover_services(self, timeout: Optional[float] = None) -> Dict[str, Dict]:
-        """发现可用的服务方法
-        
-        Returns:
-            Dict[str, Dict]: 方法名到方法信息的映射
-            例如：{
-                "echo": {},
-                "add": {
-                    "description": "Add two numbers",
-                    "params": {
-                        "a": "first number",
-                        "b": "second number"
-                    }
-                }
-            }
-        """
+        """发现可用的服务方法"""
+        return await self.call_sync_method("methods", timeout)
+
+    async def discover_clusters(self, timeout: Optional[float] = None) -> Dict[str, Dict]:
+        """发现可用的服务节点"""
+        return await self.call_sync_method("clusters", timeout)
+
+    async def call_sync_method(self, sync_method: str, timeout: Optional[float] = None) -> Dict[str, Dict]:
+        """同步调用"""
         if timeout is None:
             timeout = self._timeout
+
+        if not self._connected:
+            await self.connect()
         
         try:
             await self._socket.send_multipart([
-                b"discovery",
+                sync_method.encode(),
                 b""
             ])
 
@@ -96,7 +94,7 @@ class ClientDealer:
             )
 
             response = deserialize_message(multipart[-1])
-            self._logger.debug(f"Received discovery response: {response}")
+            self._logger.debug(f"Received sync method response: {response}")
 
             if isinstance(response, ReplyBlock):
                 self._available_methods = response.result
@@ -107,9 +105,9 @@ class ClientDealer:
                 raise ValueError(f"Unexpected response type: {type(response)}")
 
         except asyncio.TimeoutError:
-            raise TimeoutError("Service discovery timeout")
+            raise TimeoutError("Sync method timeout")
         except Exception as e:
-            self._logger.error(f"Service discovery error: {e}")
+            self._logger.error(f"Sync method error: {e}")
             raise
 
     async def call_service(
@@ -121,7 +119,7 @@ class ClientDealer:
     ) -> AsyncGenerator[Any, None]:
         """调用服务，返回异步生成器"""
         if not self._connected:
-            await self._connect()
+            await self.connect()
 
         if service_name not in self._available_methods:
             # 如果方法不在缓存中，尝试更新一次
@@ -144,42 +142,41 @@ class ClientDealer:
         if timeout is None:
             timeout = self._timeout
 
-        async with self.connection():
-            try:
-                # 发送请求
-                await self._socket.send_multipart([
-                    b"call",  # 添加消息类型
-                    service_name.encode(),  # 服务名称
-                    serialize_message(request)  # 请求数据
-                ])
+        try:
+            # 发送请求
+            await self._socket.send_multipart([
+                b"call",  # 添加消息类型
+                service_name.encode(),  # 服务名称
+                serialize_message(request)  # 请求数据
+            ])
 
-                # 接收响应流
-                while True:
-                    try:
-                        self._logger.debug(f"Waiting for response: {request_id}")
-                        multipart = await asyncio.wait_for(
-                            self._socket.recv_multipart(),
-                            timeout=timeout
-                        )
+            # 接收响应流
+            while True:
+                try:
+                    self._logger.debug(f"Waiting for response: {request_id}")
+                    multipart = await asyncio.wait_for(
+                        self._socket.recv_multipart(),
+                        timeout=timeout
+                    )
 
-                        response = deserialize_message(multipart[-1])
-                        self._logger.debug(f"Received response type: {type(response)}, content: {response}")
+                    response = deserialize_message(multipart[-1])
+                    self._logger.debug(f"Received response type: {type(response)}, content: {response}")
 
-                        if isinstance(response, StreamingBlock):
-                            if isinstance(response, EndBlock):
-                                return
-                            yield response.content
-                        elif isinstance(response, ReplyBlock):
-                            yield response.result
+                    if isinstance(response, StreamingBlock):
+                        if isinstance(response, EndBlock):
                             return
-                        elif isinstance(response, ErrorBlock):
-                            raise RuntimeError(response.error)
-                        else:
-                            yield response
+                        yield response.content
+                    elif isinstance(response, ReplyBlock):
+                        yield response.result
+                        return
+                    elif isinstance(response, ErrorBlock):
+                        raise RuntimeError(response.error)
+                    else:
+                        yield response
 
-                    except asyncio.TimeoutError:
-                        raise TimeoutError(f"Service call timeout: {service_name}")
+                except asyncio.TimeoutError:
+                    raise TimeoutError(f"Service call timeout: {service_name}")
 
-            except Exception as e:
-                self._logger.error(f"Service call error: {e}")
-                raise
+        except Exception as e:
+            self._logger.error(f"Service call error: {e}")
+            raise

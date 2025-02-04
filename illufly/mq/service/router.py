@@ -204,11 +204,25 @@ class ServiceRouter:
                     self._logger.debug(f"Handling ping from {sender_id}")
                     await self._socket.send_multipart([
                         sender_id_bytes,  # 发送给原始发送者
-                        b"reply",         # 消息类型
+                        b"ping_ack",         # 消息类型
                         b"pong"          # 响应内容
                     ])
+                
+                elif message_type == "clusters":
+                    # 收集所有可用的 DEALERS 节点信息
+                    response = ReplyBlock(
+                        request_id=str(uuid.uuid4()),
+                        result={
+                            k: v.model_dump() for k, v in self._services.items()
+                        }
+                    )
+                    await self._socket.send_multipart([
+                        sender_id_bytes,
+                        b"clusters_ack",
+                        serialize_message(response)
+                    ])
                     
-                elif message_type == "discovery":
+                elif message_type == "methods":
                     # 收集所有可用的方法信息
                     available_methods = {}
                     for service in self._services.values():
@@ -224,7 +238,7 @@ class ServiceRouter:
                     )
                     await self._socket.send_multipart([
                         sender_id_bytes,
-                        b"reply",
+                        b"methods_ack",
                         serialize_message(response)
                     ])
                     
@@ -236,7 +250,7 @@ class ServiceRouter:
                     }
                     await self._socket.send_multipart([
                         sender_id_bytes,
-                        b"reply",
+                        b"register_ack",
                         json.dumps(router_config).encode()
                     ])
                     
@@ -278,8 +292,10 @@ class ServiceRouter:
                                 b"shutdown_ack",
                             ])
                         elif message_type == "overload":
+                            # 不必回复
                             self._services[sender_id].state = ServiceState.OVERLOAD
                         elif message_type == "resume":
+                            # 不必回复
                             self._services[sender_id].state = ServiceState.ACTIVE
 
                 # 如果是已注册服务的回复消息，直接转发给客户端
