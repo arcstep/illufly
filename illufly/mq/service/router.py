@@ -30,7 +30,6 @@ class ServiceInfo(BaseModel):
     request_count: int = 0
     reply_count: int = 0
     last_heartbeat: float = Field(default_factory=time)
-    pending_requests: Set[str] = Field(default_factory=set)
 
     @property
     def load_ratio(self) -> float:
@@ -54,7 +53,6 @@ class ServiceInfo(BaseModel):
         """自定义序列化方法"""
         data = super().model_dump(**kwargs)
         data['state'] = data['state'].value  # 将枚举转换为字符串
-        data['pending_requests'] = list(data['pending_requests'])  # 将集合转换为列表
         return data
 
 class ServiceRouter:
@@ -150,12 +148,6 @@ class ServiceRouter:
                                 f"Service {service_id} marked as inactive: "
                                 f"last heartbeat was {current_time - service.last_heartbeat:.1f}s ago"
                             )
-                            
-                            # 清理该服务的所有待处理请求
-                            for request_id in list(service.pending_requests):
-                                if request_id in self._request_timeouts:
-                                    del self._request_timeouts[request_id]
-                            service.pending_requests.clear()
                             service.current_load = 0
             
             # 检查请求超时
@@ -164,7 +156,6 @@ class ServiceRouter:
                     if service_id in self._services:
                         service = self._services[service_id]
                         service.current_load -= 1
-                        service.pending_requests.discard(request_id)
                         if service.current_load < 0:
                             service.current_load = 0
                         self._logger.warning(
