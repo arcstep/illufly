@@ -53,18 +53,6 @@ class ServiceDealer:
                 'metadata': info['metadata']
             }
 
-        # 注册系统方法，但不包含在服务发现中
-        self._system_handlers = {
-            'register': {
-                'handler': self._handle_register,
-                'metadata': {'system': True, 'stream': False},
-            },
-            'heartbeat': {
-                'handler': self._handle_heartbeat,
-                'metadata': {'system': True, 'stream': False},
-            }
-        }
-
         # 生成一个随机的 UUID 作为服务标识
         self._service_id = str(uuid.uuid4())
 
@@ -235,11 +223,11 @@ class ServiceDealer:
             'methods': {
                 method_name: handler['metadata']
                 for method_name, handler in self._handlers.items()
-                if method_name not in self._system_handlers
             },
             'max_concurrent': self._max_concurrent,
             'current_load': self._current_load,
-            'available_slots': self._max_concurrent - self._current_load,
+            'request_count': 0,
+            'reply_count': 0,
         }
         
         self._logger.info(f"Registering service with info: {service_info}")
@@ -318,10 +306,8 @@ class ServiceDealer:
                     await self._socket.send_multipart([b"overload", b""])
                 
                 try:
-                    # 先检查是否是系统方法
-                    if request.func_name in self._system_handlers:
-                        handler = self._system_handlers[request.func_name]['handler']
-                    elif request.func_name in self._handlers:
+                    # 检查方法是否注册过
+                    if request.func_name in self._handlers:
                         handler = self._handlers[request.func_name]['handler']
                         handler_info = self._registry[request.func_name]
                         is_stream = handler_info['stream']
@@ -410,22 +396,10 @@ class ServiceDealer:
         while self._running:
             try:
                 if self._socket:
-                    available_slots = self._max_concurrent - self._current_load
-                    # 包含负载信息的心跳消息
-                    load_info = {
-                        'current_load': self._current_load,
-                        'max_concurrent': self._max_concurrent,
-                        'available_slots': available_slots,
-                        'timestamp': time.time()
-                    }
                     await self._socket.send_multipart([
                         b"heartbeat",
-                        json.dumps(load_info).encode()
+                        b"",
                     ])
-                    # self._logger.debug(
-                    #     f"Sent heartbeat - Load: {self._current_load}/{self._max_concurrent} "
-                    #     f"(Available: {available_slots})"
-                    # )
                 await asyncio.sleep(self._heartbeat_interval)
             except asyncio.CancelledError:
                 break
@@ -462,22 +436,14 @@ class ServiceDealer:
             )
             await self._send_message(client_id, reply)
 
-    async def _handle_register(self, *args, **kwargs):
-        """处理注册请求"""
-        return self._registry
-
-    async def _handle_heartbeat(self, *args, **kwargs):
-        """处理心跳请求"""
-        return {'status': 'alive', 'timestamp': time.time()}
-
     def check_overload(self) -> bool:
         """检查是否接近满载（可重写）
         默认策略：当前负载达到最大并发的90%时认为即将满载
         """
-        return self._current_load >= self._max_concurrent * 0.9
+        return self._current_load >= self._max_concurrent
 
     def check_can_resume(self) -> bool:
         """检查是否可以恢复服务（可重写）
         默认策略：当前负载低于最大并发的80%时可以恢复
         """
-        return self._current_load <= self._max_concurrent * 0.8
+        return self._current_load <= self._max_concurrent * 0.9

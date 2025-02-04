@@ -25,11 +25,31 @@ class ServiceInfo(BaseModel):
     service_id: str
     methods: Dict[str, Any]
     state: ServiceState = ServiceState.ACTIVE
-    max_concurrent: int
+    max_concurrent: int = 100
     current_load: int = 0
+    request_count: int = 0
+    reply_count: int = 0
     last_heartbeat: float = Field(default_factory=time)
     pending_requests: Set[str] = Field(default_factory=set)
-    
+
+    @property
+    def load_ratio(self) -> float:
+        """负载率"""
+        return self.current_load / self.max_concurrent
+
+    def accept_request(self):
+        """接受请求"""
+        self.current_load += 1
+        self.request_count += 1
+
+    def complete_request(self):
+        """完成请求"""
+        self.current_load -= 1
+        self.reply_count += 1
+
+        if self.current_load < 0:
+            self.current_load = 0
+
     def model_dump(self, **kwargs) -> dict:
         """自定义序列化方法"""
         data = super().model_dump(**kwargs)
@@ -101,7 +121,10 @@ class ServiceRouter:
         self._services[service_id] = ServiceInfo(
             service_id=service_id,
             methods=service_info.get('methods', {}),
-            max_concurrent=max_concurrent
+            max_concurrent=max_concurrent,
+            current_load=service_info.get('current_load', 0),
+            request_count=service_info.get('request_count', 0),
+            reply_count=service_info.get('reply_count', 0)
         )
         self._logger.info(f"Registered service: {service_id} with max_concurrent={max_concurrent}")
 
@@ -269,6 +292,7 @@ class ServiceRouter:
                             sender_id_bytes,
                             *multipart[2:]
                         ])
+                        target_service.accept_request()
                     else:
                         error_msg = f"No available service for method {method_name}"
                         self._logger.error(error_msg)
@@ -313,6 +337,7 @@ class ServiceRouter:
                         b"reply",
                         response_data
                     ])
+                    self._services[sender_id].complete_request()
 
                 else:
                     await self._send_error(sender_id_bytes, f"Unknown message type: {message_type}")
