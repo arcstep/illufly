@@ -262,7 +262,7 @@ class ServiceDealer:
                     break
                     
                 multipart = await self._socket.recv_multipart()
-                self._logger.info(f"DEALER Received message: {multipart}")
+                # self._logger.info(f"DEALER Received message: {multipart}")
 
 
                 # 正确的格式应当是
@@ -286,7 +286,7 @@ class ServiceDealer:
 
     async def _process_request(self, client_id: bytes, request: RequestBlock):
         """处理单个请求"""
-        self._logger.info(f"DEALER Processing request: {request}")
+        # self._logger.info(f"DEALER Processing request: {request}")
         if self._current_load >= self._max_concurrent:
             await self._send_error(
                 client_id, 
@@ -355,7 +355,6 @@ class ServiceDealer:
                             result = await handler(*request.args, **request.kwargs)
                             reply = ReplyBlock(
                                 request_id=request.request_id,
-                                state=ReplyState.READY,
                                 result=result
                             )
                             await self._socket.send_multipart([
@@ -431,7 +430,6 @@ class ServiceDealer:
         else:
             reply = ReplyBlock(
                 request_id=request_id,
-                state=ReplyState.READY,
                 result=result
             )
             await self._send_message(client_id, reply)

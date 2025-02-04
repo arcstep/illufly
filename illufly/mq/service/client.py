@@ -153,7 +153,6 @@ class ClientDealer:
             # 接收响应流
             while True:
                 try:
-                    self._logger.debug(f"Waiting for response: {request_id}")
                     multipart = await asyncio.wait_for(
                         self._socket.recv_multipart(),
                         timeout=timeout

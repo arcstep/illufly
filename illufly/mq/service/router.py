@@ -286,13 +286,14 @@ class ServiceRouter:
                     
                     target_service = self._select_best_service(service_name)
                     if target_service and target_service.state == ServiceState.ACTIVE:
+                        target_service.accept_request()
+                        self._services[target_service.service_id].accept_request()
                         await self._socket.send_multipart([
                             target_service.service_id.encode(),
                             b"call",
                             sender_id_bytes,
                             *multipart[2:]
                         ])
-                        target_service.accept_request()
                     else:
                         error_msg = f"No available service for method {method_name}"
                         self._logger.error(error_msg)
@@ -404,6 +405,9 @@ class ServiceRouter:
                 service.state == ServiceState.ACTIVE and
                 service.current_load < service.max_concurrent)
         ]
+        for service in available_services:
+            s = self._services[service.service_id]
+            self._logger.info(f"Available service: {s.service_id} current_load: {s.current_load} / max_concurrent: {s.max_concurrent}")
         
         if not available_services:
             return None

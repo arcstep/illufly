@@ -110,6 +110,7 @@ class EchoService(ServiceDealer):
     @ServiceDealer.service_method()  # 使用默认方法名
     async def echo(self, message: str) -> str:
         """简单回显服务"""
+        await asyncio.sleep(0.1)
         logger.info(f"EchoService {self._service_id} echo: {message}")
         return message
 
@@ -130,6 +131,7 @@ class EchoService(ServiceDealer):
     )
     async def add_numbers(self, a: int, b: int) -> int:
         """带参数说明的加法服务"""
+        await asyncio.sleep(0.01)
         return a + b
 
 @pytest.mark.asyncio
@@ -237,24 +239,32 @@ async def test_service_not_found(router, client):
     assert "not found" in str(exc_info.value)
 
 @pytest.mark.asyncio
-async def test_load_balancing(router, service, second_service, client):
+async def test_load_balancing(router, service, second_service, router_address, zmq_context):
     """测试负载均衡功能"""
     # 记录每个服务处理的请求
     responses = []
     
     # 发送多个请求
+    clients = []
+    tasks = []
     for i in range(10):
-        async for response in client.call_service("echo", f"test_{i}"):
-            responses.append(response)
-            break
+        client = ClientDealer(router_address, context=zmq_context, timeout=2.0)
+        clients.append(client)
+        # 将异步生成器转换为协程
+        tasks.append(client.call_service("echo", f"test_{i}").__anext__())
+    
+    responses = await asyncio.gather(*tasks)
     
     # 检查服务发现，应该能看到两个服务
-    clusters = await client.discover_clusters()
+    clusters = await clients[0].discover_clusters()
     assert len(clusters.keys()) == 2, "应该有两个服务注册"
     
     # 检查响应是否正确
     assert len(responses) == 10, "应该收到所有请求的响应"
     assert all(resp == f"test_{i}" for i, resp in enumerate(responses)), "响应内容应该正确"
+
+    for client in clients:
+        await client.close()
 
 @pytest.mark.asyncio
 async def test_service_failover(router, service, second_service, client):
