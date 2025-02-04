@@ -27,25 +27,28 @@ class ClientDealer:
         self._timeout = timeout
         self._logger = logger or logging.getLogger(__name__)
         
-        self._context = context or zmq.asyncio.Context()
+        self._context = context or zmq.asyncio.Context.instance()
         self._socket = None
         self._lock = asyncio.Lock()
         self._connected = False
+        self._client_id = str(uuid.uuid4())
+        self._available_methods = {}  # 缓存可用方法
 
-    async def _ensure_connected(self):
-        """确保连接已建立，如果没有则建立连接"""
-        if not self._connected:
-            async with self._lock:
-                if not self._connected:  # 双重检查
-                    if not self._socket:
-                        self._socket = self._context.socket(zmq.DEALER)
-                        self._socket.set_hwm(self._hwm)
-                    self._socket.connect(self._router_address)
-                    self._connected = True
-                    self._logger.debug(f"Connected to router at {self._router_address}")
+    async def _connect(self):
+        """连接到路由器"""
+        if not self._socket:
+            self._socket = self._context.socket(zmq.DEALER)
+            self._socket.identity = self._client_id.encode()
+            self._socket.set_hwm(self._hwm)
+            self._socket.connect(self._router_address)
+            self._connected = True
+            # 连接后立即更新可用方法
+            await self.discover_services()
+            self._logger.debug(f"Connected to router at {self._router_address}")
 
     async def close(self):
         """关闭连接"""
+        self._available_methods = {}
         if self._socket:
             self._socket.close()
             self._socket = None
@@ -55,7 +58,7 @@ class ClientDealer:
     async def connection(self):
         """连接上下文管理器"""
         try:
-            await self._ensure_connected()
+            await self._connect()
             yield self
         except Exception as e:
             self._logger.error(f"Connection error: {e}")
@@ -63,39 +66,51 @@ class ClientDealer:
             raise
 
     async def discover_services(self, timeout: Optional[float] = None) -> Dict[str, Dict]:
-        """发现可用的服务及其方法"""
+        """发现可用的服务方法
+        
+        Returns:
+            Dict[str, Dict]: 方法名到方法信息的映射
+            例如：{
+                "echo": {},
+                "add": {
+                    "description": "Add two numbers",
+                    "params": {
+                        "a": "first number",
+                        "b": "second number"
+                    }
+                }
+            }
+        """
         if timeout is None:
             timeout = self._timeout
+        
+        try:
+            await self._socket.send_multipart([
+                b"discovery",
+                b""
+            ])
 
-        async with self.connection():
-            try:
-                # 修改发送格式以匹配Router期望
-                await self._socket.send_multipart([
-                    b"discovery",  # message_type
-                    b""  # empty content
-                ])
+            multipart = await asyncio.wait_for(
+                self._socket.recv_multipart(),
+                timeout=timeout
+            )
 
-                # 等待响应
-                multipart = await asyncio.wait_for(
-                    self._socket.recv_multipart(),
-                    timeout=timeout
-                )
+            response = deserialize_message(multipart[-1])
+            self._logger.debug(f"Received discovery response: {response}")
 
-                response = deserialize_message(multipart[0])
-                self._logger.debug(f"Received discovery response: {response}")
+            if isinstance(response, ReplyBlock):
+                self._available_methods = response.result
+                return self._available_methods
+            elif isinstance(response, ErrorBlock):
+                raise RuntimeError(response.error)
+            else:
+                raise ValueError(f"Unexpected response type: {type(response)}")
 
-                if isinstance(response, ReplyBlock):
-                    return response.result  # 直接返回 result 字段
-                elif isinstance(response, ErrorBlock):
-                    raise RuntimeError(response.error)
-                else:
-                    raise ValueError(f"Unexpected response type: {type(response)}")
-
-            except asyncio.TimeoutError:
-                raise TimeoutError("Service discovery timeout")
-            except Exception as e:
-                self._logger.error(f"Service discovery error: {e}")
-                raise
+        except asyncio.TimeoutError:
+            raise TimeoutError("Service discovery timeout")
+        except Exception as e:
+            self._logger.error(f"Service discovery error: {e}")
+            raise
 
     async def call_service(
         self,
@@ -105,6 +120,18 @@ class ClientDealer:
         **kwargs
     ) -> AsyncGenerator[Any, None]:
         """调用服务，返回异步生成器"""
+        if not self._connected:
+            await self._connect()
+
+        if service_name not in self._available_methods:
+            # 如果方法不在缓存中，尝试更新一次
+            await self.discover_services()
+            if service_name not in self._available_methods:
+                raise RuntimeError(
+                    f"Service method '{service_name}' not found. "
+                    f"Available methods: {list(self._available_methods.keys())}"
+                )
+
         request_id = str(uuid.uuid4())
         request = RequestBlock(
             request_id=request_id,
@@ -119,21 +146,11 @@ class ClientDealer:
 
         async with self.connection():
             try:
-                # 先检查服务是否存在
-                services = await self.discover_services(timeout=timeout)
-                service_found = False
-                for service_info in services.values():
-                    if service_name in service_info:
-                        service_found = True
-                        break
-                
-                if not service_found:
-                    raise RuntimeError(f"Service method '{service_name}' not found. Available services: {[method for service in services.values() for method in service.keys()]}")
-
                 # 发送请求
                 await self._socket.send_multipart([
-                    service_name.encode(),
-                    serialize_message(request)
+                    b"call",  # 添加消息类型
+                    service_name.encode(),  # 服务名称
+                    serialize_message(request)  # 请求数据
                 ])
 
                 # 接收响应流
@@ -166,13 +183,3 @@ class ClientDealer:
             except Exception as e:
                 self._logger.error(f"Service call error: {e}")
                 raise
-
-    def _serialize_message(self, message: Any) -> bytes:
-        """序列化消息"""
-        if hasattr(message, 'model_dump_json'):
-            return message.model_dump_json().encode()
-        return json.dumps(message).encode()
-
-    def _deserialize_message(self, data: bytes) -> Any:
-        """反序列化消息"""
-        return json.loads(data.decode())

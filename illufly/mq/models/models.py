@@ -15,7 +15,7 @@ class BaseBlock(BaseModel):
 
 class ReplyBlock(BaseBlock):
     """响应块"""
-    state: ReplyState
+    state: ReplyState = Field(default=ReplyState.SUCCESS)
     result: Any = None
 
 class ReplyAcceptedBlock(ReplyBlock):
