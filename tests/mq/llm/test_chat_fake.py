@@ -66,7 +66,7 @@ async def router(router_address, zmq_context, test_config):
     await router.stop()
 
 @pytest.fixture
-def chat_fake_service(router, router_address, zmq_context):
+async def chat_fake_service(router, router_address, zmq_context):
     """ChatFake 服务实例"""
     service = ChatFake(
         response=["Hello", "World"],
@@ -74,7 +74,9 @@ def chat_fake_service(router, router_address, zmq_context):
         router_address=router_address,
         context=zmq_context
     )
-    return service
+    await service.start()
+    yield service
+    await service.stop()
 
 @pytest.mark.asyncio
 async def test_chat_fake_basic(chat_fake_service, router_address, zmq_context):
