@@ -8,7 +8,7 @@ from .enum import BlockType, ReplyState, RequestStep
 
 class BaseBlock(BaseModel):
     """基础数据块"""
-    request_id: str
+    request_id: str = Field(default="")
     created_at: float = Field(default_factory=lambda: time.time())
 
     model_config = ConfigDict(use_enum_values=True)

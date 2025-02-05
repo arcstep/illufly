@@ -157,7 +157,7 @@ async def test_streaming_response(router, service, client):
     received = []
     
     async for response in client.call_service("stream", 0, 5):
-        received.append(response)
+        received.append(response.content)
             
     assert received == expected
 

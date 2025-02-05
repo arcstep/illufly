@@ -164,7 +164,7 @@ class ClientDealer:
                     if isinstance(response, StreamingBlock):
                         if isinstance(response, EndBlock):
                             return
-                        yield response.content
+                        yield response
                     elif isinstance(response, ReplyBlock):
                         yield response.result
                         return

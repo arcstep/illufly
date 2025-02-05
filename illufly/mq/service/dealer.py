@@ -332,6 +332,7 @@ class ServiceDealer:
                                     )
                                 elif isinstance(chunk, StreamingBlock):
                                     block = chunk
+                                    block.request_id = request.request_id
                                 else:
                                     raise ValueError(f"Invalid chunk type: {type(chunk)}")
 

@@ -1,8 +1,7 @@
 import asyncio
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple
 from functools import partial
 
 class BaseCall:
