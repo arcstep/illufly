@@ -58,7 +58,6 @@ def get_env(key: str=None):
         "FASTAPI_USERS_ADMIN_USERNAME": "admin",
         "FASTAPI_USERS_ADMIN_PASSWORD": "admin",
         "FASTAPI_USERS_ADMIN_EMAIL": "admin@illufly.com",
-        "HASH_METHOD": "pbkdf2_sha256",
         "FASTAPI_SECRET_KEY": "MY-SECRET-KEY",
         "FASTAPI_ALGORITHM": "HS256",
         "REFRESH_TOKEN_EXPIRE_DAYS": 30,
@@ -73,6 +72,9 @@ def get_env(key: str=None):
         "LOG_DATE_FORMAT": "%Y-%m-%d %H:%M:%S",
         "LOG_ENCODING": "utf-8",
         "LOG_MIN_FREE_SPACE": 100 * 1024 * 1024,
+
+        # HASH
+        "ILLUFLY_HASH_METHOD": "pbkdf2_sha256",
     }
     if key:
         if key not in default_values:
