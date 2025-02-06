@@ -1,44 +1,59 @@
 from fastapi import APIRouter, Form, Depends, Response, HTTPException, status, Request
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from jose import JWTError
 import uuid
 
+from ...io.rocksdict import IndexedRocksDB
 from ..result import Result
 from ..users import TokensManager, UsersManager, User, UserRole
 
 class RegisterRequest(BaseModel):
-    username: str
-    password: str
-    email: EmailStr
-    invite_code: Optional[str] = None
-    invite_from: Optional[str] = None
+    """注册请求"""
+    username: str = Field(..., description="用户名")
+    password: str = Field(..., description="密码")
+    email: EmailStr = Field(..., description="邮箱")
+    invite_code: Optional[str] = Field(None, description="邀请码")
+    invite_from: Optional[str] = Field(None, description="邀请人的 user_id")
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
-    device_id: Optional[str] = None
+    """登录请求
+    支持用户从多个设备使用自动生成的设备ID同时登录。
+    """
+    username: str = Field(..., description="用户名")
+    password: str = Field(..., description="密码")
+    device_id: Optional[str] = Field(None, description="设备ID")
 
 class UpdateUserProfileRequest(BaseModel):
-    settings: Dict[str, Any]
+    """更新用户个人设置请求"""
+    settings: Dict[str, Any] = Field(..., description="用户个人设置")
 
 class UpdateUserRolesRequest(BaseModel):
-    roles: List[str]
+    """更新用户角色请求"""
+    roles: List[str] = Field(..., description="用户角色列表")
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
+    """修改密码请求"""
+    current_password: str = Field(..., description="当前密码")
+    new_password: str = Field(..., description="新密码")
 
 def create_users_endpoints(
-        app, 
+        app,
         users_manager: UsersManager, 
         prefix: str="/api"
     ):
-    """创建用户相关的API端点"""
+    """创建用户相关的API端点
+
+    Args:
+        app: FastAPI应用实例
+        users_manager: 用户管理器实例
+        prefix: API前缀
+    """
     tokens_manager = users_manager.tokens_manager
 
     def _create_token_data(user_info: dict, device_id: str = "DEFAULT_DEVICE") -> dict:
         """从用户信息中提取JWT令牌所需的数据"""
+
         return {
             "device_id": device_id,
             "user_id": user_info["user_id"],
