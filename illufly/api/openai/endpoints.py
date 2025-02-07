@@ -96,8 +96,8 @@ async def chat_completion(request: ChatRequest, api_key: str = Depends(verify_ap
         # 流式响应
         async def generate():
             full_response = "Hello! This is a test response from the OpenAI-compatible API."
-            for i in range(len(full_response)):
-                chunk = full_response[:i+1]
+            for word in full_response:
+                chunk = word
                 data_dict = {
                     'id': 'chatcmpl-123',
                     'object': 'chat.completion.chunk',
