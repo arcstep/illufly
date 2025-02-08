@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from ...async_utils import AsyncUtils
-from ...io.rocksdict import IndexedRocksDB
+from ...rocksdict import IndexedRocksDB
 
 class BaseTask(ABC):
     """异步任务基类"""

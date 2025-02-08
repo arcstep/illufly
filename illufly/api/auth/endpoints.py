@@ -5,7 +5,7 @@ from jose import JWTError
 import uuid
 import logging
 
-from ...io.rocksdict import IndexedRocksDB
+from ...rocksdict import IndexedRocksDB
 from ..models import Result
 from .models import User, UserRole
 from .tokens import TokensManager

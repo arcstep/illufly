@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel
 
-from ....io.rocksdict import IndexedRocksDB
+from ....rocksdict import IndexedRocksDB
 from .models import TaskStatus, ProcessingTask
 
 class BaseProcessor:

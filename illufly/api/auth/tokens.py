@@ -7,7 +7,7 @@ from calendar import timegm
 from rocksdict import RDict, Options, ColumnFamilyDescriptor
 
 from ...envir import get_env
-from ...io.rocksdict import IndexedRocksDB
+from ...rocksdict import IndexedRocksDB
 from ..result import Result
 
 __JWT_SECRET_KEY__ = get_env("JWT_SECRET_KEY")

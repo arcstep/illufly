@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, Field
 from jose import JWTError
 import uuid
 
-from ...io.rocksdict import IndexedRocksDB
+from ...rocksdict import IndexedRocksDB
 from ..result import Result
 from ..users import TokensManager, UsersManager, User, UserRole
 

@@ -1,7 +1,7 @@
 from typing import Dict
 from datetime import datetime
 
-from ....io.rocksdict import IndexedRocksDB
+from ....rocksdict import IndexedRocksDB
 from .models import TaskStatus, ProcessingTask
 
 class TaskManager:

@@ -3,7 +3,7 @@ from typing import Dict, List, Union, Any
 import uuid
 import logging
 
-from ....io.rocksdict import IndexedRocksDB
+from ....rocksdict import IndexedRocksDB
 from ..types import MemoryType, TaskState
 from ..utils import generate_key
 from .models import Message, QA, Thread

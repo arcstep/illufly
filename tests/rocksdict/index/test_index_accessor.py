@@ -3,7 +3,7 @@ from typing import List, Dict, Optional
 from dataclasses import dataclass
 from pydantic import BaseModel
 
-from illufly.io.huang_index.index.accessor import (
+from illufly.rocksdict.index.accessor import (
     ValueAccessor,
     SequenceAccessor,
     MappingAccessor,
@@ -11,7 +11,7 @@ from illufly.io.huang_index.index.accessor import (
     DataclassAccessor,
     CompositeAccessor
 )
-from illufly.io.huang_index.index.path_parser import PathParser
+from illufly.rocksdict.index.path_parser import PathParser
 
 import logging
 

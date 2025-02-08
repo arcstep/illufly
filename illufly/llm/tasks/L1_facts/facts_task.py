@@ -7,7 +7,7 @@ import logging
 from ....mq import BlockType
 from ....async_utils import AsyncUtils
 from ....envir import get_env
-from ....io.rocksdict import IndexedRocksDB
+from ....rocksdict import IndexedRocksDB
 from ...system_template import SystemTemplate
 from ...memory.L0_qa import QA, Message
 from ...memory.L1_facts import Fact

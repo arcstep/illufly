@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Union
-from illufly.io.rocksdict.index import IndexedRocksDB
+from illufly.rocksdict.index import IndexedRocksDB
 import tempfile
 import shutil
 

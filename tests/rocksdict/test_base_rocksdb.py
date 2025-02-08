@@ -1,6 +1,6 @@
 import pytest
 from rocksdict import Rdict, Options, ReadOptions, WriteOptions
-from illufly.io.rocksdict.base_rocksdb import BaseRocksDB, WriteBatch
+from illufly.rocksdict.base_rocksdb import BaseRocksDB, WriteBatch
 import tempfile
 import os
 import shutil

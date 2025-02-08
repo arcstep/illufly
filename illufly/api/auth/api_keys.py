@@ -1,6 +1,6 @@
-from ...io.rocksdict import IndexedRocksDB
 import uuid
 
+from ...rocksdict import IndexedRocksDB
 from ..models import ApiKey, Result
 
 __API_KEY_MODEL_NAME__ = "api_key"
