@@ -23,6 +23,7 @@ chevron = "^0.14.0"
 python-statemachine = "^2.5.0"
 uvicorn = "^0.34.0"
 fastapi = "^0.115.8"
+python-jose = "^3.3.0"
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^69.1.0"
@@ -39,8 +40,6 @@ jupyter = "^1.1.1"
 optional = true
 
 [tool.poetry.group.test.dependencies]
-behave = "^1.2.6"
-pytest-bdd = "^8.1.0"
 allure-pytest = "^2.13.5"
 pytest-cov = "^4.0.0"
 trio = "^0.27.0"
@@ -64,20 +63,3 @@ include = "illufly/**/*"
 
 [tool.anyio]
 backend = "asyncio"
-
-[tool.poetry.scripts]
-bdd = "scripts.behave_runner:main"
-
-[tool.poetry.group.ml]
-optional = true
-
-[tool.poetry.group.ml.dependencies]
-torch = "2.0.1"
-sentence-transformers = "^3.1.1"
-
-[tool.poetry.group.viz]
-optional = true
-
-[tool.poetry.group.viz.dependencies]
-matplotlib = "^3.9.2"
-seaborn = "^0.13.2"
