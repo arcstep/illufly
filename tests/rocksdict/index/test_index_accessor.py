@@ -8,7 +8,6 @@ from illufly.rocksdict.index.accessor import (
     SequenceAccessor,
     MappingAccessor,
     ModelAccessor,
-    DataclassAccessor,
     CompositeAccessor
 )
 from illufly.rocksdict.index.path_parser import PathParser
@@ -43,33 +42,10 @@ class PydanticUser(BaseModel):
     profile: PydanticProfile
     friends: List['PydanticUser'] = []  # 自引用嵌套
 
-@dataclass
-class DataclassLocation:
-    latitude: float
-    longitude: float
-    description: Optional[str] = None
+    @property
+    def mykey(self):
+        return f"{self.name}_{self.age}"
 
-@dataclass
-class DataclassAddress:
-    city: str
-    street: str
-    location: DataclassLocation
-    tags: Dict[str, str]
-
-@dataclass
-class DataclassProfile:
-    nickname: str
-    avatar: str
-    preferences: Dict[str, str]
-
-@dataclass
-class DataclassUser:
-    name: str
-    age: int
-    addresses: List[DataclassAddress]
-    metadata: Dict[str, str]
-    profile: DataclassProfile
-    friends: List['DataclassUser'] = None  # 自引用嵌套
 
 class TestAccessors:
     @pytest.fixture
@@ -132,43 +108,6 @@ class TestAccessors:
             )
         )
     
-    @pytest.fixture
-    def dataclass_data(self):
-        """Dataclass测试数据"""
-        return DataclassUser(
-            name="张三",
-            age=30,
-            addresses=[
-                DataclassAddress(
-                    city="北京", 
-                    street="长安街",
-                    location=DataclassLocation(
-                        latitude=39.909904,
-                        longitude=116.397399
-                    ),
-                    tags={"type": "home"}
-                ),
-                DataclassAddress(
-                    city="上海", 
-                    street="南京路",
-                    location=DataclassLocation(
-                        latitude=31.231706,
-                        longitude=121.472644
-                    ),
-                    tags={"type": "work"}
-                )
-            ],
-            metadata={
-                "tag": "vip",
-                "level": "1"
-            },
-            profile=DataclassProfile(
-                nickname="阿三",
-                avatar="avatar.jpg",
-                preferences={"theme": "light"}
-            )
-        )
-    
     def test_sequence_accessor(self, path_parser, dict_data):
         """测试序列访问器"""
         accessor = SequenceAccessor()
@@ -220,21 +159,12 @@ class TestAccessors:
         path = path_parser.parse("invalid")
         value = accessor.get_field_value(pydantic_data, path)
         assert value is None
+
+        # 测试属性索引
+        path = path_parser.parse("mykey")
+        value = accessor.get_field_value(pydantic_data, path)
+        assert value == "张三_30"
     
-    def test_dataclass_accessor(self, path_parser, dataclass_data):
-        """测试Dataclass访问器"""
-        accessor = DataclassAccessor()
-        
-        # 测试属性访问
-        path = path_parser.parse("name")
-        value = accessor.get_field_value(dataclass_data, path)
-        assert value == "张三"
-        
-        # 测试嵌套属性访问
-        path = path_parser.parse("addresses")
-        addresses = accessor.get_field_value(dataclass_data, path)
-        assert len(addresses) == 2
-        assert addresses[0].city == "北京"
     
     def test_composite_accessor_dict(self, path_parser, composite_accessor, dict_data):
         """测试组合访问器处理字典数据"""
@@ -467,23 +397,10 @@ class TestAccessors:
                 assert error is not None, f"路径 '{path_str}' 应该无效"
                 assert expected_error in error, f"错误消息应包含 '{expected_error}'"
 
-    def test_dataclass_accessor_validation(self, path_parser):
-        """测试Dataclass访问器的路径验证"""
-        accessor = DataclassAccessor()
-        
-        # 测试有效路径
-        path = path_parser.parse("name")
-        assert accessor.validate_path(DataclassUser, path) is None
-        
-        # 测试无效访问类型
-        path = path_parser.parse("[0]")
-        error = accessor.validate_path(DataclassUser, path)
-        assert error is not None
-        assert "不支持 SEQUENCE 访问" in error
 
     def test_accessor_registry_validation(self):
         """测试访问器注册表的路径验证"""
-        from illufly.io.huang_index.index.accessor import AccessorRegistry
+        from illufly.rocksdict.index.accessor import AccessorRegistry
         registry = AccessorRegistry()
         
         # 测试有效路径
@@ -524,39 +441,6 @@ class TestAccessors:
             ],
             metadata={"key": "value"},
             profile=PydanticProfile(
-                nickname="test",
-                avatar="avatar.jpg",
-                preferences={"theme": "dark"}
-            )
-        )
-        assert accessor.can_handle(user) is True
-        assert accessor.can_handle({"name": "test"}) is False
-
-    def test_dataclass_accessor_can_handle(self):
-        """测试Dataclass访问器的类型处理"""
-        accessor = DataclassAccessor()
-        
-        # 测试类型
-        assert accessor.can_handle(DataclassUser) is True
-        assert accessor.can_handle(dict) is False
-        
-        # 测试实例 - 提供所有必需字段
-        user = DataclassUser(
-            name="test",
-            age=1,
-            addresses=[
-                DataclassAddress(
-                    city="北京",
-                    street="长安街",
-                    location=DataclassLocation(
-                        latitude=39.9,
-                        longitude=116.3
-                    ),
-                    tags={"type": "home"}
-                )
-            ],
-            metadata={"key": "value"},
-            profile=DataclassProfile(
                 nickname="test",
                 avatar="avatar.jpg",
                 preferences={"theme": "dark"}

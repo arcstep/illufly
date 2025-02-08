@@ -33,6 +33,10 @@ class User(BaseModel):
     name: str
     age: int
     email: Optional[str] = None
+
+    @property
+    def mykey(self):
+        return f"{self.name}_{self.email}"
     
 class Post(BaseModel):
     title: str
@@ -62,10 +66,11 @@ class TestBasicIndexOperations:
         """测试带索引的基本CRUD操作"""
         db.register_model("user", User)
         db.register_indexes("user", User, "name")
+        db.register_indexes("user", User, "mykey")
         
         # 创建
         user = User(name="alice", age=25)
-        db.update_with_indexes("user", "user:1", user.model_dump())
+        db.update_with_indexes("user", "user:1", user)
 
         # 查看所有Keys
         keys = list(db.iter_model_keys("user"))
@@ -73,7 +78,7 @@ class TestBasicIndexOperations:
         assert len(keys) == 1
 
         # 读取
-        assert db.get("user:1") == user.model_dump()
+        assert db.get("user:1") == user
         
         # 通过索引查询
         keys = list(db.iter_keys_with_indexes("user", "name", "alice"))
@@ -82,7 +87,7 @@ class TestBasicIndexOperations:
         
         # 更新
         user.name = "alice2"
-        db.update_with_indexes("user", "user:1", user.model_dump())
+        db.update_with_indexes("user", "user:1", user)
         keys = list(db.iter_keys_with_indexes("user", "name", "alice2"))
         assert len(keys) == 1
         
@@ -96,9 +101,9 @@ class TestBasicIndexOperations:
         # 只有注册模型才能重建索引
         db.register_model("user", User)
 
-        db.update_with_indexes("user", "user:1", User(name="alice", age=25).model_dump())
-        db.update_with_indexes("user", "user:2", User(name="bob", age=30).model_dump())
-        db.update_with_indexes("user", "user:3", User(name="alice", age=26).model_dump())
+        db.update_with_indexes("user", "user:1", User(name="alice", age=25))
+        db.update_with_indexes("user", "user:2", User(name="bob", age=30))
+        db.update_with_indexes("user", "user:3", User(name="alice", age=26))
 
         # 之前没有注册索引，因此更新时不会自动建立，无法查询
         items = db.items_with_indexes(
@@ -120,7 +125,7 @@ class TestBasicIndexOperations:
         logger.info(f"items: {items}")
         assert len(items) == 1
         assert items[0][0] == "user:2"
-        assert items[0][1] == User(name="bob", age=30).model_dump()
+        assert items[0][1] == User(name="bob", age=30)
 
     def test_simple_type_index(self, db):
         """典型的字典索引"""
@@ -152,6 +157,35 @@ class TestBasicIndexOperations:
         assert len(items) == 1
         assert items[0][0] == "alice"
         assert items[0][1] == {"name": value}
+
+    def test_property_index(self, db):
+        """索引属性"""
+        db.register_model("user", User)
+        db.register_indexes("user", User, "email")
+        db.register_indexes("user", User, "mykey")
+        
+        # 创建
+        user = User(name="alice", age=25, email="alice@example.com")
+        db.update_with_indexes("user", "user:1", user)
+
+        # 查看索引
+        cf = db.get_column_family(db.INDEX_CF)
+        keys = list(db.iter(rdict=cf, prefix="idx"))
+        logger.info(f"indexes: {keys}")
+
+        # 查看所有Keys
+        keys = list(db.iter_model_keys("user"))
+        logger.info(f"keys: {keys}")
+        assert len(keys) == 1
+
+        # 读取
+        assert db.get("user:1") == user
+        
+        # 通过索引查询
+        keys = list(db.iter_keys_with_indexes("user", "mykey", "alice_alice@example.com"))
+        assert len(keys) == 1
+        assert keys[0] == "user:1"
+        
 
 class TestComplexIndexOperations:
     """复杂索引操作测试"""
@@ -192,7 +226,7 @@ class TestComplexIndexOperations:
         )
         
         db.register_indexes("post", Post, "metadata.category")
-        db.update_with_indexes("post", "post:1", post.model_dump())
+        db.update_with_indexes("post", "post:1", post)
         
         keys = list(db.iter_keys_with_indexes("post", "metadata.category", "tech"))
         assert len(keys) == 1
@@ -209,7 +243,7 @@ class TestRangeQueries:
         # 插入测试数据
         for i in range(10):
             user = User(name=f"user{i}", age=20+i)
-            db.update_with_indexes("user", f"user:{i}", user.model_dump())
+            db.update_with_indexes("user", f"user:{i}", user)
             
         try:
             yield db
@@ -279,8 +313,8 @@ class TestSpecialCases:
         user1 = User(name="alice", age=25)  # email is None
         user2 = User(name="bob", age=30, email="bob@example.com")
         
-        db.update_with_indexes("user", "user:1", user1.model_dump())
-        db.update_with_indexes("user", "user:2", user2.model_dump())
+        db.update_with_indexes("user", "user:1", user1)
+        db.update_with_indexes("user", "user:2", user2)
         
         # 查询 email 为空的用户
         keys = list(db.iter_keys_with_indexes("user", "email", None))
@@ -292,7 +326,7 @@ class TestSpecialCases:
         db.register_indexes("user", User, "name")
         
         user = User(name="test:user.with/special*chars", age=25)
-        db.update_with_indexes("user", "user:1", user.model_dump())
+        db.update_with_indexes("user", "user:1", user)
         
         keys = list(db.iter_keys_with_indexes(
             "user", "name", "test:user.with/special*chars"

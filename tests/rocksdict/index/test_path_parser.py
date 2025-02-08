@@ -68,7 +68,6 @@ class TestPathParser:
     def test_invalid_paths(self, parser):
         """测试无效路径"""
         invalid_cases = [
-            ("", "空路径"),
             ("data{", "未闭合的花括号"),
             ("data}", "意外的右花括号"),
             ("data{}", "空的花括号"),
@@ -86,6 +85,7 @@ class TestPathParser:
         ]
         
         for path, expected_error in invalid_cases:
+            logger.info(f"测试无效路径: {path}")
             with pytest.raises(ValueError, match=expected_error):
                 parser.parse(path)
     

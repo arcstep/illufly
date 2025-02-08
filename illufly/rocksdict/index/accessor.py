@@ -224,72 +224,24 @@ class ModelAccessor(ValueAccessor):
         if not issubclass(value_type, BaseModel):
             return f"类型 {value_type.__name__} 不是 Pydantic 模型"
             
+        # 检查字段是否存在
         model_fields = value_type.model_fields
-        if segment.value not in model_fields:
-            return f"模型 {value_type.__name__} 没有字段 '{segment.value}'"
-            
-        return None
+        if segment.value in model_fields:
+            return None
+
+        # 检查是否为只读属性
+        if hasattr(value_type, segment.value) and isinstance(getattr(value_type, segment.value, None), property):
+            return None
+
+        return f"模型 {value_type.__name__} 没有字段或只读属性 '{segment.value}'"
 
     def can_handle(self, value: Any) -> bool:
         """检查是否可以处理 Pydantic 模型"""
         if isinstance(value, type):
             return issubclass(value, BaseModel)
-        return isinstance(value, BaseModel)
-
-class DataclassAccessor(ValueAccessor):
-    """Dataclass访问器"""
-    def __init__(self, logger: Optional[logging.Logger] = None):
-        self._logger = logger or logging.getLogger(__name__)
-        
-    def get_field_value(self, obj: Any, path_segments: Tuple[PathSegment, ...]) -> Any:
-        if not path_segments or not is_dataclass(obj):
-            return obj
-            
-        segment = path_segments[0]
-        try:
-            if segment.type == SegmentType.ATTRIBUTE:
-                value = getattr(obj, segment.value)
-            else:
-                return None
-            return value if len(path_segments) == 1 else None
-        except AttributeError:
-            return None
-    
-    def get_type(self) -> Type:
-        return object
-    
-    def can_handle(self, value: Any) -> bool:
-        """检查是否可以处理 dataclass"""
-        if isinstance(value, type):
-            return is_dataclass(value)
-        return is_dataclass(value.__class__)
-    
-    def validate_path(self, value_type: Type, path_segments: Tuple[PathSegment, ...]) -> Optional[str]:
-        """验证路径是否可以访问指定的 dataclass 类型
-        
-        Args:
-            value_type: 要验证的值类型
-            path_segments: 路径段序列
-            
-        Returns:
-            Optional[str]: 如果路径无效，返回错误信息；如果有效，返回 None
-        """
-        if not path_segments:
-            return None
-            
-        if not is_dataclass(value_type):
-            return f"类型 {value_type.__name__} 不是 dataclass"
-            
-        segment = path_segments[0]
-        if segment.type != SegmentType.ATTRIBUTE:
-            return f"Dataclass 不支持 {segment.type.name} 访问"
-            
-        # 正确导入和使用 fields
-        dataclass_fields = {f.name: f for f in fields(value_type)}
-        if segment.value not in dataclass_fields:
-            return f"Dataclass {value_type.__name__} 没有字段 '{segment.value}'"
-            
-        return None
+        return isinstance(value, BaseModel) or (
+            hasattr(value, "__class__") and issubclass(value.__class__, BaseModel)
+        )
 
 class CompositeAccessor(ValueAccessor):
     """组合访问器"""
@@ -297,10 +249,9 @@ class CompositeAccessor(ValueAccessor):
         self._logger = logger or logging.getLogger(self.__class__.__name__)
         # 调整访问器顺序，确保特定类型在前
         self._accessors = [
+            ModelAccessor(),     # 然后是模型类型
             SequenceAccessor(),  # 先检查序列类型
             MappingAccessor(),   # 再检查映射类型
-            ModelAccessor(),     # 然后是模型类型
-            DataclassAccessor()  # 最后是数据类类型
         ]
     
     def get_field_value(self, obj: Any, path_segments: Tuple[PathSegment, ...]) -> Any:
