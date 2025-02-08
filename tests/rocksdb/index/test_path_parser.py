@@ -3,7 +3,7 @@ import time
 import logging
 from functools import lru_cache
 
-from illufly.rocksdict.index import PathParser, PathSegment, SegmentType
+from illufly.rocksdb.index import PathParser, PathSegment, SegmentType
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Union
 import uuid
 import logging
 
-from ..rocksdict import default_rocksdb, IndexedRocksDB
+from ..rocksdb import default_rocksdb, IndexedRocksDB
 from ..llm.memory.L0_qa import QAManager, QA, Message
 from ..call import RemoteServer
 from ..mq import Publisher, StreamingBlock, BlockType, TextChunk

@@ -3,7 +3,7 @@ import asyncio
 import logging
 from unittest.mock import MagicMock
 from illufly.llm.tasks.base_task import BaseTask
-from illufly.rocksdict import IndexedRocksDB
+from illufly.rocksdb import IndexedRocksDB
 from typing import Any
 
 class MockTask(BaseTask):

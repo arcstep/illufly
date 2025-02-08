@@ -8,7 +8,7 @@ import logging
 import pickle
 
 from ..envir.default_env import get_env
-from ..rocksdict import BaseRocksDB
+from ..rocksdb import BaseRocksDB
 
 class CacheDBManager:
     _db = None

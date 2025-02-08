@@ -24,6 +24,7 @@ python-statemachine = "^2.5.0"
 uvicorn = "^0.34.0"
 fastapi = "^0.115.8"
 python-jose = "^3.3.0"
+speedict = "^0.3.12"
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^69.1.0"

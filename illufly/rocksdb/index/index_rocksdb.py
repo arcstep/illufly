@@ -1,6 +1,6 @@
 from typing import Type, Any, Optional, Dict, List, get_origin, Union, Iterator, Set
 from pydantic import BaseModel
-from rocksdict import Options, Rdict, WriteBatch, DBCompressionType
+from speedict import Options, Rdict, WriteBatch, DBCompressionType
 
 from ..base_rocksdb import BaseRocksDB
 from .accessor import AccessorRegistry

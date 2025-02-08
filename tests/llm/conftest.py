@@ -2,7 +2,7 @@ import pytest
 import tempfile
 import shutil
 
-from illufly.rocksdict import IndexedRocksDB
+from illufly.rocksdb import IndexedRocksDB
 from illufly.llm.memory.L0_qa import QA, Thread
 
 @pytest.fixture

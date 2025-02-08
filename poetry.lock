@@ -4230,6 +4230,53 @@ files = [
 ]
 
 [[package]]
+name = "speedict"
+version = "0.3.12"
+description = "Speedb Python Binding"
+optional = false
+python-versions = "*"
+groups = ["main"]
+markers = "python_version == \"3.11\" or python_version >= \"3.12\""
+files = [
+    {file = "speedict-0.3.12-cp310-cp310-macosx_10_14_x86_64.macosx_11_0_arm64.macosx_10_14_universal2.whl", hash = "sha256:8a8b9bbcd2bae9dcf6e233b79adccae253adfb0ac30c908aaf059eb5eb4c1ba4"},
+    {file = "speedict-0.3.12-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0ed7c5d713683dfaa49736363c647f2a627422efbad890f8531be2014e816666"},
+    {file = "speedict-0.3.12-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:14c3f5618f131ac786a5e58dab7fc89e7c96e011eeef01fc191f3c9f08c08b2a"},
+    {file = "speedict-0.3.12-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:7ad77167e30e1974a190ff388fb4b2cd90913bc3fc58f55371484e5d8870f5a5"},
+    {file = "speedict-0.3.12-cp310-none-win32.whl", hash = "sha256:9d1c119e4624fb11557647007a875dac99cdce7af441c5539f9ca64434d53cf2"},
+    {file = "speedict-0.3.12-cp310-none-win_amd64.whl", hash = "sha256:447f8177ea9b05f33f4928d8f87303cc285b49273c4e9bb3b7c24401a495e0ba"},
+    {file = "speedict-0.3.12-cp311-cp311-macosx_10_14_x86_64.macosx_11_0_arm64.macosx_10_14_universal2.whl", hash = "sha256:e7bdbb14d1ada7a9980d2ef93c2fe7c23ccbff449042d37f2aab59b73a775a12"},
+    {file = "speedict-0.3.12-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:820a856f94ed7fae6cf0df9a4e1d9273134e4f574bf81946a5f7ab8de6a43897"},
+    {file = "speedict-0.3.12-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:e530421a1156d6648acfe3831f79f7a9956c06c9039d973cf8d205b8fc570208"},
+    {file = "speedict-0.3.12-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:cdfa2cce2755d1bcfb955bf70adae1066565a4c3930d52c7dfede6fb07e37a53"},
+    {file = "speedict-0.3.12-cp311-none-win32.whl", hash = "sha256:fbf5cc085d9cd6eed7de55311970b6003367ccf476beb806fe5b82d9f0e2e123"},
+    {file = "speedict-0.3.12-cp311-none-win_amd64.whl", hash = "sha256:cf04e816ac9106fe48d5a8420a694accc25fa6afda0161c851ca8f62e107067f"},
+    {file = "speedict-0.3.12-cp312-cp312-macosx_10_14_x86_64.macosx_11_0_arm64.macosx_10_14_universal2.whl", hash = "sha256:349558a553c32ac3fd8d8c8f3783f1029ffff67036b27857c1be54e1dc99f94f"},
+    {file = "speedict-0.3.12-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:10ed33d39fb247a879c13ed472fbe347cbf08109e8d96716455beff0d6200b69"},
+    {file = "speedict-0.3.12-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:aaf83944fee9dc115506d5fb2bc24049f91a088da32272ab8e7e28684a6abfac"},
+    {file = "speedict-0.3.12-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:5ec1a786ed17cefc0c3205b6ce29e4acebef9a3af61777eb0fb22b4ad9ac13ea"},
+    {file = "speedict-0.3.12-cp312-none-win32.whl", hash = "sha256:e6e05472e7eea5e4ead607831a62ea0d8617bd5a3debe85b8bb9c615b85fd9c4"},
+    {file = "speedict-0.3.12-cp312-none-win_amd64.whl", hash = "sha256:532aedcf448007d293debfbcb3b95f0a89f5837faf0e0481e785f5cdeca38ab1"},
+    {file = "speedict-0.3.12-cp37-cp37m-macosx_10_14_x86_64.macosx_11_0_arm64.macosx_10_14_universal2.whl", hash = "sha256:e9404b51e351a2357051bf7145463d95ee1ecfb6e8f9ce08c4e6b2f2be2e9282"},
+    {file = "speedict-0.3.12-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d12160a1d8ba132fe64ecda42a1930c9db003b62413bef07f2dc71ba4abba977"},
+    {file = "speedict-0.3.12-cp37-cp37m-manylinux_2_28_aarch64.whl", hash = "sha256:f7f785898e286498936ac5b61bb2d53603986e45f5917f67f2a07d2ee5704f20"},
+    {file = "speedict-0.3.12-cp37-cp37m-manylinux_2_28_x86_64.whl", hash = "sha256:228e852d1e5359f6412829ad54fbb9a1eecee1d94753d4d348041a0b85ede187"},
+    {file = "speedict-0.3.12-cp37-none-win32.whl", hash = "sha256:7f12ef6f26cb23bba799ece8113c78a03dfbe9eb02f3112406d9be13789fb929"},
+    {file = "speedict-0.3.12-cp37-none-win_amd64.whl", hash = "sha256:540d40c9e1806f96048218f33b201553758f233d057a51dd40d2937a892dcfd1"},
+    {file = "speedict-0.3.12-cp38-cp38-macosx_10_14_x86_64.macosx_11_0_arm64.macosx_10_14_universal2.whl", hash = "sha256:4321e211c32b0f982a8a83e0d3416835d1a6b5d5b249bf497e0b93d27b972e19"},
+    {file = "speedict-0.3.12-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:220ea77095fe2f0b40fa371c0cdec8c68ec0d3bd7989bf3b142b450bdea1fd2a"},
+    {file = "speedict-0.3.12-cp38-cp38-manylinux_2_28_aarch64.whl", hash = "sha256:086547048c06875cc0c87f4eb940ed64e34b1d001df460a95524d4460706656b"},
+    {file = "speedict-0.3.12-cp38-cp38-manylinux_2_28_x86_64.whl", hash = "sha256:1e1f603efd634fa584cbb1566e3be30755ad59aec687ff8510775c0c46cd8b48"},
+    {file = "speedict-0.3.12-cp38-none-win32.whl", hash = "sha256:8537c4a95e9e66159c47cc3c731d9c0ba14e0154990cc9435d20609014d81e05"},
+    {file = "speedict-0.3.12-cp38-none-win_amd64.whl", hash = "sha256:b8d2d589256e8ddf8e4bdba4c8197190d6666775165769622ca3949c7f13b447"},
+    {file = "speedict-0.3.12-cp39-cp39-macosx_10_14_x86_64.macosx_11_0_arm64.macosx_10_14_universal2.whl", hash = "sha256:73c8011367bb3367ad96117a0bf96889283a8fa6514247f5f34ae10cf5cb8ec2"},
+    {file = "speedict-0.3.12-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fcca71dbe3b7a368511ffd72bdef3ee7ad44c22f7c808133aa0b87e02608774e"},
+    {file = "speedict-0.3.12-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:7ab409d6ab915097ebaf42f3b581ab8efd56685d9854a23ade8a60ec2189e352"},
+    {file = "speedict-0.3.12-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:70984623badd07fef80d076bc8c24c083d73e9288262899ba79bf822067740b9"},
+    {file = "speedict-0.3.12-cp39-none-win32.whl", hash = "sha256:5331a5b9640d61ac76951f8ce3cc58313d3e20fbc338ba55aca32c82d592fe89"},
+    {file = "speedict-0.3.12-cp39-none-win_amd64.whl", hash = "sha256:52556bf1b8222dc1a06b8861fcf8ee3d437673ad2d25a535f2cf0f11ee1e0b5d"},
+]
+
+[[package]]
 name = "sse-starlette"
 version = "2.2.1"
 description = "SSE plugin for Starlette"
@@ -4785,4 +4832,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "2011593de3836061753e76657caf20001832a2b50c674976e970dafbcc70cadd"
+content-hash = "199d75abd1e87adeebbf3652bd3c315505872769dc648b310a7d1f70a8fb0f42"

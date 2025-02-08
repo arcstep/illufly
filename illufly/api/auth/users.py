@@ -1,7 +1,7 @@
 from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime
 
-from ...rocksdict import IndexedRocksDB
+from ...rocksdb import IndexedRocksDB
 from ..result import Result
 from .models import User, UserRole
 

@@ -3,14 +3,14 @@ from typing import List, Dict, Optional
 from dataclasses import dataclass
 from pydantic import BaseModel
 
-from illufly.rocksdict.index.accessor import (
+from illufly.rocksdb.index.accessor import (
     ValueAccessor,
     SequenceAccessor,
     MappingAccessor,
     ModelAccessor,
     CompositeAccessor
 )
-from illufly.rocksdict.index.path_parser import PathParser
+from illufly.rocksdb.index.path_parser import PathParser
 
 import logging
 
@@ -400,7 +400,7 @@ class TestAccessors:
 
     def test_accessor_registry_validation(self):
         """测试访问器注册表的路径验证"""
-        from illufly.rocksdict.index.accessor import AccessorRegistry
+        from illufly.rocksdb.index.accessor import AccessorRegistry
         registry = AccessorRegistry()
         
         # 测试有效路径

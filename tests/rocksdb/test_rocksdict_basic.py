@@ -4,7 +4,7 @@ import tempfile
 import shutil
 import time
 from pathlib import Path
-from rocksdict import (
+from speedict import (
     Rdict, 
     Options, 
     ReadOptions,

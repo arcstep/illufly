@@ -4,10 +4,10 @@ from jose import jwt, JWTError
 from fastapi import Response
 from pathlib import Path
 from calendar import timegm
-from rocksdict import RDict, Options, ColumnFamilyDescriptor
+from speedict import RDict, Options, ColumnFamilyDescriptor
 
 from ...envir import get_env
-from ...rocksdict import IndexedRocksDB
+from ...rocksdb import IndexedRocksDB
 from ..result import Result
 
 __JWT_SECRET_KEY__ = get_env("JWT_SECRET_KEY")
