@@ -303,11 +303,7 @@ class IndexedRocksDB(BaseRocksDB):
         cf = self.get_column_family(cf_name)
         cf_handle = self.get_column_family_handle(cf_name)
 
-        key_not_exist = self.not_exist(key, rdict=cf)
-        if not key_not_exist:
-            old_value = self.get(key, rdict=cf)
-        else:
-            old_value = None
+        key_existing, old_value = self.key_exist(key, rdict=cf)
 
         # 获取对象所有路径
         model_prefix = self.MODEL_PREFIX_FORMAT.format(cf_name=cf_name, model_name=model_name)
@@ -329,7 +325,7 @@ class IndexedRocksDB(BaseRocksDB):
         indexes_cf_handle = self.get_column_family_handle(self.INDEX_CF)
         for path in all_paths:
             field_path = self._fetch_field_path_from_index(path)
-            if not key_not_exist:
+            if key_existing:
                 field_value = self.get_field_value(old_value, field_path, key)
                 old_index = self._make_index_key(
                     model_name=model_name,
@@ -360,12 +356,11 @@ class IndexedRocksDB(BaseRocksDB):
 
         cf_name = cf_name or self.default_cf_name
         cf = self.get_column_family(cf_name)
-        key_not_exist = self.not_exist(key, rdict=cf)
-        if key_not_exist:
+
+        key_existing, old_value = self.key_exist(key, rdict=cf)
+        if not key_existing:
             self._logger.debug(f"不存在旧值，无需删除")
             return
-
-        old_value = self.get(key, rdict=cf)
 
         # 处理删除操作
         batch = WriteBatch()

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from itertools import islice
 
-from ...envir import get_env
+from ..envir import get_env
 
 class BaseRocksDB:
     """RocksDB基础封装类
@@ -56,23 +56,7 @@ class BaseRocksDB:
         self._default_cf = self._db.get_column_family("default")
         self._default_cf_name = "default"
 
-    def not_exist(
-        self,
-        key: Any,
-        *,
-        rdict: Optional[Rdict] = None,
-        options: Optional[ReadOptions] = None,
-    ) -> bool:
-        """快速检查键是否不存在
-        
-        Returns:
-            True: 键确定不存在
-            False: 键可能存在（需要进一步确认）
-        """
-        target = rdict if rdict is not None else self._db
-        return not target.key_may_exist(key, False, options)  # 直接使用返回的布尔值
-
-    def may_exist(
+    def key_exist(
         self,
         key: Any,
         *,
@@ -87,16 +71,21 @@ class BaseRocksDB:
                 - (False, None): 键可能存在但需要进一步确认
         """
         target = rdict if rdict is not None else self._db
-        if not target.key_may_exist(key, True, options):
-            # 布隆过滤器说不存在
+        existing, value = target.key_may_exist(key, True, options)
+        if existing and value is not None:
+            # 布隆过滤器说找到了
+            return True, value
+        elif not existing:
             return False, None
-        
-        # 可能存在，尝试获取
-        try:
-            value = target.get(key, options)
-            return True, value if value is not None else None
-        except KeyError:
-            return False, None
+        else:
+            # 可能存在或不存在，尝试直接获取
+            try:
+                value = target.get(key, options)
+                self._logger.debug(f"may_exist: {key} -> {value}")
+                return True, value if value is not None else None
+
+            except KeyError:
+                return False, None
 
     def put(
         self,

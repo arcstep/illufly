@@ -105,17 +105,12 @@ class TestBasicOperations:
     def test_existence_checks(self, db):
         """测试存在性检查方法"""
         db["key1"] = "value1"
-        
-        # 快速存在性检查
-        assert not db.not_exist("key1")
-        assert db.not_exist("nonexistent")
-        
-        # 详细存在性检查
-        exists, value = db.may_exist("key1")
+
+        exists, value = db.key_exist("key1")
         assert exists
         assert value == "value1"
-        
-        exists, value = db.may_exist("nonexistent")
+
+        exists, value = db.key_exist("nonexistent")
         assert not exists
         assert value is None
     
@@ -417,7 +412,10 @@ class TestBatchOperations:
         
         # 验证结果
         assert db.get("key2") == "value2"
-        assert db.not_exist("key1")
+
+        exists, value = db.key_exist("key1")
+        assert not exists
+        assert value is None
     
     def test_batch_with_column_family(self, db):
         """测试在批处理中使用列族"""
