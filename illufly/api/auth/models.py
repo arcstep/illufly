@@ -76,12 +76,20 @@ class User(BaseModel):
     )
 
     # 用户必要信息
-    user_id: str = Field(..., description="用户唯一标识")
     username: constr(min_length=3, max_length=32) = Field(..., description="用户名")
     password_hash: str = Field(..., description="密码哈希值")
 
+    # 用户ID
+    user_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4().hex),
+        description="用户唯一标识"
+    )
+
     # 哈希算法由环境变量指定，不要手工指定
-    hash_method: str = Field(default=None, description="密码哈希方法不要修改，因为加密方法和验证方法必须保持一致")
+    hash_method: str = Field(
+        default_factory=lambda: get_env("ILLUFLY_HASH_METHOD"),
+        description="密码哈希方法"
+    )
 
     # 用户联系方式
     email: EmailStr = Field(default="", description="电子邮箱")
@@ -105,20 +113,6 @@ class User(BaseModel):
     last_failed_login: Optional[datetime] = Field(default=None, description="最后失败登录时间")
     is_locked: bool = Field(default=False, description="是否锁定")
     is_active: bool = Field(default=True, description="是否激活")
-
-    @model_validator(mode='before')
-    def set_defaults(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        """初始化默认值"""
-        values['user_id'] = values.get('user_id') or str(uuid.uuid4())
-        values['username'] = values.get('username') or values['user_id']
-        values['hash_method'] = get_env("ILLUFLY_HASH_METHOD")
-        
-        # 设置默认角色
-        roles = values.get('roles', [UserRole.USER])
-        if isinstance(roles, (str, UserRole)):
-            roles = [roles]
-        values['roles'] = {UserRole(r) if isinstance(r, str) else r for r in roles}
-        return values
 
     @field_validator('hash_method')
     def validate_hash_method(cls, v: str) -> str:
@@ -191,33 +185,3 @@ class User(BaseModel):
     def has_all_roles(self, roles: List[Union[UserRole, str]]) -> bool:
         """检查用户是否具有所有指定角色"""
         return all(self.has_role(role) for role in roles)
-
-
-class TokenClaims(BaseModel):
-    """令牌信息"""
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True,
-        from_attributes=True
-    )
-    
-    user_id: str = Field(..., description="用户唯一标识")
-    username: str = Field(default="", description="用户名")
-    device_id: str = Field(default_factory=lambda: f"device_{uuid.uuid4().hex[:8]}", description="设备ID")
-    roles: List[str] = Field(default_factory=lambda: ["user"], description="用户角色列表")
-    exp: int = Field(default=0, description="令牌过期时间")
-    iat: int = Field(default_factory=lambda: int(datetime.utcnow().timestamp()), description="令牌创建时间")
-    token_type: str = Field(default="refresh", description="令牌类型")
-
-    @model_validator(mode='before')
-    @classmethod
-    def set_defaults(cls, values: dict) -> dict:
-        """初始化后处理"""
-        if isinstance(values, dict):
-            # 设置默认用户名
-            values["username"] = values.get("username") or values["user_id"]
-            
-            # 处理角色列表
-            roles = values.get("roles", ["user"])
-            values["roles"] = [roles] if isinstance(roles, str) else roles
-
-        return values

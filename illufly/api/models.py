@@ -22,3 +22,10 @@ class Result(BaseModel, Generic[T]):
     @classmethod
     def fail(cls, error: str, message: str = "操作失败") -> "Result[T]":
         return cls(success=False, message=message, error=error)
+
+class ApiKey(BaseModel):
+    """API密钥模型"""
+    api_key: str = Field(default_factory=lambda: f"sk_{str(uuid.uuid4().hex)[:8]}", description="API密钥")
+    description: str = Field(default="", description="API密钥描述")
+    user_id: str = Field(..., description="用户ID")
+    created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
