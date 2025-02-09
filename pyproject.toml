@@ -24,6 +24,8 @@ uvicorn = "^0.34.0"
 fastapi = "^0.115.8"
 speedict = "^0.3.12"
 pyjwt = "^2.10.1"
+email-validator = "^2.2.0"
+argon2-cffi = "^23.1.0"
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^69.1.0"

@@ -72,9 +72,6 @@ def get_env(key: str=None):
         "LOG_DATE_FORMAT": "%Y-%m-%d %H:%M:%S",
         "LOG_ENCODING": "utf-8",
         "LOG_MIN_FREE_SPACE": 100 * 1024 * 1024,
-
-        # HASH
-        "ILLUFLY_HASH_METHOD": "pbkdf2_sha256",
     }
     if key:
         if key not in default_values:

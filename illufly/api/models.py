@@ -1,6 +1,9 @@
 from typing import Any, TypeVar, Generic, Optional
 from pydantic import BaseModel, ConfigDict
 
+import logging
+logger = logging.getLogger(__name__)
+
 T = TypeVar('T')
 
 class Result(BaseModel, Generic[T]):
@@ -12,6 +15,7 @@ class Result(BaseModel, Generic[T]):
 
     @classmethod
     def fail(cls, error: str, message: str = "操作失败") -> "Result[T]":
+        logger.warning(f"操作失败: {error}")
         return cls(success=False, message=message, error=error)
 
     model_config = ConfigDict(

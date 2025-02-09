@@ -2,11 +2,12 @@ from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime
 
 from ...rocksdb import IndexedRocksDB
-from ..result import Result
+from ..models import Result
 from .models import User, UserRole
 
 import secrets
 import string
+import logging
 
 __ADMIN_USER_ID__ = "admin"
 __ADMIN_USERNAME__ = "admin"
@@ -21,6 +22,8 @@ class UsersManager:
     """
     def __init__(self, db: IndexedRocksDB):
         """初始化用户管理器"""
+        self._logger = logging.getLogger(__name__)
+
         self._db = db
         self._db.register_model(__USER_MODEL_NAME__, User)
         self._db.register_index(__USER_MODEL_NAME__, "username")
@@ -46,37 +49,50 @@ class UsersManager:
 
     def create_user(self, user: User) -> Result[Tuple[User, Optional[str]]]:
         """创建新用户"""
-        if self._db.items_with_indexes(__USER_MODEL_NAME__, field_path="username", field_value=user.username):
-            return Result.fail("用户已存在")
+        check_result = self.existing_index_field(field_path="username", field_value=user.username)
+        if not check_result.is_ok():
+            return Result.fail(check_result.error)
         
         self._db.update_with_indexes(__USER_MODEL_NAME__, user.user_id, user)
-        return Result.ok(data=(user, None))
+        return Result.ok(data=user)
+
+    def existing_index_field(self, field_path: str, field_value: Any) -> bool:
+        """检查字段是否存在"""
+        items = self._db.items_with_indexes(__USER_MODEL_NAME__, field_path=field_path, field_value=field_value)
+        if items:
+            return Result.fail(f"{field_path} 已存在")
+        return Result.ok()
 
     def verify_password(self, username: str, password: str) -> Result[Dict[str, Any]]:
         """验证用户密码"""
         try:
             users = self._db.values_with_indexes(__USER_MODEL_NAME__, field_path="username", field_value=username)
+            self._logger.info(f"users: {users}")
+
             if not users:
                 return Result.fail("用户不存在")
+            if len(users) > 1:
+                self._logger.error(f"用户名不唯一: {username}")
             
             user = User(**users[0])
+            self._logger.info(f"用户信息: {user}")
 
             # 验证密码
             if not user.verify_password(password):
                 return Result.fail("密码错误")
+            self._logger.info(f"密码的哈希校验符合")
 
             require_password_change = (
                 user.require_password_change or 
                 user.is_password_expired()
             )
 
-            user_dict = user.model_dump(exclude={"password_hash"})
+            user_dict = user.model_dump(exclude=["password_hash"])
             return Result.ok(data={
                 "require_password_change": require_password_change,
                 "user": user_dict
             })
         except Exception as e:
-            print(">>> verify_user_password error: ", str(e))
             return Result.fail(f"密码验证失败: {str(e)}")
 
     def update_user_roles(self, user_id: str, roles: List[str]) -> Result[None]:
@@ -101,6 +117,11 @@ class UsersManager:
             user = self.get_user(user_id)
             if not user:
                 return Result.fail("用户不存在")
+            
+            if "username" in kwargs:
+                check_result = self.existing_index_field(field_path="username", field_value=kwargs["username"])
+                if not check_result.is_ok():
+                    return Result.fail(check_result.error)
 
             user_data = user.model_dump()
             user_data.update(kwargs)
@@ -142,10 +163,9 @@ class UsersManager:
             return self.reset_password(user_id, new_password)
 
         except Exception as e:
-            print(f"修改用户密码失败: {str(e)}")
             return Result.fail(f"修改用户密码失败: {str(e)}")
 
-    def reset_password(self, user_id: str, new_password: str) -> Dict[str, Any]:
+    def reset_password(self, user_id: str, new_password: str) -> Result[None]:
         """不经过验证，直接重置用户密码（管理员功能）"""
         try:
             user = self.get_user(user_id)
@@ -162,32 +182,22 @@ class UsersManager:
         except Exception as e:
             return Result.fail(f"重置用户密码失败: {str(e)}")
 
-    def get_user_by_username(self, username: str) -> Optional[User]:
-        """通过用户名获取用户"""
-        users = self._db.find({"username": username})
-        if not users:
-            return None
-        return users[0]
-
-    def get_user_by_email(self, email: str) -> Optional[User]:
-        """通过邮箱获取用户"""
-        users = self._db.find({"email": email})
-        if not users:
-            return None
-        return users[0]
-
     def ensure_admin_user(self) -> None:
         """确保管理员用户存在"""
         try:
             admin = self._db.get(__ADMIN_USER_ID__)
             if not admin:
-                self.create_user(
+                self._logger.info(f"管理员用户不存在，开始创建")
+                self.create_user(User(
                     user_id=__ADMIN_USER_ID__,
                     username=__ADMIN_USERNAME__,
-                    password=__ADMIN_PASSWORD__,
+                    password_hash=User.hash_password(__ADMIN_PASSWORD__),
                     roles=[UserRole.ADMIN],
                     require_password_change=False
-                )
+                ))
+                self._logger.info(f"管理员用户已创建")
+            else:
+                self._logger.info(f"管理员用户已存在")
                 
         except Exception as e:
             raise

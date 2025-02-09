@@ -5,7 +5,7 @@
 """
 
 from pydantic import BaseModel, Field, EmailStr, field_validator, constr, ConfigDict, model_validator, model_serializer
-from passlib.context import CryptContext
+from argon2 import PasswordHasher
 from typing import Optional, Dict, Any, List, Set, Union
 from datetime import datetime, timedelta
 from enum import Enum
@@ -51,23 +51,9 @@ class User(BaseModel):
         return ''.join(password_list)
 
     @classmethod
-    def _create_password_context(self) -> CryptContext:
-        """创建密码加密上下文"""
-        return CryptContext(
-            schemes=["argon2", "bcrypt", "pbkdf2_sha256"],
-            default=get_env("ILLUFLY_HASH_METHOD"),
-            argon2__memory_cost=65536,
-            argon2__time_cost=3,
-            argon2__parallelism=4,
-            bcrypt__rounds=12,
-            pbkdf2_sha256__rounds=100000,
-            truncate_error=True
-        )
-
-    @classmethod
     def hash_password(cls, password: str) -> str:
         """密码加密"""
-        pwd_context = cls._create_password_context()
+        pwd_context = PasswordHasher()
         return pwd_context.hash(password)
 
     model_config = ConfigDict(
@@ -81,14 +67,8 @@ class User(BaseModel):
 
     # 用户ID
     user_id: str = Field(
-        default_factory=lambda: str(uuid.uuid4().hex),
+        default_factory=lambda: f"u_{str(uuid.uuid4().hex)}",
         description="用户唯一标识"
-    )
-
-    # 哈希算法由环境变量指定，不要手工指定
-    hash_method: str = Field(
-        default_factory=lambda: get_env("ILLUFLY_HASH_METHOD"),
-        description="密码哈希方法"
     )
 
     # 用户联系方式
@@ -106,20 +86,13 @@ class User(BaseModel):
     # 用户状态
     created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
     require_password_change: bool = Field(default=False, description="是否需要修改密码")
-    last_password_change: Optional[datetime] = Field(default=None, description="最后密码修改时间")
-    password_expires_days: int = Field(default=90, description="密码有效期(天)")
+    last_password_change: datetime = Field(default_factory=datetime.now, description="最后密码修改时间")
+    password_expires_days: float = Field(default=90.0, description="密码有效期(天)")
     last_login: Optional[datetime] = Field(default=None, description="最后登录时间")
     failed_login_attempts: int = Field(default=0, description="登录失败次数")
     last_failed_login: Optional[datetime] = Field(default=None, description="最后失败登录时间")
     is_locked: bool = Field(default=False, description="是否锁定")
     is_active: bool = Field(default=True, description="是否激活")
-
-    @field_validator('hash_method')
-    def validate_hash_method(cls, v: str) -> str:
-        """验证密码哈希方法"""
-        if v not in ["argon2", "bcrypt", "pbkdf2_sha256"]:
-            raise ValueError(f"Unsupported hash method: {v}")
-        return v
 
     @field_validator('username')
     def validate_username(cls, v: str) -> str:
@@ -142,11 +115,14 @@ class User(BaseModel):
         if not to_verify_password:
             return False
         
-        pwd_context = self._create_password_context()
-        return pwd_context.verify(to_verify_password, self.password_hash)
+        pwd_context = PasswordHasher()
+        return pwd_context.verify(self.password_hash, to_verify_password)
 
     def is_password_expired(self) -> bool:
-        """检查密码是否过期"""
+        """检查密码是否过期
+
+        使用 password_expires_days 设置密码过期时间，可以强制要求用户定期修改密码。
+        """
         if not self.last_password_change:
             return True
         expiry_date = self.last_password_change + timedelta(days=self.password_expires_days)
