@@ -1,6 +1,6 @@
 from typing import Dict, Any, Optional, Union, List
 from datetime import datetime, timedelta
-from jose import jwt, JWTError
+import jwt
 from fastapi import Response
 from pathlib import Path
 from calendar import timegm

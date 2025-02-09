@@ -60,8 +60,8 @@ def get_env(key: str=None):
         "FASTAPI_USERS_ADMIN_EMAIL": "admin@illufly.com",
         "FASTAPI_SECRET_KEY": "MY-SECRET-KEY",
         "FASTAPI_ALGORITHM": "HS256",
-        "REFRESH_TOKEN_EXPIRE_DAYS": 30,
-        "ACCESS_TOKEN_EXPIRE_MINUTES": 15,
+        "FASTAPI_REFRESH_TOKEN_EXPIRE_DAYS": 30,
+        "FASTAPI_ACCESS_TOKEN_EXPIRE_MINUTES": 5,
 
         # Logging
         "LOG_LEVEL": "WARNING",

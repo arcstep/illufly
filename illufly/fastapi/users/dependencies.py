@@ -1,6 +1,5 @@
 from fastapi import Request, Response, HTTPException, status
 from typing import List, Union, Dict, Any
-from jose import JWTError
 
 class AuthDependencies:
     def __init__(self, tokens_manager: "TokensManager"):

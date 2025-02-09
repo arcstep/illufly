@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Form, Depends, Response, HTTPException, status, Request
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, EmailStr, Field
-from jose import JWTError
 import uuid
 
 from ...rocksdb import IndexedRocksDB
