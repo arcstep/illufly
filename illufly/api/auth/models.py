@@ -53,8 +53,8 @@ class User(BaseModel):
     @classmethod
     def hash_password(cls, password: str) -> str:
         """密码加密"""
-        pwd_context = PasswordHasher()
-        return pwd_context.hash(password)
+        ph = PasswordHasher()
+        return ph.hash(password)
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -115,9 +115,14 @@ class User(BaseModel):
         if not to_verify_password:
             return False
         
-        pwd_context = PasswordHasher()
-        return pwd_context.verify(self.password_hash, to_verify_password)
+        ph = PasswordHasher()
+        ph.verify(self.password_hash, to_verify_password)
 
+        if ph.check_needs_rehash(self.password_hash):
+            self.password_hash = ph.hash(to_verify_password)
+            return {"rehash": True}
+        return {"rehash": False}
+    
     def is_password_expired(self) -> bool:
         """检查密码是否过期
 

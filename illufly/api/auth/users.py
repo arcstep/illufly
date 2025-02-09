@@ -78,8 +78,12 @@ class UsersManager:
             self._logger.info(f"用户信息: {user}")
 
             # 验证密码
-            if not user.verify_password(password):
-                return Result.fail("密码错误")
+            verify_result = user.verify_password(password)
+            # 根据 argon2 的安全要求，如果密码需要重新哈希，则需要更新数据库
+            if verify_result["rehash"]:
+                self._db.put(user.user_id, user)
+            
+            # 如果没有抛出异常，就算验证通过
             self._logger.info(f"密码的哈希校验符合")
 
             require_password_change = (
