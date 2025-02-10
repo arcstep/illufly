@@ -387,19 +387,6 @@ class TestApiKeyEndpoints:
         )
         assert response.status_code == 401
 
-    def test_create_api_key_invalid_input(self, client, mock_token_dict):
-        """测试创建 API 密钥时输入无效"""
-        mock_tokens_manager.verify_access_token.return_value = Result.ok(data=mock_token_dict)
-        client.cookies.set("access_token", "valid_token")
-        response = client.post(
-            "/api/auth/api-keys",
-            json={
-                "description": "Test Key"  # 缺少必需的 user_id
-            },
-            headers={"Cookie": "access_token=valid_token"}
-        )
-        assert response.status_code == 422
-
     def test_list_api_keys_error(self, client, mock_token_dict):
         """测试列出 API 密钥时发生错误"""
         mock_tokens_manager.verify_access_token.return_value = Result.ok(data=mock_token_dict)

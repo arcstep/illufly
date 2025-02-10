@@ -411,7 +411,6 @@ def create_auth_endpoints(
 
     class CreateApiKeyRequest(BaseModel):
         """创建API密钥请求"""
-        user_id: str = Field(..., description="用户ID")
         description: str = Field(default=None, description="API密钥描述")
 
     async def create_api_key(
@@ -427,7 +426,7 @@ def create_auth_endpoints(
             )
         try:
             result = api_keys_manager.create_api_key(
-                user_id=api_key_form.user_id,
+                user_id=token_claims['user_id'],
                 description=api_key_form.description
             )
             logger.info(f"创建 API 密钥结果: {result.data}")

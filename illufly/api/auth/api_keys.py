@@ -1,6 +1,7 @@
 import uuid
 import secrets
 import base64
+import logging
 
 from typing import List
 from datetime import datetime, timedelta, timezone
@@ -29,14 +30,14 @@ class ApiKey(BaseModel):
         """生成API密钥
         
         Returns:
-            str: 格式为 "sk_xxx" 的API密钥
+            str: 格式为 "sk-xxx" 的API密钥
         """
         # 使用 secrets 模块生成安全的随机字节
         random_bytes = secrets.token_bytes(32)
         # 转换为 base64 并移除填充字符
-        key = base64.urlsafe_b64encode(random_bytes).decode('utf-8').rstrip('=')
+        key = base64.urlsafe_b64encode(random_bytes).decode('utf-8').replace('=', 'e').replace('-', 'd').replace('_', 'f').lower()
         # 添加前缀并返回
-        return f"sk_{key}"
+        return f"sk-{key}"
 
     key: str = Field(
         default_factory=lambda: ApiKey.generate_key(), 
@@ -57,8 +58,9 @@ class ApiKey(BaseModel):
     )
 
 class ApiKeysManager:
-    def __init__(self, db: IndexedRocksDB):
+    def __init__(self, db: IndexedRocksDB, logger: logging.Logger = None):
         self._db = db
+        self._logger = logger or logging.getLogger(__name__)
         self._db.register_model(__API_KEY_MODEL_NAME__, ApiKey)
         self._db.register_indexes(__API_KEY_MODEL_NAME__, ApiKey, "user_id")
 
@@ -71,7 +73,7 @@ class ApiKeysManager:
     
     def list_api_keys(self, user_id: str) -> Result[List[ApiKey]]:
         """列出API密钥"""
-        keys = self._db.values(ApiKey.get_prefix(user_id))
+        keys = self._db.values(prefix=ApiKey.get_prefix(user_id))
         return Result.ok(data=[key.model_dump() for key in keys])
     
     def delete_api_key(self, user_id: str, key: str) -> Result[None]:

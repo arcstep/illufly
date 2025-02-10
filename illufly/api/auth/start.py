@@ -11,6 +11,7 @@ from ...__version__ import __version__
 from ...rocksdb import IndexedRocksDB
 from .tokens import TokensManager
 from .users import UsersManager
+from .api_keys import ApiKeysManager
 from .endpoints import create_auth_endpoints
 
 def create_logger(log_level: int = logging.INFO) -> logging.Logger:
@@ -89,12 +90,14 @@ def create_app(
     # 初始化管理器
     tokens_manager = TokensManager(db, logger=logger)
     users_manager = UsersManager(db, logger=logger)
+    api_keys_manager = ApiKeysManager(db, logger=logger)
 
     # 获取路由处理函数字典
     route_handlers = create_auth_endpoints(
         app=app,
         tokens_manager=tokens_manager,
         users_manager=users_manager,
+        api_keys_manager=api_keys_manager,
         prefix=prefix,
         logger=logger
     )
