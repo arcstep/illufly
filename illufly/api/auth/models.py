@@ -12,20 +12,33 @@ from enum import Enum
 
 import re
 import uuid
+from string import ascii_letters, digits
+import secrets
 
 from ...envir import get_env
 
 class UserRole(str, Enum):
     """用户角色枚举"""
     @classmethod
-    def get_role_hierarchy(cls) -> Dict[str, List[str]]:
+    def has_role(cls, need_role: "UserRole", have_roles: Set["UserRole"]) -> bool:
+        """检查用户是否具有指定角色(包含继承的角色)"""
+        return need_role in cls.get_role_hierarchy(have_roles)
+
+    @classmethod
+    def get_role_hierarchy(cls, user_roles: Set["UserRole"] = None) -> Set["UserRole"]:
         """获取角色层级关系"""
-        return {
-            cls.ADMIN: [cls.OPERATOR, cls.USER, cls.GUEST],
-            cls.OPERATOR: [cls.USER, cls.GUEST],
-            cls.USER: [cls.GUEST],
-            cls.GUEST: []
+        hierarchy = {
+            cls.ADMIN: {cls.ADMIN, cls.OPERATOR, cls.USER, cls.GUEST},
+            cls.OPERATOR: {cls.OPERATOR, cls.USER, cls.GUEST},
+            cls.USER: {cls.USER, cls.GUEST},
+            cls.GUEST: {cls.GUEST}
         }
+
+        roles_hierarchy = set()
+        for role in user_roles:
+            roles_hierarchy.update(hierarchy.get(role, {cls.GUEST}))
+
+        return roles_hierarchy
 
     ADMIN = "admin"          # 管理员
     OPERATOR = "operator"    # 运营人员
@@ -42,9 +55,9 @@ class User(BaseModel):
     @staticmethod
     def generate_random_password(length: int = 12) -> str:
         """生成随机密码"""
-        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        alphabet = ascii_letters + digits + "!@#$%^&*"
         password = ''.join(secrets.choice(alphabet) for _ in range(length-2))
-        password += secrets.choice(string.digits)
+        password += secrets.choice(digits)
         password += secrets.choice("!@#$%^&*")
         password_list = list(password)
         secrets.SystemRandom().shuffle(password_list)
@@ -146,23 +159,3 @@ class User(BaseModel):
             self.last_failed_login = current_time
             if self.failed_login_attempts >= 5:
                 self.is_locked = True
-
-    def has_role(self, role: Union[UserRole, str]) -> bool:
-        """检查用户是否具有指定角色(包含继承的角色)"""
-        role_obj = UserRole(role) if isinstance(role, str) else role
-        if role_obj in self.roles:
-            return True
-
-        hierarchy = UserRole.get_role_hierarchy()
-        return any(
-            role_obj in hierarchy.get(user_role, [])
-            for user_role in self.roles
-        )
-
-    def has_any_role(self, roles: List[Union[UserRole, str]]) -> bool:
-        """检查用户是否具有任意一个指定角色"""
-        return any(self.has_role(role) for role in roles)
-
-    def has_all_roles(self, roles: List[Union[UserRole, str]]) -> bool:
-        """检查用户是否具有所有指定角色"""
-        return all(self.has_role(role) for role in roles)
