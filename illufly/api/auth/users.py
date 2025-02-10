@@ -83,19 +83,7 @@ class UsersManager:
             if verify_result["rehash"]:
                 self._db.put(user.user_id, user)
             
-            # 如果没有抛出异常，就算验证通过
-            self._logger.info(f"密码的哈希校验符合")
-
-            require_password_change = (
-                user.require_password_change or 
-                user.is_password_expired()
-            )
-
-            user_dict = user.model_dump(exclude=["password_hash"])
-            return Result.ok(data={
-                "require_password_change": require_password_change,
-                "user": user_dict
-            })
+            return Result.ok(data=user)
         except Exception as e:
             return Result.fail(f"密码验证失败: {str(e)}")
 
@@ -153,7 +141,7 @@ class UsersManager:
                 users.append(User(**user_dict))
         return users
     
-    def change_password(self, user_id: str, old_password: str, new_password: str) -> Result[None]:
+    def change_password(self, user_id: str, current_password: str, new_password: str) -> Result[None]:
         """修改用户密码"""
         try:
             user = self.get_user(user_id)
@@ -161,7 +149,7 @@ class UsersManager:
                 return Result.fail("用户不存在")
 
             # 验证旧密码
-            if not user.verify_password(old_password):
+            if not user.verify_password(current_password):
                 return Result.fail("旧密码错误")
 
             return self.reset_password(user_id, new_password)

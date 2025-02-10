@@ -213,7 +213,7 @@ class TokensManager:
         except Exception as e:
             return Result.fail(f"令牌验证错误: {str(e)}")
     
-    def refresh_access_token(self, user_id: str, username: str, roles: List[str], device_id: str) -> Result[str]:
+    def refresh_access_token(self, user_id: str, username: str, roles: List["UserRole"], device_id: str) -> Result[str]:
         """使用 Refresh-Token 刷新令牌颁发新的 Access-Token"""
 
         try:
@@ -264,7 +264,7 @@ class TokensManager:
             self._access_tokens[user_id] = {device_id: claims}
         
         # 返回更新后的令牌
-        return self._access_tokens[user_id][device_id]
+        return claims
 
     def revoke_refresh_token(self, user_id: str, device_id: str) -> None:
         """撤销数据库中的刷新令牌"""

@@ -103,8 +103,7 @@ def test_verify_password_success(users_manager, mock_db):
 
     # 验证结果
     assert result.is_ok()
-    assert result.data["user"]["user_id"] == USER_ID
-    assert result.data["require_password_change"] is False
+    assert result.data.user_id == USER_ID
 
 def test_verify_password_failure(users_manager, mock_db):
     """测试验证用户密码失败"""
