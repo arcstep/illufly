@@ -11,33 +11,7 @@ from ..models import Result
 from .models import User, UserRole
 from .tokens import TokensManager, TokenClaims
 from .users import UsersManager
-
-class RegisterRequest(BaseModel):
-    """注册请求"""
-    username: str = Field(..., description="用户名")
-    password: str = Field(..., description="密码")
-    email: EmailStr = Field(..., description="邮箱")
-
-class LoginRequest(BaseModel):
-    """登录请求
-    支持用户从多个设备使用自动生成的设备ID同时登录。
-    """
-    username: str = Field(..., description="用户名")
-    password: str = Field(..., description="密码")
-    device_id: Optional[str] = Field(None, description="设备ID")
-
-class UpdateUserProfileRequest(BaseModel):
-    """更新用户个人设置请求"""
-    to_update: Dict[str, Any] = Field(..., description="用户个人设置")
-
-class UpdateUserRolesRequest(BaseModel):
-    """更新用户角色请求"""
-    roles: List[str] = Field(..., description="用户角色列表")
-
-class ChangePasswordRequest(BaseModel):
-    """修改密码请求"""
-    current_password: str = Field(..., description="当前密码")
-    new_password: str = Field(..., description="新密码")
+from .api_keys import ApiKeysManager
 
 class HttpMethod(str, Enum):
     GET = "get"
@@ -126,8 +100,9 @@ def require_user(
 
 def create_auth_endpoints(
     app: FastAPI,
-    tokens_manager: TokensManager,
-    users_manager: UsersManager,
+    tokens_manager: TokensManager = None,
+    users_manager: UsersManager = None,
+    api_keys_manager: ApiKeysManager = None,
     prefix: str="/api",
     logger: logging.Logger = None
 ) -> Dict[str, Tuple[HttpMethod, str, Callable]]:
@@ -170,8 +145,19 @@ def create_auth_endpoints(
         
         return f"{os_info}_{browser_info}_{uuid.uuid4().hex[:8]}"
 
+    class RegisterRequest(BaseModel):
+        """注册请求"""
+        username: str = Field(..., description="用户名")
+        password: str = Field(..., description="密码")
+        email: EmailStr = Field(..., description="邮箱")
+
     async def register(request: RegisterRequest):
         """用户注册接口"""
+        if not users_manager:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="用户管理器未初始化"
+            )
         try:
             # 创建用户
             user = User(
@@ -196,8 +182,21 @@ def create_auth_endpoints(
                 detail=str(e)
             )
 
+    class LoginRequest(BaseModel):
+        """登录请求
+        支持用户从多个设备使用自动生成的设备ID同时登录。
+        """
+        username: str = Field(..., description="用户名")
+        password: str = Field(..., description="密码")
+        device_id: Optional[str] = Field(None, description="设备ID")
+
     async def login(request: Request, response: Response, login_data: LoginRequest):
         """登录接口"""
+        if not users_manager or not tokens_manager:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="用户管理器或令牌管理器未初始化"
+            )
         try:
             # 验证用户密码
             verify_result = users_manager.verify_password(
@@ -289,6 +288,11 @@ def create_auth_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, update_access_token=False, logger=logger))
     ):
         """注销接口"""
+        if not tokens_manager:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="令牌管理器未初始化"
+            )
         try:
             logger.info(f"要注销的用户信息: {token_claims}")
 
@@ -317,12 +321,22 @@ def create_auth_endpoints(
                 detail=str(e)
             )
 
+    class ChangePasswordRequest(BaseModel):
+        """修改密码请求"""
+        current_password: str = Field(..., description="当前密码")
+        new_password: str = Field(..., description="新密码")
+
     async def change_password(
         change_password_form: ChangePasswordRequest,
         response: Response,
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """修改密码接口"""
+        if not users_manager:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="用户管理器未初始化"
+            )
         try:
             result = users_manager.change_password(
                 user_id=token_claims['user_id'],
@@ -351,12 +365,21 @@ def create_auth_endpoints(
         """获取当前用户信息"""
         return Result.ok(data=token_claims)
 
+    class UpdateUserProfileRequest(BaseModel):
+        """更新用户个人设置请求"""
+        to_update: Dict[str, Any] = Field(..., description="用户个人设置")
+
     async def update_user_profile(
         update_form: UpdateUserProfileRequest,
         response: Response,
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """更新当前用户的个人设置"""
+        if not users_manager:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="用户管理器未初始化"
+            )
         try:
             result = users_manager.update_user(token_claims['user_id'], **update_form.to_update)
             if result.is_ok():
@@ -386,6 +409,97 @@ def create_auth_endpoints(
                 detail=str(e)
             )
 
+    class CreateApiKeyRequest(BaseModel):
+        """创建API密钥请求"""
+        user_id: str = Field(..., description="用户ID")
+        description: str = Field(default=None, description="API密钥描述")
+
+    async def create_api_key(
+        api_key_form: CreateApiKeyRequest,
+        response: Response,
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+    ):
+        """创建API密钥"""
+        if not api_keys_manager:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="API密钥管理器未初始化"
+            )
+        try:
+            result = api_keys_manager.create_api_key(
+                user_id=api_key_form.user_id,
+                description=api_key_form.description
+            )
+            logger.info(f"创建 API 密钥结果: {result.data}")
+            if result.is_ok():
+                return result
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=result.error
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e)
+            )
+        
+    async def list_api_keys(
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+    ):
+        """列出API密钥"""
+        if not api_keys_manager:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="API密钥管理器未初始化"
+            )
+        try:
+            result = api_keys_manager.list_api_keys(token_claims['user_id'])
+            if result.is_ok():
+                return result
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=result.error
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e)
+            )
+
+    async def delete_api_key(
+        api_key: str,
+        response: Response,
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+    ):
+        """删除API密钥"""
+        if not api_keys_manager:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="API密钥管理器未初始化"
+            )
+        try:
+            result = api_keys_manager.delete_api_key(token_claims['user_id'], api_key)
+            if result.is_ok():
+                return result
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=result.error
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e)
+            )
+
     return {
         "register": (HttpMethod.POST, f"{prefix}/auth/register", register),
         "login": (HttpMethod.POST, f"{prefix}/auth/login", login),
@@ -393,5 +507,8 @@ def create_auth_endpoints(
         "change_password": (HttpMethod.POST, f"{prefix}/auth/change-password", change_password),
         "update_user_profile": (HttpMethod.POST, f"{prefix}/auth/profile", update_user_profile),
         "get_user_profile": (HttpMethod.GET, f"{prefix}/auth/profile", get_user_profile),
+        "create_api_key": (HttpMethod.POST, f"{prefix}/auth/api-keys", create_api_key),
+        "list_api_keys": (HttpMethod.GET, f"{prefix}/auth/api-keys", list_api_keys),
+        "delete_api_key": (HttpMethod.DELETE, f"{prefix}/auth/api-keys/{{api_key}}", delete_api_key),
     }
 

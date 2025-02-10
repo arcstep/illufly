@@ -29,7 +29,7 @@ class TokenClaims(BaseModel):
     @classmethod
     def get_refresh_token_prefix(cls, user_id: str) -> str:
         """获取刷新令牌前缀"""
-        return f"token:{user_id}:refresh:"
+        return f"token:{user_id}:refresh"
 
     @classmethod
     def get_refresh_token_key(cls, user_id: str, device_id: str) -> str:

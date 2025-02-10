@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pathlib import Path
+from typing import Optional
+
 import uvicorn
 import logging
 import argparse
-from pathlib import Path
-from typing import Optional
 
 from ...__version__ import __version__
 from ...rocksdb import IndexedRocksDB
@@ -37,7 +38,7 @@ def create_logger(log_level: int = logging.INFO) -> logging.Logger:
     return logger
 
 def create_app(
-    db_path: str = "./data/db",
+    db_path: str = "./db",
     title: str = "Illufly API",
     description: str = "Illufly 后端 API 服务",
     prefix: str = "/api",
@@ -118,8 +119,8 @@ def parse_args():
     
     parser.add_argument(
         "--db-path",
-        default="./data/db",
-        help="数据库路径 (默认: ./data/db)"
+        default="./db",
+        help="数据库路径 (默认: ./db)"
     )
     parser.add_argument(
         "--title",
@@ -148,11 +149,6 @@ def parse_args():
         help="服务端口 (默认: 8000)"
     )
     parser.add_argument(
-        "--reload",
-        action="store_true",
-        help="启用热重载 (开发模式)"
-    )
-    parser.add_argument(
         "--log-level",
         choices=["debug", "info", "warning", "error", "critical"],
         default="info",
@@ -175,7 +171,7 @@ def main():
         title=args.title,
         description=args.description,
         prefix=args.prefix,
-        log_level=args.log_level  # 现在是 logging 常量
+        log_level=args.log_level
     )
     
     # 启动服务
@@ -183,8 +179,7 @@ def main():
         app,
         host=args.host,
         port=args.port,
-        reload=args.reload,
-        log_level=args.log_level  # uvicorn 需要字符串形式的日志级别
+        log_level=args.log_level
     )
 
 if __name__ == "__main__":
