@@ -38,14 +38,7 @@ class UsersManager:
         user = self._db[user_id]
         if not user:
             return None
-        return User(**user)
-
-    def get_user_info(self, user_id: str, include_sensitive: bool = False) -> Optional[Dict[str, Any]]:
-        """获取用户信息"""
-        user = self.get_user(user_id)
-        if not user:
-            return None
-        return user.model_dump(exclude={"password_hash"} if not include_sensitive else {})
+        return user
 
     def create_user(self, user: User) -> Result[Tuple[User, Optional[str]]]:
         """创建新用户"""
@@ -98,7 +91,7 @@ class UsersManager:
 
             user.roles = {UserRole(role) for role in roles}
             self._db.update_with_indexes(__USER_MODEL_NAME__, user.user_id, user)
-            return Result.ok()
+            return Result.ok(data=user.model_dump(exclude={"password_hash"}))
         except ValueError:
             return Result.fail("无效的角色值")
 
@@ -116,12 +109,12 @@ class UsersManager:
                 check_result = self.existing_index_field(field_path="username", field_value=kwargs["username"])
                 if not check_result.is_ok():
                     return Result.fail(check_result.error)
+            
+            for key, value in kwargs.items():
+                setattr(user, key, value)
 
-            user_data = user.model_dump(exclude={"password_hash"})
-            user_data.update(kwargs)
-            updated_user = User(**user_data)
-            self._db.update_with_indexes(__USER_MODEL_NAME__, user.user_id, updated_user)
-            return Result.ok()
+            self._db.update_with_indexes(__USER_MODEL_NAME__, user.user_id, user)
+            return Result.ok(data=user.model_dump(exclude={"password_hash"}))
 
         except Exception as e:
             return Result.fail(f"更新用户信息失败: {str(e)}")

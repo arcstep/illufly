@@ -41,59 +41,36 @@ def test_create_user(users_manager, mock_db):
     mock_db.items_with_indexes.return_value = []
 
     # 创建用户
-    user_data = {
-        "user_id": USER_ID,
-        "username": USERNAME,
-        "password_hash": User.hash_password(PASSWORD),
-        "email": EMAIL,
-        "mobile": MOBILE,
-        "roles": ROLES,
-    }
-    result = users_manager.create_user(User(**user_data))
+    user = User(
+        user_id=USER_ID,
+        username=USERNAME,
+        password_hash=User.hash_password(PASSWORD),
+        email=EMAIL,
+        mobile=MOBILE,
+        roles=ROLES,
+    )
+    result = users_manager.create_user(user)
 
     # 验证结果
     assert result.is_ok()
     created_user = result.data
-    assert created_user.user_id == USER_ID
-    assert created_user.username == USERNAME
-    assert created_user.email == EMAIL
-    assert created_user.mobile == MOBILE
-    assert set(created_user.roles) == set(ROLES)
+    assert created_user['user_id'] == USER_ID
+    assert created_user['username'] == USERNAME
+    assert created_user['email'] == EMAIL
+    assert created_user['mobile'] == MOBILE
+    assert set(created_user['roles']) == set(ROLES)
 
     # 验证数据库更新方法被调用
     mock_db.update_with_indexes.assert_called_once()
 
-def test_get_user_info(users_manager, mock_db):
-    """测试获取用户信息"""
-    # 模拟数据库返回用户数据
-    mock_db.__getitem__.return_value = {
-        "user_id": USER_ID,
-        "username": USERNAME,
-        "email": EMAIL,
-        "mobile": MOBILE,
-        "roles": [role.value for role in ROLES],
-        "password_hash": "hashed_password",
-    }
-
-    # 获取用户信息
-    user_info = users_manager.get_user_info(USER_ID)
-
-    # 验证结果
-    assert user_info is not None
-    assert user_info["user_id"] == USER_ID
-    assert user_info["username"] == USERNAME
-    assert user_info["email"] == EMAIL
-    assert user_info["mobile"] == MOBILE
-    assert "password_hash" not in user_info  # 敏感信息应被排除
-
 def test_verify_password_success(users_manager, mock_db):
     """测试验证用户密码成功"""
     # 模拟数据库返回用户数据
-    mock_db.values_with_indexes.return_value = [{
-        "user_id": USER_ID,
-        "username": USERNAME,
-        "password_hash": PASSWORD_HASH,
-    }]
+    mock_db.values_with_indexes.return_value = [User(
+        user_id=USER_ID,
+        username=USERNAME,
+        password_hash=PASSWORD_HASH,
+    )]
 
     # 模拟密码验证成功
     users_manager._db.get.return_value.verify_password = MagicMock(return_value=True)
@@ -103,16 +80,16 @@ def test_verify_password_success(users_manager, mock_db):
 
     # 验证结果
     assert result.is_ok()
-    assert result.data.user_id == USER_ID
+    assert result.data['user_id'] == USER_ID
 
 def test_verify_password_failure(users_manager, mock_db):
     """测试验证用户密码失败"""
     # 模拟数据库返回用户数据
-    mock_db.values_with_indexes.return_value = [{
-        "user_id": USER_ID,
-        "username": USERNAME,
-        "password_hash": PASSWORD_HASH,
-    }]
+    mock_db.values_with_indexes.return_value = [User(
+        user_id=USER_ID,
+        username=USERNAME,
+        password_hash=PASSWORD_HASH,
+    )]
 
     # 模拟密码验证失败
     users_manager._db.get.return_value.verify_password = MagicMock(return_value=False)
@@ -127,11 +104,11 @@ def test_verify_password_failure(users_manager, mock_db):
 def test_change_password(users_manager, mock_db):
     """测试修改用户密码"""
     # 模拟数据库返回用户数据
-    mock_db.__getitem__.return_value = {
-        "user_id": USER_ID,
-        "username": USERNAME,
-        "password_hash": PASSWORD_HASH,
-    }
+    mock_db.__getitem__.return_value = User(
+        user_id=USER_ID,
+        username=USERNAME,
+        password_hash=PASSWORD_HASH,
+    )
 
     # 模拟旧密码验证成功
     users_manager._db.get.return_value.verify_password = MagicMock(return_value=True)
@@ -148,11 +125,11 @@ def test_change_password(users_manager, mock_db):
 def test_reset_password(users_manager, mock_db):
     """测试重置用户密码"""
     # 模拟数据库返回用户数据
-    mock_db.__getitem__.return_value = {
-        "user_id": USER_ID,
-        "username": USERNAME,
-        "password_hash": PASSWORD_HASH,
-    }
+    mock_db.__getitem__.return_value = User(
+        user_id=USER_ID,
+        username=USERNAME,
+        password_hash=PASSWORD_HASH,
+    )
 
     # 重置密码
     result = users_manager.reset_password(USER_ID, "new_password")
@@ -189,8 +166,8 @@ def test_list_users(users_manager, mock_db):
     # 模拟数据库返回多个用户
     mock_db.iter_model_keys.return_value = ["user_1", "user_2"]
     mock_db.__getitem__.side_effect = [
-        {"user_id": "user_1", "username": "alice", "password_hash": PASSWORD_HASH},
-        {"user_id": "user_2", "username": "bob", "password_hash": PASSWORD_HASH},
+        User(user_id="user_1", username="alice", password_hash=PASSWORD_HASH),
+        User(user_id="user_2", username="bob", password_hash=PASSWORD_HASH),
     ]
 
     # 列出用户

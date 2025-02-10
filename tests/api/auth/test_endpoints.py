@@ -51,6 +51,27 @@ def client(app):
 
     return TestClient(app)
 
+@pytest.fixture
+def mock_user_dict():
+    """模拟用户信息"""
+    return {
+        "user_id": "123",
+        "username": "testuser",
+        "email": "testuser@example.com",
+        "roles": ["user"]
+    }
+
+@pytest.fixture
+def mock_token_dict(mock_user_dict):
+    """模拟令牌信息"""
+    return {
+        "token_type": TokenType.ACCESS,
+        "user_id": "123",
+        "username": "testuser",
+        "roles": ["user"],
+        "device_id": "device123"
+    }
+
 @pytest.mark.asyncio
 async def test_register_success(client):
     # 模拟 UsersManager
@@ -85,7 +106,7 @@ async def test_register_success(client):
     assert "password_hash" not in response_data["data"]
 
 @pytest.mark.asyncio
-async def test_login_success(client):
+async def test_login_success(client, mock_user_dict, mock_token_dict):
     # 模拟验证密码成功
     mock_users_manager.verify_password.return_value = Result.ok(
         data=User(
@@ -98,13 +119,7 @@ async def test_login_success(client):
         message="登录成功"
     )
     mock_tokens_manager.refresh_access_token.return_value = Result.ok(
-        data={
-            "token_type": TokenType.ACCESS,
-            "user_id": "123",
-            "username": "testuser",
-            "roles": ["user"],
-            "device_id": "device123"
-        },
+        data=mock_token_dict,
         message="访问令牌刷新成功"
     )
 
@@ -124,15 +139,10 @@ async def test_login_success(client):
     assert "access_token" in response.cookies
 
 @pytest.mark.asyncio
-async def test_logout_success(client):
+async def test_logout_success(client, mock_token_dict):
     # 1. 模拟令牌验证
     mock_tokens_manager.verify_access_token.return_value = Result.ok(
-        data={
-            "user_id": "123",
-            "device_id": "device123",
-            "username": "testuser",
-            "roles": ["user"]
-        },
+        data=mock_token_dict,
         message="验证访问令牌成功"
     )
 
@@ -168,14 +178,9 @@ async def test_logout_success(client):
     assert "access_token" not in response.cookies
 
 @pytest.mark.asyncio
-async def test_change_password_success(client):
+async def test_change_password_success(client, mock_token_dict):
     mock_tokens_manager.verify_access_token.return_value = Result.ok(
-        data={
-            "user_id": "123",
-            "device_id": "device123",
-            "username": "testuser",
-            "roles": ["user"]
-        },
+        data=mock_token_dict,
         message="验证访问令牌成功"
     )
     mock_users_manager.change_password.return_value = Result.ok(
@@ -196,14 +201,9 @@ async def test_change_password_success(client):
     assert response.status_code == status.HTTP_200_OK
 
 @pytest.mark.asyncio
-async def test_change_password_failure(client):
+async def test_change_password_failure(client, mock_token_dict):
     mock_tokens_manager.verify_access_token.return_value = Result.ok(
-        data={
-            "user_id": "123",
-            "device_id": "device123",
-            "username": "testuser",
-            "roles": ["user"]
-        },
+        data=mock_token_dict,
         message="验证访问令牌成功"
     )
     mock_users_manager.change_password.return_value = Result.fail(
@@ -224,14 +224,9 @@ async def test_change_password_failure(client):
     assert "当前密码错误" in response.json()["detail"]
 
 @pytest.mark.asyncio
-async def test_get_user_profile_success(client):
+async def test_get_user_profile_success(client, mock_token_dict):
     mock_tokens_manager.verify_access_token.return_value = Result.ok(
-        data={
-            "user_id": "123",
-            "device_id": "device123",
-            "username": "testuser",
-            "roles": ["user"]
-        },
+        data=mock_token_dict,
         message="验证访问令牌成功"
     )
 
@@ -244,20 +239,19 @@ async def test_get_user_profile_success(client):
     assert response.json()["data"]["username"] == "testuser"
 
 @pytest.mark.asyncio
-async def test_update_user_profile_success(client):
+async def test_update_user_profile_success(client, mock_user_dict, mock_token_dict):
     mock_tokens_manager.verify_access_token.return_value = Result.ok(
-        data={
-            "user_id": "123",
-            "device_id": "device123",
-            "username": "testuser",
-            "roles": ["user"]
-        },
+        data=mock_token_dict,
         message="验证访问令牌成功"
     )
-    mock_users_manager.update_user.return_value = Result.ok(
-        message="用户信息更新成功"
-    )
 
+    mock_users_manager.update_user.return_value = Result.ok(
+        message="用户信息更新成功",
+        data={**mock_user_dict, "username": "new_username"}
+    )
+    mock_tokens_manager.refresh_access_token.return_value = Result.ok(
+        data={**mock_token_dict, "username": "new_username"},
+    )
     # 测试数据
     payload = {
         "to_update": {
@@ -273,15 +267,10 @@ async def test_update_user_profile_success(client):
     assert response.status_code == status.HTTP_200_OK
 
 @pytest.mark.asyncio
-async def test_require_user_success():
+async def test_require_user_success(mock_token_dict):
     # 这个测试用例需要单独处理，因为它测试中间件
     mock_tokens_manager.verify_access_token.return_value = Result.ok(
-        data={
-            "user_id": "123",
-            "device_id": "device123",
-            "username": "testuser",
-            "roles": ["user"]
-        },
+        data=mock_token_dict,
         message="验证访问令牌成功"
     )
 

@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Optional
 
+from ...__version__ import __version__
 from ...rocksdb import IndexedRocksDB
 from .tokens import TokensManager
 from .users import UsersManager
@@ -39,7 +40,6 @@ def create_app(
     db_path: str = "./data/db",
     title: str = "Illufly API",
     description: str = "Illufly 后端 API 服务",
-    version: str = "0.1.0",
     prefix: str = "/api",
     log_level: int = logging.INFO
 ) -> FastAPI:
@@ -55,6 +55,7 @@ def create_app(
 
     logger = create_logger(log_level)
 
+    version = __version__
     app = FastAPI(
         title=title,
         description=description,
@@ -131,11 +132,6 @@ def parse_args():
         help="API 描述"
     )
     parser.add_argument(
-        "--version",
-        default="0.1.0",
-        help="API 版本 (默认: 0.1.0)"
-    )
-    parser.add_argument(
         "--prefix",
         default="/api",
         help="API 路由前缀 (默认: /api)"
@@ -178,7 +174,6 @@ def main():
         db_path=args.db_path,
         title=args.title,
         description=args.description,
-        version=args.version,
         prefix=args.prefix,
         log_level=args.log_level  # 现在是 logging 常量
     )

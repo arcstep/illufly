@@ -75,6 +75,9 @@ def require_user(
         tokens_manager: 令牌管理器
         require_roles: 要求的角色
     """
+
+    logger = logger or logging.getLogger(__name__)
+
     async def verified_user(
         request: Request,
         response: Response,
@@ -236,23 +239,11 @@ def create_auth_endpoints(
             logger.info(f"更新设备刷新令牌: {device_id}")
 
             # 创建设备访问令牌
-            result = tokens_manager.refresh_access_token(
-                user_id=user_info['user_id'],
+            result = _refresh_access_token(
+                user_info=user_info,
                 device_id=device_id,
-                username=user_info['username'],
-                roles=user_info['roles']
+                response=response
             )
-            logger.info(f"创建设备访问令牌: {result}")
-            if result.is_ok():
-                access_token = TokenClaims.create_access_token(**result.data).jwt_encode()
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=result.error
-                )
-
-            # 设置 http_only 的 cookie
-            _set_auth_cookies(response, access_token=access_token, logger=logger)
 
             return Result.ok(
                 data=result.data,
@@ -267,6 +258,30 @@ def create_auth_endpoints(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="登录过程发生错误"
             )
+
+    def _refresh_access_token(
+        user_info: Dict[str, Any],
+        device_id: str,
+        response: Response,
+    ):
+        """刷新访问令牌"""
+        result = tokens_manager.refresh_access_token(
+            user_id=user_info['user_id'],
+            device_id=device_id,
+            username=user_info['username'],
+            roles=user_info['roles']
+        )
+        logger.info(f"创建设备访问令牌: {result}")
+        if result.is_ok():
+            access_token = TokenClaims.create_access_token(**result.data).jwt_encode()
+            _set_auth_cookies(response, access_token=access_token, logger=logger)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.error
+            )
+        return result
+
 
     async def logout_device(
         request: Request,
@@ -345,6 +360,18 @@ def create_auth_endpoints(
         try:
             result = users_manager.update_user(token_claims['user_id'], **update_form.to_update)
             if result.is_ok():
+            # 更新设备访问令牌
+                result = _refresh_access_token(
+                    user_info=result.data,
+                    device_id=token_claims['device_id'],
+                    response=response
+                )
+                if result.is_fail():
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=result.error
+                    )
+                result.message = "用户信息更新成功"
                 return result
             else:
                 raise HTTPException(
