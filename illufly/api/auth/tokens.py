@@ -47,7 +47,7 @@ class TokenClaims(BaseModel):
         return f"{cls.get_access_token_prefix(user_id)}:{device_id}"
     
     @classmethod
-    def create_refresh_token(cls, user_id: str, username: str, roles: List[str], device_id: str = None) -> Self:
+    def create_refresh_token(cls, user_id: str, username: str, roles: List[str], device_id: str = None, **kwargs) -> Self:
         """创建刷新令牌"""
         return cls(
             token_type=TokenType.REFRESH,
@@ -59,7 +59,7 @@ class TokenClaims(BaseModel):
         )
 
     @classmethod
-    def create_access_token(cls, user_id: str, username: str, roles: List[str], device_id: str = None) -> Self:
+    def create_access_token(cls, user_id: str, username: str, roles: List[str], device_id: str = None, **kwargs) -> Self:
         """创建访问令牌"""
         return cls(
             token_type=TokenType.ACCESS,
@@ -193,7 +193,7 @@ class TokensManager:
                 if self.existing_access_token(user_id, device_id):
                     self._logger.info(f"访问令牌验证成功: {valid_data}")
                     valid_data["token_type"] = TokenType.ACCESS
-                    return Result.ok(data=TokenClaims.model_validate(valid_data))
+                    return Result.ok(data=valid_data)
                 else:
                     return Result.fail("访问令牌已撤销")
 
@@ -243,7 +243,7 @@ class TokensManager:
                 device_id
             )
             self._logger.info(f"已重新颁发访问令牌: {new_access_token}")
-            return Result.ok(data=new_access_token)
+            return Result.ok(data=new_access_token.model_dump(), message="访问令牌刷新成功")
 
         except jwt.ExpiredSignatureError as e:
             return Result.fail(f"令牌验证失败: {str(e)}")

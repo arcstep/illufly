@@ -36,7 +36,7 @@ def valid_refresh_token(tokens_manager):
         roles=ROLES,
         device_id=DEVICE_ID
     )
-    return claims.jwt_encode()
+    return TokenClaims.model_validate(claims).jwt_encode()
 
 @pytest.fixture
 def valid_access_token(tokens_manager):
@@ -62,8 +62,8 @@ def expired_access_token(tokens_manager, valid_refresh_token):
         device_id=DEVICE_ID
     )
     claims = result.data
-    claims.exp = datetime.now(tz=timezone.utc) - timedelta(seconds=100)
-    return claims.jwt_encode()
+    claims['exp'] = datetime.now(tz=timezone.utc) - timedelta(seconds=100)
+    return TokenClaims.model_validate(claims).jwt_encode()
 
 # 测试用例
 class TestTokensManager:
@@ -111,10 +111,10 @@ class TestTokensManager:
         # 验证访问令牌
         result = tokens_manager.verify_access_token(valid_access_token)
         assert result.is_ok()
-        assert result.data.user_id == USER_ID
-        assert result.data.username == USERNAME
-        assert result.data.roles == ROLES
-        assert result.data.device_id == DEVICE_ID
+        assert result.data['user_id'] == USER_ID
+        assert result.data['username'] == USERNAME
+        assert result.data['roles'] == ROLES
+        assert result.data['device_id'] == DEVICE_ID
 
     def test_access_token_ok_but_refresh_token_invalid(self, tokens_manager, valid_refresh_token, valid_access_token):
         """测试有效的访问令牌鉴权，但刷新令牌无效
@@ -140,10 +140,10 @@ class TestTokensManager:
         # 验证访问令牌
         result = tokens_manager.verify_access_token(expired_access_token)
         assert result.is_ok()
-        assert result.data.user_id == USER_ID
-        assert result.data.username == USERNAME
-        assert result.data.roles == ROLES
-        assert result.data.device_id == DEVICE_ID
+        assert result.data['user_id'] == USER_ID
+        assert result.data['username'] == USERNAME
+        assert result.data['roles'] == ROLES
+        assert result.data['device_id'] == DEVICE_ID
 
     def test_access_token_invalid(self, tokens_manager, valid_refresh_token):
         """无效的访问令牌，不予刷新，必须重新登录获取

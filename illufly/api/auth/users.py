@@ -54,7 +54,7 @@ class UsersManager:
             return Result.fail(check_result.error)
         
         self._db.update_with_indexes(__USER_MODEL_NAME__, user.user_id, user)
-        return Result.ok(data=user)
+        return Result.ok(data=user.model_dump(exclude={"password_hash"}), message="用户创建成功")
 
     def existing_index_field(self, field_path: str, field_value: Any) -> bool:
         """检查字段是否存在"""
@@ -83,7 +83,7 @@ class UsersManager:
             if verify_result["rehash"]:
                 self._db.put(user.user_id, user)
             
-            return Result.ok(data=user)
+            return Result.ok(data=user.model_dump(exclude={"password_hash"}))
         except Exception as e:
             return Result.fail(f"密码验证失败: {str(e)}")
 
@@ -115,7 +115,7 @@ class UsersManager:
                 if not check_result.is_ok():
                     return Result.fail(check_result.error)
 
-            user_data = user.model_dump()
+            user_data = user.model_dump(exclude={"password_hash"})
             user_data.update(kwargs)
             updated_user = User(**user_data)
             self._db.update_with_indexes(__USER_MODEL_NAME__, user.user_id, updated_user)

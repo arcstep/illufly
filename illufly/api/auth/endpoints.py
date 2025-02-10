@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Form, Depends, Response, HTTPException, status, Request
-from typing import Dict, Any, List, Optional
+from fastapi import FastAPI, Depends, Response, HTTPException, status, Request
+from typing import Dict, Any, List, Optional, Callable, Union
 from pydantic import BaseModel, EmailStr, Field
 import uuid
 import logging
@@ -41,10 +41,27 @@ class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., description="当前密码")
     new_password: str = Field(..., description="新密码")
 
+def _set_auth_cookies(response: Response, access_token: str = None) -> None:
+    """设置认证Cookie"""
+    try:
+        if access_token:
+            response.set_cookie(
+                key="access_token",
+                value=access_token,
+                httponly=True,
+                secure=True,
+                samesite="Lax"
+            )
+        
+    except Exception as e:
+        logger.error(f"设置 cookies 时发生错误: {str(e)}")
+        raise
+
 def require_user(
     tokens_manager: TokensManager,
     users_manager: UsersManager,
     require_roles: Union[UserRole, List[UserRole]] = None,
+    update_access_token: bool = True,
 ) -> Callable[[Request, Response], Dict[str, Any]]:
     """验证用户信息
 
@@ -79,13 +96,17 @@ def require_user(
             )
 
         token_claims = verify_result.data
+        logger.info(f"验证用户信息: {token_claims}")
 
         # 更新令牌到 response 的 cookie
         # JWT 的 encode 和 decode 通常基于对 CPU 可以忽略不计的 HMAC 计算
-        _set_auth_cookies(response, token_claims.jwt_token())
+        if update_access_token:
+            access_token = TokenClaims.create_access_token(**token_claims).jwt_encode()
+            _set_auth_cookies(response, access_token)
+            logger.info(f"设置令牌到 Cookie: {access_token}")
 
         # 如果要求所有角色，则需要用户具备指定的角色
-        if require_roles and not UserRole.has_role(require_roles, token_claims.roles):
+        if require_roles and not UserRole.has_role(require_roles, token_claims['roles']):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="权限不足。需要指定的角色。"
@@ -95,32 +116,20 @@ def require_user(
 
     return verified_user
 
-def create_auth_endpoints(app, db: IndexedRocksDB, prefix: str="/api"):
+def create_auth_endpoints(
+    app: FastAPI,
+    tokens_manager: TokensManager,
+    users_manager: UsersManager,
+    prefix: str="/api"
+):
     """创建认证相关的API端点
 
     Args:
         app: FastAPI应用实例
-        db: 数据库实例
+        tokens_manager: 令牌管理器
+        users_manager: 用户管理器
         prefix: API前缀
     """
-    tokens_manager = TokensManager(db)
-    users_manager = UsersManager(db)
-
-    def _set_auth_cookies(response: Response, access_token: str = None) -> None:
-        """设置认证Cookie"""
-        try:
-            if access_token:
-                response.set_cookie(
-                    key="access_token",
-                    value=access_token,
-                    httponly=True,
-                    secure=True,
-                    samesite="Lax"
-                )
-            
-        except Exception as e:
-            logger.error(f"设置 cookies 时发生错误: {str(e)}")
-            raise
 
     def _create_browser_device_id(request: Request) -> str:
         """为浏览器创建或获取设备ID
@@ -152,14 +161,17 @@ def create_auth_endpoints(app, db: IndexedRocksDB, prefix: str="/api"):
         return f"{os_info}_{browser_info}_{uuid.uuid4().hex[:8]}"
 
     @app.post(f"{prefix}/auth/register")
-    async def register(request: RegisterRequest, response: Response):
+    async def register(
+        register_data: RegisterRequest,
+        response: Response,
+    ):
         """用户注册接口"""
         try:
             # 创建用户
             user = User(
-                username=request.username,
-                email=request.email,
-                password_hash=User.hash_password(request.password),
+                username=register_data.username,
+                email=register_data.email,
+                password_hash=User.hash_password(register_data.password),
             )
             result = users_manager.create_user(user)
             if result.is_ok():
@@ -179,89 +191,112 @@ def create_auth_endpoints(app, db: IndexedRocksDB, prefix: str="/api"):
             )
 
     @app.post(f"{prefix}/auth/login")
-    async def login(request: LoginRequest, response: Response):
-        """用户登录接口"""
+    async def login(
+        login_data: LoginRequest,
+        request: Request,
+        response: Response,
+    ):
+        """登录接口"""
         try:
-            # 验证密码
-            verify_result = users_manager.verify_password(request.username, request.password)
+            # 验证用户密码
+            verify_result = users_manager.verify_password(
+                username=login_data.username,
+                password=login_data.password
+            )
+            
             if verify_result.is_fail():
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail=verify_result.error or "认证失败"
                 )
+            
+            user_info = verify_result.data
+            logger.info(f"登录结果: {user_info}")
 
             # 检查用户状态
-            user = verify_result.data
-            if user.is_locked():
+            if user_info['is_locked']:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="账户已锁定"
                 )                
-            if not user.is_active():
+            if not user_info['is_active']:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="账户未激活"
                 )
                 
             # 获取或创建设备ID
-            device_id = request.device_id or _create_browser_device_id(request)
+            device_id = login_data.device_id or _create_browser_device_id(request)
 
             # 更新设备刷新令牌
             tokens_manager.update_refresh_token(
-                user_id=user.user_id,
-                username=user.username,
-                roles=user.roles,
+                user_id=user_info['user_id'],
+                username=user_info['username'],
+                roles=user_info['roles'],
                 device_id=device_id
             )
+            logger.info(f"更新设备刷新令牌: {device_id}")
 
             # 创建设备访问令牌
-            claims =tokens_manager.refresh_access_token(
-                user_id=user.user_id,
+            result = tokens_manager.refresh_access_token(
+                user_id=user_info['user_id'],
                 device_id=device_id,
-                username=user.username,
-                roles=user.roles
+                username=user_info['username'],
+                roles=user_info['roles']
             )
-            access_token = claims.jwt_token()
+            logger.info(f"创建设备访问令牌: {result}")
+            if result.is_ok():
+                access_token = TokenClaims.create_access_token(**result.data).jwt_encode()
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=result.error
+                )
 
             # 设置 http_only 的 cookie
             _set_auth_cookies(response, access_token=access_token)
 
             return Result.ok(
-                data=user.model_dump(exclude={"password_hash"}),
+                data=result.data,
                 message="登录成功"
             )
 
         except HTTPException:
             raise
         except Exception as e:
-            print(">>> Exception: ", e)
+            logger.error(f"登录过程发生错误: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="登录过程发生错误"  # 模糊化具体错误
+                detail="登录过程发生错误"
             )
 
     @app.post(f"{prefix}/auth/logout")
     async def logout_device(
         request: Request,
         response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, users_manager))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, users_manager, update_access_token=False))
     ):
         """注销接口"""
         try:
+            logger.info(f"要注销的用户信息: {token_claims}")
+
             # 撤销当前设备的访问令牌
             tokens_manager.revoke_refresh_token(
-                user_id=token_claims.user_id,
-                device_id=token_claims.device_id
+                user_id=token_claims['user_id'],
+                device_id=token_claims['device_id']
             )
+            logger.info(f"撤销当前设备的刷新令牌: {token_claims['user_id']}, {token_claims['device_id']}")
 
             # 撤销当前设备的访问令牌
             tokens_manager.revoke_access_token(
-                user_id=token_claims.user_id,
-                device_id=token_claims.device_id
+                user_id=token_claims['user_id'],
+                device_id=token_claims['device_id']
             )
+            logger.info(f"撤销当前设备的访问令牌: {token_claims['user_id']}, {token_claims['device_id']}")
 
             # 删除当前设备的cookie
             response.delete_cookie("access_token")
+            logger.info(f"删除当前设备的cookie: {token_claims['user_id']}, {token_claims['device_id']}")
 
             return Result.ok(message="注销成功")
 

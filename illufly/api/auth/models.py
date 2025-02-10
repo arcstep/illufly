@@ -76,7 +76,7 @@ class User(BaseModel):
 
     # 用户必要信息
     username: constr(min_length=3, max_length=32) = Field(..., description="用户名")
-    password_hash: str = Field(..., description="密码哈希值")
+    password_hash: str = Field(default="", description="密码哈希值")
 
     # 用户ID
     user_id: str = Field(
