@@ -20,15 +20,15 @@ class UsersManager:
 
     管理用户注册、登录、密码重置、角色管理等操作；
     """
-    def __init__(self, db: IndexedRocksDB):
+    def __init__(self, db: IndexedRocksDB, logger: logging.Logger = None):
         """初始化用户管理器"""
-        self._logger = logging.getLogger(__name__)
+        self._logger = logger or logging.getLogger(__name__)
 
         self._db = db
         self._db.register_model(__USER_MODEL_NAME__, User)
-        self._db.register_index(__USER_MODEL_NAME__, "username")
-        self._db.register_index(__USER_MODEL_NAME__, "email")
-        self._db.register_index(__USER_MODEL_NAME__, "mobile")
+        self._db.register_indexes(__USER_MODEL_NAME__, User, "username")
+        self._db.register_indexes(__USER_MODEL_NAME__, User, "email")
+        self._db.register_indexes(__USER_MODEL_NAME__, User, "mobile")
 
         # 初始化管理员用户
         self.ensure_admin_user()
@@ -66,6 +66,8 @@ class UsersManager:
     def verify_password(self, username: str, password: str) -> Result[Dict[str, Any]]:
         """验证用户密码"""
         try:
+            self._logger.info(f"开始验证用户密码: {username}")
+
             users = self._db.values_with_indexes(__USER_MODEL_NAME__, field_path="username", field_value=username)
             self._logger.info(f"users: {users}")
 
@@ -74,7 +76,7 @@ class UsersManager:
             if len(users) > 1:
                 self._logger.error(f"用户名不唯一: {username}")
             
-            user = User(**users[0])
+            user = users[0]
             self._logger.info(f"用户信息: {user}")
 
             # 验证密码
@@ -137,8 +139,8 @@ class UsersManager:
         """列出所有用户"""
         users = []
         for user_id in self._db.iter_model_keys(__USER_MODEL_NAME__):
-            if user_dict := self._db[user_id]:
-                users.append(User(**user_dict))
+            if user := self._db[user_id]:
+                users.append(user)
         return users
     
     def change_password(self, user_id: str, current_password: str, new_password: str) -> Result[None]:

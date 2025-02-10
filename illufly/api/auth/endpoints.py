@@ -1,18 +1,16 @@
 from fastapi import FastAPI, Depends, Response, HTTPException, status, Request
-from typing import Dict, Any, List, Optional, Callable, Union
+from typing import Dict, Any, List, Optional, Callable, Union, Tuple
 from pydantic import BaseModel, EmailStr, Field
 import uuid
 import logging
 from datetime import datetime, timedelta
+from enum import Enum
 
 from ...rocksdb import IndexedRocksDB
 from ..models import Result
 from .models import User, UserRole
 from .tokens import TokensManager, TokenClaims
 from .users import UsersManager
-
-logger = logging.getLogger(__name__)
-
 
 class RegisterRequest(BaseModel):
     """注册请求"""
@@ -30,7 +28,7 @@ class LoginRequest(BaseModel):
 
 class UpdateUserProfileRequest(BaseModel):
     """更新用户个人设置请求"""
-    settings: Dict[str, Any] = Field(..., description="用户个人设置")
+    to_update: Dict[str, Any] = Field(..., description="用户个人设置")
 
 class UpdateUserRolesRequest(BaseModel):
     """更新用户角色请求"""
@@ -41,7 +39,13 @@ class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., description="当前密码")
     new_password: str = Field(..., description="新密码")
 
-def _set_auth_cookies(response: Response, access_token: str = None) -> None:
+class HttpMethod(str, Enum):
+    GET = "get"
+    POST = "post"
+    PUT = "put"
+    DELETE = "delete"
+
+def _set_auth_cookies(response: Response, access_token: str, logger: logging.Logger = None) -> None:
     """设置认证Cookie"""
     try:
         if access_token:
@@ -49,25 +53,26 @@ def _set_auth_cookies(response: Response, access_token: str = None) -> None:
                 key="access_token",
                 value=access_token,
                 httponly=True,
-                secure=True,
-                samesite="Lax"
+                secure=False,
+                samesite="Lax",
+                max_age=3600*24*30
             )
-        
+        else:
+            response.delete_cookie("access_token")
     except Exception as e:
         logger.error(f"设置 cookies 时发生错误: {str(e)}")
         raise
 
 def require_user(
     tokens_manager: TokensManager,
-    users_manager: UsersManager,
     require_roles: Union[UserRole, List[UserRole]] = None,
     update_access_token: bool = True,
+    logger: logging.Logger = None
 ) -> Callable[[Request, Response], Dict[str, Any]]:
     """验证用户信息
 
     Args:
         tokens_manager: 令牌管理器
-        users_manager: 用户管理器
         require_roles: 要求的角色
     """
     async def verified_user(
@@ -102,7 +107,7 @@ def require_user(
         # JWT 的 encode 和 decode 通常基于对 CPU 可以忽略不计的 HMAC 计算
         if update_access_token:
             access_token = TokenClaims.create_access_token(**token_claims).jwt_encode()
-            _set_auth_cookies(response, access_token)
+            _set_auth_cookies(response, access_token, logger)
             logger.info(f"设置令牌到 Cookie: {access_token}")
 
         # 如果要求所有角色，则需要用户具备指定的角色
@@ -120,16 +125,18 @@ def create_auth_endpoints(
     app: FastAPI,
     tokens_manager: TokensManager,
     users_manager: UsersManager,
-    prefix: str="/api"
-):
+    prefix: str="/api",
+    logger: logging.Logger = None
+) -> Dict[str, Tuple[HttpMethod, str, Callable]]:
     """创建认证相关的API端点
-
-    Args:
-        app: FastAPI应用实例
-        tokens_manager: 令牌管理器
-        users_manager: 用户管理器
-        prefix: API前缀
+    
+    Returns:
+        Dict[str, Tuple[HttpMethod, str, Callable]]: 
+            键为路由名称，
+            值为元组 (HTTP方法, 路由路径, 处理函数)
     """
+
+    logger = logger or logging.getLogger(__name__)
 
     def _create_browser_device_id(request: Request) -> str:
         """为浏览器创建或获取设备ID
@@ -160,18 +167,14 @@ def create_auth_endpoints(
         
         return f"{os_info}_{browser_info}_{uuid.uuid4().hex[:8]}"
 
-    @app.post(f"{prefix}/auth/register")
-    async def register(
-        register_data: RegisterRequest,
-        response: Response,
-    ):
+    async def register(request: RegisterRequest):
         """用户注册接口"""
         try:
             # 创建用户
             user = User(
-                username=register_data.username,
-                email=register_data.email,
-                password_hash=User.hash_password(register_data.password),
+                username=request.username,
+                email=request.email,
+                password_hash=User.hash_password(request.password),
             )
             result = users_manager.create_user(user)
             if result.is_ok():
@@ -190,12 +193,7 @@ def create_auth_endpoints(
                 detail=str(e)
             )
 
-    @app.post(f"{prefix}/auth/login")
-    async def login(
-        login_data: LoginRequest,
-        request: Request,
-        response: Response,
-    ):
+    async def login(request: Request, response: Response, login_data: LoginRequest):
         """登录接口"""
         try:
             # 验证用户密码
@@ -254,7 +252,7 @@ def create_auth_endpoints(
                 )
 
             # 设置 http_only 的 cookie
-            _set_auth_cookies(response, access_token=access_token)
+            _set_auth_cookies(response, access_token=access_token, logger=logger)
 
             return Result.ok(
                 data=result.data,
@@ -270,11 +268,10 @@ def create_auth_endpoints(
                 detail="登录过程发生错误"
             )
 
-    @app.post(f"{prefix}/auth/logout")
     async def logout_device(
         request: Request,
         response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, users_manager, update_access_token=False))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, update_access_token=False, logger=logger))
     ):
         """注销接口"""
         try:
@@ -295,8 +292,7 @@ def create_auth_endpoints(
             logger.info(f"撤销当前设备的访问令牌: {token_claims['user_id']}, {token_claims['device_id']}")
 
             # 删除当前设备的cookie
-            response.delete_cookie("access_token")
-            logger.info(f"删除当前设备的cookie: {token_claims['user_id']}, {token_claims['device_id']}")
+            _set_auth_cookies(response, access_token=None, logger=logger)
 
             return Result.ok(message="注销成功")
 
@@ -306,24 +302,18 @@ def create_auth_endpoints(
                 detail=str(e)
             )
 
-    @app.get(f"{prefix}/auth/profile")
-    async def get_user_profile(
-        request: Request,
+    async def change_password(
+        change_password_form: ChangePasswordRequest,
         response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, users_manager))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
-        """获取当前用户信息"""
-        return Result.ok(data=token_claims)
-
-    @app.patch(f"{prefix}/auth/profile")
-    async def update_user_profile(
-        request: UpdateUserProfileRequest,
-        response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, users_manager))
-    ):
-        """更新当前用户的个人设置"""
+        """修改密码接口"""
         try:
-            result = users_manager.update_user(token_claims.user_id, **request.settings)
+            result = users_manager.change_password(
+                user_id=token_claims['user_id'],
+                current_password=change_password_form.current_password,
+                new_password=change_password_form.new_password
+            )
             if result.is_ok():
                 return result
             else:
@@ -331,6 +321,7 @@ def create_auth_endpoints(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=result.error
                 )
+
         except HTTPException:
             raise
         except Exception as e:
@@ -339,19 +330,20 @@ def create_auth_endpoints(
                 detail=str(e)
             )
 
-    @app.post(f"{prefix}/auth/change-password")
-    async def change_password(
-        request: ChangePasswordRequest,
-        response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, users_manager))
+    async def get_user_profile(
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
-        """修改密码接口"""
+        """获取当前用户信息"""
+        return Result.ok(data=token_claims)
+
+    async def update_user_profile(
+        update_form: UpdateUserProfileRequest,
+        response: Response,
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+    ):
+        """更新当前用户的个人设置"""
         try:
-            result = users_manager.change_password(
-                user_id=token_claims.user_id,
-                current_password=request.current_password,
-                new_password=request.new_password
-            )
+            result = users_manager.update_user(token_claims['user_id'], **update_form.to_update)
             if result.is_ok():
                 return result
             else:
@@ -359,7 +351,6 @@ def create_auth_endpoints(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=result.error
                 )
-
         except HTTPException:
             raise
         except Exception as e:
@@ -369,11 +360,11 @@ def create_auth_endpoints(
             )
 
     return {
-        "register": register,
-        "login": login,
-        "logout_device": logout_device,
-        "change_password": change_password,
-        "update_user_profile": update_user_profile,
-        "get_user_profile": get_user_profile,
+        "register": (HttpMethod.POST, f"{prefix}/auth/register", register),
+        "login": (HttpMethod.POST, f"{prefix}/auth/login", login),
+        "logout_device": (HttpMethod.POST, f"{prefix}/auth/logout", logout_device),
+        "change_password": (HttpMethod.POST, f"{prefix}/auth/change-password", change_password),
+        "update_user_profile": (HttpMethod.POST, f"{prefix}/auth/profile", update_user_profile),
+        "get_user_profile": (HttpMethod.GET, f"{prefix}/auth/profile", get_user_profile),
     }
 

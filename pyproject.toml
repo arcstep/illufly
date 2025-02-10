@@ -8,6 +8,9 @@ repository = "https://github.com/arcstep/illufly.git"
 license = "MIT"
 readme = "README.md"
 
+[tool.poetry.scripts]
+illufly = "illufly.api.auth.start:main"
+
 [tool.poetry.dependencies]
 python = "^3.11"
 pydantic = "^2.10.4"

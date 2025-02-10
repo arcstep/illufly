@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status
@@ -23,13 +23,33 @@ logger = logging.getLogger(__name__)
 mock_tokens_manager = MagicMock()
 mock_users_manager = MagicMock()
 
-# 生成测试客户端
 @pytest.fixture
-def client():
+def app():
+    """创建测试应用"""
     app = FastAPI()
-    endpoints = create_auth_endpoints(app, mock_tokens_manager, mock_users_manager, prefix="/api")
-    client = TestClient(app)
-    return client
+    return app
+
+@pytest.fixture
+def client(app):
+    """创建测试客户端"""
+    # 模拟管理器
+    global mock_tokens_manager, mock_users_manager
+    mock_tokens_manager = MagicMock()
+    mock_users_manager = MagicMock()
+
+    # 获取路由处理函数
+    route_handlers = create_auth_endpoints(
+        app=app,
+        tokens_manager=mock_tokens_manager,
+        users_manager=mock_users_manager,
+        prefix="/api"
+    )
+
+    # 注册路由
+    for _, (method, path, handler) in route_handlers.items():
+        getattr(app, method)(path)(handler)
+
+    return TestClient(app)
 
 @pytest.mark.asyncio
 async def test_register_success(client):
@@ -149,6 +169,15 @@ async def test_logout_success(client):
 
 @pytest.mark.asyncio
 async def test_change_password_success(client):
+    mock_tokens_manager.verify_access_token.return_value = Result.ok(
+        data={
+            "user_id": "123",
+            "device_id": "device123",
+            "username": "testuser",
+            "roles": ["user"]
+        },
+        message="验证访问令牌成功"
+    )
     mock_users_manager.change_password.return_value = Result.ok(
         message="密码修改成功"
     )
@@ -159,13 +188,24 @@ async def test_change_password_success(client):
         "new_password": "newpassword"
     }
 
+    client.cookies.set("access_token", "valid_token")
     response = client.post("/api/auth/change-password", json=payload)
+    logger.info(f"修改密码结果: {response.json()}, cookies: {response.cookies}")
 
     # 验证结果
     assert response.status_code == status.HTTP_200_OK
 
 @pytest.mark.asyncio
 async def test_change_password_failure(client):
+    mock_tokens_manager.verify_access_token.return_value = Result.ok(
+        data={
+            "user_id": "123",
+            "device_id": "device123",
+            "username": "testuser",
+            "roles": ["user"]
+        },
+        message="验证访问令牌成功"
+    )
     mock_users_manager.change_password.return_value = Result.fail(
         error="当前密码错误"
     )
@@ -176,6 +216,7 @@ async def test_change_password_failure(client):
         "new_password": "newpassword"
     }
 
+    client.cookies.set("access_token", "valid_token")
     response = client.post("/api/auth/change-password", json=payload)
 
     # 验证结果
@@ -187,29 +228,76 @@ async def test_get_user_profile_success(client):
     mock_tokens_manager.verify_access_token.return_value = Result.ok(
         data={
             "user_id": "123",
+            "device_id": "device123",
             "username": "testuser",
             "roles": ["user"]
-        }
+        },
+        message="验证访问令牌成功"
     )
 
     # 调用获取用户信息接口
-    response = client.get("/api/auth/profile", cookies={"access_token": "valid_token"})
+    client.cookies.set("access_token", "valid_token")
+    response = client.get("/api/auth/profile")
 
     # 验证结果
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["data"]["username"] == "testuser"
 
 @pytest.mark.asyncio
-async def test_require_user_success():
+async def test_update_user_profile_success(client):
     mock_tokens_manager.verify_access_token.return_value = Result.ok(
         data={
+            "user_id": "123",
+            "device_id": "device123",
+            "username": "testuser",
             "roles": ["user"]
-        }
+        },
+        message="验证访问令牌成功"
+    )
+    mock_users_manager.update_user.return_value = Result.ok(
+        message="用户信息更新成功"
     )
 
-    # 调用鉴权中间件
-    middleware = require_user(mock_tokens_manager, MagicMock())
-    result = await middleware(MagicMock(), MagicMock())
+    # 测试数据
+    payload = {
+        "to_update": {
+            "username": "new_username"
+        }
+    }
+
+    client.cookies.set("access_token", "valid_token")
+    response = client.post("/api/auth/profile", json=payload)
+    logger.info(f"更新用户信息结果: {response.json()}, cookies: {response.cookies}")
 
     # 验证结果
-    assert result.roles == ["user"]
+    assert response.status_code == status.HTTP_200_OK
+
+@pytest.mark.asyncio
+async def test_require_user_success():
+    # 这个测试用例需要单独处理，因为它测试中间件
+    mock_tokens_manager.verify_access_token.return_value = Result.ok(
+        data={
+            "user_id": "123",
+            "device_id": "device123",
+            "username": "testuser",
+            "roles": ["user"]
+        },
+        message="验证访问令牌成功"
+    )
+
+    # 创建请求和响应对象
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/auth/profile",
+        "headers": [(b"cookie", b"access_token=valid_token")]
+    }
+    request = Request(scope=scope)
+    response = Response()
+
+    # 调用中间件
+    middleware = require_user(mock_tokens_manager)
+    result = await middleware(request, response)
+
+    # 验证结果
+    assert result["roles"] == ["user"]
