@@ -263,8 +263,6 @@ class ServiceDealer:
                     
                 multipart = await self._socket.recv_multipart()
                 # self._logger.info(f"DEALER Received message: {multipart}")
-
-
                 # 正确的格式应当是
                 # multipart[0] 消息类型，目前全部为 b'reply'
                 # multipart[1] 客户端ID
@@ -325,16 +323,11 @@ class ServiceDealer:
                             # 处理流式响应
                             async for chunk in handler(*request.args, **request.kwargs):
                                 # 使用工厂方法创建数据块
-                                if isinstance(chunk, str):
-                                    block = TextChunk(
-                                        request_id=request.request_id,
-                                        text=chunk
-                                    )
-                                elif isinstance(chunk, StreamingBlock):
+                                if isinstance(chunk, StreamingBlock):
                                     block = chunk
                                     block.request_id = request.request_id
                                 else:
-                                    raise ValueError(f"Invalid chunk type: {type(chunk)}")
+                                    block= chunk
 
                                 await self._socket.send_multipart([
                                     b"reply",

@@ -1,16 +1,29 @@
 import pytest
 import asyncio
-from illufly.mq.service import ServiceDealer
+import logging
+
+from illufly.mq.service import ServiceDealer, ServiceRouter, ClientDealer
 
 @pytest.fixture(scope="module")
 def router_address():
     return "tcp://127.0.0.1:5555"
 
+@pytest.fixture()
+async def router(router_address):
+    """创建并启动路由器"""
+    router = ServiceRouter(router_address)
+    await router.start()
+    await asyncio.sleep(0.1)
+    yield router
+    # 在停止前等待一小段时间，确保能处理所有关闭请求
+    await asyncio.sleep(0.5)
+    await router.stop()
+
 class MyMethodTypes(ServiceDealer):
     """测试不同类型的方法处理"""
     
     def __init__(self, router_address: str):
-        super().__init__(router_address=router_address, service_id="test_service")
+        super().__init__(router_address=router_address)
 
     # 1. 同步方法
     @ServiceDealer.service_method(name="sync")
@@ -37,31 +50,37 @@ class MyMethodTypes(ServiceDealer):
             yield i
 
 @pytest.mark.asyncio
-async def test_method_types(router_address):
+async def test_method_types(router, router_address):
     """测试不同类型方法的处理"""
     service = MyMethodTypes(router_address)
     await service.start()
+    client = ClientDealer(router_address, timeout=2.0)
 
     try:
-        # 1. 测试同步方法
-        result = await service.sync_method(1)
-        assert result == 2
+        # 1. 测试同步方法        
+        async for b in client.call_service("sync", 1):
+            logging.info(f"call_service sync result: {b}")
+            assert b == 2
         
         # 2. 测试同步生成器
         numbers = []
-        async for num in service.sync_generator(0, 3):
+        async for num in client.call_service("sync_gen", 0, 3):
+            logging.info(f"call_service sync_gen result: {num}")
             numbers.append(num)
         assert numbers == [0, 1, 2]
         
         # 3. 测试异步方法
-        result = await service.async_method(1)
-        assert result == 2
+        async for b in client.call_service("async", 1):
+            logging.info(f"call_service async result: {b}")
+            assert b == 2
         
         # 4. 测试异步生成器
         numbers = []
-        async for num in service.async_generator(0, 3):
+        async for num in client.call_service("async_gen", 0, 3):
+            logging.info(f"call_service async_gen result: {num}")
             numbers.append(num)
         assert numbers == [0, 1, 2]
 
     finally:
+        await client.close()
         await service.stop() 

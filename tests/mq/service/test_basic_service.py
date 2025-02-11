@@ -118,7 +118,7 @@ class EchoService(ServiceDealer):
     async def stream_numbers(self, start: int, end: int):
         """流式返回数字序列"""
         for i in range(start, end):
-            yield str(i)
+            yield i
             await asyncio.sleep(0.1)  # 模拟处理延迟
 
     @ServiceDealer.service_method(
@@ -153,11 +153,11 @@ async def test_add_numbers(router, service, client):
 @pytest.mark.asyncio
 async def test_streaming_response(router, service, client):
     """测试流式响应"""
-    expected = [str(i) for i in range(0, 5)]
+    expected = list(range(0, 5))
     received = []
     
     async for response in client.call_service("stream", 0, 5):
-        received.append(response.content)
+        received.append(response)
             
     assert received == expected
 
