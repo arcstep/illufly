@@ -1,8 +1,8 @@
 import logging
 import zmq
 import zmq.asyncio
-from .utils import normalize_address, cleanup_bound_socket
-from ..async_utils import AsyncUtils
+from ..utils import normalize_address, cleanup_bound_socket
+from ...async_utils import AsyncUtils
 
 class BaseMQ:
     """MQ基类"""

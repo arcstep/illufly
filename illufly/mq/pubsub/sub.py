@@ -7,7 +7,7 @@ import json
 
 from ..utils import cleanup_connected_socket, normalize_address
 from ..models import BlockType, StreamingBlock, EndBlock, TextChunk, ErrorBlock
-from ..base_mq import BaseMQ
+from .base_mq import BaseMQ
 
 class Subscriber(BaseMQ):
     """针对特定 request_id 的 ZMQ 订阅者实例"""

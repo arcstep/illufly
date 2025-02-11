@@ -6,7 +6,7 @@ from enum import Enum, auto
 
 from ..models import StreamingBlock, BlockType, TextChunk, EndBlock, ErrorBlock
 from ..utils import cleanup_bound_socket, normalize_address
-from ..base_mq import BaseMQ
+from .base_mq import BaseMQ
 
 class Publisher(BaseMQ):
     """ZMQ 发布者，可直接使用默认实例"""

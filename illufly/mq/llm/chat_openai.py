@@ -261,7 +261,6 @@ class ChatOpenAI(ServiceDealer):
                     }
                     yield UsageBlock(**usage_data)
 
-
             # 流结束时处理工具调用
             for tool_data in current_tool_calls.values():
                 yield ToolCallFinal(

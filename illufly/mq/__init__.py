@@ -1,5 +1,4 @@
 from .pubsub import DEFAULT_PUBLISHER, Publisher, Subscriber
-from .reqrep import Requester, Replier
 from .models import (
     BlockType,
     ReplyState,
