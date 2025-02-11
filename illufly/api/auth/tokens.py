@@ -79,7 +79,7 @@ class TokenClaims(BaseModel):
     token_type: TokenType = Field(..., description="令牌类型")
     device_id: str = Field(default_factory=lambda: f"device_{uuid.uuid4().hex[:8]}", description="设备ID")
     iat: datetime = Field(default_factory=datetime.utcnow, description="令牌创建时间")
-    exp: datetime = Field(default=0, description="令牌过期时间")
+    exp: datetime = Field(default_factory=datetime.utcnow, description="令牌过期时间")
 
     # 用户信息
     user_id: str = Field(..., description="用户唯一标识")
@@ -88,7 +88,7 @@ class TokenClaims(BaseModel):
 
     def revoke(self) -> Self:
         """撤销令牌"""
-        self.exp = 0
+        self.exp = self.iat
         return self
 
     def jwt_encode(self) -> str:

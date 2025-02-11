@@ -32,12 +32,10 @@ class ApiKey(BaseModel):
         Returns:
             str: 格式为 "sk-xxx" 的API密钥
         """
-        # 使用 secrets 模块生成安全的随机字节
-        random_bytes = secrets.token_bytes(32)
-        # 转换为 base64 并移除填充字符
-        key = base64.urlsafe_b64encode(random_bytes).decode('utf-8').replace('=', 'e').replace('-', 'd').replace('_', 'f').lower()
-        # 添加前缀并返回
-        return f"sk-{key}"
+        # 使用 secrets 生成指定长度的随机字母数字组合
+        alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+        random_str = ''.join(secrets.choice(alphabet) for _ in range(32))
+        return f"sk-{random_str}"
 
     key: str = Field(
         default_factory=lambda: ApiKey.generate_key(), 
@@ -57,6 +55,10 @@ class ApiKey(BaseModel):
         description="过期时间"
     )
 
+    def is_expired(self) -> bool:
+        """判断是否过期"""
+        return self.expires_at < datetime.now(timezone.utc)
+
 class ApiKeysManager:
     def __init__(self, db: IndexedRocksDB, logger: logging.Logger = None):
         self._db = db
@@ -75,9 +77,26 @@ class ApiKeysManager:
         """列出API密钥"""
         keys = self._db.values(prefix=ApiKey.get_prefix(user_id))
         return Result.ok(data=[key.model_dump() for key in keys])
-    
-    def delete_api_key(self, user_id: str, key: str) -> Result[None]:
+
+    def verify_api_key(self, user_id: str, key: str) -> Result[ApiKey]:
+        """验证API密钥"""
+        db_key = ApiKey.get_db_key(user_id, key)
+        ak = self._db.get(db_key)
+        if ak is None:
+            return Result.fail(error="API密钥不存在")
+        if ak.is_expired():
+            return Result.fail(error="API密钥已过期")
+        return Result.ok(data=ak.model_dump())
+
+    def revoke_api_key(self, user_id: str, key: str) -> Result[None]:
         """删除API密钥"""
         db_key = ApiKey.get_db_key(user_id, key)
-        self._db.delete(db_key)
+        ak = self._db.get(db_key)
+        if ak is None:
+            return Result.fail(error="API密钥不存在")
+        if ak.is_expired():
+            return Result.fail(error="API密钥已过期")
+
+        ak.expires_at = ak.created_at
+        self._db.put(db_key, ak)
         return Result.ok()

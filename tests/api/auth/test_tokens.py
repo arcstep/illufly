@@ -192,7 +192,7 @@ class TestTokensManager:
         # 验证结果
         refresh_token_key = TokenClaims.get_refresh_token_key(USER_ID, DEVICE_ID)
         token = tokens_manager._cache.get(refresh_token_key)
-        assert token.exp < datetime.now().timestamp()
+        assert token.exp < datetime.now()
 
     def test_revoke_access_token(self, tokens_manager):
         """测试撤销访问令牌"""

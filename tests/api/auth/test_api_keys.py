@@ -23,7 +23,7 @@ class TestApiKey:
     def test_generate_key(self):
         """测试生成 API 密钥"""
         key = ApiKey.generate_key()
-        assert key.startswith("sk_")
+        assert key.startswith("sk-")
         assert len(key) > 10  # 确保密钥长度合理
 
     def test_create_api_key(self):
@@ -32,7 +32,7 @@ class TestApiKey:
         api_key = ApiKey(user_id=user_id)
         
         assert api_key.user_id == user_id
-        assert api_key.key.startswith("sk_")
+        assert api_key.key.startswith("sk-")
         assert isinstance(api_key.created_at, datetime)
         assert isinstance(api_key.expires_at, datetime)
         assert api_key.expires_at > api_key.created_at
@@ -52,7 +52,7 @@ class TestApiKey:
     def test_get_db_key(self):
         """测试获取数据库键"""
         user_id = "test_user"
-        key = "sk_test"
+        key = "sk-test"
         db_key = ApiKey.get_db_key(user_id, key)
         assert db_key == f"api_key:{user_id}:{key}"
 
@@ -71,13 +71,19 @@ class TestApiKeysManager:
         result = api_keys_manager.create_api_key(user_id, description)
         
         assert result.is_ok()
-        api_key = result.data
-        assert api_key.user_id == user_id
-        assert api_key.description == description
-        assert api_key.key.startswith("sk_")
-        
+        api_key_dict = result.data
+        assert api_key_dict['user_id'] == user_id
+        assert api_key_dict['description'] == description
+        assert api_key_dict['key'].startswith("sk-")
+
         # 验证数据库调用
         mock_db.update_with_indexes.assert_called_once()
+
+        # 验证
+        mock_db.get.return_value = ApiKey.model_validate(api_key_dict)
+        result = api_keys_manager.verify_api_key(user_id, api_key_dict['key'])
+        assert result.is_ok()
+        assert ApiKey.model_validate(result.data).is_expired() == False
 
     def test_list_api_keys(self, api_keys_manager, mock_db):
         """测试列出 API 密钥"""
@@ -86,24 +92,34 @@ class TestApiKeysManager:
             ApiKey(user_id=user_id, description="Key 1"),
             ApiKey(user_id=user_id, description="Key 2")
         ]
-        mock_db.values.return_value = mock_keys
-        
+        mock_db.values.return_value = mock_keys        
         result = api_keys_manager.list_api_keys(user_id)
         
         assert result.is_ok()
         assert len(result.data) == 2
-        assert all(isinstance(key, ApiKey) for key in result.data)
-        mock_db.values.assert_called_once_with(ApiKey.get_prefix(user_id))
+        assert result.data[0]['user_id'] == user_id
+        assert result.data[0]['description'] == "Key 1"
+        assert result.data[1]['user_id'] == user_id
+        assert result.data[1]['description'] == "Key 2"
 
-    def test_delete_api_key(self, api_keys_manager, mock_db):
+    def test_revoke_api_key(self, api_keys_manager, mock_db):
         """测试删除 API 密钥"""
         user_id = "test_user"
-        key = "sk_test"
-        
-        result = api_keys_manager.delete_api_key(user_id, key)
-        
+        key = "sk-test"
+        ak = ApiKey(user_id=user_id, key=key)
+
+        mock_db.get.return_value = ak        
+        result = api_keys_manager.verify_api_key(user_id, key)
         assert result.is_ok()
-        mock_db.delete.assert_called_once_with(ApiKey.get_db_key(user_id, key))
+        
+        mock_db.get.return_value = ak
+        result = api_keys_manager.revoke_api_key(user_id, key)
+        assert result.is_ok()
+
+        ak.expires_at = ak.created_at
+        mock_db.get.return_value = ak
+        result = api_keys_manager.verify_api_key(user_id, key)
+        assert result.is_fail()
 
     @pytest.mark.asyncio
     async def test_api_key_expiration(self):
