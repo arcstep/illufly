@@ -7,12 +7,13 @@ import uvicorn
 import logging
 import argparse
 
-from ...__version__ import __version__
-from ...rocksdb import IndexedRocksDB
-from .tokens import TokensManager
-from .users import UsersManager
-from .api_keys import ApiKeysManager
-from .endpoints import create_auth_endpoints
+from ..__version__ import __version__
+from ..rocksdb import IndexedRocksDB
+from .auth.tokens import TokensManager
+from .auth.users import UsersManager
+from .auth.api_keys import ApiKeysManager
+from .auth.endpoints import create_auth_endpoints
+from .openai.endpoints import create_openai_endpoints
 
 def create_logger(log_level: int = logging.INFO) -> logging.Logger:
     """创建日志记录器
@@ -92,8 +93,8 @@ def create_app(
     users_manager = UsersManager(db, logger=logger)
     api_keys_manager = ApiKeysManager(db, logger=logger)
 
-    # 获取路由处理函数字典
-    route_handlers = create_auth_endpoints(
+    # 用户管理和认证路由
+    auth_handlers = create_auth_endpoints(
         app=app,
         tokens_manager=tokens_manager,
         users_manager=users_manager,
@@ -101,9 +102,17 @@ def create_app(
         prefix=prefix,
         logger=logger
     )
+    for _, (method, path, handler) in auth_handlers.items():
+        getattr(app, method)(path)(handler)
 
-    # 注册路由
-    for _, (method, path, handler) in route_handlers.items():
+    # OpenAI 路由
+    openai_handlers = create_openai_endpoints(
+        app=app,
+        api_keys_manager=api_keys_manager,
+        prefix=prefix,
+        logger=logger
+    )
+    for _, (method, path, handler) in openai_handlers.items():
         getattr(app, method)(path)(handler)
 
     @app.get("/")

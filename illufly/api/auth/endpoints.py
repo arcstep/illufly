@@ -7,17 +7,11 @@ from datetime import datetime, timedelta
 from enum import Enum
 
 from ...rocksdb import IndexedRocksDB
-from ..models import Result
+from ..models import Result, HttpMethod
 from .models import User, UserRole
 from .tokens import TokensManager, TokenClaims
 from .users import UsersManager
 from .api_keys import ApiKeysManager
-
-class HttpMethod(str, Enum):
-    GET = "get"
-    POST = "post"
-    PUT = "put"
-    DELETE = "delete"
 
 def _set_auth_cookies(response: Response, access_token: str, logger: logging.Logger = None) -> None:
     """设置认证Cookie"""

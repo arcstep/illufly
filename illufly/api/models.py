@@ -1,10 +1,17 @@
 from typing import Any, TypeVar, Generic, Optional
 from pydantic import BaseModel, ConfigDict
+from enum import Enum
 
 import logging
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
+
+class HttpMethod(str, Enum):
+    GET = "get"
+    POST = "post"
+    PUT = "put"
+    DELETE = "delete"
 
 class Result(BaseModel, Generic[T]):
     """返回结果"""

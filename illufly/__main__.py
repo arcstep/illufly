@@ -1,4 +1,4 @@
-from illufly.api.auth.start import main
+from illufly.api.start import main
 
 if __name__ == "__main__":
     """
