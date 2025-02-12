@@ -1,15 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
-from typing import Optional
+from fastapi.responses import FileResponse
 
-import uvicorn
+from pathlib import Path
+from typing import Optional, List, Set
+
 import logging
-import argparse
-import importlib.resources
-import tempfile
-import shutil
 
 from ..__version__ import __version__
 from ..rocksdb import IndexedRocksDB
@@ -30,30 +27,53 @@ def setup_logging(log_level: int = logging.INFO):
         force=True
     )
 
-def mount_static_files(app: FastAPI, static_path: Optional[Path], logger: logging.Logger):
-    """挂载静态文件"""
-    if not static_path or not static_path.exists():
-        logger.error("静态文件未找到")
-        return
+def setup_spa_middleware(app: FastAPI, static_dir: Path):
+    """设置 SPA 中间件，处理客户端路由"""
+    logger = logging.getLogger("illufly")
+    
+    # 扫描所有 HTML 文件的路径
+    html_routes = set()
+    for file in static_dir.rglob("*.html"):
+        route = "/" + file.relative_to(static_dir).with_suffix("").as_posix()
+        if route == "/index":
+            route = "/"
+        html_routes.add(route)
+    
+    logger.debug(f"发现HTML路由: {html_routes}")
+    
+    @app.middleware("http")
+    async def spa_middleware(request: Request, call_next):
+        path = request.url.path
         
-    try:
-        app.mount("/", StaticFiles(
-            directory=str(static_path), 
-            html=True
-        ), name="static")
-        logger.info(f"FastAPI 静态资源已挂载: {static_path}")
-
-    except Exception as e:
-        logger.error(f"静态文件挂载失败: {e}")
+        # API 请求直接传递
+        if path.startswith("/api"):
+            return await call_next(request)
+            
+        # 检查是否是已知的 HTML 路由
+        if path in html_routes:
+            html_file = static_dir / f"{path.lstrip('/')}.html"
+            if path == "/":
+                html_file = static_dir / "index.html"
+            logger.debug(f"返回HTML文件: {html_file}")
+            return FileResponse(html_file)
+            
+        # 检查是否是静态文件
+        static_file = static_dir / path.lstrip("/")
+        if static_file.is_file():
+            logger.debug(f"返回静态文件: {static_file}")
+            return FileResponse(static_file)
+            
+        # 未找到对应文件，返回 index.html（客户端路由处理）
+        logger.debug(f"路径 {path} 未找到对应文件，返回 index.html")
+        return FileResponse(static_dir / "index.html")
 
 def create_app(
     db_path: str = "./db",
     title: str = "Illufly API",
     description: str = "Illufly 后端 API 服务",
     prefix: str = "/api",
-    host: str = "0.0.0.0",
-    port: int = 8000,
-    static_dir: str = None,
+    static_dir: Optional[str] = None,
+    ui_origins: Optional[List[str]] = None,
     log_level: int = logging.INFO
 ) -> FastAPI:
     """创建 FastAPI 应用
@@ -79,7 +99,11 @@ def create_app(
     )
 
     # 配置 CORS
-    origins = [f"http://{host}:{port}"]
+    origins = ui_origins or [
+        # Next.js 开发服务器默认端口
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,  # 不再使用 ["*"]
@@ -133,55 +157,14 @@ def create_app(
             """应用关闭时清理静态文件"""
             static_manager.cleanup()
 
-    mount_static_files(app, static_path, logger)
+    if static_path:
+        # 设置 SPA 中间件
+        setup_spa_middleware(app, static_path)
+        
+        # 挂载静态文件（作为后备）
+        app.mount("/", StaticFiles(
+            directory=str(static_path), 
+            html=True
+        ), name="static")
 
     return app
-
-def parse_args():
-    """解析命令行参数"""
-    parser = argparse.ArgumentParser(description="Illufly API 服务")
-    arguments = [
-        ("--db-path", "./db", "数据库路径 (默认: ./db)"),
-        ("--title", "Illufly API", "API 标题 (默认: Illufly API)"),
-        ("--description", "Illufly 后端 API 服务", "API 描述"),
-        ("--prefix", "/api", "API 路由前缀 (默认: /api)"),
-        ("--host", "0.0.0.0", "服务主机地址 (默认: 0.0.0.0)"),
-        ("--port", 8000, "服务端口 (默认: 8000)"),
-        ("--log-level", "info", "日志级别 (默认: info)"),
-        ("--static-dir", None, "静态文件目录 (默认: 包内 static 目录)")
-    ]
-    for arg, default, help in arguments:
-        parser.add_argument(arg, default=default, help=help)
-
-    args = parser.parse_args()
-    
-    # 将字符串日志级别转换为 logging 常量
-    args.log_level = getattr(logging, args.log_level.upper())
-    
-    return args
-
-def main():
-    """主函数"""
-    args = parse_args()
-    
-    app = create_app(
-        db_path=args.db_path,
-        title=args.title,
-        description=args.description,
-        prefix=args.prefix,
-        host=args.host,
-        port=args.port,
-        log_level=args.log_level,
-        static_dir=args.static_dir
-    )
-    
-    # 启动服务
-    uvicorn.run(
-        app,
-        host=args.host,
-        port=args.port,
-        log_level=args.log_level
-    )
-
-if __name__ == "__main__":
-    main()
