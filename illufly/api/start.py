@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from typing import Optional
 
@@ -115,13 +116,10 @@ def create_app(
     for _, (method, path, handler) in openai_handlers.items():
         getattr(app, method)(path)(handler)
 
-    @app.get("/")
-    async def root():
-        """根路由"""
-        return {
-            "message": "欢迎使用 Illufly API",
-            "version": version
-        }
+    # 添加静态文件支持
+    static_path = Path(__file__).parent / "static"
+    if static_path.exists():
+        app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
 
     return app
 
