@@ -7,6 +7,9 @@ from typing import Optional
 import uvicorn
 import logging
 import argparse
+import importlib.resources
+import tempfile
+import shutil
 
 from ..__version__ import __version__
 from ..rocksdb import IndexedRocksDB
@@ -15,36 +18,42 @@ from .auth.users import UsersManager
 from .auth.api_keys import ApiKeysManager
 from .auth.endpoints import create_auth_endpoints
 from .openai.endpoints import create_openai_endpoints
+from .static_files import StaticFilesManager
 
-def create_logger(log_level: int = logging.INFO) -> logging.Logger:
-    """创建日志记录器
-    
-    Args:
-        log_level: 日志级别（使用 logging 模块的常量）
-    """
-    logger = logging.getLogger(__name__)
-    logger.setLevel(log_level)
-
-    # 创建控制台处理器
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)
-    
-    # 设置日志格式
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+def setup_logging(log_level: int = logging.INFO):
+    """配置全局日志"""
+    # 配置根记录器
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler()],
+        force=True
     )
-    console_handler.setFormatter(formatter)
 
-    # 添加处理器到 logger
-    logger.addHandler(console_handler)
+def mount_static_files(app: FastAPI, static_path: Optional[Path], logger: logging.Logger):
+    """挂载静态文件"""
+    if not static_path or not static_path.exists():
+        logger.error("静态文件未找到")
+        return
+        
+    try:
+        app.mount("/", StaticFiles(
+            directory=str(static_path), 
+            html=True
+        ), name="static")
+        logger.info(f"FastAPI 静态资源已挂载: {static_path}")
 
-    return logger
+    except Exception as e:
+        logger.error(f"静态文件挂载失败: {e}")
 
 def create_app(
     db_path: str = "./db",
     title: str = "Illufly API",
     description: str = "Illufly 后端 API 服务",
     prefix: str = "/api",
+    host: str = "0.0.0.0",
+    port: int = 8000,
+    static_dir: str = None,
     log_level: int = logging.INFO
 ) -> FastAPI:
     """创建 FastAPI 应用
@@ -57,8 +66,11 @@ def create_app(
         prefix: API 路由前缀
     """
 
-    logger = create_logger(log_level)
+    # 首先设置日志
+    setup_logging(log_level)
+    logger = logging.getLogger("illufly")
 
+    # 创建 FastAPI 应用实例
     version = __version__
     app = FastAPI(
         title=title,
@@ -67,14 +79,7 @@ def create_app(
     )
 
     # 配置 CORS
-    origins = [
-        "http://localhost",
-        "http://localhost:8000",
-        "http://127.0.0.1",
-        "http://127.0.0.1:8000",
-        # 添加其他允许的源
-    ]
-
+    origins = [f"http://{host}:{port}"]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,  # 不再使用 ["*"]
@@ -89,7 +94,7 @@ def create_app(
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db = IndexedRocksDB(str(db_path), logger=logger)
 
-    # 初始化管理器
+    # 初始化数据管理实例
     tokens_manager = TokensManager(db, logger=logger)
     users_manager = UsersManager(db, logger=logger)
     api_keys_manager = ApiKeysManager(db, logger=logger)
@@ -116,55 +121,38 @@ def create_app(
     for _, (method, path, handler) in openai_handlers.items():
         getattr(app, method)(path)(handler)
 
-    # 添加静态文件支持
-    static_path = Path(__file__).parent / "static"
-    if static_path.exists():
-        app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
+    # 加载静态资源环境
+    if Path(__file__).parent.joinpath("static").exists() and static_dir is None:
+        static_path = Path(__file__).parent.joinpath("static")
+    else:
+        static_manager = StaticFilesManager(static_dir=static_dir, logger=logger)
+        static_path = static_manager.setup()
+        # FastAPI 关闭时清理临时目录
+        @app.on_event("shutdown")
+        async def cleanup_static():
+            """应用关闭时清理静态文件"""
+            static_manager.cleanup()
+
+    mount_static_files(app, static_path, logger)
 
     return app
 
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="Illufly API 服务")
-    
-    parser.add_argument(
-        "--db-path",
-        default="./db",
-        help="数据库路径 (默认: ./db)"
-    )
-    parser.add_argument(
-        "--title",
-        default="Illufly API",
-        help="API 标题 (默认: Illufly API)"
-    )
-    parser.add_argument(
-        "--description",
-        default="Illufly 后端 API 服务",
-        help="API 描述"
-    )
-    parser.add_argument(
-        "--prefix",
-        default="/api",
-        help="API 路由前缀 (默认: /api)"
-    )
-    parser.add_argument(
-        "--host",
-        default="0.0.0.0",
-        help="服务主机地址 (默认: 0.0.0.0)"
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=8000,
-        help="服务端口 (默认: 8000)"
-    )
-    parser.add_argument(
-        "--log-level",
-        choices=["debug", "info", "warning", "error", "critical"],
-        default="info",
-        help="日志级别 (默认: info)"
-    )
-    
+    arguments = [
+        ("--db-path", "./db", "数据库路径 (默认: ./db)"),
+        ("--title", "Illufly API", "API 标题 (默认: Illufly API)"),
+        ("--description", "Illufly 后端 API 服务", "API 描述"),
+        ("--prefix", "/api", "API 路由前缀 (默认: /api)"),
+        ("--host", "0.0.0.0", "服务主机地址 (默认: 0.0.0.0)"),
+        ("--port", 8000, "服务端口 (默认: 8000)"),
+        ("--log-level", "info", "日志级别 (默认: info)"),
+        ("--static-dir", None, "静态文件目录 (默认: 包内 static 目录)")
+    ]
+    for arg, default, help in arguments:
+        parser.add_argument(arg, default=default, help=help)
+
     args = parser.parse_args()
     
     # 将字符串日志级别转换为 logging 常量
@@ -181,7 +169,10 @@ def main():
         title=args.title,
         description=args.description,
         prefix=args.prefix,
-        log_level=args.log_level
+        host=args.host,
+        port=args.port,
+        log_level=args.log_level,
+        static_dir=args.static_dir
     )
     
     # 启动服务

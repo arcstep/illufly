@@ -182,9 +182,9 @@ class UsersManager:
                     roles=[UserRole.ADMIN],
                     require_password_change=False
                 ))
-                self._logger.info(f"管理员用户已创建")
+                self._logger.debug(f"管理员用户已创建")
             else:
-                self._logger.info(f"管理员用户已存在")
+                self._logger.debug(f"管理员用户已存在")
                 
         except Exception as e:
             raise
