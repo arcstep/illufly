@@ -4,7 +4,7 @@ import argparse
 
 from .api.start import create_app
 
-def parse_args():
+def _parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="Illufly API 服务")
     arguments = [
@@ -32,12 +32,15 @@ def parse_args():
     
     # 将字符串日志级别转换为 logging 常量
     args.log_level = getattr(logging, args.log_level.upper())
+
+    # 将 port 转为 int
+    args.port = int(args.port)
     
     return args
 
 def main():
     """主函数"""
-    args = parse_args()
+    args = _parse_args()
     
     app = create_app(
         db_path=args.db_path,
