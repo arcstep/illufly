@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 import asyncio
 import logging
 
-from ...async_utils import AsyncUtils
-from ...rocksdb import IndexedRocksDB
+from ..async_utils import AsyncUtils
+from ..rocksdb import IndexedRocksDB
 
 class BaseTask(ABC):
     """异步任务基类"""

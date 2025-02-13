@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from illufly.llm.system_template.template import PromptTemplate
+from illufly.prompt import PromptTemplate, load_prompt_template
 
 class TestSystemTemplate:
     """PromptTemplate 类的测试套件
@@ -316,7 +316,6 @@ class TestSystemTemplate:
         assert template3.text == template1.text  # 应该返回缓存的内容
 
         # 清除缓存后重新加载
-        from illufly.llm.system_template.hub import load_prompt_template
         load_prompt_template.cache_clear()
         template4 = PromptTemplate(template_id="simple", template_folder=template_dir)
         assert template4.text == "Modified content"

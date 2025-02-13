@@ -23,7 +23,7 @@ from chevron import tokenizer
 logger = logging.getLogger(__name__)
 
 # 定义默认模板基础路径
-PROMPT_WRITING_BASE = "illufly.prompt_template.DEFAULT_TEMPLATES"
+PROMPT_WRITING_BASE = "illufly.prompt.DEFAULT_TEMPLATES"
 
 def find_resource_template(*seg_path):
     """
