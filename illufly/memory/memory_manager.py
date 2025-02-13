@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Iterator
 from uuid import uuid4
 from enum import Enum
 
-from ...rocksdb import IndexedRocksDB
+from ..rocksdb import IndexedRocksDB
 from .L0_qa import QA, Message, Thread, QAManager
 from .L1_facts import Fact
 from .L2_concept.models import Concept

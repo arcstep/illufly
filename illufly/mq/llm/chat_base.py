@@ -8,7 +8,7 @@ from ..rocksdb import default_rocksdb, IndexedRocksDB
 from ..llm.memory.L0_qa import QAManager, QA, Message
 from ..call import RemoteServer
 from ..mq import Publisher, StreamingBlock, BlockType, TextChunk
-from .system_template import SystemTemplate
+from .system_template import PromptTemplate
 
 class ChatBase(RemoteServer, ABC):
     """Base Chat Service
@@ -107,7 +107,7 @@ class ChatBase(RemoteServer, ABC):
         self,
         messages: Union[str, List[Dict[str, Any]]],
         block_types: List[BlockType] = None,
-        system_template: SystemTemplate = None,
+        system_template: PromptTemplate = None,
         bindings: Dict[str, Any] = None,
         **kwargs
     ):
@@ -136,7 +136,7 @@ class ChatBase(RemoteServer, ABC):
         self,
         messages: Union[str, List[Dict[str, Any]]],
         block_types: List[BlockType] = None,
-        system_template: SystemTemplate = None,
+        system_template: PromptTemplate = None,
         bindings: Dict[str, Any] = None,
         **kwargs
     ):
@@ -161,7 +161,7 @@ class ChatBase(RemoteServer, ABC):
         output_messages = [Message(role="assistant", content=final_text)]
         self.after_call(normalized_messages, output_messages, request_id=request_id, **kwargs)
 
-    def before_call(self, input_messages: List[Message], system_template: SystemTemplate, bindings: Dict[str, Any]):
+    def before_call(self, input_messages: List[Message], system_template: PromptTemplate, bindings: Dict[str, Any]):
         """补充认知上下文"""
 
         # 从认知上下文中获取消息

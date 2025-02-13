@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 from .hub import load_resource_template, load_prompt_template, clone_prompt_template
 
-class SystemTemplate():
+class PromptTemplate():
     """
     系统模板可以作为消息生成消息列表。
     """

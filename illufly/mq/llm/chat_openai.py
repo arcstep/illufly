@@ -1,7 +1,9 @@
 import os
 from typing import List, Dict, Any, Union
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 
+from ...rocksdb import IndexedRocksDB
 from ..service import ServiceDealer
 from ..models import TextChunk, TextFinal, ToolCallChunk, ToolCallFinal, StartBlock, UsageBlock
 
@@ -37,7 +39,7 @@ class ChatOpenAI(ServiceDealer):
         "GROQ": "https://api.groq.com/openai/v1",
     }
 
-    def __init__(self, model: str = None, prefix: str = None, extra_args: dict = {}, **kwargs):
+    def __init__(self, model: str = None, prefix: str = None, extra_args: dict = {}, db: IndexedRocksDB = None, **kwargs):
         prefix = (prefix or "").upper() or "OPENAI"
         
         # 加载默认模型

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from ..tasks import BaseProcessor
-from ..L0_QA import QA
+from ..L0_qa import QA
 from ..L1_facts import Fact
 
 class DialogueProcessor(BaseProcessor):

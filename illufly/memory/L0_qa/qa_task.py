@@ -8,7 +8,7 @@ from ....mq import BlockType
 from ....async_utils import AsyncUtils
 from ....envir import get_env
 from ....rocksdb import IndexedRocksDB
-from ...system_template import SystemTemplate
+from ...system_template import PromptTemplate
 from ...memory.L0_qa import QA, Message
 from ...chat_openai import ChatOpenAI
 from ...memory.types import TaskState, MemoryType
@@ -84,7 +84,7 @@ class QaTask(BaseTask):
         # logger.debug(f"开始处理摘要任务， memory: {messages}, content: {content}")
         chat = assistant
 
-        template = SystemTemplate(template_id="summary")
+        template = PromptTemplate(template_id="summary")
         resp = chat.async_call(
             messages="请开始处理",
             system_template=template,

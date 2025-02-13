@@ -4,16 +4,16 @@ import asyncio
 import json
 import logging
 
-from ....mq import BlockType
-from ....async_utils import AsyncUtils
-from ....envir import get_env
-from ....rocksdb import IndexedRocksDB
-from ...system_template import SystemTemplate
-from ...memory.L0_qa import QA, Message
-from ...memory.L1_facts import Fact
-from ...chat_openai import ChatOpenAI
+from ...mq import BlockType
+from ...async_utils import AsyncUtils
+from ...envir import get_env
+from ...rocksdb import IndexedRocksDB
+from ...prompt_template import PromptTemplate
+from ..L0_qa import QA, Message
+from ...llm.chat_openai import ChatOpenAI
 from ...memory.types import TaskState, MemoryType
 from ..base_task import BaseTask
+from .models import Fact
 
 class FactsTask(BaseTask):
     """提取事实任务"""
@@ -85,7 +85,7 @@ class FactsTask(BaseTask):
         # logger.debug(f"开始处理摘要任务， memory: {messages}, content: {content}")
         chat = assistant
 
-        template = SystemTemplate(template_id="facts")
+        template = PromptTemplate(template_id="facts")
         resp = chat.async_call(
             messages="请开始生成事实",
             system_template=template,
