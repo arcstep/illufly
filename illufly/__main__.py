@@ -17,11 +17,16 @@ def parse_args():
         ("--ssl-keyfile", None, "SSL 密钥文件路径"),
         ("--ssl-certfile", None, "SSL 证书文件路径"),
         ("--static-dir", None, "静态文件目录 (默认: 包内 static 目录)"),
-        ("--ui-origins", "+", "UI 服务地址列表，例如 http://localhost:3000"),
+        ("--cors-origins", None, "CORS 服务地址列表，例如 http://localhost:3000"),
         ("--log-level", "info", "日志级别 (默认: info)"),
     ]
+    
     for arg, default, help in arguments:
-        parser.add_argument(arg, default=default, help=help)
+        if arg in ["--cors-origins"]:
+            # 特殊处理 cors-origins 参数，支持多个参数值
+            parser.add_argument(arg, nargs='+', default=default, help=help)
+        else:
+            parser.add_argument(arg, default=default, help=help)
 
     args = parser.parse_args()
     
@@ -40,7 +45,7 @@ def main():
         description=args.description,
         prefix=args.prefix,
         static_dir=args.static_dir,
-        ui_origins=args.ui_origins,
+        cors_origins=args.cors_origins,
         log_level=args.log_level
     )
     

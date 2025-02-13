@@ -27,7 +27,7 @@ def setup_logging(log_level: int = logging.INFO):
         force=True
     )
 
-def setup_spa_middleware(app: FastAPI, static_dir: Path):
+def setup_spa_middleware(app: FastAPI, static_dir: Path, exclude_paths: List[str] = []):
     """设置 SPA 中间件，处理客户端路由"""
     logger = logging.getLogger("illufly")
     
@@ -46,7 +46,7 @@ def setup_spa_middleware(app: FastAPI, static_dir: Path):
         path = request.url.path
         
         # API 请求直接传递
-        if path.startswith("/api"):
+        if any(path.startswith(exclude_path) for exclude_path in exclude_paths):
             return await call_next(request)
             
         # 检查是否是已知的 HTML 路由
@@ -73,7 +73,7 @@ def create_app(
     description: str = "Illufly 后端 API 服务",
     prefix: str = "/api",
     static_dir: Optional[str] = None,
-    ui_origins: Optional[List[str]] = None,
+    cors_origins: Optional[List[str]] = None,
     log_level: int = logging.INFO
 ) -> FastAPI:
     """创建 FastAPI 应用
@@ -99,11 +99,12 @@ def create_app(
     )
 
     # 配置 CORS
-    origins = ui_origins or [
+    origins = cors_origins or [
         # Next.js 开发服务器默认端口
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+    logger.info(f"可接受的 CORS 访问源: {origins}")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,  # 不再使用 ["*"]
@@ -159,7 +160,7 @@ def create_app(
 
     if static_path:
         # 设置 SPA 中间件
-        setup_spa_middleware(app, static_path)
+        setup_spa_middleware(app, static_path, exclude_paths=[prefix, "/docs", "/openapi.json"])
         
         # 挂载静态文件（作为后备）
         app.mount("/", StaticFiles(
