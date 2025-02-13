@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 
-from illufly.api.auth.api_keys import ApiKey, ApiKeysManager
+from illufly.api.api_keys import ApiKey, ApiKeysManager
 from illufly.rocksdb import IndexedRocksDB
 from illufly.api.models import Result
 
