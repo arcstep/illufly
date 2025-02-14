@@ -29,22 +29,12 @@ class TokenClaims(BaseModel):
     @classmethod
     def get_refresh_token_prefix(cls, user_id: str) -> str:
         """获取刷新令牌前缀"""
-        return f"token:{user_id}:refresh"
+        return f"token-{user_id}-refresh"
 
     @classmethod
     def get_refresh_token_key(cls, user_id: str, device_id: str) -> str:
         """获取刷新令牌键"""
         return f"{cls.get_refresh_token_prefix(user_id)}:{device_id}"
-
-    @classmethod
-    def get_access_token_prefix(cls, user_id: str) -> str:
-        """获取访问令牌前缀"""
-        return f"token:{user_id}:access:"
-
-    @classmethod
-    def get_access_token_key(cls, user_id: str, device_id: str) -> str:
-        """获取访问令牌键"""
-        return f"{cls.get_access_token_prefix(user_id)}:{device_id}"
     
     @classmethod
     def create_refresh_token(cls, user_id: str, username: str, roles: List[str], device_id: str = None, **kwargs) -> Self:
