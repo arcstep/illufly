@@ -26,9 +26,9 @@ class UsersManager:
 
         self._db = db
         self._db.register_model(__USER_MODEL_NAME__, User)
-        self._db.register_indexes(__USER_MODEL_NAME__, User, "username")
-        self._db.register_indexes(__USER_MODEL_NAME__, User, "email")
-        self._db.register_indexes(__USER_MODEL_NAME__, User, "mobile")
+        self._db.register_index(__USER_MODEL_NAME__, User, "username")
+        self._db.register_index(__USER_MODEL_NAME__, User, "email")
+        self._db.register_index(__USER_MODEL_NAME__, User, "mobile")
 
         # 初始化管理员用户
         self.ensure_admin_user()
@@ -51,7 +51,7 @@ class UsersManager:
 
     def existing_index_field(self, field_path: str, field_value: Any) -> bool:
         """检查字段是否存在"""
-        items = self._db.items_with_indexes(__USER_MODEL_NAME__, field_path=field_path, field_value=field_value)
+        items = self._db.items_with_index(__USER_MODEL_NAME__, field_path=field_path, field_value=field_value)
         if items:
             return Result.fail(f"{field_path} 已存在")
         return Result.ok()
@@ -61,7 +61,7 @@ class UsersManager:
         try:
             self._logger.info(f"开始验证用户密码: {username}")
 
-            users = self._db.values_with_indexes(__USER_MODEL_NAME__, field_path="username", field_value=username)
+            users = self._db.values_with_index(__USER_MODEL_NAME__, field_path="username", field_value=username)
             self._logger.info(f"users: {users}")
 
             if not users:

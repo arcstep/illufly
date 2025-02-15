@@ -38,7 +38,7 @@ def users_manager(mock_db):
 def test_create_user(users_manager, mock_db):
     """测试创建新用户"""
     # 模拟数据库返回空值（用户名未被占用）
-    mock_db.items_with_indexes.return_value = []
+    mock_db.items_with_index.return_value = []
 
     # 创建用户
     user = User(
@@ -66,7 +66,7 @@ def test_create_user(users_manager, mock_db):
 def test_verify_password_success(users_manager, mock_db):
     """测试验证用户密码成功"""
     # 模拟数据库返回用户数据
-    mock_db.values_with_indexes.return_value = [User(
+    mock_db.values_with_index.return_value = [User(
         user_id=USER_ID,
         username=USERNAME,
         password_hash=PASSWORD_HASH,
@@ -85,7 +85,7 @@ def test_verify_password_success(users_manager, mock_db):
 def test_verify_password_failure(users_manager, mock_db):
     """测试验证用户密码失败"""
     # 模拟数据库返回用户数据
-    mock_db.values_with_indexes.return_value = [User(
+    mock_db.values_with_index.return_value = [User(
         user_id=USER_ID,
         username=USERNAME,
         password_hash=PASSWORD_HASH,
@@ -145,7 +145,7 @@ def test_ensure_admin_user_exists(users_manager, mock_db):
     # 确认管理员确认时返回空
     mock_db.get.return_value = None
     # 让唯一性检查时返回空
-    mock_db.items_with_indexes.return_value = []
+    mock_db.items_with_index.return_value = []
 
     # 确保管理员用户存在
     users_manager.ensure_admin_user()

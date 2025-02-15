@@ -62,7 +62,7 @@ class ApiKeysManager:
         self._db = db
         self._logger = logger or logging.getLogger(__name__)
         self._db.register_model(__API_KEY_MODEL_NAME__, ApiKey)
-        self._db.register_indexes(__API_KEY_MODEL_NAME__, ApiKey, "user_id")
+        self._db.register_index(__API_KEY_MODEL_NAME__, ApiKey, "user_id")
 
     def create_api_key(self, user_id: str, description: str = None) -> Result[ApiKey]:
         """创建API密钥"""

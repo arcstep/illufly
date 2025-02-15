@@ -3,30 +3,11 @@ from pydantic import BaseModel, Field
 from enum import Enum
 from datetime import datetime
 
-from .L0_qa import Message, QA
+from .L0_qa import QA
 from .L1_facts import Fact
 from .L2_concept import Concept
 from .L3_thematic_graph import ThematicGraph
 from .L4_core_view import CoreView
-
-class TaskStatus(str, Enum):
-    PENDING = "pending"      # 待处理
-    PROCESSING = "processing"  # 处理中
-    COMPLETED = "completed"    # 已完成
-    FAILED = "failed"         # 处理失败
-    TIMEOUT = "timeout"       # 处理超时
-
-class ProcessingTask(BaseModel):
-    """处理任务"""
-    task_id: str
-    level: str  # fact, concept, theme, view
-    thread_id: str
-    status: TaskStatus
-    created_at: datetime
-    updated_at: datetime
-    payload: Dict
-    error: Optional[str] = None
-    retry_count: int = 0
 
 class ConversationCognitive(BaseModel):
     """某次连续对话的用户认知
@@ -64,3 +45,23 @@ class FinalCognitive(BaseModel):
     def evaluate_cognitive_changes(self) -> Dict:
         """评估认知变化"""
         pass
+
+class TaskStatus(str, Enum):
+    PENDING = "pending"      # 待处理
+    PROCESSING = "processing"  # 处理中
+    COMPLETED = "completed"    # 已完成
+    FAILED = "failed"         # 处理失败
+    TIMEOUT = "timeout"       # 处理超时
+
+class ProcessingTask(BaseModel):
+    """处理任务"""
+    task_id: str
+    level: str  # fact, concept, theme, view
+    thread_id: str
+    status: TaskStatus
+    created_at: datetime
+    updated_at: datetime
+    payload: Dict
+    error: Optional[str] = None
+    retry_count: int = 0
+

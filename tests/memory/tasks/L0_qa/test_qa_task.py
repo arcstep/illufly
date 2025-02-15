@@ -26,7 +26,7 @@ class TestQaTask:
         )
         # 直接写入数据库
         db.register_model(MemoryType.QA, QA)
-        db.register_indexes(MemoryType.QA, QA, field_path="task_summarize")
+        db.register_index(MemoryType.QA, QA, field_path="task_summarize")
         db.update_with_indexes(MemoryType.QA, qa.key, qa.model_dump())
         return qa
     
@@ -83,7 +83,7 @@ class TestQaTask:
         """测试批量处理"""
         # 创建多个测试QA
         db.register_model(MemoryType.QA, QA)
-        db.register_indexes(MemoryType.QA, QA, field_path="task_summarize")
+        db.register_index(MemoryType.QA, QA, field_path="task_summarize")
         test_qas = []
         for i in range(10):
             qa = QA(
@@ -115,7 +115,7 @@ class TestQaTask:
     async def test_summary_processing(self, db, user_id, thread_id, reset_qa_task, mock_chat_openai):
         """测试摘要处理逻辑"""
         db.register_model(MemoryType.QA, QA)
-        db.register_indexes(MemoryType.QA, QA, field_path="task_summarize")
+        db.register_index(MemoryType.QA, QA, field_path="task_summarize")
         qa = QA(
             qa_id="test_qa_long",
             user_id=user_id,
@@ -143,7 +143,7 @@ class TestQaTask:
         """测试重置处理中任务的功能"""
         # 准备测试数据：创建多个不同状态的QA
         db.register_model(MemoryType.QA, QA)
-        db.register_indexes(MemoryType.QA, QA, field_path="task_summarize")
+        db.register_index(MemoryType.QA, QA, field_path="task_summarize")
         
         test_qas = []
         states = [
@@ -187,7 +187,7 @@ class TestQaTask:
         """测试并发任务处理时的状态管理"""
         # 准备测试数据
         db.register_model(MemoryType.QA, QA)
-        db.register_indexes(MemoryType.QA, QA, field_path="task_summarize")
+        db.register_index(MemoryType.QA, QA, field_path="task_summarize")
         
         # 创建多个待处理任务
         test_qas = []
@@ -242,7 +242,7 @@ class TestQaTask:
         """测试任务状态转换的完整性"""
         # 准备测试数据
         db.register_model(MemoryType.QA, QA)
-        db.register_indexes(MemoryType.QA, QA, field_path="task_summarize")
+        db.register_index(MemoryType.QA, QA, field_path="task_summarize")
         
         # 创建一个测试任务
         qa = QA(

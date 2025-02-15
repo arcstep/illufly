@@ -9,3 +9,6 @@ def generate_id() -> str:
     """生成ID"""
     timestamp = datetime.now().timestamp()
     return f"{int(timestamp):010d}.{int((timestamp - int(timestamp)) * 1000000):06d}"
+
+def generate_short_id():
+    return uuid.uuid4().hex[:8]

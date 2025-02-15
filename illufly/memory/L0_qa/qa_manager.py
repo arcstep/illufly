@@ -17,8 +17,8 @@ class QAManager():
         self.db.register_model(MemoryType.THREAD, Thread)
 
         self.db.register_model(MemoryType.QA, QA)
-        self.db.register_indexes(MemoryType.QA, QA, "task_summarize")
-        self.db.register_indexes(MemoryType.QA, QA, "task_extract_facts")
+        self.db.register_index(MemoryType.QA, QA, "task_summarize")
+        self.db.register_index(MemoryType.QA, QA, "task_extract_facts")
 
         self._logger = logger or logging.getLogger(__name__)
 

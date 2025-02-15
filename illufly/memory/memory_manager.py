@@ -9,7 +9,6 @@ from .L1_facts import Fact
 from .L2_concept.models import Concept
 from .L3_thematic_graph.models import ThematicGraph
 from .L4_core_view.models import CoreView
-from .models import ConversationCognitive, FinalCognitive
 from .types import MemoryType
 from .utils import generate_key
 

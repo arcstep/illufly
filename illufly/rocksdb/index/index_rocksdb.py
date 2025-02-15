@@ -242,8 +242,13 @@ class IndexedRocksDB(BaseRocksDB):
             return key
         else:
             return self._accessor_registry.get_field_value(model_class, field_path)
+    
+    def register_indexes(self, model_name: str, model_class: Type, field_paths: List[str], cf_name: str=None):
+        """批量注册模型的索引配置"""
+        for field_path in field_paths:
+            self.register_index(model_name, model_class, field_path, cf_name)
 
-    def register_indexes(self, model_name: str, model_class: Type, field_path: str, cf_name: str=None):
+    def register_index(self, model_name: str, model_class: Type, field_path: str, cf_name: str=None):
         """注册模型的索引配置"""
 
         # 验证字段路径的语法是否合法
@@ -397,7 +402,7 @@ class IndexedRocksDB(BaseRocksDB):
         self.write(batch)
         self._logger.debug(f"批处理任务提交完成，值和索引已删除")        
 
-    def iter_keys_with_indexes(
+    def iter_keys_with_index(
         self,
         model_name: str,
         field_path: str,
@@ -456,18 +461,18 @@ class IndexedRocksDB(BaseRocksDB):
             key = self._fetch_key_from_index(index)
             yield key
     
-    def iter_items_with_indexes(self, *args, **kwargs):
-        for key in self.iter_keys_with_indexes(*args, **kwargs):
+    def iter_items_with_index(self, *args, **kwargs):
+        for key in self.iter_keys_with_index(*args, **kwargs):
             yield key, self.get(key, rdict=kwargs.get("rdict", None))
 
-    def items_with_indexes(self, *args, **kwargs):
-        return list(self.iter_items_with_indexes(*args, **kwargs))
+    def items_with_index(self, *args, **kwargs):
+        return list(self.iter_items_with_index(*args, **kwargs))
 
-    def keys_with_indexes(self, *args, **kwargs):
-        return [k for k, _ in self.iter_items_with_indexes(*args, **kwargs)]
+    def keys_with_index(self, *args, **kwargs):
+        return [k for k, _ in self.iter_items_with_index(*args, **kwargs)]
 
-    def values_with_indexes(self, *args, **kwargs):
-        return [v for _, v in self.iter_items_with_indexes(*args, **kwargs)]
+    def values_with_index(self, *args, **kwargs):
+        return [v for _, v in self.iter_items_with_index(*args, **kwargs)]
 
     def register_model(self, model_name: str, model_class: Type, cf_name: str=None):
         """
@@ -475,7 +480,7 @@ class IndexedRocksDB(BaseRocksDB):
 
         如果要使用 iter_model_keys 或 rebuild_indexes 方法，必须先注册模型。
         """
-        self.register_indexes(model_name, model_class=model_class, field_path="#", cf_name=cf_name)
+        self.register_index(model_name, model_class=model_class, field_path="#", cf_name=cf_name)
 
     def iter_model_keys(self, model_name: str, cf_name: str=None):
         """迭代模型的所有键，即查找模型的所有实例。"""

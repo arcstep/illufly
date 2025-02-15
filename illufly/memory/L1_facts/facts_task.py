@@ -22,7 +22,7 @@ class FactsTask(BaseTask):
     def get_error_tasks(cls, db: IndexedRocksDB, limit: int = None):
         """获取处理失败的QA列表"""
         limit = limit or 1000
-        values = db.values_with_indexes(
+        values = db.values_with_index(
             model_name=MemoryType.QA,
             field_path="task_extract_facts",
             field_value=TaskState.ERROR,
@@ -34,7 +34,7 @@ class FactsTask(BaseTask):
     def get_processing_tasks(cls, db: IndexedRocksDB, limit: int = None):
         """获取处理中的QA列表"""
         limit = limit or 1000
-        values = db.values_with_indexes(
+        values = db.values_with_index(
             model_name=MemoryType.QA,
             field_path="task_extract_facts",
             field_value=TaskState.PROCESSING,
@@ -46,7 +46,7 @@ class FactsTask(BaseTask):
     def get_todo_tasks(cls, db: IndexedRocksDB, limit: int = None):
         """获取待处理的QA列表"""
         limit = limit or 1000
-        values = db.values_with_indexes(
+        values = db.values_with_index(
             model_name=MemoryType.QA,
             field_path="task_extract_facts",
             field_value=TaskState.TODO,
@@ -57,7 +57,7 @@ class FactsTask(BaseTask):
     @classmethod
     def fetch_task(cls, db: IndexedRocksDB):
         """获取待处理的QA列表"""
-        values = db.values_with_indexes(
+        values = db.values_with_index(
             model_name=MemoryType.QA,
             field_path="task_extract_facts",
             field_value=TaskState.TODO,
@@ -113,7 +113,7 @@ class FactsTask(BaseTask):
         """重置任务状态为处理中"""
         batch_size = batch_size or 1024*10
         while True:
-            items = db.values_with_indexes(
+            items = db.values_with_index(
                 model_name=MemoryType.QA,
                 field_path="task_extract_facts",
                 field_value=TaskState.PROCESSING,
@@ -132,7 +132,7 @@ class FactsTask(BaseTask):
     @classmethod
     async def fetch_todo_task(cls, db: IndexedRocksDB, **kwargs):
         """获取一个待处理的任务，如果没有则返回None"""
-        values = db.values_with_indexes(
+        values = db.values_with_index(
             model_name=MemoryType.QA,
             field_path="task_extract_facts",
             field_value=TaskState.TODO,
