@@ -119,7 +119,7 @@ def create_api_keys_endpoints(
             )
 
     return {
-        "create_api_key": (HttpMethod.POST, f"{prefix}/auth/api-keys", create_api_key),
-        "list_api_keys": (HttpMethod.GET, f"{prefix}/auth/api-keys", list_api_keys),
-        "delete_api_key": (HttpMethod.DELETE, f"{prefix}/auth/api-keys/{{api_key}}", delete_api_key),
+        "create_api_key": (HttpMethod.POST, f"{prefix}/api-keys", create_api_key),
+        "list_api_keys": (HttpMethod.GET, f"{prefix}/api-keys", list_api_keys),
+        "delete_api_key": (HttpMethod.DELETE, f"{prefix}/api-keys/{{api_key}}", delete_api_key),
     }
