@@ -65,3 +65,8 @@ include = "illufly/**/*"
 
 [tool.anyio]
 backend = "asyncio"
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu121"  # 根据你的 CUDA 版本调整
+priority = "explicit"

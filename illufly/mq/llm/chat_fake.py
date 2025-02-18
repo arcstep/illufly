@@ -2,10 +2,10 @@ from typing import Union, List, Optional, Dict, Any
 import asyncio
 import logging
 
-from ..service import ServiceDealer
 from ..models import TextChunk
+from .chat_base import ChatBase
 
-class ChatFake(ServiceDealer):
+class ChatFake(ChatBase):
     """Fake Chat Service"""
     def __init__(
         self,
@@ -32,8 +32,7 @@ class ChatFake(ServiceDealer):
             f"sleep: {self.sleep}s"
         )
 
-    @ServiceDealer.service_method(name="chat", description="Fake Chat Service")
-    async def _chat(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
+    async def generate(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
         """异步生成响应"""
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]

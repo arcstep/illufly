@@ -108,15 +108,16 @@ class ToolCallChunk(StreamingBlock):
     id: Optional[str] = None  # 工具调用ID
     name: Optional[str] = None  # 工具名称
     arguments: str = ""  # 工具参数（逐步累积）
-    index: Optional[int] = None  # 工具调用的索引
 
     @property
     def content(self) -> Dict[str, Any]:
         return {
+            "type": "function",
             "id": self.id,
-            "name": self.name,
-            "arguments": self.arguments,
-            "index": self.index
+            "function": {
+                "name": self.name,
+                "arguments": self.arguments
+            }
         }
 
 class ToolCallFinal(StreamingBlock):

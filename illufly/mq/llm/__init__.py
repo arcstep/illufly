@@ -1,4 +1,4 @@
-from .chat_openai import ChatOpenAI
+from .chat_base import ChatBase
 from .chat_fake import ChatFake
 
-__all__ = ["ChatOpenAI", "ChatFake"]
+__all__ = ["ChatBase", "ChatFake", "ChatAgent"]

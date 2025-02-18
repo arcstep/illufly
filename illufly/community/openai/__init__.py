@@ -1,2 +1,2 @@
-from .chat import ChatOpenAI
+from .chat_openai import ChatOpenAI
 from .embeddings import OpenAIEmbeddings

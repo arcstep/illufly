@@ -3,8 +3,7 @@ from typing import List, Optional, Dict, Iterator
 from uuid import uuid4
 from enum import Enum
 
-from ..rocksdb import IndexedRocksDB
-from .L0_qa import QA, Message, Thread, QAManager
+from .L0_qa import QA, SimpleMessage
 from .L1_facts import Fact
 from .L2_concept.models import Concept
 from .L3_thematic_graph.models import ThematicGraph
@@ -22,5 +21,7 @@ class MemoryManager:
     L3: 主题，ThematicGraph 应当被持久化
     L4: 观点，CoreView 应当被持久化
     """
-    def __init__(self, db: IndexedRocksDB):
-        self.db = db
+
+    def load_memory(self, user_id: str, thread_id: str, messages: List[SimpleMessage]):
+        """加载记忆"""
+        return []
