@@ -338,56 +338,6 @@ class ServiceRouter:
                 self._logger.error(f"Router error: {e}", exc_info=True)
                 await self._send_error(sender_id_bytes, f"Service Router Error")
 
-    async def _handle_discovery(self, sender_id: bytes):
-        """处理服务发现请求"""
-        await self._socket.send_multipart([
-            sender_id,
-            serialize_message(self._services)
-        ])
-
-    async def _handle_registration(self, sender_id: bytes, info_data: bytes):
-        """处理服务注册请求"""
-        try:
-            service_info = json.loads(info_data.decode())
-            service_id = sender_id.decode()
-            self.register_service(service_id, service_info)
-            self._services[service_id].last_heartbeat = time()
-            
-            # 发送注册确认
-            await self._socket.send_multipart([
-                sender_id,
-                b"register_ack",
-                b""
-            ])
-        except Exception as e:
-            self._logger.error(f"Registration error: {e}")
-
-    async def _forward_request(self, sender_id: bytes, service_id: str, message: List[bytes]):
-        """转发服务请求"""
-        if service_id not in self._services:
-            self._logger.warning(f"Service {service_id} not found")
-            error = ReplyErrorBlock(
-                request_id=str(uuid.uuid4()),
-                error=f"Service {service_id} not found"
-            )
-            await self._socket.send_multipart([
-                sender_id,
-                b"reply",
-                serialize_message(error)
-            ])
-            return
-        
-        # 转发消息到服务处理器
-        try:
-            self._logger.info(f"Forwarding to {service_id}: {message}")
-            await self._socket.send_multipart([
-                service_id.encode(),  # 服务处理器ID
-                sender_id,  # 原始发送者ID
-                *message
-            ])
-        except zmq.Again:
-            self._logger.warning("Message dropped due to HWM")
-
     def _select_best_service(self, method_name: str) -> Optional[ServiceInfo]:
         """选择最佳服务实例"""
         available_services = [
