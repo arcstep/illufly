@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Dict, List, Union, Any, Tuple
 from pydantic import BaseModel, Field, computed_field
 
-from ....rocksdb import IndexedRocksDB
+from .....rocksdb import IndexedRocksDB
 from ..utils import generate_short_id
 from ..types import TaskState
 

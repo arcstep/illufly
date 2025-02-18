@@ -6,10 +6,10 @@ from datetime import datetime
 import uuid
 import logging
 from ...rocksdb import default_rocksdb, IndexedRocksDB
-from ..memory.utils import generate_short_id
-from ..memory import Message, SimpleMessage, MemoryManager
 from ..service import ServiceDealer
 from ..llm.chat_base import ChatBase
+from .memory.utils import generate_short_id
+from .memory import Message, SimpleMessage, MemoryManager
 
 THREAD_MODEL = "thread"
 MESSAGE_MODEL = "message"
