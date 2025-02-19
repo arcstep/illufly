@@ -5,7 +5,6 @@ from ..base_chat import BaseChat
 from ..base_tool import BaseTool
 
 import os
-import json
 import logging
 import asyncio
 
@@ -52,7 +51,8 @@ class ChatOpenAI(BaseChat):
 
         usage = None
         final_text = ""
-        final_tool_calls_dict = {}
+        final_tool_calls = {}  # 使用OrderedDict保持顺序
+        last_tool_call_id = None
         async for response in completion:
             request_id = response.id
             model = response.model
@@ -63,20 +63,39 @@ class ChatOpenAI(BaseChat):
             if response.choices:
                 ai_output = response.choices[0].delta
                 if ai_output.tool_calls:
-                    for func in ai_output.tool_calls:
-                        id = func.id or ""
-                        name = func.function.name or ""
-                        arguments = func.function.arguments or ""
-                        if id not in final_tool_calls_dict:
-                            final_tool_calls_dict[id] = {'name': name, 'arguments': arguments}
-                        final_tool_calls_dict[id]['name'] += name
-                        final_tool_calls_dict[id]['arguments'] += arguments
+                    for tool_call in ai_output.tool_calls:
+                        # 处理ID可能分块到达的情况
+                        tool_id = tool_call.id or last_tool_call_id
+                        
+                        if tool_id:
+                            last_tool_call_id = tool_id
+                        
+                        # 初始化工具调用记录
+                        if tool_id not in final_tool_calls:
+                            final_tool_calls[tool_id] = {
+                                'name': '',
+                                'arguments': '',
+                                'created_at': created_at,
+                                'is_temp_id': not tool_call.id  # 标记临时ID
+                            }
+                        
+                        # 累积各字段（处理字段分块到达）
+                        current = final_tool_calls[tool_id]
+                        current['name'] += tool_call.function.name or ""
+                        current['arguments'] += tool_call.function.arguments or ""
+                        
+                        # 当收到正式ID时替换临时ID
+                        if tool_call.id and current['is_temp_id']:
+                            new_id = tool_call.id
+                            final_tool_calls[new_id] = current
+                            del final_tool_calls[tool_id]
+                            current['is_temp_id'] = False
+                        
+                        # 实时生成chunk（即使字段不完整）
                         yield ToolCallChunk(
-                            request_id=request_id,
-                            model=model,
-                            tool_call_id=id,
-                            tool_name=name,
-                            arguments=arguments,
+                            tool_call_id=tool_id,
+                            tool_name=tool_call.function.name or "",
+                            arguments=tool_call.function.arguments or "",
                             created_at=created_at
                         )
                 else:
@@ -85,16 +104,20 @@ class ChatOpenAI(BaseChat):
                         final_text += content
                         yield TextChunk(request_id=request_id, model=model, text=content, created_at=created_at)
             
-        if final_tool_calls_dict:
-            for id, tool_call in final_tool_calls_dict.items():
-                yield ToolCallFinal(
-                    request_id=request_id,
-                    model=model,
-                    tool_call_id=id,
-                    tool_name=tool_call['name'],
-                    arguments=tool_call['arguments'],
-                    created_at=created_at
-                )
+        # 生成最终结果（过滤空参数）
+        for tool_id, data in final_tool_calls.items():
+            if not data['arguments'].strip():
+                continue
+            
+            # 清理临时ID标记
+            data.pop('is_temp_id', None)
+            
+            yield ToolCallFinal(
+                tool_call_id=tool_id,
+                tool_name=data['name'].strip(),
+                arguments=data['arguments'].strip(),
+                created_at=data['created_at']
+            )
 
         if final_text:
             yield TextFinal(request_id=request_id, model=model, text=final_text, created_at=created_at)

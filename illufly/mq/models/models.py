@@ -3,8 +3,11 @@ from enum import Enum
 from pydantic import BaseModel, Field, model_validator, ConfigDict
 import time
 import json
+import logging
 
 from .enum import BlockType, ReplyState, RequestStep
+
+logger = logging.getLogger(__name__)
 
 class BaseBlock(BaseModel):
     """基础数据块"""
@@ -111,12 +114,13 @@ class ToolCallChunk(StreamingBlock):
 
     @property
     def content(self) -> Dict[str, Any]:
+        logger.info(f"ToolCallChunk: {self.tool_call_id} {self.tool_name} {self.arguments}")
         return {
             "type": "function",
             "id": self.tool_call_id,
             "function": {
                 "name": self.tool_name,
-                "arguments": json.loads(self.arguments)
+                "arguments": self.arguments
             }
         }
 
@@ -129,13 +133,13 @@ class ToolCallFinal(StreamingBlock):
     arguments: str  # 完整的工具参数
 
     @property
-    def content(self) -> Dict[str, Any]:
+    def content(self) -> dict:
         return {
             "type": "function",
             "id": self.tool_call_id,
             "function": {
-                "arguments": json.loads(self.arguments),
                 "name": self.tool_name,
+                "arguments": self.arguments
             }
         }
 

@@ -2,6 +2,8 @@ import pytest
 
 import logging
 from illufly.community.fake import ChatFake
+from illufly.community.base_tool import BaseTool
+from illufly.mq.models import ToolCallChunk, ToolCallFinal
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,19 @@ async def chat_service():
         sleep=0.01,
     )
     return service
+
+@pytest.fixture
+def mock_tool():
+    """模拟工具实例"""
+    class MockTool(BaseTool):
+        name = "mock_tool"
+        description = "模拟工具"
+
+        @classmethod
+        async def call(cls, **kwargs):
+            return "Mock tool result"
+
+    return MockTool
 
 @pytest.mark.asyncio
 async def test_chat_fake_basic(chat_service):
@@ -42,3 +57,33 @@ async def test_chat_fake_multiple_responses(chat_service):
     
     # 验证响应轮换
     assert "".join(responses1) != "".join(responses2), "两次调用应该返回不同的预设响应"
+
+@pytest.mark.asyncio
+async def test_tool_calls():
+    """测试工具调用场景"""
+    fake = ChatFake(
+        tool_responses=[
+            {"name": "weather", "arguments": {"city": "Beijing"}},
+            {"name": "calculator", "arguments": {"expression": "1+1"}}
+        ]
+    )
+    
+    # 第一次调用应返回工具调用
+    chunks = []
+    async for chunk in fake.generate("What's Beijing weather?", tools=[mock_tool]):
+        chunks.append(chunk)
+    
+    assert len(chunks) == 2, "应该返回ToolCallChunk和ToolCallFinal"
+    assert isinstance(chunks[0], ToolCallChunk)
+    assert chunks[0].tool_name == "weather"
+    
+    # 发送工具结果后应得到处理后的回复
+    messages = [
+        {"role": "user", "content": "What's Beijing weather?"},
+        {"role": "tool", "content": "Sunny"}
+    ]
+    responses = []
+    async for chunk in fake.generate(messages):
+        responses.append(chunk.content)
+    
+    assert "Sunny" in "".join(responses), "应处理工具结果"
