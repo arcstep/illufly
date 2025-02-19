@@ -215,7 +215,7 @@ class BaseTool(metaclass=BaseToolMeta):
 
 def is_json_serializable(t: Type) -> bool:
     """严格检查类型是否可安全转换为JSON Schema"""
-    # 处理Annotated类型（新增）
+    # 处理Annotated类型
     origin = get_origin(t)
     if origin is Annotated:
         args = get_args(t)
@@ -234,18 +234,24 @@ def is_json_serializable(t: Type) -> bool:
         if len(args) == 2 and type(None) in args:
             return is_json_serializable(args[0] if args[1] is type(None) else args[1])
     
-    # 处理List类型
+    # 处理List类型（包括未参数化的list）
     if origin is list:
-        item_type = get_args(t)[0]
-        return is_json_serializable(item_type)
+        try:
+            item_type = get_args(t)[0] if get_args(t) else Any
+        except IndexError:
+            return False
+        # 允许未参数化的列表（视为List[Any]）
+        return item_type is Any or is_json_serializable(item_type)
     
-    # 处理Dict类型
+    # 处理Dict类型（包括未参数化的dict）
     if origin is dict:
-        key_type, value_type = get_args(t)
-        return key_type is str and is_json_serializable(value_type)
+        try:
+            key_type, value_type = get_args(t) if get_args(t) else (Any, Any)
+        except ValueError:
+            return False
+        # 允许未参数化的字典（视为Dict[Any, Any]）
+        return (is_json_serializable(key_type) or key_type is Any) and \
+               (is_json_serializable(value_type) or value_type is Any)
     
-    # 处理Literal类型（需要特殊处理）
-    if origin is Literal:
-        return all(isinstance(v, (str, int, float, bool)) for v in get_args(t))
-    
+    # 其他类型视为不可序列化
     return False

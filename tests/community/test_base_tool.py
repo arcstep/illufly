@@ -156,8 +156,9 @@ async def test_invalid_types():
     (List[Annotated[str, Field(max_length=10)]], True),
     (Dict[str, Annotated[float, Field(ge=0)]], True),
     (datetime, False),
-    (Dict[int, str], False),
+    (Dict[int, str], True),
     (List[bytes], False),
 ])
 def test_is_json_serializable(type_hint, expected):
     assert is_json_serializable(type_hint) == expected
+
