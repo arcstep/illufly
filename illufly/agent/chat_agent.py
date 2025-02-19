@@ -6,8 +6,8 @@ from datetime import datetime
 import uuid
 import logging
 
-from ...rocksdb import default_rocksdb, IndexedRocksDB
-from ...community import BaseChat
+from ..rocksdb import default_rocksdb, IndexedRocksDB
+from ..community import BaseChat
 from ..service import ServiceDealer
 from .thread.models import Message, SimpleMessage
 from .memory import MemoryManager
