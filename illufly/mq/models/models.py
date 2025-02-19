@@ -84,7 +84,7 @@ class StreamingBlock(BaseBlock):
 class TextChunk(StreamingBlock):
     """文本块"""
     block_type: BlockType = BlockType.TEXT_CHUNK
-    seq: int = 0
+    model: Optional[str] = None
     text: str
 
     @property
@@ -94,8 +94,8 @@ class TextChunk(StreamingBlock):
 class TextFinal(StreamingBlock):
     """文本结束块"""
     block_type: BlockType = BlockType.TEXT_FINAL
+    model: Optional[str] = None
     text: str
-    chunks: List[TextChunk] = []
 
     @property
     def content(self) -> str:
@@ -104,38 +104,39 @@ class TextFinal(StreamingBlock):
 class ToolCallChunk(StreamingBlock):
     """工具调用块"""
     block_type: BlockType = BlockType.TOOL_CALL_CHUNK
-    seq: int = 0
-    id: Optional[str] = None  # 工具调用ID
-    name: Optional[str] = None  # 工具名称
+    model: Optional[str] = None
+    tool_call_id: Optional[str] = None  # 工具调用ID
+    tool_name: Optional[str] = None  # 工具名称
     arguments: str = ""  # 工具参数（逐步累积）
 
     @property
     def content(self) -> Dict[str, Any]:
         return {
             "type": "function",
-            "id": self.id,
+            "id": self.tool_call_id,
             "function": {
-                "name": self.name,
-                "arguments": self.arguments
+                "name": self.tool_name,
+                "arguments": json.loads(self.arguments)
             }
         }
 
 class ToolCallFinal(StreamingBlock):
     """工具调用结束块"""
     block_type: BlockType = BlockType.TOOL_CALL_FINAL
-    id: str  # 工具调用ID
-    name: str  # 工具名称
+    model: Optional[str] = None
+    tool_call_id: str  # 工具调用ID
+    tool_name: str  # 工具名称
     arguments: str  # 完整的工具参数
-    index: int  # 工具调用的索引
-    chunks: List[ToolCallChunk] = []  # 包含的所有chunk
 
     @property
     def content(self) -> Dict[str, Any]:
         return {
-            "id": self.id,
-            "name": self.name,
-            "arguments": self.arguments,
-            "index": self.index
+            "type": "function",
+            "id": self.tool_call_id,
+            "function": {
+                "arguments": json.loads(self.arguments),
+                "name": self.tool_name,
+            }
         }
 
 class UsageBlock(StreamingBlock):
@@ -143,7 +144,10 @@ class UsageBlock(StreamingBlock):
     block_type: BlockType = BlockType.USAGE
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
+    prompt_cache_hit_tokens: Optional[int] = None
+    prompt_cache_miss_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
+    reasoning_tokens: Optional[int] = None
     model: Optional[str] = None
     provider: Optional[str] = None
 
@@ -153,8 +157,11 @@ class UsageBlock(StreamingBlock):
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens,
-            "model": self.model,
-            "provider": self.provider
+            "prompt_cache_hit_tokens": self.prompt_cache_hit_tokens,
+            "prompt_cache_miss_tokens": self.prompt_cache_miss_tokens,
+            "completion_tokens_details": {
+                "reasoning_tokens": self.reasoning_tokens,
+            }
         }
 
 class ProgressBlock(StreamingBlock):

@@ -1,13 +1,15 @@
+from abc import ABC, abstractmethod
 from typing import List, Union
-from ..base import Runnable
-from ....utils import hash_text, clean_filename, raise_invalid_params
-from ....config import get_env
-from ....io import EventBlock, Document
+from ..utils import hash_text, clean_filename, raise_invalid_params
+from ..envir import get_env
 
 import os
 import pickle
 
-class BaseEmbeddings(Runnable):
+class Document():
+    pass
+
+class BaseEmbeddings(ABC):
     """
     句子嵌入模型。
 

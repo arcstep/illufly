@@ -2,22 +2,10 @@ from typing import Any, List
 from http import HTTPStatus
 
 import os
-from ...types import BaseEmbeddings
-from ...utils import raise_invalid_params
+from ..base_embeddings import BaseEmbeddings
 
 class OpenAIEmbeddings(BaseEmbeddings):
     """支持最新的OpenAI文本向量模型"""
-
-    @classmethod
-    def allowed_params(cls):
-        return {
-            "model": "模型名称，默认 'text-embedding-ada-002'",
-            "base_url": "BASE_URL",
-            "api_key": "API_KEY",
-            "dim": "编码时使用的向量维度，默认 1536",
-            **BaseEmbeddings.allowed_params()
-        }
-
     def __init__(
         self,
         model: str=None,
@@ -27,8 +15,6 @@ class OpenAIEmbeddings(BaseEmbeddings):
         extra_args: dict={},
         **kwargs
     ):
-        raise_invalid_params(kwargs, self.__class__.allowed_params())
-
         super().__init__(
             model=model or "text-embedding-ada-002",
             base_url=base_url or os.getenv("OPENAI_BASE_URL"),

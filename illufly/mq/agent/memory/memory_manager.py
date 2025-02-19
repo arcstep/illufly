@@ -3,13 +3,8 @@ from typing import List, Optional, Dict, Iterator
 from uuid import uuid4
 from enum import Enum
 
-from .L0_qa import QA, SimpleMessage
-from .L1_facts import Fact
-from .L2_concept.models import Concept
-from .L3_thematic_graph.models import ThematicGraph
-from .L4_core_view.models import CoreView
+from ..thread.models import Message, SimpleMessage
 from .types import MemoryType
-from .utils import generate_key
 
 class MemoryManager:
     """记忆管理

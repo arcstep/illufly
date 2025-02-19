@@ -1,19 +1,20 @@
 from typing import Union, List, Optional, Dict, Any
+
 import asyncio
 import logging
 
-from ..models import TextChunk
-from .chat_base import ChatBase
+from ...mq.models import TextChunk
+from ..base_chat import BaseChat
 
-class ChatFake(ChatBase):
+class ChatFake(BaseChat):
     """Fake Chat Service"""
     def __init__(
         self,
         response: Union[str, List[str]]=None, 
         sleep: float=0.1,
-        **kwargs
+        logger: logging.Logger = None,
     ):
-        super().__init__(**kwargs)
+        super().__init__(logger=logger)
         
         # 处理响应设置
         if response is None:

@@ -12,8 +12,6 @@ from .....io import EventBlock, EndBlock, NewLineBlock, Document
 from ...base import Runnable
 from ...message import Messages
 from ...prompt_template import PromptTemplate
-from ...vectordb import VectorDB
-from ..retriever import Retriever
 from ..base import BaseAgent
 from ..context_manager import ContextManager
 from .tools_calling import BaseToolCalling, OpenAIToolsCalling

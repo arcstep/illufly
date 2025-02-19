@@ -9,6 +9,7 @@ class BlockType(str, Enum):
     TEXT_FINAL = "text_final"
     TOOL_CALL_CHUNK = "tool_call_chunk"
     TOOL_CALL_FINAL = "tool_call_final"
+    TOOL_CALL_MESSAGE = "tool_call_message"
     USAGE = "usage"
     PROGRESS = "progress"
     IMAGE = "image"

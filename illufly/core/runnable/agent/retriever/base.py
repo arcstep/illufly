@@ -3,7 +3,7 @@ from .....config import get_env
 from .....utils import extract_text, minify_text
 from .....io import EventBlock, Document, MarkMeta, BaseKnowledgeDB
 from ...base import Runnable
-from ...vectordb import VectorDB
+from .....community import BaseChat as VectorDB
 from ...prompt_template import PromptTemplate
 from ..base import BaseAgent
 

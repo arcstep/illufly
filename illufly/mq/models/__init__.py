@@ -10,7 +10,7 @@ from .models import (
     ProgressBlock,
     StartBlock, EndBlock,
     ErrorBlock,
-    MESSAGE_TYPES
+    MESSAGE_TYPES,
 )
 from .thread import StreamingThread
 from .calling import StreamingCalling

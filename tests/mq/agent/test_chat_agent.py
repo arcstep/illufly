@@ -4,7 +4,7 @@ import asyncio
 import zmq.asyncio
 import logging
 from illufly.mq.service import ServiceRouter, ClientDealer
-from illufly.mq.llm.chat_fake import ChatFake
+from illufly.mq.agent.chat_agent import ChatAgent
 
 logger = logging.getLogger(__name__)
 

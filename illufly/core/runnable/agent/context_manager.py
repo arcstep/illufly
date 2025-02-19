@@ -4,7 +4,7 @@ from typing import Any, Set, Union, List
 
 from ....config import get_env
 from ....io import Document
-from ..vectordb import VectorDB
+from ....community import BaseChat as VectorDB
 
 class ContextManager:
     @classmethod
