@@ -1,21 +1,30 @@
 import pytest
-
 import asyncio
 import zmq.asyncio
 import logging
+import tempfile
+import shutil
+
 from illufly.mq.service import ServiceRouter, ClientDealer
-from illufly.mq.agent.chat_agent import ChatAgent
+from illufly.agent.chat_agent import BaseAgent
+from illufly.community.fake import ChatFake
+from illufly.rocksdb import IndexedRocksDB
 
 logger = logging.getLogger(__name__)
 
-@pytest.fixture(autouse=True)
-def setup_logging(caplog):
-    """设置日志级别"""
-    # 重置所有处理器的日志级别
-    for handler in logging.getLogger().handlers:
-        handler.setLevel(logging.DEBUG)
-    # 设置 caplog 捕获级别
-    caplog.set_level(logging.DEBUG)
+@pytest.fixture
+def db_path():
+    path = tempfile.mkdtemp()
+    yield path
+    shutil.rmtree(path)
+
+@pytest.fixture
+def db(db_path):
+    db = IndexedRocksDB(db_path, logger=logger)
+    try:
+        yield db
+    finally:
+        db.close()
 
 @pytest.fixture()
 def event_loop():
@@ -66,30 +75,26 @@ async def router(router_address, zmq_context, test_config):
     await router.stop()
 
 @pytest.fixture
-async def chat_fake_service(router, router_address, zmq_context):
+async def chat_fake_service(router, router_address, zmq_context, db):
     """ChatFake 服务实例"""
-    service = ChatFake(
+    llm = ChatFake(
         response=["Hello", "World"],
         sleep=0.01,
-        router_address=router_address,
-        context=zmq_context
     )
-    await service.start()
-    yield service
-    await service.stop()
+    agent = BaseAgent(llm=llm, db=db, router_address=router_address, context=zmq_context)
+    await agent.start()
+    yield agent
+    await agent.stop()
 
 @pytest.mark.asyncio
 async def test_chat_fake_basic(chat_fake_service, router_address, zmq_context):
     """测试基本聊天功能"""
-    # 启动服务
-    await chat_fake_service.start()
-    
-    # 创建客户端
     client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
+    thread_id = "test_thread_id"
     
     # 发送请求并收集响应
     responses = []
-    async for chunk in client.call_service("chat", "Test message"):
+    async for chunk in client.call_service("chat", messages="Test message", thread_id=thread_id):
         logger.info(f"chunk: {chunk}")
         responses.append(chunk.content)
     
@@ -99,13 +104,10 @@ async def test_chat_fake_basic(chat_fake_service, router_address, zmq_context):
     
     # 清理
     await client.close()
-    await chat_fake_service.stop()
 
 @pytest.mark.asyncio
 async def test_chat_fake_multiple_responses(chat_fake_service, router_address, zmq_context):
-    """测试多个响应轮换"""
-    await chat_fake_service.start()
-    
+    """测试多个响应轮换"""    
     client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
     
     # 第一次调用
@@ -122,4 +124,3 @@ async def test_chat_fake_multiple_responses(chat_fake_service, router_address, z
     assert "".join(responses1) != "".join(responses2), "两次调用应该返回不同的预设响应"
     
     await client.close()
-    await chat_fake_service.stop() 

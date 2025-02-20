@@ -5,7 +5,7 @@ from typing import Union, Dict, Any, List, Tuple
 
 from ..runnable import Runnable
 
-class Message:
+class HistoryMessage:
     def __init__(self, role: str, content: Union[str, Runnable], **kwargs):
         self.role = role
         self.content = content
@@ -15,7 +15,7 @@ class Message:
         return f"{self.role}: {self.content.selected.format() if isinstance(self.content, Runnable) else self.content}"
 
     def __repr__(self):
-        return f"Message(role={self.role}, content={self.content})"
+        return f"HistoryMessage(role={self.role}, content={self.content})"
     
     def to_dict(self, binding: Dict[str, Any]=None, style: str=None):
         def get_url(item, key, alt_key):
@@ -92,7 +92,7 @@ class Messages:
     这主要是为了回避增加不必要的新概念。
 
     构造函数中的 messages 参数将作为原始的「只读对象」，被保存到 self.raw_messages 中。
-    无论你提供的列表元素是字符串、模板、元组还是字典，都会在实例化完成后，生成 Message 对象列表，并被写入到 self.messages 中。
+    无论你提供的列表元素是字符串、模板、元组还是字典，都会在实例化完成后，生成 HistoryMessage 对象列表，并被写入到 self.messages 中。
     但类似 {"role": xx, "content": yy} 这种消息列表，是通过 self.to_list 方法「动态提取」的，这主要是为了兼容 PromptTemplate 对象的模板变量。
     """
 
@@ -112,27 +112,27 @@ class Messages:
         for i, msg in enumerate(self.raw_messages):
             self.messages.append(self._convert_to_message(msg, i))
 
-    def _convert_to_message(self, msg: Any, index: int) -> Message:
+    def _convert_to_message(self, msg: Any, index: int) -> HistoryMessage:
         message = None
-        if isinstance(msg, Message):
+        if isinstance(msg, HistoryMessage):
             message = msg
         elif isinstance(msg, Runnable):
-            message = Message(role='system' if index == 0 else self._determine_role(index), content=msg)
+            message = HistoryMessage(role='system' if index == 0 else self._determine_role(index), content=msg)
         elif isinstance(msg, str):
-            message = Message(role='user' if index == 0 else self._determine_role(index), content=msg)
+            message = HistoryMessage(role='user' if index == 0 else self._determine_role(index), content=msg)
         elif isinstance(msg, list):
             role = self._determine_role(index)
-            message = Message(role=role, content=msg)
+            message = HistoryMessage(role=role, content=msg)
         elif isinstance(msg, dict):
             if msg.get('role') == 'ai':
                 msg['role'] = 'assistant'
-            message = Message(**msg) # 支持字典构造中其他键值，如工具回调等
+            message = HistoryMessage(**msg) # 支持字典构造中其他键值，如工具回调等
         elif isinstance(msg, tuple):
             if len(msg) == 2 and msg[0] in ["ai", "assistant", "user"]:
                 role, content = msg
                 if role == 'ai':
                     role = 'assistant'
-                message = Message(role=role, content=content)
+                message = HistoryMessage(role=role, content=content)
             else:
                 # 多模态格式
                 role = self._determine_role(index)
@@ -158,7 +158,7 @@ class Messages:
                     #     msgs.append({"text": item})
                     else:
                         raise ValueError("Unsupported message type in tuple", msg)
-                message = Message(role=role, content=msgs)
+                message = HistoryMessage(role=role, content=msgs)
         else:
             raise ValueError("Unsupported message type", msg)
         
@@ -207,10 +207,10 @@ class Messages:
     def length(self):
         return len(self.messages)
 
-    def append(self, message: Union[Message, str, Runnable, dict, Tuple[str, Union[str, Runnable]]]):
+    def append(self, message: Union[HistoryMessage, str, Runnable, dict, Tuple[str, Union[str, Runnable]]]):
         self.messages.append(self._convert_to_message(message, len(self.messages)))
 
-    def extend(self, messages: Union[Message, str, Runnable, Tuple[str, Union[str, Runnable]], List[Union[Message, str, Runnable, dict, Tuple[str, Union[str, Runnable]]]]]):
+    def extend(self, messages: Union[HistoryMessage, str, Runnable, Tuple[str, Union[str, Runnable]], List[Union[HistoryMessage, str, Runnable, dict, Tuple[str, Union[str, Runnable]]]]]):
         for msg in messages:
             self.append(msg)
 

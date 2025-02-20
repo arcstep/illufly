@@ -5,7 +5,7 @@ from typing import List
 import uuid
 
 from ...rocksdb import IndexedRocksDB
-from ..memory.models import Message
+from ..memory.models import HistoryMessage
 
 class Favorite(BaseModel):
     """收藏"""
@@ -20,7 +20,7 @@ class Favorite(BaseModel):
     @classmethod
     def get_messages(cls, db: IndexedRocksDB, favorite_id: str):
         """获取收藏的消息"""
-        return db.items_with_index(Message.__name__, "favorite_id", favorite_id)
+        return db.items_with_index(HistoryMessage.__name__, "favorite_id", favorite_id)
 
     user_id: str = Field(..., description="用户ID")
     favorite_id: str = Field(default_factory=lambda: str(uuid.uuid4().hex[:8]), description="收藏ID")

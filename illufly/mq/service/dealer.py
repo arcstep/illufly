@@ -280,7 +280,7 @@ class ServiceDealer:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self._logger.error(f"Message processing error: {e}", exc_info=True)
+                self._logger.error(f"HistoryMessage processing error: {e}", exc_info=True)
 
     async def _process_request(self, client_id: bytes, request: RequestBlock):
         """处理单个请求"""

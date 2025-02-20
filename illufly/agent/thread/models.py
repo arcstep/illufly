@@ -2,17 +2,17 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Union, Tuple, Dict, Any
 import uuid
-from ....rocksdb import IndexedRocksDB
+from ...rocksdb import IndexedRocksDB
 
-class SimpleMessage(BaseModel):
+class MemoryMessage(BaseModel):
     """简单消息"""
     @classmethod
-    def create(cls, data: Union[str, Tuple[str, str], Dict[str, Any], "Message"]):
+    def create(cls, data: Union[str, Tuple[str, str], Dict[str, Any], "HistoryMessage"]):
         if isinstance(data, str):
             return cls(role="user", content=data)
         elif isinstance(data, tuple):
             return cls(role="assistant" if data[0] == "ai" else data[0], content=data[1])
-        elif isinstance(data, Message):
+        elif isinstance(data, HistoryMessage):
             return data
         return cls(**data)
     
@@ -23,7 +23,7 @@ class SimpleMessage(BaseModel):
     )
     content: Union[str, Dict[str, Any]] = Field(..., description="消息内容")
 
-class Message(SimpleMessage):
+class HistoryMessage(MemoryMessage):
     """原始消息
     """
     @classmethod

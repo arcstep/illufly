@@ -96,7 +96,7 @@ async def test_multiple_bindings():
     
     # 每个发布者发送不同消息
     for i, pub in enumerate(publishers):
-        pub.publish("test_thread", f"Message from {i}")
+        pub.publish("test_thread", f"HistoryMessage from {i}")
         pub.end("test_thread")
     
     await asyncio.gather(*tasks)
@@ -104,7 +104,7 @@ async def test_multiple_bindings():
     # 验证每个订阅者收到对应的消息
     for i, messages in enumerate(all_messages):
         assert len(messages) == 2
-        assert messages[0].content == f"Message from {i}"
+        assert messages[0].content == f"HistoryMessage from {i}"
         assert messages[1].block_type == BlockType.END
 
 async def collect_messages(subscriber: Subscriber, messages: list):

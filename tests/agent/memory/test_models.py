@@ -3,11 +3,11 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from typing import Dict, List
 
-from illufly.llm.memory.L0_qa.models import Message, QA, Thread
-from illufly.llm.memory.L1_facts.models import Fact
-from illufly.llm.memory.L2_concept.models import Concept
-from illufly.llm.memory.L3_thematic_graph.models import ThematicGraph
-from illufly.llm.memory.L4_core_view.models import CoreView
+from illufly.agent.memory.L0_qa.models import HistoryMessage, QA, Thread
+from illufly.agent.memory.L1_facts.models import Fact
+from illufly.agent.memory.L2_concept.models import Concept
+from illufly.agent.memory.L3_thematic_graph.models import ThematicGraph
+from illufly.agent.memory.L4_core_view.models import CoreView
 
 class Test_thread_Models:
     """Thread模型测试"""
@@ -24,7 +24,7 @@ class Test_L0_Models:
     def test_message_validation(self):
         """测试消息模型验证"""
         # 正常情况
-        message = Message(
+        message = HistoryMessage(
             role="user",
             content="测试消息"
         )
@@ -32,13 +32,13 @@ class Test_L0_Models:
         
         # 测试无效角色
         with pytest.raises(ValueError) as e:
-            Message(
+            HistoryMessage(
                 role="invalid_role",
                 content="测试消息"
             )
             
         # 测试复杂content
-        message = Message(
+        message = HistoryMessage(
             role="tool",
             content={"action": "search", "query": "测试查询"}
         )
@@ -47,11 +47,11 @@ class Test_L0_Models:
     def test_qa_validation(self):
         """测试对话模型验证"""
         messages = [
-            Message(
+            HistoryMessage(
                 role="user",
                 content="你好"
             ),
-            Message(
+            HistoryMessage(
                 role="assistant",
                 content="你好！很高兴见到你。"
             )
@@ -88,8 +88,8 @@ class Test_L0_Models:
                 ("ai", "我叫小明。")
             ],
             summary=[
-                Message(role="user", content="你叫什么名字？"),
-                Message(role="assistant", content="我叫小明。")
+                HistoryMessage(role="user", content="你叫什么名字？"),
+                HistoryMessage(role="assistant", content="我叫小明。")
             ]
         )
         assert qa.thread_id == "test_thread"

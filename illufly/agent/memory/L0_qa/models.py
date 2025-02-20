@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, computed_field
 import uuid
 
 from .....rocksdb import IndexedRocksDB
-from ...thread.models import Message
+from ...thread.models import HistoryMessage
 from ..types import TaskState
 
 class QA(BaseModel):
@@ -23,7 +23,7 @@ class QA(BaseModel):
     user_id: str = Field(..., description="用户ID")
     thread_id: str = Field(..., description="对话ID")
     request_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="对话的请求ID")
-    summary: Union[List[Message], None] = Field(
+    summary: Union[List[HistoryMessage], None] = Field(
         default=None,  # 先设置空列表作为默认值
         description="本轮对话摘要，一般是精简后的问答对消息"
     )

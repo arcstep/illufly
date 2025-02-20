@@ -9,7 +9,7 @@ from ...async_utils import AsyncUtils
 from ...envir import get_env
 from ...rocksdb import IndexedRocksDB
 from ...prompt_template import PromptTemplate
-from ..L0_qa import QA, Message
+from ..L0_qa import QA, HistoryMessage
 from ...llm.chat_openai import ChatOpenAI
 from ...memory.types import TaskState, MemoryType
 from ..base_task import BaseTask

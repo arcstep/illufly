@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from unittest.mock import patch, MagicMock, AsyncMock
 from illufly.llm.tasks.L0_qa.qa_task import QaTask
-from illufly.llm.memory.L0_qa import QA, Message
+from illufly.llm.memory.L0_qa import QA, HistoryMessage
 from illufly.llm.memory.types import TaskState, MemoryType
 from illufly.mq import TextChunk, BlockType
 from illufly.llm.chat_openai import ChatOpenAI
@@ -19,8 +19,8 @@ class TestQaTask:
             user_id=user_id,
             thread_id=thread_id,
             messages=[
-                Message(role="user", content="测试问题"*100),
-                Message(role="assistant", content="测试摘要")
+                HistoryMessage(role="user", content="测试问题"*100),
+                HistoryMessage(role="assistant", content="测试摘要")
             ],
             task_summarize=TaskState.TODO
         )
@@ -91,8 +91,8 @@ class TestQaTask:
                 user_id=user_id,
                 thread_id=thread_id,
                 messages=[
-                    Message(role="user", content=f"问题{i}"),
-                    Message(role="assistant", content=f"回答{i}"*100)
+                    HistoryMessage(role="user", content=f"问题{i}"),
+                    HistoryMessage(role="assistant", content=f"回答{i}"*100)
                 ],
                 task_summarize=TaskState.TODO
             )
@@ -121,8 +121,8 @@ class TestQaTask:
             user_id=user_id,
             thread_id=thread_id,
             messages=[
-                Message(role="user", content="这是一个很长的问题" * 50),
-                Message(role="assistant", content="这是一个很长的回答" * 50)
+                HistoryMessage(role="user", content="这是一个很长的问题" * 50),
+                HistoryMessage(role="assistant", content="这是一个很长的回答" * 50)
             ],
             task_summarize=TaskState.TODO
         )
@@ -160,8 +160,8 @@ class TestQaTask:
                 user_id=user_id,
                 thread_id=thread_id,
                 messages=[
-                    Message(role="user", content=f"问题{i}"),
-                    Message(role="assistant", content=f"回答{i}")
+                    HistoryMessage(role="user", content=f"问题{i}"),
+                    HistoryMessage(role="assistant", content=f"回答{i}")
                 ],
                 task_summarize=state
             )
@@ -197,8 +197,8 @@ class TestQaTask:
                 user_id=user_id,
                 thread_id=thread_id,
                 messages=[
-                    Message(role="user", content=f"问题{i}"),
-                    Message(role="assistant", content=f"回答{i}"*100)
+                    HistoryMessage(role="user", content=f"问题{i}"),
+                    HistoryMessage(role="assistant", content=f"回答{i}"*100)
                 ],
                 task_summarize=TaskState.TODO
             )
@@ -250,8 +250,8 @@ class TestQaTask:
             user_id=user_id,
             thread_id=thread_id,
             messages=[
-                Message(role="user", content="测试问题"),
-                Message(role="assistant", content="测试回答")
+                HistoryMessage(role="user", content="测试问题"),
+                HistoryMessage(role="assistant", content="测试回答")
             ],
             task_summarize=TaskState.TODO
         )

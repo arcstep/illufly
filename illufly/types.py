@@ -1,5 +1,5 @@
 from .core.runnable import Runnable, Selector, BaseEmbeddings, VectorDB, PromptTemplate, BaseReranker
-from .core.runnable.message import Message, Messages
+from .core.runnable.message import HistoryMessage, Messages
 from .core.runnable.agent import BaseAgent, ChatAgent
 from .core.runnable.agent.chat.tools_calling import BaseToolCalling, ToolCall, SubTask, Plans
 from .core.runnable.agent.tool_ability import ToolAbility
@@ -14,7 +14,7 @@ __all__ = [
     "BaseEmbeddings",
     "BaseReranker",
     "VectorDB",
-    "Message",
+    "HistoryMessage",
     "Messages",
     "PromptTemplate",
     "Document",

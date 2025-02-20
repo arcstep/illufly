@@ -6,7 +6,7 @@ import logging
 from .....rocksdb import IndexedRocksDB
 from ..types import MemoryType, TaskState
 from ..utils import generate_key
-from .models import Message, QA
+from .models import HistoryMessage, QA
 
 class QAManager():
     """问答管理器，保存一个 thread_id 的所有问答"""
@@ -37,7 +37,7 @@ class QAManager():
         self._logger.info(f"获取问答对清单：{values}")
         return [QA(**value) for value in values]
 
-    def retrieve(self, thread_id: str, messages: List[Message] = None, limit: int = 10):
+    def retrieve(self, thread_id: str, messages: List[HistoryMessage] = None, limit: int = 10):
         """检索处理器
         1. 如果 messages 包含 system 角色就先将 system 角色消息置顶到 short_memory 中
         2. 默认返回最近的10轮对话

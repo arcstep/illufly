@@ -5,9 +5,9 @@ from datetime import datetime
 
 import uuid
 import logging
-from ....rocksdb import default_rocksdb, IndexedRocksDB
-from ...service import ServiceDealer
-from .models import Message, SimpleMessage
+from ...rocksdb import default_rocksdb, IndexedRocksDB
+from ...mq import ServiceDealer
+from .models import HistoryMessage, MemoryMessage
 
 THREAD_MODEL = "thread"
 MESSAGE_MODEL = "message"
@@ -37,7 +37,7 @@ class ThreadManager(ServiceDealer):
         self.db = db or default_rocksdb
 
         self.db.register_model(THREAD_MODEL, Thread)
-        self.db.register_model(MESSAGE_MODEL, Message)
+        self.db.register_model(MESSAGE_MODEL, HistoryMessage)
         self.db.register_index(THREAD_MODEL, "user_id")
 
     @ServiceDealer.service_method(name="all_threads", description="获取所有对话")
@@ -61,5 +61,5 @@ class ThreadManager(ServiceDealer):
     def load_messages(self, user_id: str, thread_id: str):
         """加载历史对话"""
         return self.db.values(
-            prefix=Message.get_thread_prefix(user_id, thread_id)
+            prefix=HistoryMessage.get_thread_prefix(user_id, thread_id)
         )

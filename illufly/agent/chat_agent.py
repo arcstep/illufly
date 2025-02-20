@@ -8,8 +8,8 @@ import logging
 
 from ..rocksdb import default_rocksdb, IndexedRocksDB
 from ..community import BaseChat
-from ..service import ServiceDealer
-from .thread.models import Message, SimpleMessage
+from ..mq import ServiceDealer
+from .thread.models import HistoryMessage, MemoryMessage
 from .memory import MemoryManager
 
 MESSAGE_MODEL = "message"
@@ -32,14 +32,14 @@ class BaseAgent(ServiceDealer):
         self.llm = llm
 
         self.db = db or default_rocksdb
-        self.db.register_model(MESSAGE_MODEL, Message)
+        self.db.register_model(MESSAGE_MODEL, HistoryMessage)
 
     @ServiceDealer.service_method(name="chat", description="对话服务")
     async def _chat(
         self,
-        user_id: str,
-        thread_id: str,
         messages: Union[str, List[Dict[str, Any]]],
+        user_id: str = "default",
+        thread_id: str = "default",
         **kwargs
     ):
         """异步调用远程服务"""
@@ -56,7 +56,7 @@ class BaseAgent(ServiceDealer):
         # 补充消息
         patched_messages = self.patch_messages(normalized_messages)
 
-        async for b in await self.llm.generate(
+        async for b in await self.llm.chat(
             messages=patched_messages,
             **kwargs
         ):
@@ -70,7 +70,7 @@ class BaseAgent(ServiceDealer):
                 if buffer:
                     # 创建完整的 CHUNK 消息对象
                     completed_at = generate_now()
-                    chunk_message = Message(
+                    chunk_message = HistoryMessage(
                         user_id=self.user_id,
                         thread_id=self.thread_id,
                         request_id=request_id,
@@ -83,7 +83,7 @@ class BaseAgent(ServiceDealer):
                     # 保存完整 CHUNK 到数据库
                     self.db.update_with_indexes(
                         model_name=MESSAGE_MODEL,
-                        key=Message.get_key(self.user_id, self.thread_id, message_id),
+                        key=HistoryMessage.get_key(self.user_id, self.thread_id, message_id),
                         value=chunk_message
                     )
                     buffer.clear()  # 清空缓冲区
@@ -94,7 +94,7 @@ class BaseAgent(ServiceDealer):
                 message_id = current_message_id
                 created_at = generate_now()
                 completed_at = created_at
-                message = Message(
+                message = HistoryMessage(
                     user_id=self.user_id,
                     thread_id=self.thread_id,
                     message_id=current_message_id,
@@ -104,14 +104,14 @@ class BaseAgent(ServiceDealer):
                 # 立即保存非 CHUNK 消息
                 self.db.update_with_indexes(
                     model_name=MESSAGE_MODEL,
-                    key=Message.get_key(self.user_id, self.thread_id, current_message_id),
+                    key=HistoryMessage.get_key(self.user_id, self.thread_id, current_message_id),
                     value=message
                 )
                 yield message
 
             # 实时 yield CHUNK 消息（不立即保存）
             if b.block_type == BlockType.TEXT_CHUNK:
-                yield Message(
+                yield HistoryMessage(
                     user_id=self.user_id,
                     thread_id=self.thread_id,
                     message_id=current_message_id,
@@ -122,7 +122,7 @@ class BaseAgent(ServiceDealer):
         # 处理循环结束后的剩余 CHUNK 消息
         if buffer:
             completed_at = generate_now()
-            chunk_message = Message(
+            chunk_message = HistoryMessage(
                 user_id=self.user_id,
                 thread_id=self.thread_id,
                 message_id=message_id,
@@ -133,7 +133,7 @@ class BaseAgent(ServiceDealer):
             )
             self.db.update_with_indexes(
                 model_name=MESSAGE_MODEL,
-                key=Message.get_key(self.user_id, self.thread_id, message_id),
+                key=HistoryMessage.get_key(self.user_id, self.thread_id, message_id),
                 value=chunk_message
             )
 
@@ -141,7 +141,7 @@ class BaseAgent(ServiceDealer):
         """规范化消息"""
         self._logger.info(f"messages: {messages}")
         _messages = messages if isinstance(messages, list) else [messages]
-        return [Message.create(m) for m in _messages]
+        return [HistoryMessage.create(m) for m in _messages]
 
     def create_request_id(self, request_id: str = ""):
         """创建请求ID"""
@@ -149,7 +149,7 @@ class BaseAgent(ServiceDealer):
             request_id = f"{self.__class__.__name__}.{uuid.uuid4()}"
         return request_id
 
-    def patch_messages(self, messages: List[Message]):
+    def patch_messages(self, messages: List[HistoryMessage]):
         """从记忆中补充消息"""
         return messages
 
@@ -163,12 +163,12 @@ class ChatAgent(BaseAgent):
         super().__init__(**kwargs)
         self.memory_manager = memory_manager
 
-    def patch_messages(self, messages: List[Message]):
+    def patch_messages(self, messages: List[HistoryMessage]):
         """补充消息中的记忆"""
 
         memory_messages = self.memory_manager.load_memory(user_id, thread_id, messages) if self.memory_manager else []
         if memory_messages:
-            system_message = messages[0] if messages[0].role == 'system' else SimpleMessage(role="system", content="")
+            system_message = messages[0] if messages[0].role == 'system' else MemoryMessage(role="system", content="")
             system_message.content += "<memory>\n\n" + "\n".join([m.content for m in memory_messages] + "</memory>")
 
             if not messages[0].role == 'system':

@@ -9,7 +9,7 @@ from ....async_utils import AsyncUtils
 from ....envir import get_env
 from ....rocksdb import IndexedRocksDB
 from ...system_template import PromptTemplate
-from ...memory.L0_qa import QA, Message
+from ...memory.L0_qa import QA, HistoryMessage
 from ...chat_openai import ChatOpenAI
 from ...memory.types import TaskState, MemoryType
 from ..base_task import BaseTask
@@ -170,8 +170,8 @@ class QaTask(BaseTask):
             # logger.debug(f"处理QA {task.qa_id} 完成: {summary_question}, {summary_answer}")
 
             task.summary = [
-                Message(role="user", content=str(summary_question)),
-                Message(role="assistant", content=str(summary_answer))
+                HistoryMessage(role="user", content=str(summary_question)),
+                HistoryMessage(role="assistant", content=str(summary_answer))
             ]
             
             task.task_summarize = TaskState.DONE

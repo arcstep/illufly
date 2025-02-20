@@ -46,8 +46,8 @@ async def test_multiple_subscribers():
     await asyncio.sleep(0.1)
     
     # 发送到不同主题
-    DEFAULT_PUBLISHER.publish("thread1", "Message for 1")
-    DEFAULT_PUBLISHER.publish("thread2", "Message for 2")
+    DEFAULT_PUBLISHER.publish("thread1", "HistoryMessage for 1")
+    DEFAULT_PUBLISHER.publish("thread2", "HistoryMessage for 2")
     DEFAULT_PUBLISHER.end("thread1")
     DEFAULT_PUBLISHER.end("thread2")
     
@@ -55,8 +55,8 @@ async def test_multiple_subscribers():
     
     assert len(messages1) == 2
     assert len(messages2) == 2
-    assert messages1[0].content == "Message for 1"
-    assert messages2[0].content == "Message for 2"
+    assert messages1[0].content == "HistoryMessage for 1"
+    assert messages2[0].content == "HistoryMessage for 2"
 
 @pytest.mark.asyncio
 async def test_subscriber_timeout():

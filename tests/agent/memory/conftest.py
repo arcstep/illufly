@@ -3,7 +3,8 @@ import tempfile
 import shutil
 
 from illufly.rocksdb import IndexedRocksDB
-from illufly.llm.memory.L0_qa import QA, Thread
+from illufly.agent.memory.L0_qa import QA
+from illufly.agent.thread import Thread
 
 @pytest.fixture
 def db_path():

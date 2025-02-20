@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timedelta
 
-from illufly.llm.memory.L0_qa.models import QA, Message
+from illufly.llm.memory.L0_qa.models import QA, HistoryMessage
 from illufly.llm.memory.L0_qa.qa_manager import QAManager
 from illufly.llm.memory.L0_qa.models import TaskState
 
@@ -46,7 +46,7 @@ class TestQA:
         assert sample_qa.used_time >= 0
         
         # 验证消息转换
-        assert all(isinstance(m, Message) for m in sample_qa.messages)
+        assert all(isinstance(m, HistoryMessage) for m in sample_qa.messages)
         assert sample_qa.messages[1].role == "assistant"  # 验证 ai -> assistant 转换
         
         # 验证存储
@@ -82,7 +82,7 @@ class TestQA:
         manager.set_qa(qa_with_system)
         
         # 检索时带入新的系统消息
-        new_system_msg = Message(role="system", content="新的系统提示")
+        new_system_msg = HistoryMessage(role="system", content="新的系统提示")
         messages = manager.retrieve(
             thread_id=qa_with_system.thread_id,
             messages=[new_system_msg]
@@ -98,7 +98,7 @@ class TestQA:
         
         # 创建一些测试消息
         test_messages = [
-            Message(role="user", content="测试消息")
+            HistoryMessage(role="user", content="测试消息")
         ]
         
         # 检索 once 线程
@@ -116,12 +116,12 @@ class TestQA:
             user_id=user_id,
             thread_id=thread_id,
             messages=[
-                Message(role="user", content="请详细解释Python的特点"),
-                Message(role="assistant", content="Python是一种高级编程语言，具有以下特点：\n1. 简洁的语法\n2. 丰富的库\n3. 跨平台支持\n...")
+                HistoryMessage(role="user", content="请详细解释Python的特点"),
+                HistoryMessage(role="assistant", content="Python是一种高级编程语言，具有以下特点：\n1. 简洁的语法\n2. 丰富的库\n3. 跨平台支持\n...")
             ],
             summary=[
-                Message(role="user", content="Python特点"),
-                Message(role="assistant", content="简要说明了Python的主要特点")
+                HistoryMessage(role="user", content="Python特点"),
+                HistoryMessage(role="assistant", content="简要说明了Python的主要特点")
             ]
         )
         
@@ -147,8 +147,8 @@ class TestQA:
                 user_id=user_id,
                 thread_id=thread_id,
                 messages=[
-                    Message(role="user", content=f"问题{i}"),
-                    Message(role="assistant", content=f"回答{i}")
+                    HistoryMessage(role="user", content=f"问题{i}"),
+                    HistoryMessage(role="assistant", content=f"回答{i}")
                 ]
             )
             manager.set_qa(qa)
@@ -179,8 +179,8 @@ class TestQA:
                 user_id=user_id,
                 thread_id=thread_id,
                 messages=[
-                    Message(role="user", content=f"问题{i}"),
-                    Message(role="assistant", content=f"回答{i}")
+                    HistoryMessage(role="user", content=f"问题{i}"),
+                    HistoryMessage(role="assistant", content=f"回答{i}")
                 ],
                 task_summarize=TaskState.TODO if i % 2 == 0 else TaskState.DONE
             )
@@ -208,8 +208,8 @@ class TestQA:
                 user_id=user_id,
                 thread_id=thread_id,
                 messages=[
-                    Message(role="user", content=f"问题{i}"),
-                    Message(role="assistant", content=f"回答{i}")
+                    HistoryMessage(role="user", content=f"问题{i}"),
+                    HistoryMessage(role="assistant", content=f"回答{i}")
                 ],
                 task_extract_facts=TaskState.TODO if i % 3 == 0 else TaskState.DONE
             )
@@ -236,8 +236,8 @@ class TestQA:
             user_id=user_id,
             thread_id=thread_id,
             messages=[
-                Message(role="user", content="测试问题"),
-                Message(role="assistant", content="测试回答")
+                HistoryMessage(role="user", content="测试问题"),
+                HistoryMessage(role="assistant", content="测试回答")
             ]
         )
         qa.task_summarize = TaskState.DONE
@@ -273,8 +273,8 @@ class TestQA:
             user_id=user_id,
             thread_id=thread_id,
             messages=[
-                Message(role="user", content="测试问题"),
-                Message(role="assistant", content="测试回答")
+                HistoryMessage(role="user", content="测试问题"),
+                HistoryMessage(role="assistant", content="测试回答")
             ]
         )
         qa.task_summarize = TaskState.ERROR
