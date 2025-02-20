@@ -23,6 +23,7 @@ class ServiceState(str, Enum):
 class ServiceInfo(BaseModel):
     """服务信息模型"""
     service_id: str
+    group: str = Field(default="default")
     methods: Dict[str, Any]
     state: ServiceState = ServiceState.ACTIVE
     max_concurrent: int = 100
@@ -116,15 +117,17 @@ class ServiceRouter:
     def register_service(self, service_id: str, service_info: Dict[str, Any]):
         """注册服务"""
         max_concurrent = service_info.get('max_concurrent', 100)  # 默认最大并发数
+        methods = {f"{service_info.get('group', 'default')}.{name}": info for name, info in service_info.get('methods', {}).items()}
         self._services[service_id] = ServiceInfo(
             service_id=service_id,
-            methods=service_info.get('methods', {}),
+            group=service_info.get('group', 'default'),
+            methods=methods,
             max_concurrent=max_concurrent,
             current_load=service_info.get('current_load', 0),
             request_count=service_info.get('request_count', 0),
             reply_count=service_info.get('reply_count', 0)
         )
-        self._logger.info(f"Registered service: {service_id} with max_concurrent={max_concurrent}: {service_info.get('methods', {})}")
+        self._logger.info(f"Registered service: {service_id} with max_concurrent={max_concurrent}: {methods}")
 
     def unregister_service(self, service_id: str):
         """注销服务"""
@@ -205,7 +208,7 @@ class ServiceRouter:
 
                 message_type = multipart[1].decode()
                 self._logger.debug(
-                    f"Router received message: type={message_type} from={sender_id}"
+                    f"Router received message: type={message_type} from={sender_id}, {multipart}"
                 )
 
                 # 处理其他消息类型
@@ -348,7 +351,7 @@ class ServiceRouter:
         ]
         for service in available_services:
             s = self._services[service.service_id]
-            self._logger.info(f"Available service: {s.service_id} current_load: {s.current_load} / max_concurrent: {s.max_concurrent}")
+            self._logger.info(f"Available service for [{method_name}]: {s.service_id} current_load: {s.current_load} / max_concurrent: {s.max_concurrent}")
         
         if not available_services:
             return None

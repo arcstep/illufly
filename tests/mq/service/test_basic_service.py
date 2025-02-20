@@ -12,9 +12,9 @@ def setup_logging(caplog):
     """设置日志级别"""
     # 重置所有处理器的日志级别
     for handler in logging.getLogger().handlers:
-        handler.setLevel(logging.DEBUG)
+        handler.setLevel(logging.INFO)
     # 设置 caplog 捕获级别
-    caplog.set_level(logging.DEBUG)
+    caplog.set_level(logging.INFO)
 
 @pytest.fixture()
 def event_loop():
@@ -138,7 +138,7 @@ class EchoService(ServiceDealer):
 async def test_simple_echo(router, service, client):
     """测试简单的回显服务"""
     message = "Hello, World!"
-    async for response in client.call_service("echo", message):
+    async for response in client.call_service("echoservice.echo", message):
         assert response == message
         break
     await service.stop()
@@ -146,7 +146,7 @@ async def test_simple_echo(router, service, client):
 @pytest.mark.asyncio
 async def test_add_numbers(router, service, client):
     """测试带参数的加法服务"""
-    async for response in client.call_service("add", 5, 3):
+    async for response in client.call_service("echoservice.add", 5, 3):
         assert response == 8
         break
 
@@ -156,7 +156,7 @@ async def test_streaming_response(router, service, client):
     expected = list(range(0, 5))
     received = []
     
-    async for response in client.call_service("stream", 0, 5):
+    async for response in client.call_service("echoservice.stream", 0, 5):
         received.append(response)
             
     assert received == expected
@@ -167,12 +167,12 @@ async def test_service_discovery(router, service, client):
     available_methods = await client.discover_services()
     
     # 验证可用方法
-    assert "echo" in available_methods
-    assert "add" in available_methods
-    assert "stream" in available_methods
+    assert "echoservice.echo" in available_methods
+    assert "echoservice.add" in available_methods
+    assert "echoservice.stream" in available_methods
     
     # 验证方法描述信息
-    add_info = available_methods["add"]
+    add_info = available_methods["echoservice.add"]
     logger.info(f"add_info: {add_info}")
     assert add_info["description"] == "Add two numbers"
     assert "a" in add_info["params"]
@@ -182,7 +182,7 @@ async def test_service_discovery(router, service, client):
 async def test_concurrent_requests(router, service, client):
     """测试并发请求"""
     async def make_request(a: int, b: int):
-        async for response in client.call_service("add", a, b):
+        async for response in client.call_service("echoservice.add", a, b):
             assert response == a + b
             break
 
@@ -197,12 +197,12 @@ async def test_concurrent_requests(router, service, client):
 async def test_connection_reuse(router, service, client):
     """测试连接重用"""
     # 第一次调用
-    async for response in client.call_service("echo", "test1"):
+    async for response in client.call_service("echoservice.echo", "test1"):
         assert response == "test1"
         break
         
     # 第二次调用（应该重用连接）
-    async for response in client.call_service("echo", "test2"):
+    async for response in client.call_service("echoservice.echo", "test2"):
         assert response == "test2"
         break
 
@@ -210,7 +210,7 @@ async def test_connection_reuse(router, service, client):
 async def test_auto_reconnect(router, service, client):
     """测试自动重连"""
     # 第一次调用
-    async for response in client.call_service("echo", "test1"):
+    async for response in client.call_service("echoservice.echo", "test1"):
         assert response == "test1"
         break
     
@@ -219,7 +219,7 @@ async def test_auto_reconnect(router, service, client):
     await asyncio.sleep(0.1)
     
     # 第二次调用（应该自动重连）
-    async for response in client.call_service("echo", "test2"):
+    async for response in client.call_service("echoservice.echo", "test2"):
         assert response == "test2"
         break
 
@@ -227,14 +227,14 @@ async def test_auto_reconnect(router, service, client):
 async def test_timeout(router, service, client):
     """测试超时处理"""
     with pytest.raises(TimeoutError):
-        async for _ in client.call_service("echo", "test", timeout=0.001):
+        async for _ in client.call_service("echoservice.echo", "test", timeout=0.001):
             await asyncio.sleep(0.1)  # 强制超时
 
 @pytest.mark.asyncio
 async def test_service_not_found(router, client):
     """测试请求不存在的服务"""
     with pytest.raises(RuntimeError) as exc_info:
-        async for _ in client.call_service("non_existent", "test"):
+        async for _ in client.call_service("echoservice.non_existent", "test"):
             pass
     assert "not found" in str(exc_info.value)
 
@@ -251,7 +251,7 @@ async def test_load_balancing(router, service, second_service, router_address, z
         client = ClientDealer(router_address, context=zmq_context, timeout=2.0)
         clients.append(client)
         # 将异步生成器转换为协程
-        tasks.append(client.call_service("echo", f"test_{i}").__anext__())
+        tasks.append(client.call_service("echoservice.echo", f"test_{i}").__anext__())
     
     responses = await asyncio.gather(*tasks)
     
@@ -275,7 +275,7 @@ async def test_service_failover(router, service, second_service, client):
     clusters = {k: v for k, v in all_clusters.items() if v['state'] == 'active'}
     assert len(clusters.keys()) == 2
 
-    async for response in client.call_service("echo", "test1"):
+    async for response in client.call_service("echoservice.echo", "test1"):
         assert response == "test1"
         break
     
@@ -284,7 +284,7 @@ async def test_service_failover(router, service, second_service, client):
     await asyncio.sleep(0.1)  # 给路由器一点时间处理服务下线
     
     # 确认仍然可以通过第二个服务处理请求
-    async for response in client.call_service("echo", "test2"):
+    async for response in client.call_service("echoservice.echo", "test2"):
         assert response == "test2"
         break
     

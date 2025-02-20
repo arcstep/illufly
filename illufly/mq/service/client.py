@@ -68,14 +68,14 @@ class ClientDealer:
 
     async def discover_services(self, timeout: Optional[float] = None) -> Dict[str, Dict]:
         """发现可用的服务方法"""
-        return await self.call_sync_method("methods", timeout)
+        return await self.call_quickly("methods", timeout)
 
     async def discover_clusters(self, timeout: Optional[float] = None) -> Dict[str, Dict]:
         """发现可用的服务节点"""
-        return await self.call_sync_method("clusters", timeout)
+        return await self.call_quickly("clusters", timeout)
 
-    async def call_sync_method(self, sync_method: str, timeout: Optional[float] = None) -> Dict[str, Dict]:
-        """同步调用"""
+    async def call_quickly(self, sync_method: str, timeout: Optional[float] = None) -> Dict[str, Dict]:
+        """直接返回结果的调用"""
         if timeout is None:
             timeout = self._timeout
 

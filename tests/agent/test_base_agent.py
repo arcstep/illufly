@@ -87,6 +87,15 @@ async def chat_fake_service(router, router_address, zmq_context, db):
     yield agent
     await agent.stop()
 
+@pytest.fixture
+async def chat_openai_service(router, router_address, zmq_context, db):
+    """ChatOpenAI 服务实例"""
+    llm = ChatOpenAI(prefix="ZHIPU", model="gml-4-flash")
+    agent = BaseAgent(llm=llm, db=db, router_address=router_address, context=zmq_context)
+    await agent.start()
+    yield agent
+    await agent.stop()
+
 @pytest.mark.asyncio
 async def test_chat_fake_basic(chat_fake_service, router_address, zmq_context):
     """测试基本聊天功能"""
@@ -128,4 +137,25 @@ async def test_chat_fake_multiple_responses(chat_fake_service, router_address, z
     # 验证响应轮换
     assert "".join(responses1) != "".join(responses2), "两次调用应该返回不同的预设响应"
     
+    await client.close()
+
+@pytest.mark.asyncio
+async def test_chat_openai_basic(chat_openai_service, router_address, zmq_context):
+    """测试基本聊天功能"""
+    client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
+    thread_id = "test_thread_id"
+    
+    # 发送请求并收集响应
+    responses = []
+    async for chunk in client.call_service("chat", messages="Test message", thread_id=thread_id):
+        logger.info(f"chunk: {chunk}")
+        if isinstance(chunk, TextChunk):
+            responses.append(chunk.content)
+    logger.info(f"responses: {responses}")
+    
+    # 验证响应
+    assert len(responses) > 0, "应该收到响应"
+    assert "".join(responses) in ["Hello", "World"], "响应内容应该匹配预设"
+    
+    # 清理
     await client.close()

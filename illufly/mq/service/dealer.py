@@ -5,6 +5,8 @@ import asyncio
 import logging
 import json
 import inspect
+import uuid
+
 from functools import wraps
 from pydantic import BaseModel
 from ..models import (
@@ -12,8 +14,6 @@ from ..models import (
     ErrorBlock, ReplyState, BlockType, TextChunk
 )
 from .utils import serialize_message, deserialize_message
-import time
-import uuid
 
 # 新增全局装饰器
 def service_method(_func=None, *, name: str = None, **metadata):
@@ -118,6 +118,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
         context: Optional[zmq.asyncio.Context] = None,
         hwm: int = 1000,        # 网络层面的背压控制
         max_concurrent: int = 100,  # 应用层面的背压控制
+        group: str = None,
         logger = None
     ):
         self._router_address = router_address
@@ -136,6 +137,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
         self._is_overload = False
         self._router_config = None  # 存储从 Router 获取的配置
         self._heartbeat_interval = None  # 将从 Router 配置中获取
+        self._group = group or self.__class__.__name__.lower()
         
         # 从类注册表中复制服务方法到实例
         self._handlers = {}
@@ -271,6 +273,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
             }
         
         info = {
+            'group': self._group,
             'methods': methods_info,
             'max_concurrent': self._max_concurrent,
             'current_load': self._current_load,
@@ -353,9 +356,10 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 
                 try:
                     # 检查方法是否注册过
-                    if request.func_name in self._handlers:
-                        handler = self._handlers[request.func_name]['handler']
-                        handler_info = self._registry[request.func_name]
+                    func_name = request.func_name.split('.')[-1]
+                    if func_name in self._handlers:
+                        handler = self._handlers[func_name]['handler']
+                        handler_info = self._registry[func_name]
                         is_stream = handler_info['stream']
                     else:
                         await self._send_error(
