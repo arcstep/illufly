@@ -6,7 +6,7 @@ from datetime import datetime
 import uuid
 import logging
 from ...rocksdb import default_rocksdb, IndexedRocksDB
-from ...mq import ServiceDealer
+from ...mq import ServiceDealer, service_method
 from .models import HistoryMessage, MemoryMessage
 
 THREAD_MODEL = "thread"
@@ -40,13 +40,13 @@ class ThreadManager(ServiceDealer):
         self.db.register_model(MESSAGE_MODEL, HistoryMessage)
         self.db.register_index(THREAD_MODEL, "user_id")
 
-    @ServiceDealer.service_method(name="all_threads", description="获取所有对话")
+    @service_method(name="all_threads", description="获取所有对话")
     def all_threads(self, user_id: str):
         return self.db.values(
             prefix=Thread.get_user_prefix(user_id)
         )
     
-    @ServiceDealer.service_method(name="new_thread", description="创建新对话")
+    @service_method(name="new_thread", description="创建新对话")
     def new_thread(self, user_id: str):
         """创建新对话"""
         new_thread = Thread(user_id=user_id)
@@ -57,7 +57,7 @@ class ThreadManager(ServiceDealer):
         )
         return new_thread
     
-    @ServiceDealer.service_method(name="load_messages", description="加载历史对话")
+    @service_method(name="load_messages", description="加载历史对话")
     def load_messages(self, user_id: str, thread_id: str):
         """加载历史对话"""
         return self.db.values(

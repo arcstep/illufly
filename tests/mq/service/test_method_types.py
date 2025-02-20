@@ -2,7 +2,7 @@ import pytest
 import asyncio
 import logging
 
-from illufly.mq.service import ServiceDealer, ServiceRouter, ClientDealer
+from illufly.mq.service import ServiceDealer, ServiceRouter, ClientDealer, service_method
 
 @pytest.fixture(scope="module")
 def router_address():
@@ -26,24 +26,24 @@ class MyMethodTypes(ServiceDealer):
         super().__init__(router_address=router_address)
 
     # 1. 同步方法
-    @ServiceDealer.service_method(name="sync")
+    @service_method(name="sync")
     def sync_method(self, x: int) -> int:
         return x + 1
 
     # 2. 同步生成器
-    @ServiceDealer.service_method(name="sync_gen")
+    @service_method(name="sync_gen")
     def sync_generator(self, start: int, end: int):
         for i in range(start, end):
             yield i
 
     # 3. 异步方法（协程）
-    @ServiceDealer.service_method(name="async")
+    @service_method(name="async")
     async def async_method(self, x: int) -> int:
         await asyncio.sleep(0.1)
         return x + 1
 
     # 4. 异步生成器
-    @ServiceDealer.service_method(name="async_gen")
+    @service_method(name="async_gen")
     async def async_generator(self, start: int, end: int):
         for i in range(start, end):
             await asyncio.sleep(0.1)

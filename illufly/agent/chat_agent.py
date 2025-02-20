@@ -8,7 +8,7 @@ import logging
 
 from ..rocksdb import default_rocksdb, IndexedRocksDB
 from ..community import BaseChat
-from ..mq import ServiceDealer
+from ..mq import ServiceDealer, service_method
 from .thread.models import HistoryMessage, MemoryMessage
 from .memory import MemoryManager
 
@@ -34,7 +34,7 @@ class BaseAgent(ServiceDealer):
         self.db = db or default_rocksdb
         self.db.register_model(MESSAGE_MODEL, HistoryMessage)
 
-    @ServiceDealer.service_method(name="chat", description="对话服务")
+    @service_method(name="chat", description="对话服务")
     async def _chat(
         self,
         messages: Union[str, List[Dict[str, Any]]],

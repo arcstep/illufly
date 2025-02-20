@@ -2,7 +2,7 @@ import pytest
 import asyncio
 import zmq.asyncio
 import logging
-from illufly.mq.service import ServiceRouter, ServiceDealer, ClientDealer
+from illufly.mq.service import ServiceRouter, ServiceDealer, ClientDealer, service_method
 from illufly.mq.models import StreamingBlock, BlockType
 
 logger = logging.getLogger(__name__)
@@ -107,21 +107,21 @@ class EchoService(ServiceDealer):
         )
         self._heartbeat_interval = heartbeat_interval
 
-    @ServiceDealer.service_method()  # 使用默认方法名
+    @service_method # 使用默认方法名
     async def echo(self, message: str) -> str:
         """简单回显服务"""
         await asyncio.sleep(0.1)
         logger.info(f"EchoService {self._service_id} echo: {message}")
         return message
 
-    @ServiceDealer.service_method(name="stream")
+    @service_method(name="stream")
     async def stream_numbers(self, start: int, end: int):
         """流式返回数字序列"""
         for i in range(start, end):
             yield i
             await asyncio.sleep(0.1)  # 模拟处理延迟
 
-    @ServiceDealer.service_method(
+    @service_method(
         name="add",
         description="Add two numbers",
         params={

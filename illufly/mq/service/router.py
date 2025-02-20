@@ -124,7 +124,7 @@ class ServiceRouter:
             request_count=service_info.get('request_count', 0),
             reply_count=service_info.get('reply_count', 0)
         )
-        self._logger.info(f"Registered service: {service_id} with max_concurrent={max_concurrent}")
+        self._logger.info(f"Registered service: {service_id} with max_concurrent={max_concurrent}: {service_info.get('methods', {})}")
 
     def unregister_service(self, service_id: str):
         """注销服务"""

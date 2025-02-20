@@ -15,10 +15,102 @@ from .utils import serialize_message, deserialize_message
 import time
 import uuid
 
-class ServiceDealer:
+# 新增全局装饰器
+def service_method(_func=None, *, name: str = None, **metadata):
+    """支持两种调用方式的装饰器"""
+    def decorator(func):
+        # 分析方法类型
+        is_coroutine = inspect.iscoroutinefunction(func)
+        is_async_gen = inspect.isasyncgenfunction(func)
+        is_generator = inspect.isgeneratorfunction(func)
+        is_stream = is_generator or is_async_gen
+        
+        # 存储元数据（保持原有逻辑）
+        func.__service_metadata__ = {
+            'name': name or func.__name__,
+            'stream': is_stream,
+            'is_coroutine': is_coroutine,
+            'is_async_gen': is_async_gen,
+            'is_generator': is_generator,
+            'metadata': metadata
+        }
+        
+        # 保持包装逻辑
+        if is_stream:
+            @wraps(func)
+            async def wrapper(self, *args, **kwargs):
+                try:
+                    if is_async_gen:
+                        async for item in func(self, *args, **kwargs):
+                            yield item
+                    else:
+                        for item in func(self, *args, **kwargs):
+                            yield item
+                            await asyncio.sleep(0)
+                except Exception as e:
+                    self._logger.error(f"Stream handler error: {e}")
+                    raise
+            return wrapper
+        
+        if is_coroutine:
+            @wraps(func)
+            async def async_wrapper(self, *args, **kwargs):
+                try:
+                    return await func(self, *args, **kwargs)
+                except Exception as e:
+                    self._logger.error(f"Handler error: {e}")
+                    raise
+            return async_wrapper
+        
+        return func
+    
+    # 处理无参数调用
+    if _func is None:
+        return decorator
+    return decorator(_func)
+
+class ServiceDealerMeta(type):
+    """元类处理独立注册表"""
+    def __new__(cls, name, bases, namespace):
+        klass = super().__new__(cls, name, bases, namespace)
+        
+        # 创建独立注册表
+        klass._registry = {}
+        
+        # 添加继承日志
+        logging.debug(f"Processing class: {name}")
+        logging.debug(f"Base classes: {[b.__name__ for b in bases]}")
+        
+        # 合并继承链（保持深度优先）
+        for base in bases:
+            if hasattr(base, '_registry'):
+                logging.debug(f"Inheriting from {base.__name__}: {base._registry.keys()}")
+                klass._registry.update(base._registry.copy())
+        
+        # 收集当前类方法（兼容新旧装饰器）
+        methods_found = []
+        for attr_name in dir(klass):
+            attr = getattr(klass, attr_name)
+            if hasattr(attr, '__service_metadata__'):
+                meta = attr.__service_metadata__
+                methods_found.append(meta['name'])
+                logging.debug(f"Found service method: {attr_name} -> {meta['name']}")
+                klass._registry[meta['name']] = {
+                    'method_name': attr_name,
+                    'stream': meta['stream'],
+                    'is_coroutine': meta['is_coroutine'],
+                    'is_async_gen': meta['is_async_gen'],
+                    'is_generator': meta['is_generator'],
+                    'metadata': meta['metadata']
+                }
+        
+        logging.info(f"Final registry for {name}: {klass._registry.keys()}")
+        return klass
+
+class ServiceDealer(metaclass=ServiceDealerMeta):
     """服务端 DEALER 实现，用于处理具体服务请求"""
     
-    _registry = {}  # 类级别的服务注册表
+    _registry = {}  # 保持原有类属性
     
     def __init__(
         self,
@@ -55,52 +147,6 @@ class ServiceDealer:
 
         # 生成一个随机的 UUID 作为服务标识
         self._service_id = str(uuid.uuid4())
-
-    @classmethod
-    def service_method(cls, name: str = None, **metadata):
-        """服务方法装饰器"""
-        def decorator(func):
-            method_name = func.__name__
-            service_name = name or method_name
-            
-            # 分析方法类型
-            is_coroutine = inspect.iscoroutinefunction(func)
-            is_async_gen = inspect.isasyncgenfunction(func)
-            is_generator = inspect.isgeneratorfunction(func)
-            is_stream = is_generator or is_async_gen
-            
-            # 在类的注册表中记录服务信息
-            cls._registry[service_name] = {
-                'method_name': method_name,
-                'stream': is_stream,
-                'is_coroutine': is_coroutine,
-                'is_async_gen': is_async_gen,
-                'is_generator': is_generator,
-                'metadata': metadata
-            }
-            
-            if is_stream:
-                # 流式方法使用异步生成器包装
-                @wraps(func)
-                async def wrapper(self, *args, **kwargs):
-                    if is_async_gen:
-                        async for item in func(self, *args, **kwargs):
-                            yield item
-                    else:
-                        for item in func(self, *args, **kwargs):
-                            yield item
-                            await asyncio.sleep(0)
-            else:
-                # 非流式方法使用普通异步函数包装
-                @wraps(func)
-                async def wrapper(self, *args, **kwargs):
-                    if is_coroutine:
-                        return await func(self, *args, **kwargs)
-                    else:
-                        return func(self, *args, **kwargs)
-            
-            return wrapper
-        return decorator
 
     async def start(self):
         """启动服务"""
@@ -215,25 +261,27 @@ class ServiceDealer:
 
     async def _register_to_router(self):
         """向路由器注册服务"""
-        if not self._socket:
-            return
+        methods_info = {}
+        for name, info in self.__class__._registry.items():
+            # 确保保留所有必要字段
+            methods_info[name] = {
+                'stream': info['stream'],
+                'is_coroutine': info['is_coroutine'],
+                **info['metadata']  # 用户自定义metadata放在最后
+            }
         
-        # 包含服务配置信息
-        service_info = {
-            'methods': {
-                method_name: handler['metadata']
-                for method_name, handler in self._handlers.items()
-            },
+        info = {
+            'methods': methods_info,
             'max_concurrent': self._max_concurrent,
             'current_load': self._current_load,
             'request_count': 0,
             'reply_count': 0,
         }
         
-        self._logger.info(f"Registering service with info: {service_info}")
+        self._logger.info(f"Registering service with info: {info}")
         await self._socket.send_multipart([
             b"register",
-            json.dumps(service_info).encode()
+            json.dumps(info).encode()
         ])
         
         try:

@@ -12,7 +12,7 @@ class MemoryMessage(BaseModel):
             return cls(role="user", content=data)
         elif isinstance(data, tuple):
             return cls(role="assistant" if data[0] == "ai" else data[0], content=data[1])
-        elif isinstance(data, HistoryMessage):
+        elif isinstance(data, MemoryMessage):
             return data
         return cls(**data)
     
