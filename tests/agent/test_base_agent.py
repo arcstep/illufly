@@ -6,6 +6,7 @@ import tempfile
 import shutil
 
 from illufly.mq.service import ServiceRouter, ClientDealer
+from illufly.mq.models import TextChunk
 from illufly.agent.chat_agent import BaseAgent
 from illufly.community.fake import ChatFake
 from illufly.rocksdb import IndexedRocksDB
@@ -96,7 +97,9 @@ async def test_chat_fake_basic(chat_fake_service, router_address, zmq_context):
     responses = []
     async for chunk in client.call_service("chat", messages="Test message", thread_id=thread_id):
         logger.info(f"chunk: {chunk}")
-        responses.append(chunk.content)
+        if isinstance(chunk, TextChunk):
+            responses.append(chunk.content)
+    logger.info(f"responses: {responses}")
     
     # 验证响应
     assert len(responses) > 0, "应该收到响应"
@@ -113,12 +116,14 @@ async def test_chat_fake_multiple_responses(chat_fake_service, router_address, z
     # 第一次调用
     responses1 = []
     async for chunk in client.call_service("chat", "Test 1"):
-        responses1.append(chunk.content)
+        if isinstance(chunk, TextChunk):
+            responses1.append(chunk.content)
     
     # 第二次调用
     responses2 = []
     async for chunk in client.call_service("chat", "Test 2"):
-        responses2.append(chunk.content)
+        if isinstance(chunk, TextChunk):
+            responses2.append(chunk.content)
     
     # 验证响应轮换
     assert "".join(responses1) != "".join(responses2), "两次调用应该返回不同的预设响应"

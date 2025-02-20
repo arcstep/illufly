@@ -34,17 +34,14 @@ class HistoryMessage(MemoryMessage):
     def get_key(cls, user_id: str, thread_id: str, request_id: str, message_id: str):
         return f"{cls.get_thread_prefix(user_id, thread_id)}-{request_id}-{message_id}"
 
-    @classmethod
-    def register_indexes(cls, db: IndexedRocksDB):
-        db.register_model(cls.__name__, cls)
-        db.register_index(cls.__name__, cls, "favorite_id")
-
     user_id: str = Field(..., description="用户ID")
     thread_id: str = Field(..., description="对话ID")
     request_id: str = Field(..., description="对话的请求ID")
-    message_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="消息ID")
-    qa_type: str = Field(..., description="问答类型", pattern="^(question|answer)$")
-    message_type: str = Field(..., description="消息类型", pattern="^(text|image|audio|video|file|text_chunk|end)$")
     favorite_id: Union[str, None] = Field(default=None, description="收藏ID")
-    created_at: datetime = Field(default_factory=datetime.now, description="消息开始构造时间")
-    completed_at: datetime = Field(default=None, description="消息完成时间")
+    # 以下信息应当由 LLM 或 TOOL 生成
+    message_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="消息ID")
+    message_type: str = Field(..., description="消息类型", pattern="^(text|image|audio|video|file|text_chunk|end)$")
+    created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="消息开始构造时间")
+    completed_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="消息完成时间")
+    # MemoryMessage.role
+    # MemoryMessage.content

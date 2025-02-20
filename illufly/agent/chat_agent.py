@@ -9,16 +9,11 @@ import logging
 from ..rocksdb import default_rocksdb, IndexedRocksDB
 from ..community import BaseChat
 from ..mq import ServiceDealer, service_method
+from ..mq.models import TextChunk, TextFinal, BlockType
 from .thread.models import HistoryMessage, MemoryMessage
 from .memory import MemoryManager
 
 MESSAGE_MODEL = "message"
-
-def generate_short_id():
-    return uuid.uuid4().hex[:8]
-
-def generate_now():
-    return datetime.now(datetime.UTC)
 
 class BaseAgent(ServiceDealer):
     """Base Agent"""
@@ -37,7 +32,7 @@ class BaseAgent(ServiceDealer):
     @service_method(name="chat", description="对话服务")
     async def _chat(
         self,
-        messages: Union[str, List[Dict[str, Any]]],
+        messages: Union[str, List[str], List[Dict[str, Any]], List[MemoryMessage]],
         user_id: str = "default",
         thread_id: str = "default",
         **kwargs
@@ -45,111 +40,45 @@ class BaseAgent(ServiceDealer):
         """异步调用远程服务"""
         normalized_messages = self.normalize_messages(messages)
 
-        # 收集最终文本
-        final_text = ""
-        message_id = generate_short_id()  # 初始化 message_id
-        buffer = []  # 新增缓冲区用于暂存 CHUNK 消息
-        created_at = generate_now()
-        completed_at = created_at
-        request_id = self.create_request_id()
-
         # 补充消息
         patched_messages = self.patch_messages(normalized_messages)
 
-        async for b in await self.llm.chat(
+        async for b in self.llm.chat(
             messages=patched_messages,
             **kwargs
         ):
-            # 处理消息 ID 和内容
-            if b.block_type == BlockType.TEXT_CHUNK:
-                final_text += b.text
-                current_message_id = message_id
-                buffer.append(b)  # 将 CHUNK 消息暂存到缓冲区
-            else:
-                # 处理缓冲区中的 CHUNK 消息
-                if buffer:
-                    # 创建完整的 CHUNK 消息对象
-                    completed_at = generate_now()
-                    chunk_message = HistoryMessage(
-                        user_id=self.user_id,
-                        thread_id=self.thread_id,
-                        request_id=request_id,
-                        message_id=message_id,
-                        role=buffer[0].role,  # 使用第一个 CHUNK 的 role
-                        content=final_text,
-                        created_at=created_at,
-                        completed_at=completed_at
-                    )
-                    # 保存完整 CHUNK 到数据库
-                    self.db.update_with_indexes(
-                        model_name=MESSAGE_MODEL,
-                        key=HistoryMessage.get_key(self.user_id, self.thread_id, message_id),
-                        value=chunk_message
-                    )
-                    buffer.clear()  # 清空缓冲区
-                    final_text = ""
-                
-                # 处理非 CHUNK 消息
-                current_message_id = generate_short_id()                
-                message_id = current_message_id
-                created_at = generate_now()
-                completed_at = created_at
-                message = HistoryMessage(
-                    user_id=self.user_id,
-                    thread_id=self.thread_id,
-                    message_id=current_message_id,
+            # 将部份消息类型持久化
+            if b.block_type in [BlockType.QUERY, BlockType.ANSWER]:
+                chunk_message = HistoryMessage(
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    request_id=b.request_id,
+                    qa_type=b.block_type,
+                    message_type=b.message_type,
+                    message_id=b.message_id,
                     role=b.role,
-                    content=b.text
+                    content=b.content,
+                    created_at=b.created_at,
+                    completed_at=b.completed_at
                 )
-                # 立即保存非 CHUNK 消息
+                # 保存完整 CHUNK 到数据库
                 self.db.update_with_indexes(
                     model_name=MESSAGE_MODEL,
-                    key=HistoryMessage.get_key(self.user_id, self.thread_id, current_message_id),
-                    value=message
-                )
-                yield message
-
-            # 实时 yield CHUNK 消息（不立即保存）
-            if b.block_type == BlockType.TEXT_CHUNK:
-                yield HistoryMessage(
-                    user_id=self.user_id,
-                    thread_id=self.thread_id,
-                    message_id=current_message_id,
-                    role=b.role,
-                    content=final_text  # 包含当前累积的完整内容
+                    key=HistoryMessage.get_key(user_id, thread_id, b.request_id, b.message_id),
+                    value=chunk_message
                 )
 
-        # 处理循环结束后的剩余 CHUNK 消息
-        if buffer:
-            completed_at = generate_now()
-            chunk_message = HistoryMessage(
-                user_id=self.user_id,
-                thread_id=self.thread_id,
-                message_id=message_id,
-                role=buffer[0].role,
-                content=final_text,
-                created_at=created_at,
-                completed_at=completed_at
-            )
-            self.db.update_with_indexes(
-                model_name=MESSAGE_MODEL,
-                key=HistoryMessage.get_key(self.user_id, self.thread_id, message_id),
-                value=chunk_message
-            )
+            # 返回 LLM 生成的所有流消息
+            self._logger.info(f"response block >>>> {b}")
+            yield b
 
-    def normalize_messages(self, messages: Union[str, List[Dict[str, Any]]]):
+    def normalize_messages(self, messages: Union[str, List[str], List[Dict[str, Any]], List[MemoryMessage]]):
         """规范化消息"""
         self._logger.info(f"messages: {messages}")
         _messages = messages if isinstance(messages, list) else [messages]
-        return [HistoryMessage.create(m) for m in _messages]
+        return [MemoryMessage.create(m) for m in _messages]
 
-    def create_request_id(self, request_id: str = ""):
-        """创建请求ID"""
-        if not request_id:
-            request_id = f"{self.__class__.__name__}.{uuid.uuid4()}"
-        return request_id
-
-    def patch_messages(self, messages: List[HistoryMessage]):
+    def patch_messages(self, messages: List[MemoryMessage]):
         """从记忆中补充消息"""
         return messages
 
@@ -163,7 +92,7 @@ class ChatAgent(BaseAgent):
         super().__init__(**kwargs)
         self.memory_manager = memory_manager
 
-    def patch_messages(self, messages: List[HistoryMessage]):
+    def patch_messages(self, messages: List[MemoryMessage]):
         """补充消息中的记忆"""
 
         memory_messages = self.memory_manager.load_memory(user_id, thread_id, messages) if self.memory_manager else []

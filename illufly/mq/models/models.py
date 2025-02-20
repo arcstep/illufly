@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field, model_validator, ConfigDict
 import time
 import json
 import logging
+import uuid
+from datetime import datetime
 
 from .enum import BlockType, ReplyState, RequestStep
 
@@ -83,6 +85,69 @@ class StreamingBlock(BaseBlock):
             return ErrorBlock(**kwargs)
 
         return cls(block_type=block_type, **kwargs)
+
+class PesistentMessageBlock(StreamingBlock):
+    """持久化消息块"""
+    request_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="请求ID")
+    message_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="消息ID")
+    message_type: str = Field(default="text", description="消息类型", pattern="^(text|image)$")
+    created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="消息开始构造时间")
+    completed_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="消息完成时间")
+    role: str = Field(default="user", description="消息角色", pattern="^(user|assistant|system|tool)$")
+    text: str = Field(default="", description="消息内容")
+    images: List[str] = Field(default=[], description="图片列表")
+    tool_calls: List[Dict[str, Any]] = Field(default=[], description="工具调用列表")
+    tool_id: str = Field(default="", description="工具ID")
+
+    @property
+    def content(self) -> Dict[str, Any]:
+        # 工具调用结果
+        resp = {}
+        if self.tool_calls:
+            resp = {
+                "role": self.role,
+                "tool_calls": self.tool_calls,
+                "content": self.text
+            }
+        # 文本消息
+        elif self.message_type == "text":
+            resp = {
+                "role": self.role,
+                "content": self.text
+            }
+        # 图片消息
+        elif self.message_type == "image":
+            text = {
+                "type": "text",
+                "text": self.text
+            } if self.text else {}
+            images = [
+                {
+                    "type": "image",
+                    "image_url": image
+                }
+                for image in self.images
+            ]
+            resp = {
+                "role": self.role,
+                "content": [*text, *images]
+            }
+
+        # 工具调用消息，补充 tool_id
+        if self.role == "tool" and self.tool_id:
+            resp.update({
+                "tool_id": self.tool_id,
+            })
+        
+        return resp
+
+class QueryBlock(PesistentMessageBlock):
+    """查询块"""
+    block_type: BlockType = BlockType.QUERY
+
+class AnswerBlock(PesistentMessageBlock):
+    """回答块"""
+    block_type: BlockType = BlockType.ANSWER
 
 class TextChunk(StreamingBlock):
     """文本块"""
@@ -217,5 +282,7 @@ MESSAGE_TYPES = {
     'EndBlock': EndBlock,
     'ReplyBlock': ReplyBlock,
     'ErrorBlock': ErrorBlock,
-    'RequestBlock': RequestBlock
+    'RequestBlock': RequestBlock,
+    'QueryBlock': QueryBlock,
+    'AnswerBlock': AnswerBlock,
 }

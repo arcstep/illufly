@@ -4,7 +4,7 @@ import asyncio
 import logging
 import json
 
-from ...mq.models import TextChunk, ToolCallChunk, ToolCallFinal
+from ...mq.models import TextChunk, ToolCallChunk, ToolCallFinal, TextFinal
 from ..base_chat import BaseChat
 from ..base_tool import BaseTool
 
@@ -56,6 +56,8 @@ class ChatFake(BaseChat):
             for char in resp:
                 await asyncio.sleep(self.sleep)
                 yield TextChunk(text=char)
+            
+            yield TextFinal(text=resp)
             return
         
         # 检查是否需要返回工具调用
@@ -90,3 +92,4 @@ class ChatFake(BaseChat):
         for content in resp:
             await asyncio.sleep(self.sleep)
             yield TextChunk(text=content)
+        yield TextFinal(text=resp)

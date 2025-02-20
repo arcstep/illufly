@@ -4,6 +4,8 @@ from .models import (
     RequestBlock,
     ReplyBlock, ReplyAcceptedBlock, ReplyProcessingBlock, ReplyReadyBlock, ReplyErrorBlock,
     StreamingBlock,
+    QueryBlock,
+    AnswerBlock,
     TextChunk, TextFinal,
     ToolCallChunk, ToolCallFinal,
     UsageBlock,
