@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Tuple
 from datetime import datetime
 
 import logging
@@ -7,13 +7,36 @@ import json
 import uuid
 
 from ..mq.models import ToolCallFinal, TextFinal, QueryBlock, AnswerBlock
-from ..agent.thread.models import MemoryMessage
 from .base_tool import BaseTool, ToolCallMessage
+
+logger = logging.getLogger(__name__)
+
+def normalize_messages(messages: Union[str, List[str], List[Tuple[str, Any]], List[Dict[str, Any]]]):
+    _messages = messages if isinstance(messages, list) else [messages]
+    new_messages = []
+    def raise_error_with_role(role: str):
+        if role not in ["user", "assistant", "system", "tool"]:
+            raise ValueError(f"Invalid message role: {role}")
+    for m in _messages:
+        if isinstance(m, str):
+            new_messages.append({"role": "user", "content": m})
+        elif isinstance(m, tuple):
+            role = "assistant" if m[0] == "ai" else m[0]
+            raise_error_with_role(role)
+            new_messages.append({"role": role, "content": m[1]})
+        else:
+            if m['role'] == "ai":
+                m['role'] = "assistant"
+            raise_error_with_role(m['role'])
+            new_messages.append(m)
+    logger.info(f"normalize_messages: {new_messages}")
+    return new_messages
 
 class BaseChat(ABC):
     """Base Chat Generator"""
     def __init__(self, logger: logging.Logger = None):
         self._logger = logger or logging.getLogger(__name__)
+        self.group = self.__class__.__name__.lower()
 
     def create_request_id(self):
         """创建请求ID"""
@@ -24,7 +47,7 @@ class BaseChat(ABC):
         """异步生成响应"""
         pass
 
-    async def call_tool(self, request_id: str, messages:  Union[str, List[Dict[str, Any]]], tool_calls: List[ToolCallFinal], tools: List[BaseTool]) -> list:
+    async def call_tool(self, request_id: str, messages: List[Dict[str, Any]], tool_calls: List[ToolCallFinal], tools: List[BaseTool]) -> list:
         """
         新版工具调用方法
         :param tools_callable: BaseTool实例列表
@@ -74,7 +97,12 @@ class BaseChat(ABC):
                     created_at=call.created_at
                 )
 
-    async def chat(self, messages: Union[str, List[str], List[Dict[str, Any]], List[MemoryMessage]], tools: list = None, max_turns: int = 3) -> list:
+    async def chat(
+        self,
+        messages: Union[str, List[str], List[Tuple[str, Any]], List[Dict[str, Any]]],
+        tools: list = None,
+        max_turns: int = 3
+    ) -> list:
         """
         自动化对话流程
         :param messages: 初始消息列表
@@ -82,8 +110,7 @@ class BaseChat(ABC):
         :param max_turns: 最大对话轮次
         :return: 最终消息历史
         """
-        _messages = messages if isinstance(messages, list) else [messages]
-        conv_messages = [MemoryMessage.create(m) for m in _messages]
+        conv_messages = normalize_messages(messages)
         tools_callable = tools or []
         request_id = self.create_request_id()
 
@@ -93,18 +120,18 @@ class BaseChat(ABC):
             text_finals = []
 
             # 生成查询流事件
-            self._logger.info(f"当前的消息列表: {conv_messages}")
             query_created_at = datetime.now().timestamp()
             query_completed_at = query_created_at
             for m in conv_messages:
+                self._logger.info(f"当前消息 >>> {m}")
                 images = []
-                if isinstance(m.content, str):
+                if isinstance(m['content'], str):
                     message_type ="text"
-                    text= m.content
+                    text= m['content']
                 else:
                     message_type="image"
                     text = ""
-                    for chunk in m.content:
+                    for chunk in m['content']:
                         if chunk["type"] == "text":
                             text += chunk["text"]
                         elif chunk["type"] == "image":
@@ -112,7 +139,7 @@ class BaseChat(ABC):
                 yield QueryBlock(
                     request_id=request_id,
                     message_id=uuid.uuid4().hex[:8],
-                    role=m.role,
+                    role=m['role'],
                     message_type=message_type,
                     text=text,
                     images=images,
@@ -120,7 +147,7 @@ class BaseChat(ABC):
                     completed_at=query_completed_at
                 )
 
-            async for chunk in self.generate([m.model_dump() for m in conv_messages], tools=tools):
+            async for chunk in self.generate(conv_messages, tools=tools):
                 answer_created_at = query_completed_at
                 answer_completed_at = datetime.now().timestamp()
                 if isinstance(chunk, TextFinal):
@@ -156,5 +183,5 @@ class BaseChat(ABC):
             # 执行工具调用
             async for resp in self.call_tool(request_id, conv_messages, tool_calls, tools_callable):
                 if isinstance(resp, ToolCallMessage):
-                    conv_messages.append(resp.content)
+                    conv_messages.append(resp.to_message())
                 yield resp

@@ -1,1 +1,1 @@
-from .base_chat import BaseChat
+from .base_chat import BaseChat, normalize_messages
