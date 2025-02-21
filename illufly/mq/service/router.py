@@ -11,7 +11,7 @@ import json
 import uuid
 
 from ..models import ReplyErrorBlock, RequestBlock, ReplyState, ReplyBlock
-from .utils import serialize_message, deserialize_message
+from ..utils import serialize_message, deserialize_message
 
 class ServiceState(str, Enum):
     """服务状态枚举"""

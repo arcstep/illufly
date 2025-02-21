@@ -160,7 +160,7 @@ class StreamingService(BasicEchoService):
 async def test_simple_echo(client):
     """测试简单的回显服务"""
     message = "Hello, World!"
-    async for response in client.call_service("echo", message):
+    async for response in client.call_service("echoservice.echo", message):
         assert response == message
         break
 
@@ -170,11 +170,11 @@ async def test_service_discovery(client):
     available_methods = await client.discover_services()
     
     # 验证可用方法
-    assert "echo" in available_methods
-    assert "add" in available_methods
+    assert "echoservice.echo" in available_methods
+    assert "echoservice.add" in available_methods
     
     # 验证方法描述信息
-    add_info = available_methods["add"]
+    add_info = available_methods["echoservice.add"]
     logger.info(f"add_info: {add_info}")
     assert add_info["description"] == "Add two numbers"
     assert "a" in add_info["params"]
@@ -186,7 +186,7 @@ async def test_streaming_response(streaming_client):
     expected = list(range(0, 5))
     received = []
     
-    async for response in streaming_client.call_service("stream", 0, 5):
+    async for response in streaming_client.call_service("streamingservice.stream", 0, 5):
         received.append(response)
             
     assert received == expected

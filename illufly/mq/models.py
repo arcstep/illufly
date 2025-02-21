@@ -7,39 +7,48 @@ import logging
 import uuid
 from datetime import datetime
 
+from .utils import mq_accept
 from .enum import BlockType, ReplyState, RequestStep
 
 logger = logging.getLogger(__name__)
 
+@mq_accept()
 class BaseBlock(BaseModel):
     """基础数据块"""
     request_id: str = Field(default="")
     created_at: float = Field(default_factory=lambda: time.time())
 
     model_config = ConfigDict(use_enum_values=True)
+
+@mq_accept()
 class ReplyBlock(BaseBlock):
     """响应块"""
     state: ReplyState = Field(default=ReplyState.SUCCESS)
     result: Any = None
 
+@mq_accept()
 class ReplyAcceptedBlock(ReplyBlock):
     """响应块"""
     state: ReplyState = ReplyState.ACCEPTED
     subscribe_address: Union[str, None]
 
+@mq_accept()
 class ReplyReadyBlock(ReplyBlock):
     """响应块"""
     state: ReplyState = ReplyState.READY
 
+@mq_accept()
 class ReplyProcessingBlock(ReplyBlock):
     """响应块"""
     state: ReplyState = ReplyState.PROCESSING
 
+@mq_accept()
 class ReplyErrorBlock(ReplyBlock):
     """响应块"""
     state: ReplyState = ReplyState.ERROR
     error: str
 
+@mq_accept()
 class RequestBlock(BaseBlock):
     """请求块"""
     request_step: RequestStep
@@ -47,6 +56,7 @@ class RequestBlock(BaseBlock):
     args: List[Any] = []
     kwargs: Dict[str, Any] = {}
 
+@mq_accept()
 class StreamingBlock(BaseBlock):
     """流式数据块基类"""
     block_type: BlockType
@@ -76,6 +86,7 @@ class StreamingBlock(BaseBlock):
 
         return cls(block_type=block_type, **kwargs)
 
+@mq_accept()
 class ProgressBlock(StreamingBlock):
     """进度块"""
     block_type: BlockType = BlockType.PROGRESS
@@ -93,6 +104,7 @@ class ProgressBlock(StreamingBlock):
             "message": self.message
         }
 
+@mq_accept()
 class StartBlock(StreamingBlock):
     """开始块"""
     block_type: BlockType = BlockType.START
@@ -101,6 +113,7 @@ class StartBlock(StreamingBlock):
     def content(self) -> None:
         return None
 
+@mq_accept()
 class EndBlock(StreamingBlock):
     """结束块"""
     block_type: BlockType = BlockType.END
@@ -109,6 +122,7 @@ class EndBlock(StreamingBlock):
     def content(self) -> None:
         return None
 
+@mq_accept()
 class ErrorBlock(StreamingBlock):
     """错误块"""
     block_type: BlockType = BlockType.ERROR
@@ -118,11 +132,3 @@ class ErrorBlock(StreamingBlock):
     def content(self) -> str:
         return self.error
 
-# 消息类型注册表
-MESSAGE_TYPES = {
-    'StreamingBlock': StreamingBlock,
-    'EndBlock': EndBlock,
-    'ReplyBlock': ReplyBlock,
-    'ErrorBlock': ErrorBlock,
-    'RequestBlock': RequestBlock,
-}

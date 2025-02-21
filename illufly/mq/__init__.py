@@ -1,4 +1,3 @@
-from .pubsub import DEFAULT_PUBLISHER, Publisher, Subscriber
 from .service import ServiceDealer, ClientDealer, ServiceRouter, service_method
 
 from .models import (
@@ -11,3 +10,5 @@ from .models import (
     StartBlock, EndBlock,
     ErrorBlock,
 )
+
+from .enum import BlockType, ReplyState, RequestStep

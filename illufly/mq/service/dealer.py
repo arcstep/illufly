@@ -11,9 +11,9 @@ from functools import wraps
 from pydantic import BaseModel
 from ..models import (
     RequestBlock, ReplyBlock, StreamingBlock, EndBlock, 
-    ErrorBlock, ReplyState, BlockType
+    ErrorBlock, BlockType
 )
-from .utils import serialize_message, deserialize_message
+from ..utils import serialize_message, deserialize_message
 
 # 新增全局装饰器
 def service_method(_func=None, *, name: str = None, **metadata):

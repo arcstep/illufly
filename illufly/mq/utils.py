@@ -1,120 +1,68 @@
-import os
-import platform
-import tempfile
-import logging
-import zmq
-import hashlib
-from urllib.parse import urlparse
+from typing import Union, Any, Type
+from pydantic import BaseModel
 
-def get_ipc_path(name: str) -> str:
-    """根据操作系统获取合适的 IPC 路径
-    
-    Args:
-        name: IPC 连接的名称
+import json
+import threading
+
+def mq_accept(_cls=None):
+    """无括号类装饰器（与service_method保持相同风格）"""
+    def decorator(cls: Type[BaseModel]):
+        # 类型安全检查
+        if not issubclass(cls, BaseModel):
+            raise ValueError(f"Class {cls.__name__} 必须继承自BaseModel")
         
-    Returns:
-        str: 格式化后的 IPC 地址
-    """
-    system = platform.system().lower()
-    
-    if system == "windows":
-        # Windows 使用命名管道
-        pipe_path = f"ipc://\\\\.\\pipe\\{name}"
-        logging.debug(f"Using Windows named pipe: {pipe_path}")
-        return pipe_path[0:zmq.IPC_PATH_MAX_LEN]
+        # 自动注册
+        ZmqMessageTypeRegistry.register(cls.__name__, cls)
+        return cls
+
+    # 处理无括号调用
+    if _cls is None:
+        return decorator
+    return decorator(_cls)
+
+# 消息类型注册表（改为类实现）
+class ZmqMessageTypeRegistry:
+    _registry = {}
+    _lock = threading.Lock()
+
+    @classmethod
+    def register(cls, type_name: str, model_class):
+        with cls._lock:
+            cls._registry[type_name] = model_class
+
+    @classmethod
+    def unregister(cls, type_name: str):
+        with cls._lock:
+            cls._registry.pop(type_name, None)
+
+    @classmethod
+    def get_registry(cls):
+        return cls._registry.copy()  # 返回副本保证线程安全
+
+def serialize_message(obj: Union[BaseModel, dict]) -> bytes:
+    """序列化消息，包含类型信息"""
+    if isinstance(obj, BaseModel):
+        data = {
+            '__type__': obj.__class__.__name__,
+            'data': {
+                k: v for k, v in obj.__dict__.items()
+                if not k.startswith('_')  # 跳过私有属性
+            }
+        }
     else:
-        # Unix-like 系统 (Linux, macOS)
-        temp_dir = tempfile.gettempdir()
-        ipc_path = os.path.join(temp_dir, f"{name}.ipc")
-        
-        # 确保路径存在且有正确的权限
-        try:
-            if os.path.exists(ipc_path):
-                os.remove(ipc_path)
-            os.makedirs(os.path.dirname(ipc_path), exist_ok=True)
-        except (OSError, IOError) as e:
-            logging.warning(f"Failed to prepare IPC path: {e}")
-            raise  # 不再降级到 TCP，而是直接报错
-            
-        return f"ipc://{ipc_path[0:zmq.IPC_PATH_MAX_LEN]}" 
+        data = obj
+    return json.dumps(data).encode()
 
-def normalize_address(address: str, default_address: str=None) -> str:
-    """规范化地址格式，处理IPC地址长度限制"""
-    if address.startswith("ipc://"):
-        # 解析IPC路径
-        path = urlparse(address).path
-        if not path:
-            raise ValueError("IPC path is required")
-        # 计算最大允许长度（保留20字符给zmq内部使用）
-        max_path_length = 87
-        if len(path) > max_path_length:
-            # 使用hash处理超长路径
-            dir_path = os.path.dirname(path)
-            file_name = os.path.basename(path)
-            hashed_name = hashlib.md5(file_name.encode()).hexdigest()[:10] + ".ipc"
-            
-            # 如果目录路径也太长，使用临时目录
-            if len(dir_path) > (max_path_length - len(hashed_name) - 1):
-                dir_path = tempfile.gettempdir()
-                
-            path = os.path.join(dir_path, hashed_name)
-            logging.warning(
-                f"IPC path too long, truncated to: {path}"
-            )            
-        # 确保目录存在
-        # os.makedirs(os.path.dirname(path), exist_ok=True)
-        return f"ipc://{path}"            
-    return address
-
-def is_ipc(address):
-    return address.startswith("ipc://")
-
-def is_inproc(address):
-    return address.startswith("inproc://") 
-
-def is_tcp(address):
-    return address.startswith("tcp://")
-
-def exist_ipc_file(address):
-    if is_ipc(address):
-        path = urlparse(address).path
-        return os.path.exists(path)
-    return False
-
-def init_bound_socket(context, socket_type, address, logger) -> zmq.Socket:
-    """初始化绑定socket
-    
-    Returns:
-        zmq.Socket: 绑定的socket
-    """
+def deserialize_message(data: bytes) -> Union[BaseModel, dict]:
+    """反序列化消息，根据类型信息还原对象"""
     try:
-        socket = context.socket(socket_type)
-        socket.bind(address)
-        return socket
-    except zmq.ZMQError as e:
-        socket.close()
-        raise  # 让调用者处理异常
-
-def cleanup_ipc_file(address, logger):
-    """清理IPC文件"""
-    if is_ipc(address):
-        try:
-            path = urlparse(address).path
-            if os.path.exists(path):
-                os.unlink(path)
-        except Exception as e:
-            logger.warning(f"Failed to remove IPC file: {e}")
-
-def cleanup_bound_socket(socket, address, logger):
-    """清理绑定socket"""
-    if socket:
-        socket.close()
-        # 如果是IPC，删除文件
-        cleanup_ipc_file(address, logger)
-        socket = None
-
-def cleanup_connected_socket(socket, address, logger):
-    """清理连接socket"""
-    if socket:
-        socket.close()
-        socket = None
+        parsed = json.loads(data.decode())
+        if isinstance(parsed, dict) and '__type__' in parsed:
+            msg_type = parsed['__type__']
+            if msg_type in ZmqMessageTypeRegistry._registry:
+                cls = ZmqMessageTypeRegistry._registry[msg_type]
+                # 使用 model_validate 进行反序列化
+                return cls.model_validate(parsed['data'])
+        return parsed
+    except Exception as e:
+        raise ValueError(f"Failed to deserialize message: {e}")

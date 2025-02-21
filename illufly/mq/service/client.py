@@ -8,9 +8,9 @@ import uuid
 from contextlib import asynccontextmanager
 from ..models import (
     RequestBlock, ReplyBlock, StreamingBlock, 
-    EndBlock, ErrorBlock, RequestStep, BlockType
+    EndBlock, ErrorBlock, RequestStep
 )
-from .utils import serialize_message, deserialize_message
+from ..utils import serialize_message, deserialize_message
 
 class ClientDealer:
     """客户端 DEALER 实现，按需连接"""
