@@ -2,9 +2,11 @@ from typing import Optional, Dict, Any
 import logging
 
 from ..mq.models import StreamingBlock, BlockType
+from ..mq.utils import serialize
 
 logger = logging.getLogger(__name__)
 
+@serialize
 class TextChunk(StreamingBlock):
     """文本块"""
     block_type: BlockType = BlockType.TEXT_CHUNK
@@ -14,6 +16,7 @@ class TextChunk(StreamingBlock):
     def content(self) -> str:
         return self.text
 
+@serialize
 class TextFinal(StreamingBlock):
     """文本结束块"""
     block_type: BlockType = BlockType.TEXT_FINAL
@@ -23,6 +26,7 @@ class TextFinal(StreamingBlock):
     def content(self) -> str:
         return self.text
 
+@serialize
 class ToolCallChunk(StreamingBlock):
     """工具调用块"""
     block_type: BlockType = BlockType.TOOL_CALL_CHUNK
@@ -42,6 +46,7 @@ class ToolCallChunk(StreamingBlock):
             }
         }
 
+@serialize
 class ToolCallFinal(StreamingBlock):
     """工具调用结束块"""
     block_type: BlockType = BlockType.TOOL_CALL_FINAL
@@ -60,6 +65,7 @@ class ToolCallFinal(StreamingBlock):
             }
         }
 
+@serialize
 class UsageBlock(StreamingBlock):
     """使用情况块"""
     block_type: BlockType = BlockType.USAGE

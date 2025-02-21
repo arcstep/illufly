@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import json
 import threading
 
-def mq_accept(_cls=None):
+def serialize(_cls=None):
     """无括号类装饰器（与service_method保持相同风格）"""
     def decorator(cls: Type[BaseModel]):
         # 类型安全检查
@@ -44,10 +44,7 @@ def serialize_message(obj: Union[BaseModel, dict]) -> bytes:
     if isinstance(obj, BaseModel):
         data = {
             '__type__': obj.__class__.__name__,
-            'data': {
-                k: v for k, v in obj.__dict__.items()
-                if not k.startswith('_')  # 跳过私有属性
-            }
+            'data': obj.model_dump()  # 替换为Pydantic官方方法
         }
     else:
         data = obj

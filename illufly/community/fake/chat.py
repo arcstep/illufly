@@ -4,7 +4,7 @@ import asyncio
 import logging
 import json
 
-from ...mq.models import TextChunk, ToolCallChunk, ToolCallFinal, TextFinal
+from ..models import TextChunk, ToolCallChunk, ToolCallFinal, TextFinal
 from ..base_chat import BaseChat
 from ..base_tool import BaseTool
 

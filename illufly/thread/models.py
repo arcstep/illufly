@@ -3,7 +3,9 @@ from datetime import datetime
 from typing import Union, Tuple, Dict, Any, List
 import uuid
 from ..mq.models import StreamingBlock, BlockType
+from ..mq.utils import serialize
 
+@serialize
 class Thread(BaseModel):
     """连续对话跟踪"""
     @classmethod
@@ -19,6 +21,7 @@ class Thread(BaseModel):
     title: str = Field(default="", description="对话标题")
     created_at: datetime = Field(default_factory=datetime.now, description="对话创建时间")
 
+@serialize
 class HistoryMessage(BaseModel):
     """持久化消息块"""
     @classmethod
@@ -102,14 +105,17 @@ class HistoryMessage(BaseModel):
         
         return resp
 
+@serialize
 class QueryBlock(HistoryMessage):
     """查询块"""
     block_type: BlockType = BlockType.QUERY
 
+@serialize
 class AnswerBlock(HistoryMessage):
     """回答块"""
     block_type: BlockType = BlockType.ANSWER
 
+@serialize
 class ToolBlock(HistoryMessage):
     """工具块"""
     block_type: BlockType = BlockType.TOOL
