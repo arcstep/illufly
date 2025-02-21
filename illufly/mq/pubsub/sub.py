@@ -6,7 +6,7 @@ import time
 import json
 
 from ..utils import cleanup_connected_socket, normalize_address
-from ..models import BlockType, StreamingBlock, EndBlock, TextChunk, ErrorBlock
+from ..models import BlockType, StreamingBlock, EndBlock, ErrorBlock
 from .base_mq import BaseMQ
 
 class Subscriber(BaseMQ):
@@ -128,14 +128,11 @@ class Subscriber(BaseMQ):
             self.async_collect(block_types)
         )
     
-    def log(self, block_types: Union[List[BlockType], BlockType]=["text_chunk"]):
+    def log(self, block_types: Union[List[BlockType], BlockType]=["text_chunk"], end: str="\n"):
         """打印日志"""
         blocks = self.collect(block_types)
         for b in blocks:
-            if isinstance(b, TextChunk):
-                print(b.content, end="", flush=True)
-            else:
-                print(b.content)
+            print(b.content, end=end)
 
     @property
     def is_collected(self) -> bool:

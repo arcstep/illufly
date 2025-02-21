@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Iterator
 from uuid import uuid4
 from enum import Enum
 
-from ..thread.models import HistoryMessage, MemoryMessage
+from ...thread.models import HistoryMessage
 from .types import MemoryType
 
 class MemoryManager:
@@ -17,6 +17,6 @@ class MemoryManager:
     L4: 观点，CoreView 应当被持久化
     """
 
-    def load_memory(self, user_id: str, thread_id: str, messages: List[MemoryMessage]):
+    def load_memory(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]):
         """加载记忆"""
         return []

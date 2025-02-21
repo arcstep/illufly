@@ -4,7 +4,7 @@ import shutil
 
 from illufly.rocksdb import IndexedRocksDB
 from illufly.agent.memory.L0_qa import QA
-from illufly.agent.thread import Thread
+from illufly.thread import Thread
 
 @pytest.fixture
 def db_path():

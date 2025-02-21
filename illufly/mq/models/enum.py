@@ -5,8 +5,9 @@ class BlockType(str, Enum):
     REQUEST = "request"
     REPLY = "reply"
     START = "start"
-    QUERY = "query"
-    ANSWER = "answer"
+    QUERY = "query"    # 人类提问
+    ANSWER = "answer"  # AI的回答
+    TOOL = "tool"      # 工具回调结果
     TEXT_CHUNK = "text_chunk"
     TEXT_FINAL = "text_final"
     TOOL_CALL_CHUNK = "tool_call_chunk"

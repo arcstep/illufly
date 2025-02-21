@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, computed_field
 import uuid
 
 from .....rocksdb import IndexedRocksDB
-from ...thread.models import HistoryMessage
+from ....thread.models import HistoryMessage
 from ..types import TaskState
 
 class QA(BaseModel):

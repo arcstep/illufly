@@ -5,27 +5,12 @@ from datetime import datetime
 
 import uuid
 import logging
-from ...rocksdb import default_rocksdb, IndexedRocksDB
-from ...mq import ServiceDealer, service_method
-from .models import HistoryMessage, MemoryMessage
+from ..rocksdb import default_rocksdb, IndexedRocksDB
+from ..mq import ServiceDealer, service_method
+from .models import Thread, HistoryMessage
 
 THREAD_MODEL = "thread"
 MESSAGE_MODEL = "message"
-
-class Thread(BaseModel):
-    """连续对话跟踪"""
-    @classmethod
-    def get_user_prefix(cls, user_id: str):
-        return f"thread-{user_id}"
-
-    @classmethod
-    def get_key(cls, user_id: str, thread_id: str):
-        return f"{cls.get_user_prefix(user_id)}-{thread_id}"
-
-    user_id: str = Field(..., description="用户ID")
-    thread_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="对话ID")
-    title: str = Field(default="", description="对话标题")
-    created_at: datetime = Field(default_factory=datetime.now, description="对话创建时间")
 
 class ThreadManager(ServiceDealer):
     """Base Agent"""

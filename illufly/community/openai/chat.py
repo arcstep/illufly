@@ -1,7 +1,6 @@
 from typing import Union, List, Optional, Dict, Any
 
-from ...mq.models import TextChunk, TextFinal, ToolCallChunk, ToolCallFinal, UsageBlock
-from ..base_chat import BaseChat
+from ..base_chat import BaseChat, TextChunk, TextFinal, ToolCallChunk, ToolCallFinal, UsageBlock
 from ..base_tool import BaseTool
 
 import os
@@ -26,6 +25,9 @@ class ChatOpenAI(BaseChat):
 
         self.imitator = (imitator or "").upper() or "OPENAI"
         super().__init__(logger=logger)
+
+        # 按照 imitator 参数指定组名，以便于作为 DEALER 服务注册时按 imitator 作为默认分组
+        self.group = self.imitator.lower()
 
         self.default_call_args = {
             "model": model or os.getenv(f"{self.imitator}_MODEL_ID") or "gpt-4o-mini"

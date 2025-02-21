@@ -2,7 +2,7 @@ from typing import Union, Any
 import json
 from ..models import (
     StreamingBlock, ReplyBlock, ErrorBlock, 
-    EndBlock, RequestBlock, BaseBlock, TextChunk, MESSAGE_TYPES
+    EndBlock, RequestBlock, BaseBlock, MESSAGE_TYPES
 )
 
 def serialize_message(obj: Union[BaseBlock, dict]) -> bytes:

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from typing import Dict, List
 
-from illufly.agent.thread import Thread
+from illufly.thread import Thread
 
 class Test_thread_Models:
     """Thread模型测试"""

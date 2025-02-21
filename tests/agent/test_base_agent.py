@@ -9,6 +9,7 @@ from illufly.mq.service import ServiceRouter, ClientDealer
 from illufly.mq.models import TextChunk
 from illufly.agent.chat_agent import BaseAgent
 from illufly.community.fake import ChatFake
+from illufly.community.openai import ChatOpenAI
 from illufly.rocksdb import IndexedRocksDB
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ async def chat_fake_service(router, router_address, zmq_context, db):
 @pytest.fixture
 async def chat_openai_service(router, router_address, zmq_context, db):
     """ChatOpenAI 服务实例"""
-    llm = ChatOpenAI(prefix="ZHIPU", model="gml-4-flash")
+    llm = ChatOpenAI(imitator="ZHIPU", model="glm-4-flash")
     agent = BaseAgent(llm=llm, db=db, router_address=router_address, context=zmq_context)
     await agent.start()
     yield agent
@@ -104,7 +105,7 @@ async def test_chat_fake_basic(chat_fake_service, router_address, zmq_context):
     
     # 发送请求并收集响应
     responses = []
-    async for chunk in client.call_service("chat", messages="Test message", thread_id=thread_id):
+    async for chunk in client.call_service("chatfake.chat", messages="Test message", thread_id=thread_id):
         logger.info(f"chunk: {chunk}")
         if isinstance(chunk, TextChunk):
             responses.append(chunk.content)
@@ -124,13 +125,13 @@ async def test_chat_fake_multiple_responses(chat_fake_service, router_address, z
     
     # 第一次调用
     responses1 = []
-    async for chunk in client.call_service("chat", "Test 1"):
+    async for chunk in client.call_service("chatfake.chat", "Test 1"):
         if isinstance(chunk, TextChunk):
             responses1.append(chunk.content)
     
     # 第二次调用
     responses2 = []
-    async for chunk in client.call_service("chat", "Test 2"):
+    async for chunk in client.call_service("chatfake.chat", "Test 2"):
         if isinstance(chunk, TextChunk):
             responses2.append(chunk.content)
     
@@ -147,7 +148,7 @@ async def test_chat_openai_basic(chat_openai_service, router_address, zmq_contex
     
     # 发送请求并收集响应
     responses = []
-    async for chunk in client.call_service("chat", messages="Test message", thread_id=thread_id):
+    async for chunk in client.call_service("zhipu.chat", messages="请重复这句话：我很棒！", thread_id=thread_id):
         logger.info(f"chunk: {chunk}")
         if isinstance(chunk, TextChunk):
             responses.append(chunk.content)
@@ -155,7 +156,7 @@ async def test_chat_openai_basic(chat_openai_service, router_address, zmq_contex
     
     # 验证响应
     assert len(responses) > 0, "应该收到响应"
-    assert "".join(responses) in ["Hello", "World"], "响应内容应该匹配预设"
+    assert "我很棒" in "".join(responses), "响应内容应该匹配预设"
     
     # 清理
     await client.close()

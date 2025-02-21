@@ -7,10 +7,10 @@ import uuid
 import logging
 
 from ..rocksdb import default_rocksdb, IndexedRocksDB
-from ..community import BaseChat
+from ..community import BaseChat, normalize_messages
 from ..mq import ServiceDealer, service_method
-from ..mq.models import TextChunk, TextFinal, BlockType
-from .thread.models import HistoryMessage, MemoryMessage
+from ..mq.models import BlockType
+from ..thread import HistoryMessage
 from .memory import MemoryManager
 
 MESSAGE_MODEL = "message"
@@ -21,10 +21,13 @@ class BaseAgent(ServiceDealer):
         self,
         llm: BaseChat,
         db: IndexedRocksDB = None,
+        group: str = None,
         **kwargs
     ):
-        super().__init__(**kwargs)
         self.llm = llm
+        if not group:
+            group = self.llm.group
+        super().__init__(group=group, **kwargs)
 
         self.db = db or default_rocksdb
         self.db.register_model(MESSAGE_MODEL, HistoryMessage)
@@ -32,13 +35,13 @@ class BaseAgent(ServiceDealer):
     @service_method(name="chat", description="对话服务")
     async def _chat(
         self,
-        messages: Union[str, List[str], List[Dict[str, Any]], List[MemoryMessage]],
+        messages: Union[str, List[str], List[Dict[str, Any]], List[Tuple[str, Any]]],
         user_id: str = "default",
         thread_id: str = "default",
         **kwargs
     ):
         """异步调用远程服务"""
-        normalized_messages = self.normalize_messages(messages)
+        normalized_messages = normalize_messages(messages)
 
         # 补充消息
         patched_messages = self.patch_messages(normalized_messages)
@@ -72,13 +75,7 @@ class BaseAgent(ServiceDealer):
             self._logger.info(f"response block >>>> {b}")
             yield b
 
-    def normalize_messages(self, messages: Union[str, List[str], List[Dict[str, Any]], List[MemoryMessage]]):
-        """规范化消息"""
-        self._logger.info(f"messages: {messages}")
-        _messages = messages if isinstance(messages, list) else [messages]
-        return [MemoryMessage.create(m) for m in _messages]
-
-    def patch_messages(self, messages: List[MemoryMessage]):
+    def patch_messages(self, messages: List[Dict[str, Any]]):
         """从记忆中补充消息"""
         return messages
 
@@ -92,15 +89,15 @@ class ChatAgent(BaseAgent):
         super().__init__(**kwargs)
         self.memory_manager = memory_manager
 
-    def patch_messages(self, messages: List[MemoryMessage]):
+    def patch_messages(self, messages: List[Dict[str, Any]]):
         """补充消息中的记忆"""
 
         memory_messages = self.memory_manager.load_memory(user_id, thread_id, messages) if self.memory_manager else []
         if memory_messages:
-            system_message = messages[0] if messages[0].role == 'system' else MemoryMessage(role="system", content="")
-            system_message.content += "<memory>\n\n" + "\n".join([m.content for m in memory_messages] + "</memory>")
+            system_message = messages[0] if messages[0]['role'] == 'system' else {"role": "system", "content": ""}
+            system_message['content'] += "<memory>\n\n" + "\n".join([m['content'] for m in memory_messages] + "</memory>")
 
-            if not messages[0].role == 'system':
+            if not messages[0]['role'] == 'system':
                 messages.insert(0, system_message)
 
         return messages

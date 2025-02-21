@@ -11,7 +11,7 @@ from functools import wraps
 from pydantic import BaseModel
 from ..models import (
     RequestBlock, ReplyBlock, StreamingBlock, EndBlock, 
-    ErrorBlock, ReplyState, BlockType, TextChunk
+    ErrorBlock, ReplyState, BlockType
 )
 from .utils import serialize_message, deserialize_message
 

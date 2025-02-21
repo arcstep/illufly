@@ -8,7 +8,7 @@ import uuid
 from contextlib import asynccontextmanager
 from ..models import (
     RequestBlock, ReplyBlock, StreamingBlock, 
-    EndBlock, ErrorBlock, RequestStep, TextFinal, BlockType
+    EndBlock, ErrorBlock, RequestStep, BlockType
 )
 from .utils import serialize_message, deserialize_message
 

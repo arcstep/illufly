@@ -7,23 +7,7 @@ import inspect
 import json
 import logging
 
-from ..mq.models import StreamingBlock, BlockType
-
 logger = logging.getLogger(__name__)
-
-class ToolCallMessage(StreamingBlock):
-    """工具调用消息模型"""
-    block_type: BlockType = BlockType.TOOL_CALL_MESSAGE
-    tool_call_id: str = Field(default="", description="工具调用ID")
-    text: str = Field(..., description="工具调用返回结果")
-
-    @property
-    def content(self) -> Dict[str, Any]:
-        return {
-            "role": "tool",
-            "tool_call_id": self.tool_call_id,
-            "content": self.text
-        }
 
 class BaseToolMeta(type):
     """元类用于校验子类实现"""
@@ -206,7 +190,7 @@ class BaseTool(metaclass=BaseToolMeta):
         }
     
     @classmethod
-    async def call(self, **kwargs) -> AsyncGenerator[ToolCallMessage, None]:
+    async def call(self, **kwargs) -> AsyncGenerator[str, None]:
         """
         工具调用入口（必须实现为异步生成器）
         最后应返回最终结果字符串

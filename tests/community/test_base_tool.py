@@ -2,7 +2,8 @@ import pytest
 from datetime import datetime
 from typing import Dict, Any, Optional, Annotated, List, Literal
 from pydantic import Field, BaseModel
-from illufly.community.base_tool import BaseTool, ToolCallMessage, is_json_serializable
+from illufly.community.base_tool import BaseTool, is_json_serializable
+from illufly.community.models import TextFinal
 from deepdiff import DeepDiff
 
 @pytest.mark.asyncio
@@ -20,7 +21,7 @@ async def test_define_tools():
 
         @classmethod
         async def call(cls, location: str):
-            yield ToolCallMessage(text=f"{location}天气：24℃")
+            yield TextFinal(text=f"{location}天气：24℃")
 
     # 验证生成的OpenAI工具描述
     assert WeatherTool.to_openai_tool() == {
@@ -63,7 +64,7 @@ async def test_parameter_modes_1():
 
         @classmethod
         async def call(cls, count: int, enabled: bool):
-            yield ToolCallMessage(text=f"Count: {count}, Enabled: {enabled}")
+            yield TextFinal(text=f"Count: {count}, Enabled: {enabled}")
 
     assert_tool_schema(ExplicitModelTool, {
         "type": "object",
@@ -99,7 +100,7 @@ async def test_parameter_modes_2():
 
         @classmethod
         async def call(cls, location: str, count: int):
-            yield ToolCallMessage(text=f"Location: {location}, Count: {count}")
+            yield TextFinal(text=f"Location: {location}, Count: {count}")
 
     assert_tool_schema(GetParamsTool, {
         "type": "object",
@@ -126,7 +127,7 @@ async def test_parameter_modes_3():
             user_id: Annotated[int, Field(description="用户ID")],
             active: bool = False
         ):
-            yield ToolCallMessage(text=f"User {user_id} active: {active}")
+            yield TextFinal(text=f"User {user_id} active: {active}")
 
     assert_tool_schema(InferredTool, {
         "type": "object",
@@ -147,7 +148,7 @@ async def test_invalid_types():
             
             @classmethod
             async def call(cls, dt: datetime):
-                yield ToolCallMessage(text=str(dt))
+                yield TextFinal(text=str(dt))
         InvalidTypeTool.to_openai_tool()
 
 @pytest.mark.parametrize("type_hint, expected", [

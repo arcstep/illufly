@@ -4,7 +4,7 @@ import zmq
 from typing import List, Union, Dict, Any, Optional, AsyncGenerator, Generator
 from enum import Enum, auto
 
-from ..models import StreamingBlock, BlockType, TextChunk, EndBlock, ErrorBlock
+from ..models import StreamingBlock, EndBlock, ErrorBlock
 from ..utils import cleanup_bound_socket, normalize_address
 from .base_mq import BaseMQ
 
@@ -34,7 +34,7 @@ class Publisher(BaseMQ):
 
         if block:
             if isinstance(block, str):
-                block = TextChunk(request_id=request_id, text=block)
+                block = StreamingBlock(request_id=request_id, text=block)
             
             if not isinstance(block, StreamingBlock):
                 raise ValueError("Block must be a StreamingBlock or a string")
@@ -63,7 +63,7 @@ class Publisher(BaseMQ):
 
     def text_chunk(self, request_id: str, text: str):
         """发送文本块"""
-        self.publish(request_id, TextChunk(request_id=request_id, text=text))
+        self.publish(request_id, StreamingBlock(request_id=request_id, text=text))
 
     def end(self, request_id: str):
         """发送结束标记"""

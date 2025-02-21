@@ -6,8 +6,10 @@ import logging
 import json
 import uuid
 
-from ..mq.models import ToolCallFinal, TextFinal, QueryBlock, AnswerBlock
-from .base_tool import BaseTool, ToolCallMessage
+from ..mq.models import StreamingBlock
+from ..thread.models import QueryBlock, AnswerBlock, ToolBlock
+from .base_tool import BaseTool
+from .models import TextFinal, ToolCallFinal
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,17 @@ class BaseChat(ABC):
         :param tools_callable: BaseTool实例列表
         """
         for call in tool_calls:
+            # 返回结果
+            tool_block_resp = ToolBlock(
+                request_id=request_id,
+                response_id=uuid.uuid4().hex[:8],
+                message_id=uuid.uuid4().hex[:8],
+                role="tool",
+                message_type="text",
+                text="",
+                tool_id=call.tool_call_id,
+                created_at=datetime.now().timestamp()
+            )
             # 查找匹配的工具实例
             tool = next((t for t in tools if t.name == call.tool_name), None)
             if not tool:
@@ -64,38 +77,26 @@ class BaseChat(ABC):
                 validated_args = tool.args_schema(**args)
                 
                 # 执行工具调用
-                final_result = None
+                text_final = ""
                 async for resp in tool.call(**validated_args.model_dump()):
-                    if isinstance(resp, ToolCallMessage):
-                        resp.tool_call_id = call.tool_call_id
-                        final_result = resp
-                        yield resp
+                    if isinstance(resp, TextFinal):
+                        text_final += resp.text
+                    yield resp
                 
-                if not final_result:
-                    yield ToolCallMessage(
-                        request_id=request_id,
-                        model=call.model,
-                        tool_call_id=call.tool_call_id,
-                        text=f"工具执行错误: 没有返回结果",
-                        created_at=call.created_at
-                    )
+                if not text_final:
+                    tool_block_resp.text = text_final
+                    tool_block_resp.completed_at = datetime.now().timestamp()
+                    yield tool_block_resp
 
             except json.JSONDecodeError as e:
-                yield ToolCallMessage(
-                    request_id=request_id,
-                    model=call.model,
-                    tool_call_id=call.tool_call_id,
-                    text=f"参数解析失败: {str(e)}",
-                    created_at=call.created_at
-                )
+                tool_block_resp.text = f"参数解析失败: {str(e)}"
+                tool_block_resp.completed_at = datetime.now().timestamp()
+                yield tool_block_resp
+
             except Exception as e:
-                yield ToolCallMessage(
-                    request_id=request_id,
-                    model=call.model,
-                    tool_call_id=call.tool_call_id,
-                    text=f"工具执行错误: {str(e)}",
-                    created_at=call.created_at
-                )
+                tool_block_resp.text = f"工具执行错误: {str(e)}"
+                tool_block_resp.completed_at = datetime.now().timestamp()
+                yield tool_block_resp
 
     async def chat(
         self,
@@ -113,6 +114,42 @@ class BaseChat(ABC):
         conv_messages = normalize_messages(messages)
         tools_callable = tools or []
         request_id = self.create_request_id()
+        query_created_at = datetime.now().timestamp()
+        query_completed_at = query_created_at
+
+        # 记录查询消息
+        text = ""
+        images = []
+        audios = []
+        videos = []
+        for m in conv_messages:
+            if isinstance(m['content'], str):
+                message_type = "text"
+                text = m['content']
+            else:
+                message_type = "image"
+                text = ""
+                for chunk in m['content']:
+                    if chunk["type"] == "text":
+                        text += chunk["text"]
+                    elif chunk["type"] == "image":
+                        images.append(chunk["image_url"])
+                    elif chunk["type"] == "audio":
+                        audios.append(chunk["audio_url"])
+                    elif chunk["type"] == "video":
+                        videos.append(chunk["video_url"])
+            yield QueryBlock(
+                request_id=request_id,
+                message_id=uuid.uuid4().hex[:8],
+                role=m['role'],
+                message_type=message_type,
+                text=text,
+                images=images,
+                audios=audios,
+                videos=videos,
+                created_at=query_created_at,
+                completed_at=query_completed_at
+            )
 
         for _ in range(max_turns):
             # 生成模型响应
@@ -120,33 +157,6 @@ class BaseChat(ABC):
             text_finals = []
 
             # 生成查询流事件
-            query_created_at = datetime.now().timestamp()
-            query_completed_at = query_created_at
-            for m in conv_messages:
-                self._logger.info(f"当前消息 >>> {m}")
-                images = []
-                if isinstance(m['content'], str):
-                    message_type ="text"
-                    text= m['content']
-                else:
-                    message_type="image"
-                    text = ""
-                    for chunk in m['content']:
-                        if chunk["type"] == "text":
-                            text += chunk["text"]
-                        elif chunk["type"] == "image":
-                            images.append(chunk["image_url"])
-                yield QueryBlock(
-                    request_id=request_id,
-                    message_id=uuid.uuid4().hex[:8],
-                    role=m['role'],
-                    message_type=message_type,
-                    text=text,
-                    images=images,
-                    created_at=query_created_at,
-                    completed_at=query_completed_at
-                )
-
             async for chunk in self.generate(conv_messages, tools=tools):
                 answer_created_at = query_completed_at
                 answer_completed_at = datetime.now().timestamp()
@@ -155,13 +165,13 @@ class BaseChat(ABC):
                 elif isinstance(chunk, ToolCallFinal):
                     tool_calls.append(chunk)
                 else:
-                    chunk.request_id = request_id
                     yield chunk
 
             # 生成回答流事件
-            if isinstance(chunk, (AnswerBlock, TextFinal)):
+            if isinstance(chunk, TextFinal):
                 yield AnswerBlock(
                     request_id=request_id,
+                    response_id=chunk.response_id,
                     message_id=uuid.uuid4().hex[:8],
                     role="assistant",
                     message_type="text",
@@ -181,7 +191,15 @@ class BaseChat(ABC):
             })
 
             # 执行工具调用
-            async for resp in self.call_tool(request_id, conv_messages, tool_calls, tools_callable):
-                if isinstance(resp, ToolCallMessage):
-                    conv_messages.append(resp.to_message())
-                yield resp
+            async for tool_resp in self.call_tool(request_id, conv_messages, tool_calls, tools_callable):
+                if isinstance(tool_resp, ToolBlock):
+                    conv_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_resp.tool_id,
+                        "content": tool_resp.text
+                    })
+                yield tool_resp
+
+            # 重新调用模型
+            query_created_at = datetime.now().timestamp()
+
