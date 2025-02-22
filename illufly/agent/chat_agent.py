@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Tuple
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -31,6 +31,7 @@ class BaseAgent(ServiceDealer):
 
         self.db = db or default_rocksdb
         self.db.register_model(MESSAGE_MODEL, HistoryMessage)
+        self.db.register_index(MESSAGE_MODEL, HistoryMessage, "created_with_thread")
 
     @service_method(name="chat", description="对话服务")
     async def _chat(

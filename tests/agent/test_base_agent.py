@@ -5,12 +5,12 @@ import logging
 import tempfile
 import shutil
 
+from illufly.rocksdb import IndexedRocksDB
 from illufly.mq.service import ServiceRouter, ClientDealer
-from illufly.mq.models import TextChunk
-from illufly.agent.chat_agent import BaseAgent
+from illufly.community.models import TextChunk
 from illufly.community.fake import ChatFake
 from illufly.community.openai import ChatOpenAI
-from illufly.rocksdb import IndexedRocksDB
+from illufly.agent.chat_agent import BaseAgent
 
 logger = logging.getLogger(__name__)
 

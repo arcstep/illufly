@@ -22,8 +22,10 @@ class ThreadManager(ServiceDealer):
         self.db = db or default_rocksdb
 
         self.db.register_model(THREAD_MODEL, Thread)
-        self.db.register_model(MESSAGE_MODEL, HistoryMessage)
         self.db.register_index(THREAD_MODEL, "user_id")
+
+        self.db.register_model(MESSAGE_MODEL, HistoryMessage)
+        self.db.register_index(MESSAGE_MODEL, "created_at")
 
     @service_method(name="all_threads", description="获取所有对话")
     def all_threads(self, user_id: str):
@@ -45,6 +47,9 @@ class ThreadManager(ServiceDealer):
     @service_method(name="load_messages", description="加载历史对话")
     def load_messages(self, user_id: str, thread_id: str):
         """加载历史对话"""
-        return self.db.values(
-            prefix=HistoryMessage.get_thread_prefix(user_id, thread_id)
+        return sorted(
+            self.db.values(
+                prefix=HistoryMessage.get_thread_prefix(user_id, thread_id)
+            ),
+            key=lambda x: x.created_at
         )

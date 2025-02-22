@@ -3,8 +3,8 @@ import json
 
 import logging
 from illufly.community.openai import ChatOpenAI
-from illufly.mq.models import BlockType, ToolCallChunk, ToolCallFinal, TextChunk, TextFinal
-from illufly.community.base_tool import BaseTool, ToolCallMessage
+from illufly.community.models import BlockType, ToolCallChunk, ToolCallFinal, TextChunk, TextFinal
+from illufly.community.base_tool import BaseTool
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def mock_tool():
         
         @classmethod
         async def call(cls, city: str):
-            yield ToolCallMessage(text=f"{city} 的天气是晴天")
+            yield TextFinal(text=f"{city} 的天气是晴天")
     
     return GetWeather()
 
@@ -87,7 +87,7 @@ async def test_tool_calls(chat_service: ChatOpenAI, mock_tool: BaseTool):
     tool_responses = []
     for tc in tool_calls:
         async for resp in mock_tool.call(city=json.loads(tc.arguments)["city"]):
-            if isinstance(resp, ToolCallMessage):
+            if isinstance(resp, TextFinal):
                 tool_responses.append({
                     "tool_call_id": tc.tool_call_id,
                     "content": resp.text
@@ -137,7 +137,7 @@ async def test_tool_without_parameters(chat_service: ChatOpenAI):
         
         @classmethod
         async def call(cls):
-            yield ToolCallMessage(text="无参数调用成功")
+            yield TextFinal(text="无参数调用成功")
 
     # 执行调用
     messages = [{"role": "user", "content": "请直接调用no_param_tool"}]
@@ -165,7 +165,7 @@ async def test_tool_with_multiple_parameters(chat_service: ChatOpenAI):
         
         @classmethod
         async def call(cls, text: str, count: int, ratio: float, active: bool):
-            yield ToolCallMessage(text=f"{text}|{count}|{ratio}|{active}")
+            yield TextFinal(text=f"{text}|{count}|{ratio}|{active}")
 
     # 构造测试参数
     test_params = {
@@ -203,7 +203,7 @@ async def test_tool_with_complex_parameters(chat_service: ChatOpenAI):
         
         @classmethod
         async def call(cls, data: dict):
-            yield ToolCallMessage(text=json.dumps(data, ensure_ascii=False))
+            yield TextFinal(text=json.dumps(data, ensure_ascii=False))
 
     # 构造复杂参数
     complex_data = {

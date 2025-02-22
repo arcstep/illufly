@@ -36,7 +36,6 @@ class ToolCallChunk(StreamingBlock):
 
     @property
     def content(self) -> Dict[str, Any]:
-        logger.info(f"ToolCallChunk: {self.tool_call_id} {self.tool_name} {self.arguments}")
         return {
             "type": "function",
             "id": self.tool_call_id,
@@ -47,23 +46,9 @@ class ToolCallChunk(StreamingBlock):
         }
 
 @serialize
-class ToolCallFinal(StreamingBlock):
+class ToolCallFinal(ToolCallChunk):
     """工具调用结束块"""
     block_type: BlockType = BlockType.TOOL_CALL_FINAL
-    tool_call_id: str  # 工具调用ID
-    tool_name: str  # 工具名称
-    arguments: str  # 完整的工具参数
-
-    @property
-    def content(self) -> dict:
-        return {
-            "type": "function",
-            "id": self.tool_call_id,
-            "function": {
-                "name": self.tool_name,
-                "arguments": self.arguments
-            }
-        }
 
 @serialize
 class UsageBlock(StreamingBlock):

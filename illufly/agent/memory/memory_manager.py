@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Dict, Iterator
+from typing import List, Optional, Dict, Any
 from uuid import uuid4
 from enum import Enum
 

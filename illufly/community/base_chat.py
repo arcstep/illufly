@@ -164,8 +164,8 @@ class BaseChat(ABC):
                     text_finals.append(chunk)
                 elif isinstance(chunk, ToolCallFinal):
                     tool_calls.append(chunk)
-                else:
-                    yield chunk
+
+                yield chunk
 
             # 生成回答流事件
             if isinstance(chunk, TextFinal):

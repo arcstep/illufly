@@ -1,7 +1,8 @@
 from typing import Union, List, Optional, Dict, Any
 
-from ..base_chat import BaseChat, TextChunk, TextFinal, ToolCallChunk, ToolCallFinal, UsageBlock
+from ..base_chat import BaseChat
 from ..base_tool import BaseTool
+from ..models import TextChunk, TextFinal, ToolCallChunk, ToolCallFinal, UsageBlock
 
 import os
 import logging
@@ -53,12 +54,13 @@ class ChatOpenAI(BaseChat):
 
         usage = None
         final_text = ""
-        final_tool_calls = {}  # 使用OrderedDict保持顺序
+        final_tool_calls = {}
         last_tool_call_id = None
+        response_id = ""
         async for response in completion:
-            request_id = response.id
             model = response.model
             created_at = response.created
+            response_id = response.id
 
             if response.usage:
                 usage = response.usage
@@ -73,28 +75,22 @@ class ChatOpenAI(BaseChat):
                             last_tool_call_id = tool_id
                         
                         # 初始化工具调用记录
-                        if tool_id not in final_tool_calls:
+                        if tool_id not in final_tool_calls.keys():
                             final_tool_calls[tool_id] = {
                                 'name': '',
                                 'arguments': '',
                                 'created_at': created_at,
-                                'is_temp_id': not tool_call.id  # 标记临时ID
                             }
                         
                         # 累积各字段（处理字段分块到达）
                         current = final_tool_calls[tool_id]
                         current['name'] += tool_call.function.name or ""
                         current['arguments'] += tool_call.function.arguments or ""
-                        
-                        # 当收到正式ID时替换临时ID
-                        if tool_call.id and current['is_temp_id']:
-                            new_id = tool_call.id
-                            final_tool_calls[new_id] = current
-                            del final_tool_calls[tool_id]
-                            current['is_temp_id'] = False
-                        
+                        self._logger.info(f"current tool_calls >>> {final_tool_calls}")
+
                         # 实时生成chunk（即使字段不完整）
                         yield ToolCallChunk(
+                            response_id=response.id,
                             tool_call_id=tool_id,
                             tool_name=tool_call.function.name or "",
                             arguments=tool_call.function.arguments or "",
@@ -104,25 +100,22 @@ class ChatOpenAI(BaseChat):
                     content = ai_output.content
                     if content:
                         final_text += content
-                        yield TextChunk(request_id=request_id, model=model, text=content, created_at=created_at)
+                        yield TextChunk(response_id=response.id, text=content, created_at=created_at)
             
-        # 生成最终结果（过滤空参数）
-        for tool_id, data in final_tool_calls.items():
-            if not data['arguments'].strip():
-                continue
-            
-            # 清理临时ID标记
-            data.pop('is_temp_id', None)
-            
-            yield ToolCallFinal(
-                tool_call_id=tool_id,
-                tool_name=data['name'].strip(),
-                arguments=data['arguments'].strip(),
-                created_at=data['created_at']
-            )
+        # 生成最终结果
+        if final_tool_calls:
+            self._logger.info(f"final_tool_calls >>> {final_tool_calls}")
+            for key, call_data in final_tool_calls.items():
+                yield ToolCallFinal(
+                    response_id=response_id,
+                    tool_call_id=key,
+                    tool_name=call_data['name'].strip(),
+                    arguments=call_data['arguments'].strip(),
+                    created_at=call_data['created_at']
+                )
 
         if final_text:
-            yield TextFinal(request_id=request_id, model=model, text=final_text, created_at=created_at)
+            yield TextFinal(response_id=response_id, text=final_text, created_at=created_at)
 
         if usage:
             usage_dict = {
@@ -130,4 +123,4 @@ class ChatOpenAI(BaseChat):
                 "completion_tokens": usage.completion_tokens,
                 "total_tokens": usage.total_tokens
             }
-            yield UsageBlock(**usage_dict, model=model, request_id=request_id, provider=self.imitator, created_at=created_at)
+            yield UsageBlock(**usage_dict, response_id=response_id, provider=self.imitator, created_at=created_at)

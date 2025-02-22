@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class BaseBlock(BaseModel):
     """基础数据块"""
     request_id: str = Field(default="")
+    response_id: str = Field(default="")
     created_at: float = Field(default_factory=lambda: time.time())
 
     model_config = ConfigDict(use_enum_values=True)

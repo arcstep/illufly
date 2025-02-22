@@ -50,6 +50,10 @@ class HistoryMessage(BaseModel):
     favorite_id: Union[str, None] = Field(default=None, description="收藏ID")
 
     @property
+    def created_with_thread(self) -> str:
+        return f'{self.user_id}-{self.thread_id}-{self.created_at}'
+
+    @property
     def content(self) -> Dict[str, Any]:
         # 工具调用结果
         resp = {}
