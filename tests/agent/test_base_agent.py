@@ -92,7 +92,8 @@ async def chat_fake_service(router, router_address, zmq_context, db):
 async def chat_openai_service(router, router_address, zmq_context, db):
     """ChatOpenAI 服务实例"""
     llm = ChatOpenAI(imitator="ZHIPU", model="glm-4-flash")
-    agent = BaseAgent(llm=llm, db=db, router_address=router_address, context=zmq_context)
+    # llm = ChatOpenAI(imitator="OPENAI", model="gpt-4o-mini")
+    agent = BaseAgent(llm=llm, db=db, router_address=router_address, context=zmq_context, group="mychat")
     await agent.start()
     yield agent
     await agent.stop()
@@ -148,7 +149,7 @@ async def test_chat_openai_basic(chat_openai_service, router_address, zmq_contex
     
     # 发送请求并收集响应
     responses = []
-    async for chunk in client.call_service("zhipu.chat", messages="请重复这句话：我很棒！", thread_id=thread_id):
+    async for chunk in client.call_service("mychat.chat", messages="请重复一遍这句话：我很棒！", thread_id=thread_id):
         logger.info(f"chunk: {chunk}")
         if isinstance(chunk, TextChunk):
             responses.append(chunk.content)

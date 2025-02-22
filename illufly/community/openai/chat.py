@@ -57,14 +57,35 @@ class ChatOpenAI(BaseChat):
         final_tool_calls = {}
         last_tool_call_id = None
         response_id = ""
-        async for response in completion:
-            model = response.model
-            created_at = response.created
-            response_id = response.id
+        count = 0
+        try:
+            async for response in completion:
+                # 打印流式块信息
+                self._logger.info(
+                    f"收到流式块 | ID: {response.id} "
+                    f"response: {response}"
+                )
+                
+                count += 1
+                # 新增结束条件检查
+                if count > 1000:
+                    self._logger.info(f"超出循环次数，准备退出循环 >>> count: {count}")
+                    break
+                # 新增结束条件检查
+                if response.choices and response.choices[0].finish_reason:
+                    self._logger.info(f"收到流式结束信号，准备退出循环: {response.choices[0].finish_reason}")
+                    break
+                if not response.choices:
+                    self._logger.info("流数据结束传输，准备退出循环")
+                    break
 
-            if response.usage:
-                usage = response.usage
-            if response.choices:
+                model = response.model
+                created_at = response.created
+                response_id = response.id
+
+                if response.usage:
+                    usage = response.usage
+
                 ai_output = response.choices[0].delta
                 if ai_output.tool_calls:
                     for tool_call in ai_output.tool_calls:
@@ -96,31 +117,39 @@ class ChatOpenAI(BaseChat):
                             arguments=tool_call.function.arguments or "",
                             created_at=created_at
                         )
+
                 else:
                     content = ai_output.content
                     if content:
                         final_text += content
                         yield TextChunk(response_id=response.id, text=content, created_at=created_at)
             
-        # 生成最终结果
-        if final_tool_calls:
-            self._logger.info(f"final_tool_calls >>> {final_tool_calls}")
-            for key, call_data in final_tool_calls.items():
-                yield ToolCallFinal(
-                    response_id=response_id,
-                    tool_call_id=key,
-                    tool_name=call_data['name'].strip(),
-                    arguments=call_data['arguments'].strip(),
-                    created_at=call_data['created_at']
-                )
+            # 循环结束后立即释放资源
+            await completion.close()  # 确保资源释放
+            self._logger.debug("流式连接已关闭")
+            
+            # 生成最终结果
+            if final_tool_calls:
+                self._logger.info(f"final_tool_calls >>> {final_tool_calls}")
+                for key, call_data in final_tool_calls.items():
+                    yield ToolCallFinal(
+                        response_id=response_id,
+                        tool_call_id=key,
+                        tool_name=call_data['name'].strip(),
+                        arguments=call_data['arguments'].strip(),
+                        created_at=call_data['created_at']
+                    )
 
-        if final_text:
-            yield TextFinal(response_id=response_id, text=final_text, created_at=created_at)
+            if final_text:
+                yield TextFinal(response_id=response_id, text=final_text, created_at=created_at)
 
-        if usage:
-            usage_dict = {
-                "prompt_tokens": usage.prompt_tokens,
-                "completion_tokens": usage.completion_tokens,
-                "total_tokens": usage.total_tokens
-            }
-            yield UsageBlock(**usage_dict, response_id=response_id, provider=self.imitator, created_at=created_at)
+            if usage:
+                usage_dict = {
+                    "prompt_tokens": usage.prompt_tokens,
+                    "completion_tokens": usage.completion_tokens,
+                    "total_tokens": usage.total_tokens
+                }
+                yield UsageBlock(**usage_dict, response_id=response_id, provider=self.imitator, created_at=created_at)
+
+        except asyncio.CancelledError:
+            self._logger.warning("流式请求被取消")
