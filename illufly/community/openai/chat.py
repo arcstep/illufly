@@ -43,9 +43,11 @@ class ChatOpenAI(BaseChat):
     async def generate(self, messages: Union[str, List[Dict[str, Any]]], tools: List[BaseTool] = None, **kwargs):
 
         _kwargs = self.default_call_args
+        openai_tools = [tool.to_openai_tool() for tool in (tools or [])]
+        self._logger.info(f"openai_tools: {openai_tools}")
         _kwargs.update({
             "messages": messages,
-            "tools": [tool.to_openai_tool() for tool in (tools or [])],
+            "tools": openai_tools,
             **kwargs,
             **{"stream": True, "stream_options": {"include_usage": True}}
         })
@@ -61,7 +63,7 @@ class ChatOpenAI(BaseChat):
         try:
             async for response in completion:
                 # 打印流式块信息
-                self._logger.info(
+                self._logger.debug(
                     f"收到流式块 | ID: {response.id} "
                     f"response: {response}"
                 )
@@ -69,14 +71,10 @@ class ChatOpenAI(BaseChat):
                 count += 1
                 # 新增结束条件检查
                 if count > 1000:
-                    self._logger.info(f"超出循环次数，准备退出循环 >>> count: {count}")
+                    self._logger.info(f"超出循环次数，结束循环 >>> count: {count}")
                     break
-                # 新增结束条件检查
-                if response.choices and response.choices[0].finish_reason:
-                    self._logger.info(f"收到流式结束信号，准备退出循环: {response.choices[0].finish_reason}")
-                    break
-                if not response.choices:
-                    self._logger.info("流数据结束传输，准备退出循环")
+                elif not response.choices:
+                    self._logger.info("流数据结束传输")
                     break
 
                 model = response.model
@@ -123,7 +121,12 @@ class ChatOpenAI(BaseChat):
                     if content:
                         final_text += content
                         yield TextChunk(response_id=response.id, text=content, created_at=created_at)
-            
+
+                # 如果返回携带了结束信号，则退出循环
+                if response.choices[0].finish_reason:
+                    self._logger.info(f"收到流式结束信号: {response.choices[0].finish_reason}")
+                    break
+
             # 循环结束后立即释放资源
             await completion.close()  # 确保资源释放
             self._logger.debug("流式连接已关闭")
