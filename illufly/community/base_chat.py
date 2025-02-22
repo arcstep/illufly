@@ -167,19 +167,6 @@ class BaseChat(ABC):
 
                 yield chunk
 
-            # 生成回答流事件
-            if isinstance(chunk, TextFinal):
-                yield AnswerBlock(
-                    request_id=request_id,
-                    response_id=chunk.response_id,
-                    message_id=uuid.uuid4().hex[:8],
-                    role="assistant",
-                    message_type="text",
-                    text=chunk.content,
-                    created_at=answer_created_at,
-                    completed_at=answer_completed_at
-                )
-
             # 如果没有工具调用则结束
             if not tool_calls:
                 break
@@ -189,6 +176,18 @@ class BaseChat(ABC):
                 "tool_calls": [chunk.content for chunk in tool_calls],
                 "content": "\n".join([chunk.content for chunk in text_finals])
             })
+            # 生成回答流事件
+            yield AnswerBlock(
+                request_id=request_id,
+                response_id=uuid.uuid4().hex[:8],
+                message_id=uuid.uuid4().hex[:8],
+                message_type="text",
+                role=conv_messages[-1]["role"],
+                text=conv_messages[-1]["content"],
+                tool_calls=conv_messages[-1]["tool_calls"],
+                created_at=answer_created_at,
+                completed_at=answer_completed_at
+            )
 
             # 执行工具调用
             async for tool_resp in self.call_tool(request_id, conv_messages, tool_calls, tools_callable):

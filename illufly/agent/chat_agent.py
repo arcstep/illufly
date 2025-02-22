@@ -22,9 +22,11 @@ class BaseAgent(ServiceDealer):
         llm: BaseChat,
         db: IndexedRocksDB = None,
         group: str = None,
+        tools: list = None,
         **kwargs
     ):
         self.llm = llm
+        self.tools = tools
         if not group:
             group = self.llm.group
         super().__init__(group=group, **kwargs)
@@ -49,31 +51,21 @@ class BaseAgent(ServiceDealer):
 
         async for b in self.llm.chat(
             messages=patched_messages,
+            tools=self.tools,
             **kwargs
         ):
             # 将部份消息类型持久化
-            if b.block_type in [BlockType.QUERY, BlockType.ANSWER]:
-                chunk_message = HistoryMessage(
-                    user_id=user_id,
-                    thread_id=thread_id,
-                    request_id=b.request_id,
-                    qa_type=b.block_type,
-                    message_type=b.message_type,
-                    message_id=b.message_id,
-                    role=b.role,
-                    content=b.content,
-                    created_at=b.created_at,
-                    completed_at=b.completed_at
-                )
+            if b.block_type in [BlockType.QUERY, BlockType.ANSWER, BlockType.TOOL]:
+                b.user_id = user_id
+                b.thread_id = thread_id
+
                 # 保存完整 CHUNK 到数据库
                 self.db.update_with_indexes(
                     model_name=MESSAGE_MODEL,
-                    key=HistoryMessage.get_key(user_id, thread_id, b.request_id, b.message_id),
-                    value=chunk_message
+                    key=HistoryMessage.get_key(b.user_id, b.thread_id, b.request_id, b.message_id),
+                    value=b
                 )
 
-            # 返回 LLM 生成的所有流消息
-            self._logger.info(f"response block >>>> {b}")
             yield b
 
     def patch_messages(self, messages: List[Dict[str, Any]]):

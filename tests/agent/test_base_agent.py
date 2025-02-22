@@ -7,9 +7,10 @@ import shutil
 
 from illufly.rocksdb import IndexedRocksDB
 from illufly.mq.service import ServiceRouter, ClientDealer
-from illufly.community.models import TextChunk
+from illufly.community.models import TextChunk, TextFinal
 from illufly.community.fake import ChatFake
 from illufly.community.openai import ChatOpenAI
+from illufly.community.base_tool import BaseTool
 from illufly.agent.chat_agent import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -89,14 +90,27 @@ async def chat_fake_service(router, router_address, zmq_context, db):
     await agent.stop()
 
 @pytest.fixture
-async def chat_openai_service(router, router_address, zmq_context, db):
+async def chat_openai_service(router, router_address, zmq_context, db, mock_tool):
     """ChatOpenAI 服务实例"""
     llm = ChatOpenAI(imitator="ZHIPU", model="glm-4-flash")
     # llm = ChatOpenAI(imitator="OPENAI", model="gpt-4o-mini")
-    agent = BaseAgent(llm=llm, db=db, router_address=router_address, context=zmq_context, group="mychat")
+    agent = BaseAgent(llm=llm, db=db, tools=[mock_tool], router_address=router_address, context=zmq_context, group="mychat")
     await agent.start()
     yield agent
     await agent.stop()
+
+@pytest.fixture
+def mock_tool():
+    """模拟工具类"""
+    class GetWeather(BaseTool):
+        name = "get_weather"
+        description = "获取天气信息"
+        
+        @classmethod
+        async def call(cls, city: str):
+            yield TextFinal(text=f"{city} 的天气是晴天")
+    
+    return GetWeather()
 
 @pytest.mark.asyncio
 async def test_chat_fake_basic(chat_fake_service, router_address, zmq_context):
@@ -161,3 +175,19 @@ async def test_chat_openai_basic(chat_openai_service, router_address, zmq_contex
     
     # 清理
     await client.close()
+
+@pytest.mark.asyncio
+async def test_tool_calls(chat_openai_service: ChatOpenAI, router_address, zmq_context):
+    """测试完整的工具调用流程"""
+    client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
+    thread_id = "test_thread_id"
+    messages = "请帮我确认明天广州是否适合晒被子"
+    
+    final_text = ""
+    async for chunk in client.call_service("mychat.chat", messages, thread_id=thread_id):
+        logger.info(f"[{chunk.block_type}] {chunk.content}")
+        if isinstance(chunk, TextFinal):
+            final_text = chunk.content
+    
+    # 验证最终回复包含处理结果
+    assert "晴天" in final_text, "应正确处理工具返回结果"
