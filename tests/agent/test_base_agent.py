@@ -4,10 +4,11 @@ import zmq.asyncio
 import logging
 import tempfile
 import shutil
+import json
 
 from illufly.rocksdb import IndexedRocksDB
 from illufly.mq.service import ServiceRouter, ClientDealer
-from illufly.community.models import TextChunk, TextFinal
+from illufly.community.models import TextChunk, TextFinal, ToolCallFinal
 from illufly.community.fake import ChatFake
 from illufly.community.openai import ChatOpenAI
 from illufly.community.base_tool import BaseTool
@@ -94,7 +95,7 @@ async def chat_openai_service(router, router_address, zmq_context, db, mock_tool
     """ChatOpenAI 服务实例"""
     llm = ChatOpenAI(imitator="ZHIPU", model="glm-4-flash")
     # llm = ChatOpenAI(imitator="OPENAI", model="gpt-4o-mini")
-    agent = BaseAgent(llm=llm, db=db, tools=[mock_tool], router_address=router_address, context=zmq_context, group="mychat")
+    agent = BaseAgent(llm=llm, db=db, runnable_tools=[mock_tool], router_address=router_address, context=zmq_context, group="mychat")
     await agent.start()
     yield agent
     await agent.stop()
@@ -177,7 +178,7 @@ async def test_chat_openai_basic(chat_openai_service, router_address, zmq_contex
     await client.close()
 
 @pytest.mark.asyncio
-async def test_tool_calls(chat_openai_service: ChatOpenAI, router_address, zmq_context):
+async def test_runnable_tool_calls(chat_openai_service: ChatOpenAI, router_address, zmq_context):
     """测试完整的工具调用流程"""
     client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
     thread_id = "test_thread_id"
@@ -191,3 +192,81 @@ async def test_tool_calls(chat_openai_service: ChatOpenAI, router_address, zmq_c
     
     # 验证最终回复包含处理结果
     assert "晴天" in final_text, "应正确处理工具返回结果"
+
+@pytest.mark.asyncio
+async def test_tool_calls(chat_openai_service: ChatOpenAI, router_address, zmq_context):
+    """由客户端进行工具回调"""
+    class GetWeather(BaseTool):
+        name = "get_weather"
+        description = "获取天气信息"
+        
+        @classmethod
+        async def call(cls, city: str):
+            yield TextFinal(text=f"{city} 的天气是暴雨")
+
+    messages = [{
+        "role": "user",
+        "content": "请帮我看看明天广州的天气"
+    }]
+    
+    client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
+    thread_id = "test_thread_id_with_tool"
+
+    # 第一阶段：获取工具调用请求
+    assistant_messages = []
+    tool_calls = []
+    async for chunk in client.call_service("mychat.chat", messages=messages, thread_id=thread_id, tools=[GetWeather.to_openai()]):
+        # logger.info(f"chunk: {chunk}")
+        if isinstance(chunk, ToolCallFinal):
+            tool_calls.append(chunk)
+        if isinstance(chunk, TextChunk):
+            # 收集assistant的文本响应（如果有）
+            assistant_messages.append(chunk.text)
+
+    assert len(tool_calls) > 0, "应该收到工具调用请求"
+    
+    # 必须将assistant的响应添加到消息历史
+    if assistant_messages:
+        messages.append({
+            "role": "assistant",
+            "content": "".join(assistant_messages)
+        })
+    if tool_calls:
+        messages.append({
+            "role": "assistant",
+            "tool_calls": [{
+                "id": tc.tool_call_id,
+                "type": "function",
+                "function": {
+                    "name": tc.tool_name,
+                    "arguments": tc.arguments
+                }
+            } for tc in tool_calls]
+        })
+    
+    # 执行工具调用
+    tool_responses = []
+    for tc in tool_calls:
+        async for resp in GetWeather.call(city=json.loads(tc.arguments)["city"]):
+            if isinstance(resp, TextFinal):
+                tool_responses.append({
+                    "tool_call_id": tc.tool_call_id,
+                    "content": resp.text
+                })
+    
+    # 添加工具响应到消息历史（必须包含对应的tool_call_id）
+    for resp in tool_responses:
+        messages.append({
+            "role": "tool",
+            "tool_call_id": resp["tool_call_id"],
+            "content": resp["content"]
+        })
+    
+    # 第二阶段：处理工具结果
+    final_text = ""
+    async for chunk in client.call_service("mychat.chat", messages, thread_id=thread_id, tools=[GetWeather.to_openai()]):
+        if isinstance(chunk, TextFinal):
+            final_text = chunk.text
+    
+    # 验证最终回复包含处理结果
+    assert "暴雨" in final_text, "应正确处理工具返回结果"

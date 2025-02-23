@@ -32,7 +32,6 @@ def normalize_messages(messages: Union[str, List[str], List[Tuple[str, Any]], Li
             raise_error_with_role(m['role'])
             m['content'] = m.get('content', '')
             new_messages.append(m)
-    logger.info(f"normalize_messages: {new_messages}")
     return new_messages
 
 class BaseChat(ABC):
@@ -159,6 +158,7 @@ class BaseChat(ABC):
             text_finals = []
 
             # 生成查询流事件
+            logger.info(f"conv_messages: {conv_messages}")
             async for chunk in self.generate(conv_messages, tools=tools, **kwargs):
                 answer_created_at = query_completed_at
                 answer_completed_at = datetime.now().timestamp()
