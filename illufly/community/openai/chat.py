@@ -40,6 +40,19 @@ class ChatOpenAI(BaseChat):
         }
         self.client = AsyncOpenAI(**self.model_args)
 
+    async def list_models(self) -> List[Dict[str, Any]]:
+        """列出所有模型，返回包含关键信息的字典列表"""
+        response = await self.client.models.list()
+        if response.data:
+            return [{
+                "id": model.id,
+                # "created": model.created,
+                "owned_by": model.owned_by,
+                "object": model.object,
+            } for model in response.data]
+        else:
+            return []
+
     async def generate(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
 
         _kwargs = self.default_call_args

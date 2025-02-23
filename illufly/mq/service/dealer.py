@@ -335,7 +335,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
 
     async def _process_request(self, client_id: bytes, request: RequestBlock):
         """处理单个请求"""
-        # self._logger.info(f"DEALER Processing request: {request}")
+        self._logger.info(f"DEALER Processing request: {request}")
         if self._current_load >= self._max_concurrent:
             await self._send_error(
                 client_id, 

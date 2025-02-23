@@ -44,6 +44,10 @@ class BaseChat(ABC):
         """创建请求ID"""
         return f"{self.__class__.__name__}.{uuid.uuid4().hex[:8]}"
 
+    async def list_models(self) -> List[str]:
+        """列出所有模型"""
+        return []
+
     @abstractmethod
     async def generate(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
         """异步生成响应"""

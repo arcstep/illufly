@@ -94,7 +94,7 @@ class ClientDealer:
             )
 
             response = deserialize_message(multipart[-1])
-            self._logger.debug(f"Received sync method response: {response}")
+            self._logger.debug(f"Received quickly method response: {response}")
 
             if isinstance(response, ReplyBlock):
                 self._available_methods = response.result
@@ -105,9 +105,9 @@ class ClientDealer:
                 raise ValueError(f"Unexpected response type: {type(response)}")
 
         except asyncio.TimeoutError:
-            raise TimeoutError("Sync method timeout")
+            raise TimeoutError("Quickly method timeout")
         except Exception as e:
-            self._logger.error(f"Sync method error: {e}")
+            self._logger.error(f"Quickly method error: {e}")
             raise
 
     async def call_service(

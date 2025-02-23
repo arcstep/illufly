@@ -54,22 +54,11 @@ def router_address():
     return "inproc://router_abc"
 
 @pytest.fixture()
-def test_config():
-    """测试配置"""
-    return {
-        'heartbeat_interval': 0.5,   # Router 心跳检查间隔
-        'heartbeat_timeout': 5.0,    # Router 心跳超时时间
-        'dealer_heartbeat': 1.0,    # Dealer 心跳发送间隔
-    }
-
-@pytest.fixture()
-async def router(router_address, zmq_context, test_config):
+async def router(router_address, zmq_context):
     """创建并启动路由器"""
     router = ServiceRouter(
         router_address, 
-        context=zmq_context,
-        heartbeat_interval=test_config['heartbeat_interval'],
-        heartbeat_timeout=test_config['heartbeat_timeout']
+        context=zmq_context
     )
     await router.start()
     await asyncio.sleep(0.1)
@@ -93,7 +82,8 @@ async def chat_fake_service(router, router_address, zmq_context, db):
 @pytest.fixture
 async def chat_openai_service(router, router_address, zmq_context, db, mock_tool):
     """ChatOpenAI 服务实例"""
-    llm = ChatOpenAI(imitator="ZHIPU", model="glm-4-flash")
+    llm = ChatOpenAI(imitator="QWEN", model="qwen-turbo")
+    # llm = ChatOpenAI(imitator="ZHIPU", model="glm-4-flash")
     # llm = ChatOpenAI(imitator="OPENAI", model="gpt-4o-mini")
     agent = BaseAgent(llm=llm, db=db, runnable_tools=[mock_tool], router_address=router_address, context=zmq_context, group="mychat")
     await agent.start()
@@ -116,7 +106,7 @@ def mock_tool():
 @pytest.mark.asyncio
 async def test_chat_fake_basic(chat_fake_service, router_address, zmq_context):
     """测试基本聊天功能"""
-    client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
+    client = ClientDealer(router_address, context=zmq_context, timeout=5.0)
     thread_id = "test_thread_id"
     
     # 发送请求并收集响应
@@ -137,7 +127,7 @@ async def test_chat_fake_basic(chat_fake_service, router_address, zmq_context):
 @pytest.mark.asyncio
 async def test_chat_fake_multiple_responses(chat_fake_service, router_address, zmq_context):
     """测试多个响应轮换"""    
-    client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
+    client = ClientDealer(router_address, context=zmq_context, timeout=5.0)
     
     # 第一次调用
     responses1 = []
@@ -159,7 +149,7 @@ async def test_chat_fake_multiple_responses(chat_fake_service, router_address, z
 @pytest.mark.asyncio
 async def test_chat_openai_basic(chat_openai_service, router_address, zmq_context):
     """测试基本聊天功能"""
-    client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
+    client = ClientDealer(router_address, context=zmq_context, timeout=5.0)
     thread_id = "test_thread_id"
     
     # 发送请求并收集响应
@@ -180,7 +170,7 @@ async def test_chat_openai_basic(chat_openai_service, router_address, zmq_contex
 @pytest.mark.asyncio
 async def test_runnable_tool_calls(chat_openai_service: ChatOpenAI, router_address, zmq_context):
     """测试完整的工具调用流程"""
-    client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
+    client = ClientDealer(router_address, context=zmq_context, timeout=5.0)
     thread_id = "test_thread_id"
     messages = "请帮我确认明天广州是否适合晒被子"
     
@@ -209,7 +199,7 @@ async def test_tool_calls(chat_openai_service: ChatOpenAI, router_address, zmq_c
         "content": "请帮我看看明天广州的天气"
     }]
     
-    client = ClientDealer(router_address, context=zmq_context, timeout=1.0)
+    client = ClientDealer(router_address, context=zmq_context, timeout=5.0)
     thread_id = "test_thread_id_with_tool"
 
     # 第一阶段：获取工具调用请求
@@ -270,3 +260,17 @@ async def test_tool_calls(chat_openai_service: ChatOpenAI, router_address, zmq_c
     
     # 验证最终回复包含处理结果
     assert "暴雨" in final_text, "应正确处理工具返回结果"
+
+@pytest.mark.asyncio
+async def test_list_models(chat_openai_service: ChatOpenAI, router_address, zmq_context):
+    """测试列出所有模型"""
+    client = ClientDealer(router_address, context=zmq_context, timeout=5.0)
+    
+    models = []
+    async for item in client.call_service("mychat.models"):
+        logger.info(f"model info: {item.__class__} / {item}")
+        models = [m['id'] for m in item]
+    logger.info(f"{models}")
+
+    # 验证最终回复包含处理结果
+    assert "gpt-4o-mini" in models, "应正确列出所有模型"

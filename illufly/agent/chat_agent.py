@@ -35,6 +35,13 @@ class BaseAgent(ServiceDealer):
         self.db.register_model(MESSAGE_MODEL, HistoryMessage)
         self.db.register_index(MESSAGE_MODEL, HistoryMessage, "created_with_thread")
 
+    @service_method(name="models", description="列出所有模型")
+    async def _list_models(self):
+        """列出所有模型"""
+        all_models = await self.llm.list_models()
+        self._logger.info(f"列出所有模型: {all_models[:5]}...等 {len(all_models)} 个模型")
+        return all_models
+
     @service_method(name="chat", description="对话服务")
     async def _chat(
         self,

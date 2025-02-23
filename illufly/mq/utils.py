@@ -44,7 +44,7 @@ def serialize_message(obj: Union[BaseModel, dict]) -> bytes:
     if isinstance(obj, BaseModel):
         data = {
             '__type__': obj.__class__.__name__,
-            'data': obj.model_dump()  # 替换为Pydantic官方方法
+            'data': obj.model_dump()
         }
     else:
         data = obj

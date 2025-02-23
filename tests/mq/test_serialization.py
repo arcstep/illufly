@@ -22,6 +22,25 @@ class NestedMessage(BaseModel):
     child: SimpleMessage
 
 # 基础测试用例
+@pytest.mark.parametrize("original", [
+    {
+        "id": 1,
+        "content": "Hello World",
+        "timestamp": 1717029123.456
+    },
+    ["Hello", "World"],
+    {"key": "value"},
+    None,
+    True,
+    False
+])
+def test_python_objects_serialization(original):
+    """测试Python对象序列化-反序列化循环"""
+    serialized = serialize_message(original)
+    deserialized = deserialize_message(serialized)
+    
+    assert deserialized == original
+
 def test_basic_serialization_roundtrip():
     """测试基本模型序列化-反序列化循环"""
     original = SimpleMessage(
