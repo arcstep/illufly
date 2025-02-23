@@ -30,6 +30,7 @@ def normalize_messages(messages: Union[str, List[str], List[Tuple[str, Any]], Li
             if m['role'] == "ai":
                 m['role'] = "assistant"
             raise_error_with_role(m['role'])
+            m['content'] = m.get('content', '')
             new_messages.append(m)
     logger.info(f"normalize_messages: {new_messages}")
     return new_messages
@@ -49,7 +50,7 @@ class BaseChat(ABC):
         """异步生成响应"""
         pass
 
-    async def call_tool(self, request_id: str, messages: List[Dict[str, Any]], tool_calls: List[ToolCallFinal], tools: List[BaseTool]) -> list:
+    async def call_tool(self, request_id: str, tool_calls: List[ToolCallFinal], tools: List[BaseTool]) -> list:
         """
         新版工具调用方法
         :param tools_callable: BaseTool实例列表
@@ -83,10 +84,9 @@ class BaseChat(ABC):
                         text_final += resp.text
                     yield resp
                 
-                if not text_final:
-                    tool_block_resp.text = text_final
-                    tool_block_resp.completed_at = datetime.now().timestamp()
-                    yield tool_block_resp
+                tool_block_resp.text = text_final or '工具执行完毕，但没有任何结果'
+                tool_block_resp.completed_at = datetime.now().timestamp()
+                yield tool_block_resp
 
             except json.JSONDecodeError as e:
                 tool_block_resp.text = f"参数解析失败: {str(e)}"
@@ -101,18 +101,20 @@ class BaseChat(ABC):
     async def chat(
         self,
         messages: Union[str, List[str], List[Tuple[str, Any]], List[Dict[str, Any]]],
-        tools: list = None,
-        max_turns: int = 3
+        max_turns: int = 10,
+        runnable_tools: list = None,
+        **kwargs
     ) -> list:
         """
         自动化对话流程
         :param messages: 初始消息列表
-        :param tools: 工具列表
-        :param max_turns: 最大对话轮次
+        :param runnable_tools: 只在没有使用 kwargs['tools'] 参数的情况下生效
+        :param max_turns: 单次推理最大对话轮次
         :return: 最终消息历史
         """
         conv_messages = normalize_messages(messages)
-        tools_callable = tools or []
+        tools_callable = [] if kwargs.get("tools") else (runnable_tools or [])
+        tools = kwargs.pop("tools", None) or [t.to_openai() for t in tools_callable]
         request_id = self.create_request_id()
         query_created_at = datetime.now().timestamp()
         query_completed_at = query_created_at
@@ -157,7 +159,7 @@ class BaseChat(ABC):
             text_finals = []
 
             # 生成查询流事件
-            async for chunk in self.generate(conv_messages, tools=tools):
+            async for chunk in self.generate(conv_messages, tools=tools, **kwargs):
                 answer_created_at = query_completed_at
                 answer_completed_at = datetime.now().timestamp()
                 if isinstance(chunk, TextFinal):
@@ -167,10 +169,11 @@ class BaseChat(ABC):
 
                 yield chunk
 
-            # 如果没有工具调用则结束
-            if not tool_calls:
-                break
+            # 如果没有工具调用，或者虽然有工具回调返回但无内置的工具立即调用，则结束对话，等待对话客户端处理
+            if not tool_calls or not tools_callable:
+                return
             
+            # 准备基于工具自动调用结果的下一轮对话
             conv_messages.append({
                 "role": "assistant",
                 "tool_calls": [chunk.content for chunk in tool_calls],
@@ -190,7 +193,9 @@ class BaseChat(ABC):
             )
 
             # 执行工具调用
-            async for tool_resp in self.call_tool(request_id, conv_messages, tool_calls, tools_callable):
+            self._logger.info(f"执行工具调用: {[t.content for t in tool_calls]}")
+            async for tool_resp in self.call_tool(request_id, tool_calls, tools=tools_callable):
+                self._logger.info(f"执行工具调用结果: {tool_resp.block_type} >> {tool_resp.text}")
                 if isinstance(tool_resp, ToolBlock):
                     conv_messages.append({
                         "role": "tool",
@@ -201,4 +206,5 @@ class BaseChat(ABC):
 
             # 重新调用模型
             query_created_at = datetime.now().timestamp()
+            self._logger.info(f"重新调用模型: {conv_messages}")
 

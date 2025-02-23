@@ -6,6 +6,18 @@ from illufly.community.base_tool import BaseTool, is_json_serializable
 from illufly.community.models import TextFinal
 from deepdiff import DeepDiff
 
+@pytest.mark.parametrize("type_hint, expected", [
+    (str, True),
+    (Annotated[int, Field(gt=0)], True),
+    (List[Annotated[str, Field(max_length=10)]], True),
+    (Dict[str, Annotated[float, Field(ge=0)]], True),
+    (datetime, False),
+    (Dict[int, str], True),
+    (List[bytes], False),
+])
+def test_is_json_serializable(type_hint, expected):
+    assert is_json_serializable(type_hint) == expected
+
 @pytest.mark.asyncio
 async def test_define_tools():
     """测试工具定义场景"""
@@ -24,7 +36,7 @@ async def test_define_tools():
             yield TextFinal(text=f"{location}天气：24℃")
 
     # 验证生成的OpenAI工具描述
-    assert WeatherTool.to_openai_tool() == {
+    assert WeatherTool.to_openai() == {
         "type": "function",
         "function": {
             "name": "get_weather",
@@ -43,7 +55,7 @@ async def test_define_tools():
     }
 
 def assert_tool_schema(tool_cls, expected):
-    schema = tool_cls.to_openai_tool()["function"]["parameters"]
+    schema = tool_cls.to_openai()["function"]["parameters"]
     diff = DeepDiff(schema, expected, ignore_order=True)
     assert not diff, f"Schema差异：\n{diff.pretty()}"
 
@@ -149,17 +161,4 @@ async def test_invalid_types():
             @classmethod
             async def call(cls, dt: datetime):
                 yield TextFinal(text=str(dt))
-        InvalidTypeTool.to_openai_tool()
-
-@pytest.mark.parametrize("type_hint, expected", [
-    (str, True),
-    (Annotated[int, Field(gt=0)], True),
-    (List[Annotated[str, Field(max_length=10)]], True),
-    (Dict[str, Annotated[float, Field(ge=0)]], True),
-    (datetime, False),
-    (Dict[int, str], True),
-    (List[bytes], False),
-])
-def test_is_json_serializable(type_hint, expected):
-    assert is_json_serializable(type_hint) == expected
-
+        InvalidTypeTool.to_openai()

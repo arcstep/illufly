@@ -40,7 +40,7 @@ class ChatFake(BaseChat):
             f"sleep: {self.sleep}s"
         )
 
-    async def generate(self, messages: Union[str, List[Dict[str, Any]]], tools: List[BaseTool] = None, **kwargs):
+    async def generate(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
         """异步生成响应"""
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
@@ -61,7 +61,7 @@ class ChatFake(BaseChat):
             return
         
         # 检查是否需要返回工具调用
-        if tools and self.tool_responses:
+        if kwargs.get("tools") and self.tool_responses:
             tool_response = self.tool_responses[self.tool_response_index]
             self.tool_response_index = (self.tool_response_index + 1) % len(self.tool_responses)
             

@@ -57,8 +57,8 @@ def test_config():
     """测试配置"""
     return {
         'heartbeat_interval': 0.5,   # Router 心跳检查间隔
-        'heartbeat_timeout': 2.0,    # Router 心跳超时时间
-        'dealer_heartbeat': 0.25,    # Dealer 心跳发送间隔
+        'heartbeat_timeout': 5.0,    # Router 心跳超时时间
+        'dealer_heartbeat': 1.0,    # Dealer 心跳发送间隔
     }
 
 @pytest.fixture()

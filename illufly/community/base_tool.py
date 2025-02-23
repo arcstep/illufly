@@ -162,7 +162,7 @@ class BaseTool(metaclass=BaseToolMeta):
         return {}
     
     @classmethod
-    def to_openai_tool(cls) -> dict:
+    def to_openai(cls) -> dict:
         """生成OpenAI工具描述"""
         schema = cls.args_schema.model_json_schema()
         

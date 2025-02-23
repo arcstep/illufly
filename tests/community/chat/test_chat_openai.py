@@ -13,7 +13,7 @@ async def chat_service():
     """ChatFake 服务实例"""
     service = ChatOpenAI(
         model="glm-4-flash",
-        imitator="ZHIPU",
+        imitator="ZHIPU"
     )
     return service
 
@@ -28,7 +28,7 @@ def mock_tool():
         async def call(cls, city: str):
             yield TextFinal(text=f"{city} 的天气是晴天")
     
-    return GetWeather()
+    return GetWeather
 
 @pytest.mark.asyncio
 async def test_chat_basic(chat_service):
@@ -47,8 +47,7 @@ async def test_chat_basic(chat_service):
 
 @pytest.mark.asyncio
 async def test_tool_calls(chat_service: ChatOpenAI, mock_tool: BaseTool):
-    """测试完整的工具调用流程"""
-    # 初始消息（必须包含足够上下文）
+    """由客户端进行工具回调"""
     messages = [{
         "role": "user",
         "content": "请帮我看看明天广州的天气"
@@ -57,7 +56,7 @@ async def test_tool_calls(chat_service: ChatOpenAI, mock_tool: BaseTool):
     # 第一阶段：获取工具调用请求
     assistant_messages = []
     tool_calls = []
-    async for chunk in chat_service.generate(messages, tools=[mock_tool]):
+    async for chunk in chat_service.chat(messages, tools=[mock_tool.to_openai()]):
         if isinstance(chunk, ToolCallFinal):
             tool_calls.append(chunk)
         if isinstance(chunk, TextChunk):
@@ -103,7 +102,7 @@ async def test_tool_calls(chat_service: ChatOpenAI, mock_tool: BaseTool):
     
     # 第二阶段：处理工具结果
     final_text = ""
-    async for chunk in chat_service.generate(messages):
+    async for chunk in chat_service.chat(messages):
         if isinstance(chunk, TextFinal):
             final_text = chunk.text
     
@@ -111,22 +110,26 @@ async def test_tool_calls(chat_service: ChatOpenAI, mock_tool: BaseTool):
     assert "晴天" in final_text, "应正确处理工具返回结果"
 
 @pytest.mark.asyncio
-async def test_tool_calls_quickly(chat_service: ChatOpenAI, mock_tool: BaseTool):
+async def test_tool_calls_with_base_chat(mock_tool: BaseTool):
     """测试完整的工具调用流程"""
-    # 初始消息（必须包含足够上下文）
+    chat_service = ChatOpenAI(
+        model="glm-4-flash",
+        imitator="ZHIPU"
+    )
+    
     messages = [{
         "role": "user",
         "content": "请帮我确认明天广州是否适合晒被子"
     }]
     
     final_text = ""
-    async for chunk in chat_service.chat(messages, tools=[mock_tool]):
+    async for chunk in chat_service.chat(messages, runnable_tools=[mock_tool]):
         logger.info(f"[{chunk.block_type}] {chunk.content}")
         if isinstance(chunk, TextFinal):
             final_text = chunk.content
     
     # 验证最终回复包含处理结果
-    assert "晴天" in final_text, "应正确处理工具返回结果"
+    assert "适合晒被子" in final_text, "应正确处理工具返回结果"
 
 @pytest.mark.asyncio
 async def test_tool_without_parameters(chat_service: ChatOpenAI):
@@ -140,12 +143,15 @@ async def test_tool_without_parameters(chat_service: ChatOpenAI):
             yield TextFinal(text="无参数调用成功")
 
     # 执行调用
-    messages = [{"role": "user", "content": "请直接调用no_param_tool"}]
+    messages = [{"role": "user", "content": "请直接调用no_param_tool，看到调用结果后直接返回OK即可"}]
     tool_calls = []
-    async for chunk in chat_service.chat(messages, tools=[NoParamTool()]):
+    final_text = ""
+    async for chunk in chat_service.chat(messages, runnable_tools=[NoParamTool]):
         logger.info(f"[{chunk.block_type}] {chunk.content}")
         if isinstance(chunk, ToolCallFinal):
             tool_calls.append(chunk)
+        if isinstance(chunk, TextFinal):
+            final_text = chunk.content
     
     # 验证工具调用
     assert len(tool_calls) == 1, "应触发工具调用"
@@ -153,8 +159,7 @@ async def test_tool_without_parameters(chat_service: ChatOpenAI):
     assert args == {}, "参数应为空字典"
     
     # 验证工具执行
-    async for resp in NoParamTool.call():
-        assert "成功" in resp.text
+    assert "OK" in final_text, "工具执行结果应正确"
 
 @pytest.mark.asyncio
 async def test_tool_with_multiple_parameters(chat_service: ChatOpenAI):
@@ -174,15 +179,18 @@ async def test_tool_with_multiple_parameters(chat_service: ChatOpenAI):
         "ratio": 3.14,
         "active": True
     }
-    prompt = f"调用multi_type_tool工具，参数：{json.dumps(test_params, ensure_ascii=False)}"
+    prompt = f"请调用multi_type_tool工具，参数：{json.dumps(test_params, ensure_ascii=False)}。调用成功后返回结果OK"
     
     # 执行调用
     messages = [{"role": "user", "content": prompt}]
     tool_calls = []
-    async for chunk in chat_service.chat(messages, tools=[MultiTypeTool()]):
+    final_text = ""
+    async for chunk in chat_service.chat(messages, runnable_tools=[MultiTypeTool]):
         logger.info(f"[{chunk.block_type}] {chunk.content}")
         if isinstance(chunk, ToolCallFinal):
             tool_calls.append(chunk)
+        if isinstance(chunk, TextFinal):
+            final_text = chunk.content
     
     # 验证参数解析
     assert len(tool_calls) == 1, "应触发工具调用"
@@ -193,6 +201,9 @@ async def test_tool_with_multiple_parameters(chat_service: ChatOpenAI):
     assert isinstance(args["count"], int), "整型参数应正确转换"
     assert isinstance(args["ratio"], float), "浮点型参数应正确转换"
     assert isinstance(args["active"], bool), "布尔型参数应正确转换"
+
+    # 验证工具执行
+    assert "OK" in final_text, "工具执行结果应正确"
 
 @pytest.mark.asyncio
 async def test_tool_with_complex_parameters(chat_service: ChatOpenAI):
@@ -217,16 +228,18 @@ async def test_tool_with_complex_parameters(chat_service: ChatOpenAI):
             "tags": ["重要", "测试"]
         }
     }
-    prompt = f"调用complex_tool工具，参数为：{json.dumps(complex_data, ensure_ascii=False)}"
+    prompt = f"请调用complex_tool工具，参数为：{json.dumps(complex_data, ensure_ascii=False)}。调用成功后返回结果OK"
     
     # 执行调用
     messages = [{"role": "user", "content": prompt}]
     tool_calls = []
-    async for chunk in chat_service.chat(messages, tools=[ComplexParamTool()]):
+    final_text = ""
+    async for chunk in chat_service.chat(messages, runnable_tools=[ComplexParamTool]):
         logger.info(f"[{chunk.block_type}] {chunk.content}")
         if isinstance(chunk, ToolCallFinal):
             tool_calls.append(chunk)
-    
+        if isinstance(chunk, TextFinal):
+            final_text = chunk.content
     # 验证参数结构
     assert len(tool_calls) == 1, "应触发工具调用"
     received_data = json.loads(tool_calls[0].arguments)["data"]
@@ -235,3 +248,6 @@ async def test_tool_with_complex_parameters(chat_service: ChatOpenAI):
     # 验证深层结构
     assert isinstance(received_data["users"][0]["scores"], list), "嵌套列表应保持类型"
     assert received_data["meta"]["tags"] == ["重要", "测试"], "数组元素应正确"
+
+    # 验证工具执行
+    assert "OK" in final_text, "工具执行结果应正确"

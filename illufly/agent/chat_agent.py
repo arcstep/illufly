@@ -22,11 +22,11 @@ class BaseAgent(ServiceDealer):
         llm: BaseChat,
         db: IndexedRocksDB = None,
         group: str = None,
-        tools: list = None,
+        runnable_tools: list = None,
         **kwargs
     ):
         self.llm = llm
-        self.tools = tools
+        self.runnable_tools = runnable_tools
         if not group:
             group = self.llm.group
         super().__init__(group=group, **kwargs)
@@ -51,7 +51,7 @@ class BaseAgent(ServiceDealer):
 
         async for b in self.llm.chat(
             messages=patched_messages,
-            tools=self.tools,
+            runnable_tools=self.runnable_tools,
             **kwargs
         ):
             # 将部份消息类型持久化

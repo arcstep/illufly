@@ -40,14 +40,11 @@ class ChatOpenAI(BaseChat):
         }
         self.client = AsyncOpenAI(**self.model_args)
 
-    async def generate(self, messages: Union[str, List[Dict[str, Any]]], tools: List[BaseTool] = None, **kwargs):
+    async def generate(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
 
         _kwargs = self.default_call_args
-        openai_tools = [tool.to_openai_tool() for tool in (tools or [])]
-        self._logger.info(f"openai_tools: {openai_tools}")
         _kwargs.update({
             "messages": messages,
-            "tools": openai_tools,
             **kwargs,
             **{"stream": True, "stream_options": {"include_usage": True}}
         })
