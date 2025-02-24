@@ -68,13 +68,34 @@ class ClientDealer:
 
     async def discover_services(self, timeout: Optional[float] = None) -> Dict[str, Dict]:
         """发现可用的服务方法"""
-        return await self.call_quickly("methods", timeout)
+        return await self.invoke("methods", timeout=timeout)
 
     async def discover_clusters(self, timeout: Optional[float] = None) -> Dict[str, Dict]:
         """发现可用的服务节点"""
-        return await self.call_quickly("clusters", timeout)
+        return await self.invoke("clusters", timeout=timeout)
 
-    async def call_quickly(self, sync_method: str, timeout: Optional[float] = None) -> Dict[str, Dict]:
+    async def invoke(self, method: str, *args, timeout: Optional[float] = None, **kwargs) -> Dict[str, Dict]:
+        """直接返回结果的调用
+        内部方法不会包含分组所需的间隔句点。
+        """
+        if "." in method:
+            results = []
+            async for chunk in self._service_stream(method, *args, timeout=timeout, **kwargs):
+                results.append(chunk)
+            return results
+        else:
+            return await self._inner_invoke(method, timeout)
+    
+    async def stream(self, service_name: str, *args, timeout: Optional[float] = None, **kwargs) -> AsyncGenerator[Any, None]:
+        """返回异步生成器"""
+        if "." in service_name:
+            async for chunk in self._service_stream(service_name, *args, timeout=timeout, **kwargs):
+                yield chunk
+        else:
+            result = await self._inner_invoke(service_name, timeout)
+            yield result
+
+    async def _inner_invoke(self, sync_method: str, timeout: Optional[float] = None) -> Dict[str, Dict]:
         """直接返回结果的调用"""
         if timeout is None:
             timeout = self._timeout
@@ -110,7 +131,7 @@ class ClientDealer:
             self._logger.error(f"Quickly method error: {e}")
             raise
 
-    async def call_service(
+    async def _service_stream(
         self,
         service_name: str,
         *args,
