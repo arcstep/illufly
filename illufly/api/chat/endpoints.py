@@ -33,17 +33,13 @@ def create_chat_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         try:
-            logger.info(f"尝试获取所有对话: {zmq_client._router_address}, {zmq_client._socket}")
             results = []
             threads = await zmq_client.invoke("threadmanagerdealer.all_threads", user_id=token_claims['user_id'], timeout=2.0)
-            logger.info(f"获取所有对话结果: {threads[0]}")
             return Result.ok(data=threads[0])
 
         except HTTPException as e:
-            logger.error(f"获取所有对话失败: {e}")
             raise e
         except Exception as e:
-            logger.error(f"获取所有对话失败: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(e)

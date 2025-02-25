@@ -8,6 +8,7 @@ from enum import Enum
 
 from ...rocksdb import IndexedRocksDB
 from ..models import Result, HttpMethod
+from ..http import handle_errors
 from .models import User, UserRole
 from .tokens import TokensManager, TokenClaims
 from .users import UsersManager
@@ -143,35 +144,21 @@ def create_auth_endpoints(
         password: str = Field(..., description="密码")
         email: EmailStr = Field(..., description="邮箱")
 
+    @handle_errors(logger=logger)
     async def register(request: RegisterRequest):
         """用户注册接口"""
-        if not users_manager:
+        user = User(
+            username=request.username,
+            email=request.email,
+            password_hash=User.hash_password(request.password),
+        )
+        result = users_manager.create_user(user)
+        if result.is_ok():
+            return result
+        else:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="用户管理器未初始化"
-            )
-        try:
-            # 创建用户
-            user = User(
-                username=request.username,
-                email=request.email,
-                password_hash=User.hash_password(request.password),
-            )
-            result = users_manager.create_user(user)
-            if result.is_ok():
-                return result
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=result.error
-                )
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=str(e)
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.error
             )
 
     class LoginRequest(BaseModel):
@@ -182,73 +169,59 @@ def create_auth_endpoints(
         password: str = Field(..., description="密码")
         device_id: Optional[str] = Field(None, description="设备ID")
 
+    @handle_errors(logger=logger)
     async def login(request: Request, response: Response, login_data: LoginRequest):
         """登录接口"""
-        if not users_manager or not tokens_manager:
+        # 验证用户密码
+        verify_result = users_manager.verify_password(
+            username=login_data.username,
+            password=login_data.password
+        )
+        
+        if verify_result.is_fail():
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="用户管理器或令牌管理器未初始化"
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=verify_result.error or "认证失败"
             )
-        try:
-            # 验证用户密码
-            verify_result = users_manager.verify_password(
-                username=login_data.username,
-                password=login_data.password
+        
+        user_info = verify_result.data
+        logger.info(f"登录结果: {user_info}")
+
+        # 检查用户状态
+        if user_info['is_locked']:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="账户已锁定"
+            )                
+        if not user_info['is_active']:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="账户未激活"
             )
             
-            if verify_result.is_fail():
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=verify_result.error or "认证失败"
-                )
-            
-            user_info = verify_result.data
-            logger.info(f"登录结果: {user_info}")
+        # 获取或创建设备ID
+        device_id = login_data.device_id or _create_browser_device_id(request)
 
-            # 检查用户状态
-            if user_info['is_locked']:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="账户已锁定"
-                )                
-            if not user_info['is_active']:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="账户未激活"
-                )
-                
-            # 获取或创建设备ID
-            device_id = login_data.device_id or _create_browser_device_id(request)
+        # 更新设备刷新令牌
+        tokens_manager.update_refresh_token(
+            user_id=user_info['user_id'],
+            username=user_info['username'],
+            roles=user_info['roles'],
+            device_id=device_id
+        )
+        logger.info(f"更新设备刷新令牌: {device_id}")
 
-            # 更新设备刷新令牌
-            tokens_manager.update_refresh_token(
-                user_id=user_info['user_id'],
-                username=user_info['username'],
-                roles=user_info['roles'],
-                device_id=device_id
-            )
-            logger.info(f"更新设备刷新令牌: {device_id}")
+        # 创建设备访问令牌
+        result = _refresh_access_token(
+            user_info=user_info,
+            device_id=device_id,
+            response=response
+        )
 
-            # 创建设备访问令牌
-            result = _refresh_access_token(
-                user_info=user_info,
-                device_id=device_id,
-                response=response
-            )
-
-            return Result.ok(
-                data=result.data,
-                message="登录成功"
-            )
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"登录过程发生错误: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="登录过程发生错误"
-            )
+        return Result.ok(
+            data=result.data,
+            message="登录成功"
+        )
 
     def _refresh_access_token(
         user_info: Dict[str, Any],
@@ -273,84 +246,59 @@ def create_auth_endpoints(
             )
         return result
 
-
+    @handle_errors(logger=logger)
     async def logout_device(
         request: Request,
         response: Response,
         token_claims: TokenClaims = Depends(require_user(tokens_manager, update_access_token=False, logger=logger))
     ):
         """注销接口"""
-        if not tokens_manager:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="令牌管理器未初始化"
-            )
-        try:
-            logger.info(f"要注销的用户信息: {token_claims}")
+        logger.info(f"要注销的用户信息: {token_claims}")
 
-            # 撤销当前设备的访问令牌
-            tokens_manager.revoke_refresh_token(
-                user_id=token_claims['user_id'],
-                device_id=token_claims['device_id']
-            )
-            logger.info(f"撤销当前设备的刷新令牌: {token_claims['user_id']}, {token_claims['device_id']}")
+        # 撤销当前设备的访问令牌
+        tokens_manager.revoke_refresh_token(
+            user_id=token_claims['user_id'],
+            device_id=token_claims['device_id']
+        )
+        logger.info(f"撤销当前设备的刷新令牌: {token_claims['user_id']}, {token_claims['device_id']}")
 
-            # 撤销当前设备的访问令牌
-            tokens_manager.revoke_access_token(
-                user_id=token_claims['user_id'],
-                device_id=token_claims['device_id']
-            )
-            logger.info(f"撤销当前设备的访问令牌: {token_claims['user_id']}, {token_claims['device_id']}")
+        # 撤销当前设备的访问令牌
+        tokens_manager.revoke_access_token(
+            user_id=token_claims['user_id'],
+            device_id=token_claims['device_id']
+        )
+        logger.info(f"撤销当前设备的访问令牌: {token_claims['user_id']}, {token_claims['device_id']}")
 
-            # 删除当前设备的cookie
-            _set_auth_cookies(response, access_token=None, logger=logger)
+        # 删除当前设备的cookie
+        _set_auth_cookies(response, access_token=None, logger=logger)
 
-            return Result.ok(message="注销成功")
-
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=str(e)
-            )
+        return Result.ok(message="注销成功")
 
     class ChangePasswordRequest(BaseModel):
         """修改密码请求"""
         current_password: str = Field(..., description="当前密码")
         new_password: str = Field(..., description="新密码")
 
+    @handle_errors(logger=logger)
     async def change_password(
         change_password_form: ChangePasswordRequest,
         response: Response,
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
-        """修改密码接口"""
-        if not users_manager:
+        result = users_manager.change_password(
+            user_id=token_claims['user_id'],
+            current_password=change_password_form.current_password,
+            new_password=change_password_form.new_password
+        )
+        if result.is_ok():
+            return result
+        else:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="用户管理器未初始化"
-            )
-        try:
-            result = users_manager.change_password(
-                user_id=token_claims['user_id'],
-                current_password=change_password_form.current_password,
-                new_password=change_password_form.new_password
-            )
-            if result.is_ok():
-                return result
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=result.error
-                )
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=str(e)
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.error
             )
 
+    @handle_errors(logger=logger)
     async def get_user_profile(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
@@ -361,44 +309,32 @@ def create_auth_endpoints(
         """更新用户个人设置请求"""
         to_update: Dict[str, Any] = Field(..., description="用户个人设置")
 
+    @handle_errors(logger=logger)
     async def update_user_profile(
         update_form: UpdateUserProfileRequest,
         response: Response,
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """更新当前用户的个人设置"""
-        if not users_manager:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="用户管理器未初始化"
+        result = users_manager.update_user(token_claims['user_id'], **update_form.to_update)
+        if result.is_ok():
+        # 更新设备访问令牌
+            result = _refresh_access_token(
+                user_info=result.data,
+                device_id=token_claims['device_id'],
+                response=response
             )
-        try:
-            result = users_manager.update_user(token_claims['user_id'], **update_form.to_update)
-            if result.is_ok():
-            # 更新设备访问令牌
-                result = _refresh_access_token(
-                    user_info=result.data,
-                    device_id=token_claims['device_id'],
-                    response=response
-                )
-                if result.is_fail():
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=result.error
-                    )
-                result.message = "用户信息更新成功"
-                return result
-            else:
+            if result.is_fail():
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=result.error
                 )
-        except HTTPException:
-            raise
-        except Exception as e:
+            result.message = "用户信息更新成功"
+            return result
+        else:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=str(e)
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.error
             )
 
     return [
