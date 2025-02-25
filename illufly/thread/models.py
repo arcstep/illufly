@@ -1,7 +1,9 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Union, Tuple, Dict, Any, List
+
 import uuid
+
 from ..mq.models import StreamingBlock, BlockType
 from ..mq.utils import serialize
 

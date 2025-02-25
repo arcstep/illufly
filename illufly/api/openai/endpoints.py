@@ -14,7 +14,7 @@ import logging
 
 from datetime import datetime
 
-from ..auth.api_keys import ApiKeysManager
+from ..api_keys import ApiKeysManager
 from ..models import HttpMethod, Result
 
 # 模拟的API_KEY
@@ -174,6 +174,7 @@ def create_openai_endpoints(
             )
 
     class ModelListResponse(BaseModel):
+        object: str = "list"
         data: List[dict]
 
     async def list_models(api_key: str = Depends(verify_api_key)):
@@ -199,7 +200,7 @@ def create_openai_endpoints(
             ]
         )
 
-    return {
-        "chat/completions": (HttpMethod.POST, f"{prefix}/openai/v1/chat/completions", chat_completion),
-        "models": (HttpMethod.GET, f"{prefix}/openai/v1/models", list_models),
-    }
+    return [
+        (HttpMethod.POST, f"{prefix}/openai/v1/chat/completions", chat_completion),
+        (HttpMethod.GET, f"{prefix}/openai/v1/models", list_models),
+    ]

@@ -25,13 +25,7 @@ mock_tokens_manager = MagicMock()
 mock_users_manager = MagicMock()
 
 @pytest.fixture
-def app():
-    """创建测试应用"""
-    app = FastAPI()
-    return app
-
-@pytest.fixture
-def client(app):
+def client():
     """创建测试客户端"""
     # 模拟管理器
     global mock_tokens_manager, mock_users_manager
@@ -39,6 +33,7 @@ def client(app):
     mock_users_manager = MagicMock()
 
     # 获取路由处理函数
+    app = FastAPI()
     route_handlers = create_auth_endpoints(
         app=app,
         tokens_manager=mock_tokens_manager,

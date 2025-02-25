@@ -31,21 +31,22 @@ class ClientDealer:
         self._socket = None
         self._lock = asyncio.Lock()
         self._connected = False
-        self._client_id = str(uuid.uuid4())
+        self._client_id = str(uuid.uuid4().hex)
         self._available_methods = {}  # 缓存可用方法        
 
     async def connect(self):
         """连接到路由器"""
+        self._logger.info(f"Connecting to router at {self._router_address}, {self._socket}")
         if not self._socket:
             self._socket = self._context.socket(zmq.DEALER)
             self._socket.identity = self._client_id.encode()
             self._socket.set_hwm(self._hwm)
             self._socket.connect(self._router_address)
             self._connected = True
+            self._logger.info(f"Connected to router at {self._router_address}, {self._socket}")
 
             # 连接后立即更新可用方法
             await self.discover_services()
-            self._logger.debug(f"Connected to router at {self._router_address}")
 
     async def close(self):
         """关闭连接"""
@@ -55,16 +56,14 @@ class ClientDealer:
             self._socket = None
         self._connected = False
 
-    @asynccontextmanager
-    async def connection(self):
-        """连接上下文管理器"""
-        try:
-            await self.connect()
-            yield self
-        except Exception as e:
-            self._logger.error(f"Connection error: {e}")
-            await self.close()
-            raise
+    async def __aenter__(self):
+        """实现异步上下文管理器入口"""
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """实现异步上下文管理器出口"""
+        await self.close()
 
     async def discover_services(self, timeout: Optional[float] = None) -> Dict[str, Dict]:
         """发现可用的服务方法"""
@@ -84,19 +83,20 @@ class ClientDealer:
                 results.append(chunk)
             return results
         else:
+            self._logger.info(f"Invoke method: {method}")
             return await self._inner_invoke(method, timeout)
     
-    async def stream(self, service_name: str, *args, timeout: Optional[float] = None, **kwargs) -> AsyncGenerator[Any, None]:
+    async def stream(self, method: str, *args, timeout: Optional[float] = None, **kwargs) -> AsyncGenerator[Any, None]:
         """返回异步生成器"""
-        if "." in service_name:
-            async for chunk in self._service_stream(service_name, *args, timeout=timeout, **kwargs):
+        if "." in method:
+            async for chunk in self._service_stream(method, *args, timeout=timeout, **kwargs):
                 yield chunk
         else:
-            result = await self._inner_invoke(service_name, timeout)
+            result = await self._inner_invoke(method, timeout)
             yield result
 
-    async def _inner_invoke(self, sync_method: str, timeout: Optional[float] = None) -> Dict[str, Dict]:
-        """直接返回结果的调用"""
+    async def _inner_invoke(self, method: str, timeout: Optional[float] = None) -> Dict[str, Dict]:
+        """直接内部服务调用"""
         if timeout is None:
             timeout = self._timeout
 
@@ -105,7 +105,7 @@ class ClientDealer:
         
         try:
             await self._socket.send_multipart([
-                sync_method.encode(),
+                method.encode(),
                 b""
             ])
 
@@ -115,7 +115,7 @@ class ClientDealer:
             )
 
             response = deserialize_message(multipart[-1])
-            self._logger.debug(f"Received quickly method response: {response}")
+            self._logger.info(f"Received invoke method response: {response}")
 
             if isinstance(response, ReplyBlock):
                 self._available_methods = response.result
@@ -126,35 +126,35 @@ class ClientDealer:
                 raise ValueError(f"Unexpected response type: {type(response)}")
 
         except asyncio.TimeoutError:
-            raise TimeoutError("Quickly method timeout")
+            raise TimeoutError(f"[{self._router_address}] Invoke '{method}' timeout")
         except Exception as e:
-            self._logger.error(f"Quickly method error: {e}")
+            self._logger.error(f"[{self._router_address}] Invoke '{method}' error: {e}")
             raise
 
     async def _service_stream(
         self,
-        service_name: str,
+        method: str,
         *args,
         timeout: Optional[float] = None,
         **kwargs
     ) -> AsyncGenerator[Any, None]:
-        """调用服务，返回异步生成器"""
+        """调用 DEALER 服务，返回异步生成器"""
         if not self._connected:
             await self.connect()
 
-        if service_name not in self._available_methods:
+        if method not in self._available_methods:
             # 如果方法不在缓存中，尝试更新一次
             await self.discover_services()
-            if service_name not in self._available_methods:
+            if method not in self._available_methods:
                 raise RuntimeError(
-                    f"Service method '{service_name}' not found. "
-                    f"Available methods: {list(self._available_methods.keys())}"
+                    f"[{self._router_address}] Streaming method '{method}' not found. "
+                    f"[{self._router_address}] Available methods: {list(self._available_methods.keys())}"
                 )
 
         request_id = str(uuid.uuid4())
         request = RequestBlock(
             request_id=request_id,
-            func_name=service_name,
+            func_name=method,
             request_step=RequestStep.READY,
             args=args,
             kwargs=kwargs
@@ -167,7 +167,7 @@ class ClientDealer:
             # 发送请求
             await self._socket.send_multipart([
                 b"call",  # 添加消息类型
-                service_name.encode(),  # 服务名称
+                method.encode(),  # 服务名称
                 serialize_message(request)  # 请求数据
             ])
 
@@ -195,8 +195,8 @@ class ClientDealer:
                         yield response
 
                 except asyncio.TimeoutError:
-                    raise TimeoutError(f"Service call timeout: {service_name}")
+                    raise TimeoutError(f"[{self._router_address}] Streaming '{method}' timeout")
 
         except Exception as e:
-            self._logger.error(f"Service call error: {e}")
+            self._logger.error(f"[{self._router_address}] Streaming '{method}' error: {e}")
             raise

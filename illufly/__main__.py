@@ -1,6 +1,8 @@
 import uvicorn
 import logging
 import argparse
+import asyncio
+import logging
 
 from .api.start import create_app
 
@@ -38,11 +40,11 @@ def _parse_args():
     
     return args
 
-def main():
+async def main():
     """主函数"""
     args = _parse_args()
     
-    app = create_app(
+    app = await create_app(
         db_path=args.db_path,
         title=args.title,
         description=args.description,
@@ -51,9 +53,8 @@ def main():
         cors_origins=args.cors_origins,
         log_level=args.log_level
     )
-    
-    # 启动服务
-    uvicorn.run(
+
+    config = uvicorn.Config(    
         app,
         host=args.host,
         port=args.port,
@@ -61,6 +62,8 @@ def main():
         ssl_certfile=args.ssl_certfile,
         log_level=args.log_level
     )
+    server = uvicorn.Server(config)
+    await server.serve()
 
 if __name__ == "__main__":
     """
@@ -86,4 +89,4 @@ if __name__ == "__main__":
     poetry run python -m illufly --help
 
     """
-    main() 
+    asyncio.run(main()) 

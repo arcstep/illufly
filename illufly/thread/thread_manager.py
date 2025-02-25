@@ -12,23 +12,25 @@ from .models import Thread, HistoryMessage
 THREAD_MODEL = "thread"
 MESSAGE_MODEL = "message"
 
-class ThreadManager(ServiceDealer):
+class ThreadManagerDealer(ServiceDealer):
     """Base Agent"""
     def __init__(
         self,
         db: IndexedRocksDB = None,
         **kwargs
     ):
+        super().__init__(**kwargs)
         self.db = db or default_rocksdb
 
         self.db.register_model(THREAD_MODEL, Thread)
-        self.db.register_index(THREAD_MODEL, "user_id")
+        self.db.register_index(THREAD_MODEL, Thread, "user_id")
 
         self.db.register_model(MESSAGE_MODEL, HistoryMessage)
-        self.db.register_index(MESSAGE_MODEL, "created_at")
+        self.db.register_index(MESSAGE_MODEL, HistoryMessage, "created_at")
 
     @service_method(name="all_threads", description="获取所有对话")
     def all_threads(self, user_id: str):
+        """获取所有对话"""
         return self.db.values(
             prefix=Thread.get_user_prefix(user_id)
         )

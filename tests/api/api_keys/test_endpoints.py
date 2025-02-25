@@ -8,9 +8,7 @@ from fastapi import HTTPException, status
 from illufly.api.auth.tokens import TokensManager, TokenClaims, TokenType
 from illufly.api.api_keys import create_api_keys_endpoints
 
-from illufly.api.auth.endpoints import (
-    Result,
-)
+from illufly.api.models import Result
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -22,14 +20,10 @@ mock_tokens_manager = MagicMock()
 mock_api_keys_manager = MagicMock()
 
 @pytest.fixture
-def app():
-    """创建测试应用"""
-    app = FastAPI()
-    return app
-
-@pytest.fixture
-def client(app):
+def client():
     """创建测试客户端"""
+    app = FastAPI()
+
     # 模拟管理器
     global mock_tokens_manager
     mock_tokens_manager = MagicMock()

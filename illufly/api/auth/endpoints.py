@@ -401,12 +401,12 @@ def create_auth_endpoints(
                 detail=str(e)
             )
 
-    return {
-        "register": (HttpMethod.POST, f"{prefix}/auth/register", register),
-        "login": (HttpMethod.POST, f"{prefix}/auth/login", login),
-        "logout_device": (HttpMethod.POST, f"{prefix}/auth/logout", logout_device),
-        "change_password": (HttpMethod.POST, f"{prefix}/auth/change-password", change_password),
-        "update_user_profile": (HttpMethod.POST, f"{prefix}/auth/profile", update_user_profile),
-        "get_user_profile": (HttpMethod.GET, f"{prefix}/auth/profile", get_user_profile),
-    }
+    return [
+        (HttpMethod.POST, f"{prefix}/auth/register", register),
+        (HttpMethod.POST, f"{prefix}/auth/login", login),
+        (HttpMethod.POST, f"{prefix}/auth/logout", logout_device),
+        (HttpMethod.POST, f"{prefix}/auth/change-password", change_password),
+        (HttpMethod.POST, f"{prefix}/auth/profile", update_user_profile),
+        (HttpMethod.GET, f"{prefix}/auth/profile", get_user_profile),
+    ]
 
