@@ -41,7 +41,7 @@ class ThreadManagerDealer(ServiceDealer):
         new_thread = Thread(user_id=user_id)
         self.db.update_with_indexes(
             model_name=THREAD_MODEL,
-            key=new_thread.get_key(),
+            key=Thread.get_key(user_id, new_thread.thread_id),
             value=new_thread
         )
         return new_thread
@@ -49,6 +49,7 @@ class ThreadManagerDealer(ServiceDealer):
     @service_method(name="load_messages", description="加载历史对话")
     def load_messages(self, user_id: str, thread_id: str):
         """加载历史对话"""
+
         return sorted(
             self.db.values(
                 prefix=HistoryMessage.get_thread_prefix(user_id, thread_id)

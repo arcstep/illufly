@@ -13,6 +13,8 @@ from ..__version__ import __version__
 from ..rocksdb import IndexedRocksDB
 from ..mq.service import ServiceRouter, ClientDealer
 from ..thread import ThreadManagerDealer
+from ..agent import BaseAgent
+from ..community.openai import ChatOpenAI
 from .auth.tokens import TokensManager
 from .auth.users import UsersManager
 from .api_keys import ApiKeysManager
@@ -123,11 +125,28 @@ async def create_app(
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db = IndexedRocksDB(str(db_path), logger=logger)
 
-    # 初始化 ZMQ 上下文
+    # 初始化 ZMQ 路由、客户端
     zmq_context = zmq.asyncio.Context()
     router = ServiceRouter(router_address, context=zmq_context)
     zmq_client = ClientDealer(router_address, context=zmq_context, logger=logger)
+
+    # 初始化 ThreadManagerDealer
     thread_manager_dealer = ThreadManagerDealer(db, router_address=router_address, context=zmq_context, logger=logger)
+
+    # 初始化 Agent
+    openai = ChatOpenAI(
+        imitator="OPENAI",
+        model="gpt-4o-mini",
+        logger=logger
+    )
+    agent = BaseAgent(
+        llm=openai,
+        db=db,
+        group="Agent",
+        router_address=router_address,
+        context=zmq_context,
+        logger=logger
+    )
 
     @app.on_event("startup")
     async def startup():
@@ -136,6 +155,7 @@ async def create_app(
         """
         await router.start()
         await thread_manager_dealer.start()
+        await agent.start()
         await zmq_client.connect()
 
     # 初始化管理器实例
@@ -202,6 +222,7 @@ async def create_app(
         
         await zmq_client.close()
         await thread_manager_dealer.stop()
+        await agent.stop()
         await router.stop()
 
     return app

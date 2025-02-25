@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, Response, HTTPException, status, Request
+from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List, Optional, Callable, Union, Tuple
 from pydantic import BaseModel, EmailStr, Field
 import uuid
@@ -9,8 +10,21 @@ from enum import Enum
 from ...rocksdb import IndexedRocksDB
 from ...mq.service import ClientDealer
 from ..models import Result, HttpMethod
+from ..http import handle_errors
 from ..auth import require_user, TokensManager, TokenClaims
 from ..models import Result
+from ...community.models import TextChunk
+
+THREAD = {
+    "all_threads": "ThreadManagerDealer.all_threads",
+    "new_thread": "ThreadManagerDealer.new_thread",
+    "load_messages": "ThreadManagerDealer.load_messages",
+}
+
+AGENT = {
+    "models": "Agent.models",
+    "chat": "Agent.chat",
+}
 
 def create_chat_endpoints(
     app: FastAPI,
@@ -29,22 +43,68 @@ def create_chat_endpoints(
 
     logger = logger or logging.getLogger(__name__)
 
+    @handle_errors(logger=logger)
     async def all_threads(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
-        try:
-            results = []
-            threads = await zmq_client.invoke("threadmanagerdealer.all_threads", user_id=token_claims['user_id'], timeout=2.0)
-            return Result.ok(data=threads[0])
+        threads = await zmq_client.invoke(THREAD["all_threads"], user_id=token_claims['user_id'])
+        return Result.ok(data=threads[0])
 
-        except HTTPException as e:
-            raise e
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=str(e)
-            )
+    @handle_errors(logger=logger)
+    async def new_thread(
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+    ):
+        result = await zmq_client.invoke(THREAD["new_thread"], user_id=token_claims['user_id'])
+        return Result.ok(data=result[0])
+
+    @handle_errors(logger=logger)
+    async def load_messages(
+        thread_id: str,
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+    ):
+        messages = await zmq_client.invoke(
+            THREAD["load_messages"],
+            user_id=token_claims['user_id'],
+            thread_id=thread_id
+        )
+        return Result.ok(data=messages[0])
+
+    @handle_errors(logger=logger)
+    async def models(
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+    ):
+        models = await zmq_client.invoke(AGENT["models"])
+        return Result.ok(data=models[0])
+
+
+    class ChatRequest(BaseModel):
+        """聊天请求"""
+        messages: List[str] = Field(..., description="消息列表")
+        thread_id: str = Field(..., description="线程ID")
+
+    @handle_errors(logger=logger)
+    async def chat(
+        chat_request: ChatRequest,
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+    ):
+        async def stream_response():
+            async for chunk in zmq_client.stream(
+                AGENT["chat"],
+                user_id=token_claims['user_id'],
+                messages=chat_request.messages,
+                thread_id=chat_request.thread_id
+            ):
+                if isinstance(chunk, TextChunk):
+                    yield chunk.content
+        return StreamingResponse(
+            content=stream_response(),
+            media_type="text/event-stream"
+        )
 
     return [
-        (HttpMethod.GET, f"{prefix}/chat/threads", all_threads),
+        (HttpMethod.POST, f"{prefix}/chat/new_thread", new_thread),
+        (HttpMethod.GET,  f"{prefix}/chat/threads", all_threads),
+        (HttpMethod.GET,  f"{prefix}/chat/thread/{{thread_id}}/messages", load_messages),
+        (HttpMethod.GET,  f"{prefix}/chat/models", models),
+        (HttpMethod.POST, f"{prefix}/chat/complete", chat),
     ]

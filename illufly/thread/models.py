@@ -21,7 +21,7 @@ class Thread(BaseModel):
     user_id: str = Field(..., description="用户ID")
     thread_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="对话ID")
     title: str = Field(default="", description="对话标题")
-    created_at: datetime = Field(default_factory=datetime.now, description="对话创建时间")
+    created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="对话创建时间")
 
 @serialize
 class HistoryMessage(BaseModel):
