@@ -111,7 +111,7 @@ async def test_chat_fake_basic(chat_fake_service, router_address, zmq_context):
     
     # 发送请求并收集响应
     responses = []
-    async for chunk in client.call_service("chatfake.chat", messages="Test message", thread_id=thread_id):
+    async for chunk in client.stream("chatfake.chat", messages="Test message", thread_id=thread_id):
         logger.info(f"chunk: {chunk}")
         if isinstance(chunk, TextChunk):
             responses.append(chunk.content)
@@ -131,13 +131,13 @@ async def test_chat_fake_multiple_responses(chat_fake_service, router_address, z
     
     # 第一次调用
     responses1 = []
-    async for chunk in client.call_service("chatfake.chat", "Test 1"):
+    async for chunk in client.stream("chatfake.chat", "Test 1"):
         if isinstance(chunk, TextChunk):
             responses1.append(chunk.content)
     
     # 第二次调用
     responses2 = []
-    async for chunk in client.call_service("chatfake.chat", "Test 2"):
+    async for chunk in client.stream("chatfake.chat", "Test 2"):
         if isinstance(chunk, TextChunk):
             responses2.append(chunk.content)
     
@@ -154,7 +154,7 @@ async def test_chat_openai_basic(chat_openai_service, router_address, zmq_contex
     
     # 发送请求并收集响应
     responses = []
-    async for chunk in client.call_service("mychat.chat", messages="请重复一遍这句话：我很棒！", thread_id=thread_id):
+    async for chunk in client.stream("mychat.chat", messages="请重复一遍这句话：我很棒！", thread_id=thread_id):
         logger.info(f"chunk: {chunk}")
         if isinstance(chunk, TextChunk):
             responses.append(chunk.content)
@@ -175,7 +175,7 @@ async def test_runnable_tool_calls(chat_openai_service: ChatOpenAI, router_addre
     messages = "请帮我确认明天广州是否适合晒被子"
     
     final_text = ""
-    async for chunk in client.call_service("mychat.chat", messages, thread_id=thread_id):
+    async for chunk in client.stream("mychat.chat", messages, thread_id=thread_id):
         logger.info(f"[{chunk.block_type}] {chunk.content}")
         if isinstance(chunk, TextFinal):
             final_text = chunk.content
@@ -205,7 +205,7 @@ async def test_tool_calls(chat_openai_service: ChatOpenAI, router_address, zmq_c
     # 第一阶段：获取工具调用请求
     assistant_messages = []
     tool_calls = []
-    async for chunk in client.call_service("mychat.chat", messages=messages, thread_id=thread_id, tools=[GetWeather.to_openai()]):
+    async for chunk in client.stream("mychat.chat", messages=messages, thread_id=thread_id, tools=[GetWeather.to_openai()]):
         # logger.info(f"chunk: {chunk}")
         if isinstance(chunk, ToolCallFinal):
             tool_calls.append(chunk)
@@ -254,7 +254,7 @@ async def test_tool_calls(chat_openai_service: ChatOpenAI, router_address, zmq_c
     
     # 第二阶段：处理工具结果
     final_text = ""
-    async for chunk in client.call_service("mychat.chat", messages, thread_id=thread_id, tools=[GetWeather.to_openai()]):
+    async for chunk in client.stream("mychat.chat", messages, thread_id=thread_id, tools=[GetWeather.to_openai()]):
         if isinstance(chunk, TextFinal):
             final_text = chunk.text
     
@@ -267,7 +267,7 @@ async def test_list_models(chat_openai_service: ChatOpenAI, router_address, zmq_
     client = ClientDealer(router_address, context=zmq_context, timeout=5.0)
     
     models = []
-    async for item in client.call_service("mychat.models"):
+    async for item in client.stream("mychat.models"):
         logger.info(f"model info: {item.__class__} / {item}")
         models = [m['id'] for m in item]
     logger.info(f"{models}")

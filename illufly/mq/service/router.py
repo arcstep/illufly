@@ -192,6 +192,7 @@ class ServiceRouter:
             - multipart[1] 为消息类型
             - multipart[2:] 根据消息类型各自约定
         """
+        self._logger.info(f"Routing messages on {self._address}, {self._socket}")
         while self._running:
             try:
                 multipart = await self._socket.recv_multipart()

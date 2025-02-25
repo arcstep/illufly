@@ -137,7 +137,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
         self._is_overload = False
         self._router_config = None  # 存储从 Router 获取的配置
         self._heartbeat_interval = None  # 将从 Router 配置中获取
-        self._group = group or self.__class__.__name__.lower()
+        self._group = group or self.__class__.__name__
         
         # 从类注册表中复制服务方法到实例
         self._handlers = {}
@@ -361,6 +361,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                         handler = self._handlers[func_name]['handler']
                         handler_info = self._registry[func_name]
                         is_stream = handler_info['stream']
+                        is_coroutine = handler_info['is_coroutine']
                     else:
                         await self._send_error(
                             client_id,
@@ -398,7 +399,10 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                             ])
                         else:
                             # 处理普通响应
-                            result = await handler(*request.args, **request.kwargs)
+                            if is_coroutine:
+                                result = await handler(*request.args, **request.kwargs)
+                            else:
+                                result = handler(*request.args, **request.kwargs)
                             reply = ReplyBlock(
                                 request_id=request.request_id,
                                 result=result

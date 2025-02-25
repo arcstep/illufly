@@ -38,7 +38,7 @@ class BaseChat(ABC):
     """Base Chat Generator"""
     def __init__(self, logger: logging.Logger = None):
         self._logger = logger or logging.getLogger(__name__)
-        self.group = self.__class__.__name__.lower()
+        self.group = self.__class__.__name__
 
     def create_request_id(self):
         """创建请求ID"""

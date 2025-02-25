@@ -28,7 +28,7 @@ class ChatOpenAI(BaseChat):
         super().__init__(logger=logger)
 
         # 按照 imitator 参数指定组名，以便于作为 DEALER 服务注册时按 imitator 作为默认分组
-        self.group = self.imitator.lower()
+        self.group = self.imitator
 
         self.default_call_args = {
             "model": model or os.getenv(f"{self.imitator}_MODEL_ID") or "gpt-4o-mini"

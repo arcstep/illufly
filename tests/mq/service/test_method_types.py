@@ -58,26 +58,26 @@ async def test_method_types(router, router_address):
 
     try:
         # 1. 测试同步方法        
-        async for b in client.call_service("sync", 1):
-            logging.info(f"call_service sync result: {b}")
+        async for b in client.stream("sync", 1):
+            logging.info(f"stream sync result: {b}")
             assert b == 2
         
         # 2. 测试同步生成器
         numbers = []
-        async for num in client.call_service("sync_gen", 0, 3):
-            logging.info(f"call_service sync_gen result: {num}")
+        async for num in client.stream("sync_gen", 0, 3):
+            logging.info(f"stream sync_gen result: {num}")
             numbers.append(num)
         assert numbers == [0, 1, 2]
         
         # 3. 测试异步方法
-        async for b in client.call_service("async", 1):
-            logging.info(f"call_service async result: {b}")
+        async for b in client.stream("async", 1):
+            logging.info(f"stream async result: {b}")
             assert b == 2
         
         # 4. 测试异步生成器
         numbers = []
-        async for num in client.call_service("async_gen", 0, 3):
-            logging.info(f"call_service async_gen result: {num}")
+        async for num in client.stream("async_gen", 0, 3):
+            logging.info(f"stream async_gen result: {num}")
             numbers.append(num)
         assert numbers == [0, 1, 2]
 
