@@ -47,7 +47,7 @@ class HistoryMessage(BaseModel):
     images: List[str] = Field(default=[], description="图片列表")
     audios: List[str] = Field(default=[], description="音频列表")
     videos: List[str] = Field(default=[], description="视频列表")
-    tool_calls: List[Dict[str, Any]] = Field(default=[], description="工具调用列表")
+    tool_calls: List[Any] = Field(default=[], description="工具调用列表")
     tool_id: str = Field(default="", description="工具ID")
     favorite_id: Union[str, None] = Field(default=None, description="收藏ID")
 

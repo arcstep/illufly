@@ -54,5 +54,5 @@ class ThreadManagerDealer(ServiceDealer):
             self.db.values(
                 prefix=HistoryMessage.get_thread_prefix(user_id, thread_id)
             ),
-            key=lambda x: x.created_at
+            key=lambda x: x.completed_at
         )

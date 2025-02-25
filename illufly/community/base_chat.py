@@ -173,14 +173,10 @@ class BaseChat(ABC):
 
                 yield chunk
 
-            # 如果没有工具调用，或者虽然有工具回调返回但无内置的工具立即调用，则结束对话，等待对话客户端处理
-            if not tool_calls or not tools_callable:
-                return
-            
             # 准备基于工具自动调用结果的下一轮对话
             conv_messages.append({
                 "role": "assistant",
-                "tool_calls": [chunk.content for chunk in tool_calls],
+                "tool_calls": [chunk.content for chunk in tool_calls] or [],
                 "content": "\n".join([chunk.content for chunk in text_finals])
             })
             # 生成回答流事件
@@ -190,11 +186,15 @@ class BaseChat(ABC):
                 message_id=uuid.uuid4().hex[:8],
                 message_type="text",
                 role=conv_messages[-1]["role"],
-                text=conv_messages[-1]["content"],
-                tool_calls=conv_messages[-1]["tool_calls"],
+                text=conv_messages[-1].get("content", ""),
+                tool_calls=conv_messages[-1].get("tool_calls", []),
                 created_at=answer_created_at,
                 completed_at=answer_completed_at
             )
+
+            # 如果没有工具调用，或者虽然有工具回调返回但无内置的工具立即调用，则结束对话，等待对话客户端处理
+            if not tool_calls or not tools_callable:
+                return            
 
             # 执行工具调用
             self._logger.info(f"执行工具调用: {[t.content for t in tool_calls]}")
