@@ -177,6 +177,7 @@ async def create_app(
     # OpenAI 路由
     openai_handlers = create_openai_endpoints(
         app=app,
+        zmq_client=zmq_client,
         api_keys_manager=api_keys_manager,
         prefix=prefix,
         logger=logger

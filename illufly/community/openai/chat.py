@@ -65,6 +65,8 @@ class ChatOpenAI(BaseChat):
         completion = await self.client.chat.completions.create(**_kwargs)
 
         usage = None
+        finish_reason = None
+        model = None
         final_text = ""
         final_tool_calls = {}
         last_tool_call_id = None
@@ -90,11 +92,12 @@ class ChatOpenAI(BaseChat):
                 model = response.model
                 created_at = response.created
                 response_id = response.id
+                finish_reason = response.choices[0].finish_reason
 
                 if response.usage:
                     usage = response.usage
 
-                ai_output = response.choices[0].delta
+                ai_output = response.choices[0].delta if response.choices else None
                 if ai_output.tool_calls:
                     for tool_call in ai_output.tool_calls:
                         # 处理ID可能分块到达的情况
@@ -123,18 +126,26 @@ class ChatOpenAI(BaseChat):
                             tool_call_id=tool_id,
                             tool_name=tool_call.function.name or "",
                             arguments=tool_call.function.arguments or "",
-                            created_at=created_at
+                            created_at=created_at,
+                            model=model,
+                            finish_reason=finish_reason
                         )
 
                 else:
                     content = ai_output.content
                     if content:
                         final_text += content
-                        yield TextChunk(response_id=response.id, text=content, created_at=created_at)
+                        yield TextChunk(
+                            response_id=response.id,
+                            text=content,
+                            model=model,
+                            finish_reason=finish_reason,
+                            created_at=created_at
+                        )
 
                 # 如果返回携带了结束信号，则退出循环
-                if response.choices[0].finish_reason:
-                    self._logger.info(f"收到流式结束信号: {response.choices[0].finish_reason}")
+                if finish_reason:
+                    self._logger.info(f"收到流式结束信号: {finish_reason}")
                     break
 
             # 循环结束后立即释放资源
@@ -147,6 +158,8 @@ class ChatOpenAI(BaseChat):
                 for key, call_data in final_tool_calls.items():
                     yield ToolCallFinal(
                         response_id=response_id,
+                        model=model,
+                        finish_reason=finish_reason,
                         tool_call_id=key,
                         tool_name=call_data['name'].strip(),
                         arguments=call_data['arguments'].strip(),
