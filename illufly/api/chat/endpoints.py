@@ -71,9 +71,10 @@ def create_chat_endpoints(
 
     @handle_errors(logger=logger)
     async def models(
+        imitator: str = "OPENAI",
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
-        models = await zmq_client.invoke(AGENT["models"])
+        models = await zmq_client.invoke(f"{imitator}.models")
         return Result.ok(data=models[0])
 
 
@@ -81,6 +82,7 @@ def create_chat_endpoints(
         """聊天请求"""
         messages: List[str] = Field(..., description="消息列表")
         thread_id: str = Field(..., description="线程ID")
+        imitator: str = Field(default="OPENAI", description="模仿者")
 
     @handle_errors(logger=logger)
     async def chat(
@@ -89,7 +91,7 @@ def create_chat_endpoints(
     ):
         async def stream_response():
             async for chunk in zmq_client.stream(
-                AGENT["chat"],
+                f"{chat_request.imitator}.chat",
                 user_id=token_claims['user_id'],
                 messages=chat_request.messages,
                 thread_id=chat_request.thread_id

@@ -75,9 +75,9 @@ async def verify_api_key(
 
 def create_openai_endpoints(
     app: FastAPI,
+    imitator: str,
     zmq_client: ClientDealer,
     api_keys_manager: ApiKeysManager,
-    prefix: str = "/api",
     logger: logging.Logger = None
 ) -> Dict[str, Tuple[HttpMethod, str, Callable]]:
     """创建 OpenAI 接口"""
@@ -158,7 +158,7 @@ def create_openai_endpoints(
                 finish_reason = None
 
                 async for chunk in zmq_client.stream(
-                    AGENT["chat"],
+                    f'{imitator}.chat',
                     user_id=api_key,
                     thread_id=CHAT_DIRECTLY_THREAD_ID,
                     **chat_request.model_dump()
@@ -262,12 +262,12 @@ def create_openai_endpoints(
         Security:
             - Bearer Authentication
         """
-        models = await zmq_client.invoke(AGENT["models"])
+        models = await zmq_client.invoke(f'{imitator}.models')
         return ModelListResponse(
             data=models[0]
         )
 
     return [
-        (HttpMethod.POST, f"{prefix}/openai/v1/chat/completions", chat_completion),
-        (HttpMethod.GET,  f"{prefix}/openai/v1/models", list_models),
+        (HttpMethod.POST, f"/chat/completions", chat_completion),
+        (HttpMethod.GET,  f"/models", list_models),
     ]
