@@ -172,19 +172,15 @@ async def create_app(
         logger=logger
     )
     for (method, path, handler) in auth_handlers:
-        getattr(app, method)(path)(handler)
+        app.add_api_route(
+            path=path,
+            endpoint=handler,
+            methods=[method],
+            response_model=getattr(handler, "__annotations__", {}).get("return"),
+            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
+            description=getattr(handler, "__doc__", None),
+            tags=["Illufly Backend - Auth"])
 
-    # OpenAI 路由
-    openai_handlers = create_openai_endpoints(
-        app=app,
-        zmq_client=zmq_client,
-        api_keys_manager=api_keys_manager,
-        prefix=prefix,
-        logger=logger
-    )
-    for (method, path, handler) in openai_handlers:
-        getattr(app, method)(path)(handler)
-    
     # Chat 路由
     chat_handlers = create_chat_endpoints(
         app=app,
@@ -193,8 +189,44 @@ async def create_app(
         logger=logger
     )
     for (method, path, handler) in chat_handlers:
-        getattr(app, method)(path)(handler)
+        app.add_api_route(
+            path=path,
+            endpoint=handler,
+            methods=[method],
+            response_model=getattr(handler, "__annotations__", {}).get("return"),
+            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
+            description=getattr(handler, "__doc__", None),
+            tags=["Illufly Backend - Chat"])
 
+    # OpenAI 兼容接口使用独立的 FastAPI 实例
+    openai_app = FastAPI()
+    openai_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,  # 关键：禁用凭证
+        allow_methods=["*"],
+        allow_headers=["*"]
+    )
+
+    openai_handlers = create_openai_endpoints(
+        app=openai_app,
+        zmq_client=zmq_client,
+        api_keys_manager=api_keys_manager,
+        prefix=prefix,
+        logger=logger
+    )
+    for (method, path, handler) in openai_handlers:
+        app.add_api_route(
+            path=path,
+            endpoint=handler,
+            methods=[method, "OPTIONS"],
+            response_model=getattr(handler, "__annotations__", {}).get("return"),
+            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
+            description=getattr(handler, "__doc__", None),
+            tags=["OpenAI Compatible"]
+        )
+    app.mount("/openai", openai_app)
+    
     # 加载静态资源环境
     static_manager = None
     if Path(__file__).parent.joinpath("static").exists() and static_dir is None:

@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Union, Dict, Tuple, Callable
 
-from fastapi import FastAPI, HTTPException, Depends, Header, Security
+from fastapi import FastAPI, HTTPException, Depends, Header, Security, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -38,6 +38,7 @@ security = HTTPBearer(
 )
 
 async def verify_api_key(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Security(security)
 ) -> str:
     """验证 API 密钥
@@ -51,6 +52,9 @@ async def verify_api_key(
     Raises:
         HTTPException: 当 API 密钥无效时抛出
     """
+    # 跳过OPTIONS请求的认证
+    if request.method == "OPTIONS":
+        return
 
     api_key = credentials.credentials  # 获取 token 部分
     if not api_key.startswith("sk-"):
@@ -143,26 +147,34 @@ def create_openai_endpoints(
 
     # 流式响应模型
     @handle_errors(logger=logger)
-    async def chat_completion(request: ChatRequest, api_key: str = Depends(verify_api_key)):
+    async def chat_completion(chat_request: ChatRequest, api_key: str = Depends(verify_api_key)):
+        logger.info(f"chat_request: {chat_request}")
         created_timestamp = int(datetime.now().timestamp())
-
-        if request.stream:
+        if chat_request.stream:
             # 流式响应
             async def generate():
+                finish_sent = False
+                model = None
+                finish_reason = None
+
                 async for chunk in zmq_client.stream(
                     AGENT["chat"],
                     user_id=api_key,
                     thread_id=CHAT_DIRECTLY_THREAD_ID,
-                    **request.model_dump()
+                    **chat_request.model_dump()
                 ):
+                    finish_reason = getattr(chunk, 'finish_reason', finish_reason)
+                    logger.info(f"block_type: {chunk.block_type}, finish_reason: {finish_reason}")
+
                     if isinstance(chunk, (TextChunk, ToolCallChunk)):
+                        model = getattr(chunk, 'model', model)
                         data_dict = {
                             'id': chunk.response_id,
                             'object': 'chat.completion.chunk',
-                            'created': chunk.created_at,
+                            'created': int(chunk.created_at),
                             'service_tier': None,
-                            'system_fingerprint': None,
-                            'model': getattr(chunk, 'model', None),
+                            'system_fingerprint': "fp_123456",
+                            'model': model,
                             'choices': [{
                                 'index': 0,
                                 'delta': {
@@ -170,27 +182,47 @@ def create_openai_endpoints(
                                     'content': chunk.content,
                                     'tool_calls': [t.content for t in chunk.tool_calls] if isinstance(chunk, ToolCallChunk) else None
                                 },
-                                'finish_reason': chunk.finish_reason
+                                "logprobs": None,
+                                'finish_reason': finish_reason
                             }]
                         }
-                        yield f"data: {json.dumps(data_dict)}\n\n"
+                        if chunk.content or chunk.finish_reason:
+                            yield f"data: {json.dumps(data_dict, ensure_ascii=False)}\n\n"
+                        
+                        # 标记结束状态
+                        if chunk.finish_reason:
+                            finish_sent = True
                     
-                # 发送结束标志
-                yield "data: [DONE]\n\n"
-            return StreamingResponse(generate(), media_type="text/event-stream")
+                # 确保发送结束标记
+                if not finish_sent:
+                    yield "data: [DONE]\n\n"
+                else:
+                    # 部分客户端需要显式结束符
+                    yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "X-Accel-Buffering": "no",  # 关键头
+                    "Connection": "keep-alive",
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache"
+                }
+            )
 
         else:
             final_text = ""
             final_tool_calls = []
             usage = None
-            model = request.model
+            model = chat_request.model
             response_id = None
             finish_reason = None
             async for chunk in zmq_client.stream(
                 AGENT["chat"],
                 user_id=api_key,
                 thread_id=CHAT_DIRECTLY_THREAD_ID,
-                **request.model_dump()
+                **chat_request.model_dump()
             ):
                 if isinstance(chunk, (TextFinal, ToolCallFinal)):
                     model = chunk.model
@@ -237,5 +269,5 @@ def create_openai_endpoints(
 
     return [
         (HttpMethod.POST, f"{prefix}/openai/v1/chat/completions", chat_completion),
-        (HttpMethod.GET, f"{prefix}/openai/v1/models", list_models),
+        (HttpMethod.GET,  f"{prefix}/openai/v1/models", list_models),
     ]

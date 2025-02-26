@@ -75,7 +75,7 @@ class ChatOpenAI(BaseChat):
         try:
             async for response in completion:
                 # 打印流式块信息
-                self._logger.debug(
+                self._logger.info(
                     f"收到流式块 | ID: {response.id} "
                     f"response: {response}"
                 )
@@ -135,6 +135,7 @@ class ChatOpenAI(BaseChat):
                     content = ai_output.content
                     if content:
                         final_text += content
+                        self._logger.info(f"收到流式文本块: {content}")
                         yield TextChunk(
                             response_id=response.id,
                             text=content,
@@ -145,6 +146,13 @@ class ChatOpenAI(BaseChat):
 
                 # 如果返回携带了结束信号，则退出循环
                 if finish_reason:
+                    yield TextChunk(
+                        response_id=response.id,
+                        text="",
+                        model=model,
+                        finish_reason=finish_reason,
+                        created_at=created_at
+                    )
                     self._logger.info(f"收到流式结束信号: {finish_reason}")
                     break
 
