@@ -163,7 +163,9 @@ class BaseChat(ABC):
 
             # 生成查询流事件
             logger.info(f"conv_messages: {conv_messages}")
-            async for chunk in self.generate(conv_messages, tools=tools, **kwargs):
+            # 如果 tools 为空，则不传递 tools 参数：
+            #   Qwen 接口不兼容 []
+            async for chunk in self.generate(conv_messages, tools=(tools or None), **kwargs):
                 answer_created_at = query_completed_at
                 answer_completed_at = datetime.now().timestamp()
                 if isinstance(chunk, TextFinal):

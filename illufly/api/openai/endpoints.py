@@ -15,15 +15,11 @@ import logging
 from datetime import datetime
 
 from ...mq import ClientDealer
+from ...community.models import BlockType
 from ..api_keys import ApiKeysManager
 from ..models import HttpMethod, Result
 from ...community.models import TextChunk, ToolCallChunk, TextFinal, ToolCallFinal, UsageBlock
 from ..http import handle_errors
-
-AGENT = {
-    "models": "Agent.models",
-    "chat": "Agent.chat",
-}
 
 CHAT_DIRECTLY_THREAD_ID = "chat_directly_thread"
 
@@ -89,24 +85,24 @@ def create_openai_endpoints(
 
     class ChatRequest(BaseModel):
         messages: List[ChatMessage] = Field(..., description="消息列表")
-        model: str = Field(..., description="模型名称")
-        frequency_penalty: Optional[float] = Field(default=0.0, description="频率惩罚")
+        model: str = Field(default=None, description="模型名称")
+        frequency_penalty: Optional[float] = Field(default=None, description="频率惩罚")
         max_tokens: Optional[int] = Field(default=None, description="最大token数")
-        presence_penalty: Optional[float] = Field(default=0.0, description="存在惩罚")
+        presence_penalty: Optional[float] = Field(default=None, description="存在惩罚")
         response_format: Optional[dict] = Field(default=None, description="响应格式")
         stream: Optional[bool] = Field(default=False, description="是否流式")
         stream_options: Optional[dict] = Field(default=None, description="流式选项")
-        temperature: Optional[float] = Field(default=0.0, description="温度")
-        top_p: Optional[float] = Field(default=1.0, description="top_p")
+        temperature: Optional[float] = Field(default=None, description="温度")
+        top_p: Optional[float] = Field(default=None, description="top_p")
         tools: Optional[List[dict]] = Field(default=None, description="工具列表")
         tool_choice: Optional[dict] = Field(default=None, description="工具选择")
-        logprobs: Optional[bool] = Field(default=False, description="是否返回logprobs")
+        logprobs: Optional[bool] = Field(default=None, description="是否返回logprobs")
         top_logprobs: Optional[int] = Field(default=None, description="返回的top logprobs数量")
         modalities: Optional[List[str]] = Field(default=None, description="模态")
         audio: Optional[dict] = Field(default=None, description="音频")
         seed: Optional[int] = Field(default=None, description="随机种子")
         stop: Optional[List[str]] = Field(default=None, description="停止词")
-        n: Optional[int] = Field(default=1, ge=1, le=10, description="返回的候选数量")
+        n: Optional[int] = Field(default=None, ge=1, le=10, description="返回的候选数量")
         logit_bias: Optional[dict] = Field(default=None, description="logit偏置")
         enable_search: Optional[bool] = Field(default=None, description="是否启用搜索")
         user: Optional[str] = Field(default=None, description="用户标识")
@@ -115,7 +111,15 @@ def create_openai_endpoints(
 
         def model_dump(self, *args, **kwargs):
             kwargs.setdefault('exclude_none', True)
-            return super().model_dump(*args, **kwargs)
+            result = super().model_dump(*args, **kwargs)
+            
+            # 移除空列表、空字典和空字符串
+            return {
+                k: v for k, v in result.items() 
+                if not (v is None or 
+                        (isinstance(v, (list, dict, str)) and len(v) == 0) or
+                        (isinstance(v, (float, int)) and v == 0 and k not in ['temperature', 'frequency_penalty', 'presence_penalty', 'top_p']))
+            }
 
     # 响应模型
     class UsageInfo(BaseModel):
@@ -143,12 +147,16 @@ def create_openai_endpoints(
 
         def model_dump(self, *args, **kwargs):
             kwargs.setdefault('exclude_none', True)
-            return super().model_dump(*args, **kwargs)
+            result = super().model_dump(*args, **kwargs)
+            return {
+                k: v for k, v in result.items() 
+                if not (v is None or (isinstance(v, (list, dict, str)) and len(v) == 0))
+            }
 
     # 流式响应模型
     @handle_errors(logger=logger)
     async def chat_completion(chat_request: ChatRequest, api_key: str = Depends(verify_api_key)):
-        logger.info(f"chat_request: {chat_request}")
+        logger.info(f"chat_request: {chat_request.model_dump()}")
         created_timestamp = int(datetime.now().timestamp())
         if chat_request.stream:
             # 流式响应
@@ -166,7 +174,10 @@ def create_openai_endpoints(
                     finish_reason = getattr(chunk, 'finish_reason', finish_reason)
                     logger.info(f"block_type: {chunk.block_type}, finish_reason: {finish_reason}")
 
-                    if isinstance(chunk, (TextChunk, ToolCallChunk)):
+                    is_text_chunk = getattr(chunk, 'block_type', None) == BlockType.TEXT_CHUNK
+                    is_tool_chunk = getattr(chunk, 'block_type', None) == BlockType.TOOL_CALL_CHUNK
+
+                    if is_text_chunk or is_tool_chunk:
                         model = getattr(chunk, 'model', model)
                         data_dict = {
                             'id': chunk.response_id,
@@ -180,7 +191,7 @@ def create_openai_endpoints(
                                 'delta': {
                                     'role': 'assistant',
                                     'content': chunk.content,
-                                    'tool_calls': [t.content for t in chunk.tool_calls] if isinstance(chunk, ToolCallChunk) else None
+                                    'tool_calls': [t.content for t in chunk.tool_calls] if is_tool_chunk else None
                                 },
                                 "logprobs": None,
                                 'finish_reason': finish_reason
@@ -219,19 +230,22 @@ def create_openai_endpoints(
             response_id = None
             finish_reason = None
             async for chunk in zmq_client.stream(
-                AGENT["chat"],
+                f'{imitator}.chat',
                 user_id=api_key,
                 thread_id=CHAT_DIRECTLY_THREAD_ID,
                 **chat_request.model_dump()
             ):
-                if isinstance(chunk, (TextFinal, ToolCallFinal)):
+                is_text_final = getattr(chunk, 'block_type', None) == BlockType.TEXT_FINAL
+                is_tool_final = getattr(chunk, 'block_type', None) == BlockType.TOOL_CALL_FINAL
+                is_usage = getattr(chunk, 'block_type', None) == BlockType.USAGE
+                if is_text_final or is_tool_final:
                     model = chunk.model
-                    response_id = chunk.response_id
+                    response_id = chunk.response_id or str(uuid.uuid4().hex)
                     finish_reason = chunk.finish_reason
                     final_text += chunk.content
-                    if isinstance(chunk, ToolCallFinal):
+                    if is_tool_final:
                         final_tool_calls.append(chunk)
-                elif isinstance(chunk, UsageBlock):
+                elif is_usage:
                     usage = chunk
 
             return ChatResponse(

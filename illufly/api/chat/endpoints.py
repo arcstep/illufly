@@ -9,6 +9,7 @@ from enum import Enum
 
 from ...rocksdb import IndexedRocksDB
 from ...mq.service import ClientDealer
+from ...community.models import BlockType
 from ..models import Result, HttpMethod
 from ..http import handle_errors
 from ..auth import require_user, TokensManager, TokenClaims
@@ -96,11 +97,20 @@ def create_chat_endpoints(
                 messages=chat_request.messages,
                 thread_id=chat_request.thread_id
             ):
-                if isinstance(chunk, TextChunk):
-                    yield chunk.content
+                if getattr(chunk, 'block_type', None) == BlockType.TEXT_CHUNK:
+                    yield f'data: {chunk.content}\n\n'
+
+            yield "data: [DONE]\n\n"
+
         return StreamingResponse(
             content=stream_response(),
-            media_type="text/event-stream"
+            media_type="text/event-stream",
+            headers={
+                "X-Accel-Buffering": "no",  # 关键头
+                "Connection": "keep-alive",
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache"
+            }
         )
 
     return [
