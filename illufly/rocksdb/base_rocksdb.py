@@ -229,7 +229,10 @@ class BaseRocksDB:
                     break
             
             count += 1
-            yield key, it.value()
+            try:
+                yield key, it.value()
+            except Exception as e:
+                self._logger.error(f"iter error: {e}")
             
             if reverse:
                 it.prev()
