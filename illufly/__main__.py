@@ -11,7 +11,7 @@ def _parse_args():
     parser = argparse.ArgumentParser(description="Illufly API 服务")
     arguments = [
         ("--db-path", "./db", "数据库路径 (默认: ./db)"),
-        ("--imitators", None, "模仿者列表 (默认: OPENAI)"),
+        ("--openai", None, "OpenAI模仿者列表 (默认: OPENAI)"),
         ("--title", "Illufly API", "API 标题 (默认: Illufly API)"),
         ("--description", "Illufly 后端 API 服务", "API 描述"),
         ("--prefix", "/api", "API 路由前缀 (默认: /api)"),
@@ -25,7 +25,7 @@ def _parse_args():
     ]
     
     for arg, default, help in arguments:
-        if arg in ["--cors-origins", "--imitators"]:
+        if arg in ["--cors-origins", "--openai"]:
             # 特殊处理 cors-origins 参数，支持多个参数值
             parser.add_argument(arg, nargs='+', default=default, help=help)
         else:
@@ -47,7 +47,7 @@ async def main():
     
     app = await create_app(
         db_path=args.db_path,
-        imitators=args.imitators,
+        openai_imitators=args.openai,
         title=args.title,
         description=args.description,
         prefix=args.prefix,

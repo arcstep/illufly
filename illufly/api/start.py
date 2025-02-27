@@ -75,7 +75,7 @@ def setup_spa_middleware(app: FastAPI, static_dir: Path, exclude_paths: List[str
 
 async def create_app(
     db_path: str = "./db",
-    imitators: Optional[List[str]] = None,
+    openai_imitators: Optional[List[str]] = None,
     router_address: str = "inproc://router-bus",
     title: str = "Illufly API",
     description: str = "Illufly 后端 API 服务",
@@ -86,7 +86,10 @@ async def create_app(
 ) -> FastAPI:
     """创建 FastAPI 应用"""
 
-    imitators = imitators or ["OPENAI"]
+    if isinstance(openai_imitators, str):
+        openai_imitators = [openai_imitators]
+    elif not openai_imitators:
+        openai_imitators = ["OPENAI"]
 
     setup_logging(log_level)
     logger = logging.getLogger("illufly")
@@ -130,7 +133,7 @@ async def create_app(
 
     # 初始化 Agent
     agents = []
-    for imitator in imitators:
+    for imitator in openai_imitators:
         agent = BaseAgent(
             db=db,
             group=imitator,
@@ -161,7 +164,7 @@ async def create_app(
     mount_agent_api(app, prefix, zmq_client, tokens_manager, logger)
 
     # 按照 Imitator 挂载 OpenAI 兼容接口
-    mount_openai_api(app, prefix, zmq_client, api_keys_manager, imitators, logger)
+    mount_openai_api(app, prefix, zmq_client, api_keys_manager, openai_imitators, logger)
     
     mount_static_files(app, prefix, static_dir, logger)
 
@@ -239,7 +242,7 @@ def mount_agent_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, tokens_
             description=getattr(handler, "__doc__", None),
             tags=["Illufly Backend - Chat"])
 
-def mount_openai_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, api_keys_manager: ApiKeysManager, imitators: List[str], logger: logging.Logger):
+def mount_openai_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, api_keys_manager: ApiKeysManager, openai_imitators: List[str], logger: logging.Logger):
     # OpenAI 兼容接口使用独立的 FastAPI 实例
     openai_app = FastAPI()
     openai_app.add_middleware(
@@ -252,7 +255,7 @@ def mount_openai_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, api_ke
 
 
     # 注册路由
-    for imitator in imitators:
+    for imitator in openai_imitators:
         # 修改create_openai_endpoints函数调用，不需要传递prefix
         openai_handlers = create_openai_endpoints(
             app=openai_app,
