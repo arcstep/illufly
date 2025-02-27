@@ -42,15 +42,18 @@ class ChatOpenAI(BaseChat):
 
     async def list_models(self) -> List[Dict[str, Any]]:
         """列出所有模型，返回包含关键信息的字典列表"""
-        response = await self.client.models.list()
-        if response.data:
-            return [{
-                "id": model.id,
-                # "created": model.created,
-                "owned_by": model.owned_by,
-                "object": model.object,
-            } for model in response.data]
-        else:
+        try:
+            response = await self.client.models.list()
+            if response.data:
+                return [{
+                    "id": model.id,
+                    "owned_by": model.owned_by,
+                    "object": model.object,
+                } for model in response.data]
+            else:
+                return []
+        except Exception as e:
+            self._logger.error(f"列出模型失败: {e}")
             return []
 
     async def generate(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):

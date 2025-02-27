@@ -6,10 +6,10 @@ import logging
 import json
 import uuid
 
-from ..mq.models import StreamingBlock
+from ..mq.models import StreamingBlock, BlockType
 from ..thread.models import QueryBlock, AnswerBlock, ToolBlock
 from .base_tool import BaseTool
-from .models import TextFinal, ToolCallFinal
+from .models import TextFinal, ToolCallFinal, TextChunk
 
 logger = logging.getLogger(__name__)
 
@@ -165,15 +165,34 @@ class BaseChat(ABC):
             logger.info(f"conv_messages: {conv_messages}")
             # 如果 tools 为空，则不传递 tools 参数：
             #   Qwen 接口不兼容 []
-            async for chunk in self.generate(conv_messages, tools=(tools or None), **kwargs):
+            try:
+                async for chunk in self.generate(conv_messages, tools=(tools or None), **kwargs):
+                    answer_created_at = query_completed_at
+                    answer_completed_at = datetime.now().timestamp()
+                    if isinstance(chunk, TextFinal):
+                        text_finals.append(chunk)
+                    elif isinstance(chunk, ToolCallFinal):
+                        tool_calls.append(chunk)
+
+                    yield chunk
+
+            except Exception as e:
                 answer_created_at = query_completed_at
                 answer_completed_at = datetime.now().timestamp()
-                if isinstance(chunk, TextFinal):
-                    text_finals.append(chunk)
-                elif isinstance(chunk, ToolCallFinal):
-                    tool_calls.append(chunk)
+                logger.error(f"生成模型响应失败: {e}")
+                error_chunk = TextChunk(
+                    response_id=uuid.uuid4().hex[:8],
+                    text=f"生成模型响应失败: {str(e)}",
+                    model="unknown",
+                    finish_reason="stop",
+                    created_at=datetime.now().timestamp()
+                )
+                yield error_chunk
 
-                yield chunk
+                error_chunk.block_type = BlockType.TEXT_FINAL
+                yield error_chunk
+
+                text_finals.append(error_chunk)
 
             # 准备基于工具自动调用结果的下一轮对话
             conv_messages.append({
