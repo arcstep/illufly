@@ -160,7 +160,7 @@ class TokensManager:
                 key=None,
                 options={'verify_signature': False, 'verify_exp': False}
             )
-            self._logger.info(f"未验证的令牌: {unverified}")
+            self._logger.debug(f"未验证的令牌: {unverified}")
             user_id = unverified.get("user_id", None)
             device_id = unverified.get("device_id", None)
             if not user_id or not device_id:
@@ -181,7 +181,7 @@ class TokensManager:
 
                 # 白名单验证，确定是否撤销
                 if self.existing_access_token(user_id, device_id):
-                    self._logger.info(f"访问令牌验证成功: {valid_data}")
+                    self._logger.info(f"验证访问令牌: {valid_data}")
                     valid_data["token_type"] = TokenType.ACCESS
                     return Result.ok(data=valid_data)
                 else:

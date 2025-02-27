@@ -72,14 +72,14 @@ def require_user(
             )
 
         token_claims = verify_result.data
-        logger.info(f"验证用户信息: {token_claims}")
+        logger.debug(f"验证用户信息: {token_claims}")
 
         # 更新令牌到 response 的 cookie
         # JWT 的 encode 和 decode 通常基于对 CPU 可以忽略不计的 HMAC 计算
         if update_access_token:
             access_token = TokenClaims.create_access_token(**token_claims).jwt_encode()
             _set_auth_cookies(response, access_token, logger)
-            logger.info(f"设置令牌到 Cookie: {access_token}")
+            logger.debug(f"设置令牌到 Cookie: {access_token}")
 
         # 如果要求所有角色，则需要用户具备指定的角色
         if require_roles and not UserRole.has_role(require_roles, token_claims['roles']):
@@ -185,7 +185,7 @@ def create_auth_endpoints(
             )
         
         user_info = verify_result.data
-        logger.info(f"登录结果: {user_info}")
+        logger.debug(f"登录结果: {user_info}")
 
         # 检查用户状态
         if user_info['is_locked']:
@@ -209,7 +209,7 @@ def create_auth_endpoints(
             roles=user_info['roles'],
             device_id=device_id
         )
-        logger.info(f"更新设备刷新令牌: {device_id}")
+        logger.debug(f"更新设备刷新令牌: {device_id}")
 
         # 创建设备访问令牌
         result = _refresh_access_token(
@@ -218,10 +218,7 @@ def create_auth_endpoints(
             response=response
         )
 
-        return Result.ok(
-            data=result.data,
-            message="登录成功"
-        )
+        return result.data
 
     def _refresh_access_token(
         user_info: Dict[str, Any],
@@ -235,7 +232,7 @@ def create_auth_endpoints(
             username=user_info['username'],
             roles=user_info['roles']
         )
-        logger.info(f"创建设备访问令牌: {result}")
+        logger.debug(f"创建设备访问令牌: {result}")
         if result.is_ok():
             access_token = TokenClaims.create_access_token(**result.data).jwt_encode()
             _set_auth_cookies(response, access_token=access_token, logger=logger)
@@ -253,26 +250,26 @@ def create_auth_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, update_access_token=False, logger=logger))
     ):
         """注销接口"""
-        logger.info(f"要注销的用户信息: {token_claims}")
+        logger.debug(f"要注销的用户信息: {token_claims}")
 
         # 撤销当前设备的访问令牌
         tokens_manager.revoke_refresh_token(
             user_id=token_claims['user_id'],
             device_id=token_claims['device_id']
         )
-        logger.info(f"撤销当前设备的刷新令牌: {token_claims['user_id']}, {token_claims['device_id']}")
+        logger.debug(f"撤销当前设备的刷新令牌: {token_claims['user_id']}, {token_claims['device_id']}")
 
         # 撤销当前设备的访问令牌
         tokens_manager.revoke_access_token(
             user_id=token_claims['user_id'],
             device_id=token_claims['device_id']
         )
-        logger.info(f"撤销当前设备的访问令牌: {token_claims['user_id']}, {token_claims['device_id']}")
+        logger.debug(f"撤销当前设备的访问令牌: {token_claims['user_id']}, {token_claims['device_id']}")
 
         # 删除当前设备的cookie
         _set_auth_cookies(response, access_token=None, logger=logger)
 
-        return Result.ok(message="注销成功")
+        return {"message": "注销成功"}
 
     class ChangePasswordRequest(BaseModel):
         """修改密码请求"""
@@ -303,7 +300,7 @@ def create_auth_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """获取当前用户信息"""
-        return Result.ok(data=token_claims)
+        return token_claims
 
     class UpdateUserProfileRequest(BaseModel):
         """更新用户个人设置请求"""
@@ -330,7 +327,7 @@ def create_auth_endpoints(
                     detail=result.error
                 )
             result.message = "用户信息更新成功"
-            return result
+            return result.data
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

@@ -13,7 +13,7 @@ from ...community.models import BlockType
 from ..models import Result, HttpMethod
 from ..http import handle_errors
 from ..auth import require_user, TokensManager, TokenClaims
-from ..models import Result
+from ..models import Result, OpenaiRequest
 from ...community.models import TextChunk
 
 THREAD = {
@@ -56,7 +56,7 @@ def create_chat_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         result = await zmq_client.invoke(THREAD["new_thread"], user_id=token_claims['user_id'])
-        return Result.ok(data=result[0])
+        return result[0]
 
     @handle_errors(logger=logger)
     async def load_messages(
@@ -68,7 +68,7 @@ def create_chat_endpoints(
             user_id=token_claims['user_id'],
             thread_id=thread_id
         )
-        return Result.ok(data=messages[0])
+        return messages[0]
 
     @handle_errors(logger=logger)
     async def models(
@@ -76,12 +76,10 @@ def create_chat_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         models = await zmq_client.invoke(f"{imitator}.models")
-        return Result.ok(data=models[0])
+        return models[0]
 
-
-    class ChatRequest(BaseModel):
+    class ChatRequest(OpenaiRequest):
         """聊天请求"""
-        messages: List[str] = Field(..., description="消息列表")
         thread_id: str = Field(..., description="线程ID")
         imitator: str = Field(default="OPENAI", description="模仿者")
 
@@ -94,8 +92,8 @@ def create_chat_endpoints(
             async for chunk in zmq_client.stream(
                 f"{chat_request.imitator}.chat",
                 user_id=token_claims['user_id'],
-                messages=chat_request.messages,
-                thread_id=chat_request.thread_id
+                thread_id=chat_request.thread_id,
+                **chat_request.model_dump(exclude={"thread_id", "imitator"})
             ):
                 if getattr(chunk, 'block_type', None) == BlockType.TEXT_CHUNK:
                     yield f'data: {chunk.content}\n\n'

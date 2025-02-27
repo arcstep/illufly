@@ -179,6 +179,7 @@ async def create_app(
             await agent.stop()
         await router.stop()
 
+    logger.info(f"Illufly API 启动完成: {prefix}/docs")
     return app
 
 def mount_auth_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, tokens_manager: TokensManager, users_manager: UsersManager, logger: logging.Logger):
@@ -272,3 +273,4 @@ def mount_openai_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, api_ke
             )
 
     app.mount(f'{prefix}/imitator', openai_app)
+    logger.info(f"OpenAI 兼容接口挂载完成: {prefix}/imitator/docs")
