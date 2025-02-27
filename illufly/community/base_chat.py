@@ -7,7 +7,7 @@ import json
 import uuid
 
 from ..mq.models import StreamingBlock, BlockType
-from ..thread.models import QueryBlock, AnswerBlock, ToolBlock
+from ..thread.models import QuestionBlock, AnswerBlock, ToolBlock
 from .base_tool import BaseTool
 from .models import TextFinal, ToolCallFinal, TextChunk
 
@@ -143,7 +143,7 @@ class BaseChat(ABC):
                         audios.append(chunk["audio_url"])
                     elif chunk["type"] == "video":
                         videos.append(chunk["video_url"])
-            yield QueryBlock(
+            yield QuestionBlock(
                 request_id=request_id,
                 message_id=uuid.uuid4().hex[:8],
                 role=m['role'],
@@ -165,6 +165,7 @@ class BaseChat(ABC):
             logger.info(f"conv_messages: {conv_messages}")
             # 如果 tools 为空，则不传递 tools 参数：
             #   Qwen 接口不兼容 []
+            answer_message_id = uuid.uuid4().hex[:8]
             try:
                 async for chunk in self.generate(conv_messages, tools=(tools or None), **kwargs):
                     answer_created_at = query_completed_at
@@ -174,6 +175,8 @@ class BaseChat(ABC):
                     elif isinstance(chunk, ToolCallFinal):
                         tool_calls.append(chunk)
 
+                    chunk.message_id = answer_message_id
+                    chunk.completed_at = answer_completed_at
                     yield chunk
 
             except Exception as e:
@@ -181,11 +184,13 @@ class BaseChat(ABC):
                 answer_completed_at = datetime.now().timestamp()
                 logger.error(f"生成模型响应失败: {e}")
                 error_chunk = TextChunk(
+                    message_id=answer_message_id,
                     response_id=uuid.uuid4().hex[:8],
                     text=f"生成模型响应失败: {str(e)}",
                     model="unknown",
                     finish_reason="stop",
-                    created_at=datetime.now().timestamp()
+                    created_at=answer_created_at,
+                    completed_at=answer_completed_at
                 )
                 yield error_chunk
 
@@ -204,7 +209,7 @@ class BaseChat(ABC):
             yield AnswerBlock(
                 request_id=request_id,
                 response_id=uuid.uuid4().hex[:8],
-                message_id=uuid.uuid4().hex[:8],
+                message_id=answer_message_id,
                 message_type="text",
                 role=conv_messages[-1]["role"],
                 text=conv_messages[-1].get("content", ""),

@@ -253,7 +253,6 @@ def mount_openai_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, api_ke
         allow_headers=["*"]
     )
 
-
     # 注册路由
     for imitator in openai_imitators:
         # 修改create_openai_endpoints函数调用，不需要传递prefix

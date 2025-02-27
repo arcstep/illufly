@@ -18,6 +18,7 @@ class BaseBlock(BaseModel):
     request_id: str = Field(default="")
     response_id: str = Field(default="")
     created_at: float = Field(default_factory=lambda: time.time())
+    completed_at: float = Field(default_factory=lambda: time.time())
 
     model_config = ConfigDict(use_enum_values=True)
 
@@ -61,6 +62,7 @@ class RequestBlock(BaseBlock):
 class StreamingBlock(BaseBlock):
     """流式数据块基类"""
     block_type: BlockType
+    message_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     text: str = ""
 
     @property

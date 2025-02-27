@@ -62,7 +62,7 @@ class BaseAgent(ServiceDealer):
             **kwargs
         ):
             # 将部份消息类型持久化
-            if b.block_type in [BlockType.QUERY, BlockType.ANSWER, BlockType.TOOL]:
+            if b.block_type in [BlockType.QUESTION, BlockType.ANSWER, BlockType.TOOL]:
                 b.user_id = user_id
                 b.thread_id = thread_id
 

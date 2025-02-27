@@ -27,6 +27,7 @@ def _set_auth_cookies(response: Response, access_token: str, logger: logging.Log
             )
         else:
             response.delete_cookie("access_token")
+        logger.info(f"设置 cookies: {access_token}")
     except Exception as e:
         logger.error(f"设置 cookies 时发生错误: {str(e)}")
         raise
@@ -58,17 +59,21 @@ def require_user(
         # 获取当前用户的访问令牌
         access_token = request.cookies.get("access_token")
         if not access_token:
+            error = "令牌不存在，您必须登录获取刷新令牌和访问令牌"
+            logger.error(error)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="令牌不存在，您必须登录获取刷新令牌和访问令牌"
+                detail=error
             )
 
         # 验证访问令牌
         verify_result = tokens_manager.verify_access_token(access_token)        
         if not verify_result.is_ok():
+            error = f"令牌验证失败: {verify_result.error}"
+            logger.error(error)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, 
-                detail=f"令牌验证失败: {verify_result.error}"
+                detail=error
             )
 
         token_claims = verify_result.data

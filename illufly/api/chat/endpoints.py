@@ -2,12 +2,13 @@ from fastapi import FastAPI, Depends, Response, HTTPException, status, Request
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List, Optional, Callable, Union, Tuple
 from pydantic import BaseModel, EmailStr, Field
-import uuid
-import logging
 from datetime import datetime
 from enum import Enum
 
-from ...rocksdb import IndexedRocksDB
+import uuid
+import logging
+import json
+
 from ...mq.service import ClientDealer
 from ...community.models import BlockType
 from ..models import Result, HttpMethod
@@ -49,7 +50,7 @@ def create_chat_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         threads = await zmq_client.invoke(THREAD["all_threads"], user_id=token_claims['user_id'])
-        return Result.ok(data=threads[0])
+        return threads[0]
 
     @handle_errors(logger=logger)
     async def new_thread(
@@ -95,9 +96,27 @@ def create_chat_endpoints(
                 thread_id=chat_request.thread_id,
                 **chat_request.model_dump(exclude={"thread_id", "imitator"})
             ):
-                if getattr(chunk, 'block_type', None) == BlockType.TEXT_CHUNK:
-                    yield f'data: {chunk.content}\n\n'
+                if getattr(chunk, 'block_type', None) in [BlockType.TEXT_CHUNK, BlockType.QUESTION]:
+                    if chunk.block_type == BlockType.QUESTION:
+                        block_type = "question"
+                        message_type = "text"
+                        role = "user"
+                    else:
+                        block_type = "answer"
+                        message_type = chunk.block_type
+                        role = "assistant"
+                    message = {
+                        "block_type": block_type,
+                        "role": role,
+                        "message_type": message_type,
+                        "message_id": chunk.message_id,
+                        "text": chunk.text,
+                        "created_at": chunk.created_at,
+                        "completed_at": chunk.completed_at,
+                    }
+                    yield f'data: {json.dumps(message, ensure_ascii=False)}\n\n'
 
+            # 结束标记
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(
@@ -112,7 +131,7 @@ def create_chat_endpoints(
         )
 
     return [
-        (HttpMethod.POST, f"{prefix}/chat/new_thread", new_thread),
+        (HttpMethod.POST, f"{prefix}/chat/threads", new_thread),
         (HttpMethod.GET,  f"{prefix}/chat/threads", all_threads),
         (HttpMethod.GET,  f"{prefix}/chat/thread/{{thread_id}}/messages", load_messages),
         (HttpMethod.GET,  f"{prefix}/chat/models", models),

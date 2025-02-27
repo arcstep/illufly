@@ -208,9 +208,10 @@ class ServiceRouter:
                     continue
 
                 message_type = multipart[1].decode()
-                self._logger.debug(
-                    f"Router received message: type={message_type} from={sender_id}, {multipart}"
-                )
+                if message_type != "heartbeat":
+                    self._logger.debug(
+                        f"Router received message: type={message_type} from={sender_id}, {multipart}"
+                    )
 
                 # 处理其他消息类型
                 if message_type == "heartbeat":

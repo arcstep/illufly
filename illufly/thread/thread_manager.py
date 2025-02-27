@@ -31,9 +31,10 @@ class ThreadManagerDealer(ServiceDealer):
     @service_method(name="all_threads", description="获取所有对话")
     def all_threads(self, user_id: str):
         """获取所有对话"""
-        return self.db.values(
+        threads = self.db.values(
             prefix=Thread.get_user_prefix(user_id)
         )
+        return sorted(threads, key=lambda x: x.created_at)
     
     @service_method(name="new_thread", description="创建新对话")
     def new_thread(self, user_id: str):
