@@ -125,6 +125,7 @@ class ChatOpenAI(BaseChat):
 
                         # 实时生成chunk（即使字段不完整）
                         yield ToolCallChunk(
+                            service_name=f"{self.imitator}({model})",
                             response_id=response.id,
                             tool_call_id=tool_id,
                             tool_name=tool_call.function.name or "",
@@ -140,6 +141,7 @@ class ChatOpenAI(BaseChat):
                         final_text += content
                         self._logger.info(f"收到流式文本块: {content}")
                         yield TextChunk(
+                            service_name=f"{self.imitator}({model})",
                             response_id=response.id,
                             text=content,
                             model=model,
@@ -150,6 +152,7 @@ class ChatOpenAI(BaseChat):
                 # 如果返回携带了结束信号，则退出循环
                 if finish_reason:
                     yield TextChunk(
+                        service_name=f"{self.imitator}({model})",
                         response_id=response.id,
                         text="",
                         model=model,
@@ -168,6 +171,7 @@ class ChatOpenAI(BaseChat):
                 self._logger.info(f"final_tool_calls >>> {final_tool_calls}")
                 for key, call_data in final_tool_calls.items():
                     yield ToolCallFinal(
+                        service_name=f"{self.imitator}({model})",
                         response_id=response_id,
                         model=model,
                         finish_reason=finish_reason,
@@ -178,7 +182,12 @@ class ChatOpenAI(BaseChat):
                     )
 
             if final_text:
-                yield TextFinal(response_id=response_id, text=final_text, created_at=created_at)
+                yield TextFinal(
+                    service_name=f"{self.imitator}({model})",
+                    response_id=response_id,
+                    text=final_text,
+                    created_at=created_at
+                )
 
             if usage:
                 usage_dict = {
@@ -186,7 +195,14 @@ class ChatOpenAI(BaseChat):
                     "completion_tokens": usage.completion_tokens,
                     "total_tokens": usage.total_tokens
                 }
-                yield UsageBlock(**usage_dict, response_id=response_id, provider=self.imitator, created_at=created_at)
+                yield UsageBlock(
+                    **usage_dict,
+                    response_id=response_id,
+                    service_name=f"{self.imitator}({model})",
+                    model=model,
+                    provider=self.imitator,
+                    created_at=created_at
+                )
 
         except asyncio.CancelledError:
             self._logger.warning("流式请求被取消")

@@ -11,6 +11,8 @@ class TextChunk(StreamingBlock):
     """文本块"""
     block_type: BlockType = BlockType.TEXT_CHUNK
     text: str
+    role: str = "assistant"
+    message_type: str = "text_chunk"
     model: Optional[str] = None
     finish_reason: Optional[str] = None
 
@@ -22,6 +24,7 @@ class TextChunk(StreamingBlock):
 class TextFinal(TextChunk):
     """文本结束块"""
     block_type: BlockType = BlockType.TEXT_FINAL
+    message_type: str = "text"
 
 @serialize
 class ToolCallChunk(StreamingBlock):
@@ -31,6 +34,8 @@ class ToolCallChunk(StreamingBlock):
     tool_name: Optional[str] = None  # 工具名称
     arguments: str = ""  # 工具参数（逐步累积）
     model: Optional[str] = None  # 模型
+    role: str = "tool"
+    message_type: str = "tool_call_chunk"
     finish_reason: Optional[str] = None  # 结束原因
 
     @property
@@ -48,6 +53,7 @@ class ToolCallChunk(StreamingBlock):
 class ToolCallFinal(ToolCallChunk):
     """工具调用结束块"""
     block_type: BlockType = BlockType.TOOL_CALL_FINAL
+    message_type: str = "tool_call"
 
 @serialize
 class UsageBlock(StreamingBlock):

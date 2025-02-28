@@ -41,6 +41,7 @@ class HistoryMessage(BaseModel):
     message_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="消息ID")
     message_type: str = Field(default="text", description="消息类型", pattern="^(text|mm)$")
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="消息创建时间")
+    service_name: str = Field(default="", description="模型名称、工具名称")
     completed_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="消息完成时间")
     role: str = Field(default="user", description="消息角色", pattern="^(user|assistant|system|tool)$")
     text: str = Field(default="", description="消息内容")

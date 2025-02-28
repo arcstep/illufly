@@ -61,6 +61,7 @@ class BaseChat(ABC):
         for call in tool_calls:
             # 返回结果
             tool_block_resp = ToolBlock(
+                service_name=f"{call.tool_name}@tool",
                 request_id=request_id,
                 response_id=uuid.uuid4().hex[:8],
                 message_id=uuid.uuid4().hex[:8],
@@ -121,6 +122,8 @@ class BaseChat(ABC):
         request_id = self.create_request_id()
         query_created_at = datetime.now().timestamp()
         query_completed_at = query_created_at
+        model = ""
+        response_service_name = ""
 
         # 记录查询消息
         text = ""
@@ -144,6 +147,7 @@ class BaseChat(ABC):
                     elif chunk["type"] == "video":
                         videos.append(chunk["video_url"])
             yield QuestionBlock(
+                service_name=f"你",
                 request_id=request_id,
                 message_id=uuid.uuid4().hex[:8],
                 role=m['role'],
@@ -177,6 +181,8 @@ class BaseChat(ABC):
 
                     chunk.message_id = answer_message_id
                     chunk.completed_at = answer_completed_at
+                    model = getattr(chunk, "model", "")
+                    response_service_name = getattr(chunk, "service_name", "")
                     yield chunk
 
             except Exception as e:
@@ -207,6 +213,8 @@ class BaseChat(ABC):
             })
             # 生成回答流事件
             yield AnswerBlock(
+                service_name=response_service_name,
+                model=model,
                 request_id=request_id,
                 response_id=uuid.uuid4().hex[:8],
                 message_id=answer_message_id,

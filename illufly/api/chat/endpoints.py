@@ -50,14 +50,14 @@ def create_chat_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         threads = await zmq_client.invoke(THREAD["all_threads"], user_id=token_claims['user_id'])
-        return threads[0]
+        return threads[0] or []
 
     @handle_errors(logger=logger)
     async def new_thread(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         result = await zmq_client.invoke(THREAD["new_thread"], user_id=token_claims['user_id'])
-        return result[0]
+        return result[0] or {}
 
     @handle_errors(logger=logger)
     async def load_messages(
@@ -69,7 +69,7 @@ def create_chat_endpoints(
             user_id=token_claims['user_id'],
             thread_id=thread_id
         )
-        return messages[0]
+        return messages[0] or []
 
     @handle_errors(logger=logger)
     async def models(
@@ -77,7 +77,7 @@ def create_chat_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         models = await zmq_client.invoke(f"{imitator}.models")
-        return models[0]
+        return models[0] or []
 
     class ChatRequest(OpenaiRequest):
         """聊天请求"""
@@ -104,8 +104,9 @@ def create_chat_endpoints(
                     else:
                         block_type = "answer"
                         message_type = chunk.block_type
-                        role = "assistant"
+                        role = chunk.role or "assistant"
                     message = {
+                        "service_name": chunk.service_name,
                         "block_type": block_type,
                         "role": role,
                         "message_type": message_type,
