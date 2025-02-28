@@ -166,7 +166,7 @@ async def create_app(
     # 按照 Imitator 挂载 OpenAI 兼容接口
     mount_openai_api(app, prefix, zmq_client, api_keys_manager, openai_imitators, logger)
     
-    mount_static_files(app, prefix, static_dir, logger)
+    static_manager = mount_static_files(app, prefix, static_dir, logger)
 
     @app.on_event("shutdown")
     async def cleanup():
@@ -181,6 +181,7 @@ async def create_app(
         for agent in agents:
             await agent.stop()
         await router.stop()
+        logger.warning(f"Illufly API 关闭完成")
 
     logger.info(f"Illufly API 启动完成: {prefix}/docs")
     return app
@@ -222,6 +223,8 @@ def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str], log
             directory=str(static_path), 
             html=True
         ), name="static")
+    
+    return static_manager
 
 def mount_agent_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, tokens_manager: TokensManager, logger: logging.Logger):
     # Chat 路由

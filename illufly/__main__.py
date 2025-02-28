@@ -3,6 +3,7 @@ import logging
 import argparse
 import asyncio
 import logging
+import signal
 
 from .api.start import create_app
 
@@ -65,7 +66,18 @@ async def main():
         log_level=args.log_level
     )
     server = uvicorn.Server(config)
+
+    # 设置信号处理
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(
+            sig,
+            lambda: asyncio.create_task(server.shutdown())
+        )
+    
+    # 启动服务器
     await server.serve()
+
 
 if __name__ == "__main__":
     """
