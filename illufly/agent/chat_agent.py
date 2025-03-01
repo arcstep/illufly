@@ -15,6 +15,7 @@ from .memory import MemoryManager
 
 THREAD_MODEL = "thread"
 MESSAGE_MODEL = "message"
+CHAT_DIRECTLY_THREAD_ID = "chat_directly_thread"
 
 class BaseAgent(ServiceDealer):
     """Base Agent"""
@@ -119,7 +120,7 @@ class ChatAgent(BaseAgent):
 
     def update_thread_title(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]):
         """更新对话标题"""
-        if not messages:
+        if not messages or thread_id == CHAT_DIRECTLY_THREAD_ID:
             return
         
         for m in messages:
@@ -130,7 +131,7 @@ class ChatAgent(BaseAgent):
                 title = m['content']['text'][:20] + ("..." if len(m['content']['text']) > 20 else "")
                 break
 
-        thread = self.db[Thread.get_key(user_id, thread_id)]
+        thread = self.db[Thread.get_key(user_id, thread_id)] or Thread(user_id=user_id, thread_id=thread_id)
         if not thread.title:
             thread.title = title
             self.db.update_with_indexes(
