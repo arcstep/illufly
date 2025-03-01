@@ -1,1 +1,1 @@
-from .chat_agent import ChatAgent, BaseAgent
+from .chat_agent import ChatAgent, MemoryManager

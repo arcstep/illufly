@@ -3,11 +3,12 @@ import asyncio
 import logging
 from datetime import datetime
 from unittest.mock import patch, MagicMock, AsyncMock
-from illufly.llm.tasks.L0_qa.qa_task import QaTask
-from illufly.llm.memory.L0_qa import QA, HistoryMessage
-from illufly.llm.memory.types import TaskState, MemoryType
-from illufly.mq import TextChunk, BlockType
-from illufly.llm.chat_openai import ChatOpenAI
+from illufly.agent.memory.L0_qa.qa_task import QaTask
+from illufly.agent.memory.L0_qa import QA
+from illufly.agent.memory.types import TaskState, MemoryType
+from illufly.thread.models import HistoryMessage
+from illufly.community.models import TextChunk, BlockType
+from illufly.community.openai import ChatOpenAI
 from illufly.envir import get_env
 
 class TestQaTask:
@@ -270,10 +271,7 @@ class TestQaTask:
     async def chat_openai(self, db):
         chat = ChatOpenAI(
             model=get_env("ILLUFLY_L0_TASK_MODEL"),
-            prefix=get_env("ILLUFLY_L0_TASK_PREFIX"),
-            user_id=get_env("ILLUFLY_L0_TASK_USER_ID"),
-            thread_id="once",
-            db=db,
+            imitator=get_env("ILLUFLY_L0_TASK_IMITATOR"),
             logger=logging.getLogger(__name__)
         )
         yield chat

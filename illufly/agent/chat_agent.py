@@ -54,10 +54,11 @@ class BaseAgent(ServiceDealer):
         normalized_messages = normalize_messages(messages)
 
         # 补充消息
-        patched_messages = self.patch_messages(normalized_messages)
+        messages_with_memory = self.load_memory(user_id, thread_id, normalized_messages)
+        self._logger.info(f"messages_with_memory: {messages_with_memory}")
 
         async for b in self.llm.chat(
-            messages=patched_messages,
+            messages=messages_with_memory,
             runnable_tools=self.runnable_tools,
             **kwargs
         ):
@@ -74,8 +75,8 @@ class BaseAgent(ServiceDealer):
                 )
 
             yield b
-
-    def patch_messages(self, messages: List[Dict[str, Any]]):
+    
+    def load_memory(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]) -> str:
         """从记忆中补充消息"""
         return messages
 
@@ -89,13 +90,14 @@ class ChatAgent(BaseAgent):
         super().__init__(**kwargs)
         self.memory_manager = memory_manager
 
-    def patch_messages(self, messages: List[Dict[str, Any]]):
+    def load_memory(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]) -> str:
         """补充消息中的记忆"""
 
-        memory_messages = self.memory_manager.load_memory(user_id, thread_id, messages) if self.memory_manager else []
-        if memory_messages:
+        memory = self.memory_manager.load_memory(user_id, thread_id, messages) if self.memory_manager else []
+        if memory:
+            self._logger.info(f"memory: {memory}")
             system_message = messages[0] if messages[0]['role'] == 'system' else {"role": "system", "content": ""}
-            system_message['content'] += "<memory>\n\n" + "\n".join([m['content'] for m in memory_messages] + "</memory>")
+            system_message['content'] += f'\n<memory>\n{memory}\n</memory>\n'
 
             if not messages[0]['role'] == 'system':
                 messages.insert(0, system_message)

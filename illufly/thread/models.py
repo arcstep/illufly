@@ -49,15 +49,14 @@ class HistoryMessage(BaseModel):
     audios: List[str] = Field(default=[], description="音频列表")
     videos: List[str] = Field(default=[], description="视频列表")
     tool_calls: List[Any] = Field(default=[], description="工具调用列表")
-    tool_id: str = Field(default="", description="工具ID")
+    tool_call_id: str = Field(default="", description="工具ID")
     favorite_id: Union[str, None] = Field(default=None, description="收藏ID")
 
     @property
     def created_with_thread(self) -> str:
         return f'{self.user_id}-{self.thread_id}-{self.created_at}'
 
-    @property
-    def content(self) -> Dict[str, Any]:
+    def to_message(self) -> Dict[str, Any]:
         # 工具调用结果
         resp = {}
         if self.tool_calls:
@@ -104,10 +103,10 @@ class HistoryMessage(BaseModel):
                 "content": [*text, *images, *audios, *videos]
             }
 
-        # 工具调用消息，补充 tool_id
-        if self.role == "tool" and self.tool_id:
+        # 工具调用消息，补充 tool_call_id
+        if self.role == "tool" and self.tool_call_id:
             resp.update({
-                "tool_id": self.tool_id,
+                "tool_call_id": self.tool_call_id,
             })
         
         return resp

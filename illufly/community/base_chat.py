@@ -68,7 +68,7 @@ class BaseChat(ABC):
                 role="tool",
                 message_type="text",
                 text="",
-                tool_id=call.tool_call_id,
+                tool_call_id=call.tool_call_id,
                 created_at=datetime.now().timestamp()
             )
             # 查找匹配的工具实例
@@ -237,7 +237,7 @@ class BaseChat(ABC):
                 if isinstance(tool_resp, ToolBlock):
                     conv_messages.append({
                         "role": "tool",
-                        "tool_call_id": tool_resp.tool_id,
+                        "tool_call_id": tool_resp.tool_call_id,
                         "content": tool_resp.text
                     })
                 yield tool_resp

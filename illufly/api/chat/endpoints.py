@@ -23,11 +23,6 @@ THREAD = {
     "load_messages": "ThreadManagerDealer.load_messages",
 }
 
-AGENT = {
-    "models": "Agent.models",
-    "chat": "Agent.chat",
-}
-
 def create_chat_endpoints(
     app: FastAPI,
     zmq_client: ClientDealer = None,

@@ -13,7 +13,7 @@ from ..__version__ import __version__
 from ..rocksdb import IndexedRocksDB
 from ..mq.service import ServiceRouter, ClientDealer
 from ..thread import ThreadManagerDealer
-from ..agent import BaseAgent
+from ..agent import ChatAgent, MemoryManager
 from ..community.openai import ChatOpenAI
 from .auth.tokens import TokensManager
 from .auth.users import UsersManager
@@ -131,10 +131,14 @@ async def create_app(
     # 初始化 ThreadManagerDealer
     thread_manager_dealer = ThreadManagerDealer(db, router_address=router_address, context=zmq_context, logger=logger)
 
+    # 初始化 MemoryManager
+    memory_manager = MemoryManager(db, logger=logger)
+
     # 初始化 Agent
     agents = []
     for imitator in openai_imitators:
-        agent = BaseAgent(
+        agent = ChatAgent(
+            memory_manager=memory_manager,
             db=db,
             group=imitator,
             llm=ChatOpenAI(imitator=imitator, logger=logger),

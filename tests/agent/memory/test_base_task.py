@@ -2,7 +2,7 @@ import pytest
 import asyncio
 import logging
 from unittest.mock import MagicMock
-from illufly.llm.tasks.base_task import BaseTask
+from illufly.agent.memory.base_task import BaseTask
 from illufly.rocksdb import IndexedRocksDB
 from typing import Any
 
