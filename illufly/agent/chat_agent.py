@@ -10,9 +10,10 @@ from ..rocksdb import default_rocksdb, IndexedRocksDB
 from ..community import BaseChat, normalize_messages
 from ..mq import ServiceDealer, service_method
 from ..mq.models import BlockType
-from ..thread import HistoryMessage
+from ..thread import HistoryMessage, Thread
 from .memory import MemoryManager
 
+THREAD_MODEL = "thread"
 MESSAGE_MODEL = "message"
 
 class BaseAgent(ServiceDealer):
@@ -79,7 +80,7 @@ class BaseAgent(ServiceDealer):
     def patch_memory(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]) -> str:
         """从记忆中补充消息"""
         return messages
-
+    
 class ChatAgent(BaseAgent):
     """Chat Agent"""
     def __init__(
@@ -94,10 +95,13 @@ class ChatAgent(BaseAgent):
         """补充消息中的记忆"""
         messages = messages or []
         memory = self.memory_manager.load_memory(user_id, thread_id, messages) if self.memory_manager else []        
-        self._logger.info(f"memory: {memory}")
 
         if not memory:
+            self._logger.info(f"no memory")
+            self.update_thread_title(user_id, thread_id, messages)
             return messages
+
+        self._logger.info(f"memory: {memory}")
 
         if messages and messages[0]['role'] == 'system':
             return [
@@ -112,3 +116,26 @@ class ChatAgent(BaseAgent):
                 {'role': 'system', 'content': memory},
                 *messages
             ]
+
+    def update_thread_title(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]):
+        """更新对话标题"""
+        if not messages:
+            return
+        
+        for m in messages:
+            if m['role'] == 'user' and isinstance(m['content'], str):
+                title = m['content'][:20] + ("..." if len(m['content']) > 20 else "")
+                break
+            elif m['role'] == 'assistant' and isinstance(m['content'], dict) and m['content'].get('type') == 'text':
+                title = m['content']['text'][:20] + ("..." if len(m['content']['text']) > 20 else "")
+                break
+
+        thread = self.db[Thread.get_key(user_id, thread_id)]
+        if not thread.title:
+            thread.title = title
+            self.db.update_with_indexes(
+                model_name=THREAD_MODEL,
+                key=Thread.get_key(user_id, thread_id),
+                value=thread
+            )
+            self._logger.info(f"update thread title: {title}")

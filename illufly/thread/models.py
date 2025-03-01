@@ -20,7 +20,7 @@ class Thread(BaseModel):
 
     user_id: str = Field(..., description="用户ID")
     thread_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="对话ID")
-    title: str = Field(default="新对话", description="对话标题")
+    title: str = Field(default="", description="连续对话标题")
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="对话创建时间")
 
 @serialize
