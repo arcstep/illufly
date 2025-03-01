@@ -95,7 +95,7 @@ def create_chat_endpoints(
                     if chunk.block_type == BlockType.QUESTION:
                         block_type = "question"
                         message_type = "text"
-                        role = "user"
+                        role = chunk.role or "user"
                     else:
                         block_type = "answer"
                         message_type = chunk.block_type

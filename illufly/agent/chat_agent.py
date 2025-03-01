@@ -53,8 +53,8 @@ class BaseAgent(ServiceDealer):
         """异步调用远程服务"""
         normalized_messages = normalize_messages(messages)
 
-        # 补充消息
-        messages_with_memory = self.load_memory(user_id, thread_id, normalized_messages)
+        # 补充记忆
+        messages_with_memory = self.patch_memory(user_id, thread_id, normalized_messages)
         self._logger.info(f"messages_with_memory: {messages_with_memory}")
 
         async for b in self.llm.chat(
@@ -76,7 +76,7 @@ class BaseAgent(ServiceDealer):
 
             yield b
     
-    def load_memory(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]) -> str:
+    def patch_memory(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]) -> str:
         """从记忆中补充消息"""
         return messages
 
@@ -90,16 +90,25 @@ class ChatAgent(BaseAgent):
         super().__init__(**kwargs)
         self.memory_manager = memory_manager
 
-    def load_memory(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]) -> str:
+    def patch_memory(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]) -> str:
         """补充消息中的记忆"""
+        messages = messages or []
+        memory = self.memory_manager.load_memory(user_id, thread_id, messages) if self.memory_manager else []        
+        self._logger.info(f"memory: {memory}")
 
-        memory = self.memory_manager.load_memory(user_id, thread_id, messages) if self.memory_manager else []
-        if memory:
-            self._logger.info(f"memory: {memory}")
-            system_message = messages[0] if messages[0]['role'] == 'system' else {"role": "system", "content": ""}
-            system_message['content'] += f'\n<memory>\n{memory}\n</memory>\n'
+        if not memory:
+            return messages
 
-            if not messages[0]['role'] == 'system':
-                messages.insert(0, system_message)
-
-        return messages
+        if messages and messages[0]['role'] == 'system':
+            return [
+                {
+                    'role': 'system',
+                    'content': messages[0]['content'] + f'\n\n<details><summary>Memory</summary>\n\n{memory}\n\n</details>'
+                },
+                *messages[1:]
+            ]
+        else:
+            return [
+                {'role': 'system', 'content': memory},
+                *messages
+            ]

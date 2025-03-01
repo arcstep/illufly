@@ -21,8 +21,8 @@ def get_env(key: str=None):
         "ILLUFLY_ROCKSDB_TEMP": tempfile.mkdtemp(prefix="ILLUFLY_ROCKSDB_"), # RocksDB临时存储目录
 
         # 任务配置
-        "ILLUFLY_L0_TASK_IMITATOR": "ZHIPU",
-        "ILLUFLY_L0_TASK_MODEL": "glm-4-flash",
+        "ILLUFLY_L0_TASK_IMITATOR": "OPENAI",
+        "ILLUFLY_L0_TASK_MODEL": "gpt-4o-mini",
 
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
