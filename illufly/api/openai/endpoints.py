@@ -33,42 +33,6 @@ security = HTTPBearer(
     auto_error=True
 )
 
-async def verify_api_key(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials = Security(security)
-) -> str:
-    """验证 API 密钥
-    
-    Args:
-        credentials: Bearer token 凭证
-        
-    Returns:
-        str: API 密钥
-        
-    Raises:
-        HTTPException: 当 API 密钥无效时抛出
-    """
-    # 跳过OPTIONS请求的认证
-    if request.method == "OPTIONS":
-        return
-
-    api_key = credentials.credentials  # 获取 token 部分
-    if not api_key.startswith("sk-"):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key format. Expected 'sk-xxx'"
-        )
-        
-    ## 暂时取消校验
-    return api_key
-
-    # TODO: 使用 api_keys_manager 验证 API 密钥
-    if api_key != VALID_API_KEY:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key"
-        )
-
 def create_openai_endpoints(
     app: FastAPI,
     imitator: str,
@@ -101,9 +65,34 @@ def create_openai_endpoints(
         # 预留未考虑到的参数
         extra: Optional[dict] = None  # 用于兼容未支持的参数
 
+    async def verify_api_key(
+        request: Request,
+        credentials: HTTPAuthorizationCredentials = Security(security)
+    ) -> str:
+        """验证 API 密钥"""
+        # 跳过OPTIONS请求的认证
+        if request.method == "OPTIONS":
+            return
+
+        api_key = credentials.credentials  # 获取 token 部分
+        if not api_key.startswith("sk-"):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid API key format. Expected 'sk-xxx'"
+            )
+            
+        res = api_keys_manager.verify_api_key(api_key)
+        if res.is_ok() and res.data['imitator'] == imitator:            
+            return res.data
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail=res.error
+            )
+
     # 流式响应模型
     @handle_errors(logger=logger)
-    async def chat_completion(chat_request: OpenaiRequest, api_key: str = Depends(verify_api_key)):
+    async def chat_completion(chat_request: OpenaiRequest, ak: str = Depends(verify_api_key)):
         logger.info(f"chat_request: {chat_request.model_dump()}")
         created_timestamp = int(datetime.now().timestamp())
         if chat_request.stream:
@@ -115,7 +104,7 @@ def create_openai_endpoints(
 
                 async for chunk in zmq_client.stream(
                     f'{imitator}.chat',
-                    user_id=api_key,
+                    user_id=ak['user_id'],
                     thread_id=CHAT_DIRECTLY_THREAD_ID,
                     **chat_request.model_dump()
                 ):
@@ -178,8 +167,8 @@ def create_openai_endpoints(
             response_id = None
             finish_reason = None
             async for chunk in zmq_client.stream(
-                f'{imitator}.chat',
-                user_id=api_key,
+                f'{ak["imitator"]}.chat',
+                user_id=ak['user_id'],
                 thread_id=CHAT_DIRECTLY_THREAD_ID,
                 **chat_request.model_dump()
             ):
@@ -218,7 +207,7 @@ def create_openai_endpoints(
         data: List[dict]
 
     @handle_errors(logger=logger)
-    async def list_models(api_key: str = Depends(verify_api_key)):
+    async def list_models():
         """列出可用模型
         
         Security:

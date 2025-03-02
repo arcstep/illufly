@@ -26,7 +26,7 @@ class ApiKey(BaseModel):
     def get_prefix(cls, user_id: str = None, imitator: str = None) -> str:
         """获取 rocksdb key 的 前缀"""
         user_id = user_id or "default"
-        imitator = imitator or "OPENAI"
+        imitator = imitator or ""
         return f"ak:{user_id}:{imitator}"
 
     @classmethod
@@ -46,19 +46,19 @@ class ApiKey(BaseModel):
         default=None,
         description="描述"
     )
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+    created_at: float = Field(
+        default_factory=lambda: datetime.now().timestamp(),
         description="创建时间"
     )
-    expires_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=90), 
+    expires_at: float = Field(
+        default_factory=lambda: (datetime.now() + timedelta(days=90)).timestamp(), 
         description="过期时间"
     )
 
     @property
     def is_expired(self) -> bool:
         """判断是否过期"""
-        return self.expires_at < datetime.now(timezone.utc)
+        return self.expires_at < datetime.now().timestamp()
 
 class ApiKeysManager:
     def __init__(self, db: IndexedRocksDB, logger: logging.Logger = None):
@@ -78,7 +78,7 @@ class ApiKeysManager:
         """列出APIKEY"""
         base_url = base_url or "/api"
         keys = self._db.values(prefix=ApiKey.get_prefix(user_id))
-        self._logger.debug(f"keys: {keys}")
+        self._logger.info(f"keys: {keys}")
         return Result.ok(
             data=[
                 {
@@ -91,7 +91,7 @@ class ApiKeysManager:
                 if getattr(ak, "api_key", None) and getattr(ak, "imitator", None)
             ])
 
-    def verify_api_key(self, user_id: str, api_key: str) -> Result[ApiKey]:
+    def verify_api_key(self, api_key: str) -> Result[ApiKey]:
         """验证APIKEY"""
         keys = self._db.values_with_index(__API_KEY_MODEL_NAME__, "api_key", api_key)
         if len(keys) == 0:
@@ -99,8 +99,6 @@ class ApiKeysManager:
         ak = keys[0]
         if ak.is_expired:
             return Result.fail(error="API密钥已过期")
-        if ak.user_id != user_id:
-            return Result.fail(error="API密钥不属于当前用户")
 
         return Result.ok(data=ak.model_dump())
 
