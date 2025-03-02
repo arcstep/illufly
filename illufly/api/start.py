@@ -168,6 +168,7 @@ async def create_app(
     mount_agent_api(app, prefix, zmq_client, tokens_manager, logger)
 
     # 按照 Imitator 挂载 OpenAI 兼容接口
+    mount_openai_imitators(app, prefix, openai_imitators, logger)
     mount_openai_api(app, prefix, zmq_client, api_keys_manager, openai_imitators, logger)
     
     static_manager = mount_static_files(app, prefix, static_dir, logger)
@@ -249,6 +250,18 @@ def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str], log
         ), name="static")
     
     return static_manager
+
+def mount_openai_imitators(app: FastAPI, prefix: str, imitators: List[str], logger: logging.Logger):
+    # 挂载 imitators 路由
+    app.add_api_route(
+        path=f"{prefix}/imitators",
+        endpoint=lambda: imitators,
+        methods=["GET"],
+        response_model=List[str],
+        summary="获取支持的模仿来源",
+        description="返回支持的模仿来源列表",
+        tags=["Illufly Backend - Imitators"]
+    )
 
 def mount_agent_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, tokens_manager: TokensManager, logger: logging.Logger):
     # Chat 路由
