@@ -217,7 +217,11 @@ class ServiceRouter:
                 if message_type == "heartbeat":
                     if sender_id in self._services:
                         self._services[sender_id].last_heartbeat = time()
-                        # 心跳消息不需要回复
+                        await self._socket.send_multipart([
+                            sender_id_bytes,  # 发送给原始发送者
+                            b"heartbeat_ack",         # 消息类型
+                            b""          # 响应内容
+                        ])
                         
                 elif message_type == "ping":
                     self._logger.debug(f"Handling ping from {sender_id}")

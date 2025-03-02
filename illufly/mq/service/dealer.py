@@ -178,7 +178,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 if len(response) >= 2 and response[0] == b"ping_ack" and response[1] == b"pong":
                     self._logger.info("Connection established")
                 else:
-                    raise RuntimeError("Invalid ping response")
+                    raise RuntimeError(f"Invalid ping response: {response}")
             except asyncio.TimeoutError:
                 raise RuntimeError(f"Failed to connect to router at {self._router_address}: connection test timeout")
             except Exception as e:
@@ -313,18 +313,20 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                     break
                     
                 multipart = await self._socket.recv_multipart()
-                # self._logger.info(f"DEALER Received message: {multipart}")
+                self._logger.debug(f"{self.__class__.__name__}{[self._service_id]} DEALER Received message: {multipart}")
                 # 正确的格式应当是
-                # multipart[0] 消息类型，目前全部为 b'reply'
-                # multipart[1] 客户端ID
+                # multipart[0] 客户端ID
+                # multipart[1] 消息类型，目前全部为 b'reply'
                 # multipart[2] 方法名称
                 # multipart[3] RequestBlock（也包含了方法名称）
-                client_id = multipart[1]
+                message_type = multipart[0]
                 request = deserialize_message(multipart[-1]) if len(multipart) >= 3 else None                
                 if isinstance(request, RequestBlock):
-                    task = asyncio.create_task(self._process_request(client_id, request), name=f"{self._service_id}-{request.request_id}")
+                    task = asyncio.create_task(self._process_request(request), name=f"{self._service_id}-{request.request_id}")
                     self._pending_tasks.add(task)
                     task.add_done_callback(self._pending_tasks.discard)
+                elif len(multipart) >= 2 and message_type == b"heartbeat_ack":
+                    self._logger.debug(f"DEALER Received heartbeat: {multipart}")
                 else:
                     self._logger.error(f"DEALER Received unknown message type: {message_type}")
 
@@ -333,16 +335,16 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
             except Exception as e:
                 self._logger.error(f"HistoryMessage processing error: {e}", exc_info=True)
 
-    async def _process_request(self, client_id: bytes, request: RequestBlock):
+    async def _process_request(self, request: RequestBlock):
         """处理单个请求"""
         self._logger.info(f"DEALER Processing request: {request}")
         if self._current_load >= self._max_concurrent:
             await self._send_error(
-                client_id, 
+                self._service_id,
                 request.request_id, 
                 "Service overloaded"
             )
-            self._logger.info(f"DEALER Service overloaded, rejecting request from {client_id}")
+            self._logger.info(f"DEALER Service overloaded, rejecting request from {self._service_id}")
             return
 
         try:
@@ -364,7 +366,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                         is_coroutine = handler_info['is_coroutine']
                     else:
                         await self._send_error(
-                            client_id,
+                            self._service_id,
                             request.request_id,
                             f"Method {request.func_name} not found"
                         )
@@ -384,7 +386,6 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
 
                                 await self._socket.send_multipart([
                                     b"reply",
-                                    client_id,
                                     serialize_message(block)
                                 ])
                             
@@ -394,7 +395,6 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                             )
                             await self._socket.send_multipart([
                                 b"reply",
-                                client_id,
                                 serialize_message(end_block)
                             ])
                         else:
@@ -409,13 +409,12 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                             )
                             await self._socket.send_multipart([
                                 b"reply",
-                                client_id,
                                 serialize_message(reply)
                             ])
                         
                     except Exception as e:
                         self._logger.error(f"DEALER Handler error: {e}", exc_info=True)
-                        await self._send_error(client_id, request.request_id, str(e))
+                        await self._send_error(self._service_id, request.request_id, str(e))
                 except Exception as e:
                     self._logger.error(f"DEALER Request processing error: {e}", exc_info=True)
         finally:
@@ -428,7 +427,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 self._is_overload = False
                 await self._socket.send_multipart([b"resume", b""])
 
-    async def _send_error(self, client_id: bytes, request_id: str, error_msg: str):
+    async def _send_error(self, request_id: str, error_msg: str):
         """发送错误响应"""
         error = ErrorBlock(
             request_id=request_id,
@@ -436,7 +435,6 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
         )
         await self._socket.send_multipart([
             b"reply",
-            client_id,
             serialize_message(error)
         ])
 
@@ -456,7 +454,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 self._logger.error(f"Heartbeat error: {e}")
                 await asyncio.sleep(self._heartbeat_interval)
 
-    async def _handle_result(self, client_id: bytes, request_id: str, result: Any):
+    async def _handle_result(self, request_id: str, result: Any):
         """处理服务返回结果"""
         if isinstance(result, AsyncGenerator):
             try:
@@ -470,19 +468,19 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                             request_id=request_id,
                             content=chunk
                         )
-                    await self._send_message(client_id, block)
+                    await self._send_message(self._service_id, block)
                 
                 # 发送结束标记
                 end_block = EndBlock(request_id=request_id)
-                await self._send_message(client_id, end_block)
+                await self._send_message(self._service_id, end_block)
             except Exception as e:
-                await self._send_error(client_id, request_id, str(e))
+                await self._send_error(request_id, str(e))
         else:
             reply = ReplyBlock(
                 request_id=request_id,
                 result=result
             )
-            await self._send_message(client_id, reply)
+            await self._send_message(self._service_id, reply)
 
     def check_overload(self) -> bool:
         """检查是否接近满载（可重写）
