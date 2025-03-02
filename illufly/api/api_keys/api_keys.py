@@ -78,6 +78,7 @@ class ApiKeysManager:
         """列出APIKEY"""
         base_url = base_url or "/api"
         keys = self._db.values(prefix=ApiKey.get_prefix(user_id))
+        self._logger.debug(f"keys: {keys}")
         return Result.ok(
             data=[
                 {
@@ -87,6 +88,7 @@ class ApiKeysManager:
                 }
                 for ak
                 in keys
+                if getattr(ak, "api_key", None) and getattr(ak, "imitator", None)
             ])
 
     def verify_api_key(self, user_id: str, api_key: str) -> Result[ApiKey]:
