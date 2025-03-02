@@ -187,8 +187,8 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
             # 继续初始化
             self._semaphore = asyncio.Semaphore(self._max_concurrent)
             await self._register_to_router()
-            self._heartbeat_task = asyncio.create_task(self._send_heartbeat())
-            self._process_messages_task = asyncio.create_task(self._process_messages())
+            self._heartbeat_task = asyncio.create_task(self._send_heartbeat(), name=f"{self._service_id}-heartbeat")
+            self._process_messages_task = asyncio.create_task(self._process_messages(), name=f"{self._service_id}-process_messages")
             
             self._logger.info(f"Service {self._service_id} started with {len(self._handlers)} methods")
         except Exception as e:
@@ -322,7 +322,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 client_id = multipart[1]
                 request = deserialize_message(multipart[-1]) if len(multipart) >= 3 else None                
                 if isinstance(request, RequestBlock):
-                    task = asyncio.create_task(self._process_request(client_id, request))
+                    task = asyncio.create_task(self._process_request(client_id, request), name=f"{self._service_id}-{request.request_id}")
                     self._pending_tasks.add(task)
                     task.add_done_callback(self._pending_tasks.discard)
                 else:

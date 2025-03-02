@@ -86,7 +86,7 @@ class BaseTask(ABC):
                                 logger.error(f"任务处理失败: {e}")
                                 await asyncio.sleep(cls._sleep_time_on_error)
 
-                        task = asyncio.create_task(process_wrapper(todo_task))
+                        task = asyncio.create_task(process_wrapper(todo_task), name=f"{task_id}-{todo_task}")
                         cls._pending_tasks[task_id].add(task)
                     
                     # 如果没有任务，等待一段时间

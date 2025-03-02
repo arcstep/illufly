@@ -209,7 +209,7 @@ class Runnable(ABC, ExecutorManager, BindingManager):
         for handler in handlers:
             resp = handler(block, verbose=verbose, **kwargs)
             if inspect.isawaitable(resp):
-                tasks.append(asyncio.create_task(resp))
+                tasks.append(asyncio.create_task(resp, name=f"{self.name}-{block.id}-{handler.__name__}"))
         if tasks:
             await asyncio.gather(*tasks)
 

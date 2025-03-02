@@ -86,7 +86,7 @@ class TestAsyncUtils:
         async def run_concurrent():
             tasks = []
             for i in range(3):
-                task = asyncio.create_task(self.dummy_task())
+                task = asyncio.create_task(self.dummy_task(), name=f"test_concurrent_tasks-{i}")
                 self.service._track_task(task)
                 tasks.append(task)
             
@@ -112,7 +112,7 @@ class TestAsyncUtils:
                 raise  # 重要：重新抛出 CancelledError
                 
         async def run_with_cleanup():
-            task = asyncio.create_task(long_running_task())
+            task = asyncio.create_task(long_running_task(), name="test_task_cleanup")
             self.service._track_task(task)
             await asyncio.sleep(0.1)
             await self.service._cleanup_tasks()

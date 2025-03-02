@@ -97,7 +97,7 @@ def create_api_keys_endpoints(
         response: Response,
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
-        """删除API密钥"""
+        """撤销API密钥"""
         if not api_keys_manager:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -123,5 +123,5 @@ def create_api_keys_endpoints(
     return {
         (HttpMethod.POST, f"{prefix}/api-keys", create_api_key),
         (HttpMethod.GET, f"{prefix}/api-keys", list_api_keys),
-        (HttpMethod.POST, f"{prefix}/api-keys/{{api_key}}", revoke_api_key),
+        (HttpMethod.POST, f"{prefix}/api-keys/revoke/{{api_key}}", revoke_api_key),
     }

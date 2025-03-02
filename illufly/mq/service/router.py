@@ -90,8 +90,8 @@ class ServiceRouter:
             # 先尝试绑定地址
             self._socket.bind(self._address)
             self._running = True
-            self._message_task = asyncio.create_task(self._route_messages())
-            self._health_check_task = asyncio.create_task(self._check_service_health())
+            self._message_task = asyncio.create_task(self._route_messages(), name="router-route_messages")
+            self._health_check_task = asyncio.create_task(self._check_service_health(), name="router-check_service_health")
             self._logger.info(f"Router started at {self._address}")
         except Exception as e:
             self._logger.error(f"Failed to start router: {e}")

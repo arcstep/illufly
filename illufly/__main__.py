@@ -72,7 +72,7 @@ async def main():
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(
             sig,
-            lambda: asyncio.create_task(server.shutdown())
+            lambda: asyncio.create_task(server.shutdown(), name="uvicorn-shutdown")
         )
     
     # 启动服务器

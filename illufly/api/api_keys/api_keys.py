@@ -71,7 +71,7 @@ class ApiKeysManager:
 
     def create_api_key(self, user_id: str, imitator: str, description: str = None) -> Result[ApiKey]:
         """创建APIKEY"""
-        ak = ApiKey(user_id=user_id, imitator=imitator, description=description)
+        ak = ApiKey(user_id=user_id, imitator=imitator, apikey=generate_apikey(), description=description)
         db_key = ApiKey.get_db_key(ak.apikey, user_id, imitator)
         self._db.update_with_indexes(__API_KEY_MODEL_NAME__, db_key, ak)
         return Result.ok(data=ak.model_dump())

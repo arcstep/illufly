@@ -176,7 +176,7 @@ def create_auth_endpoints(
 
     @handle_errors(logger=logger)
     async def login(request: Request, response: Response, login_data: LoginRequest):
-        """登录接口"""
+        """登录"""
         # 验证用户密码
         verify_result = users_manager.verify_password(
             username=login_data.username,
@@ -254,7 +254,7 @@ def create_auth_endpoints(
         response: Response,
         token_claims: TokenClaims = Depends(require_user(tokens_manager, update_access_token=False, logger=logger))
     ):
-        """注销接口"""
+        """退出在设备上的登录"""
         logger.debug(f"要注销的用户信息: {token_claims}")
 
         # 撤销当前设备的访问令牌
@@ -287,6 +287,7 @@ def create_auth_endpoints(
         response: Response,
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
+        """修改密码"""
         result = users_manager.change_password(
             user_id=token_claims['user_id'],
             current_password=change_password_form.current_password,
