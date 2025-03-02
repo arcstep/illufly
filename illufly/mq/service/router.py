@@ -169,7 +169,7 @@ class ServiceRouter:
             
             await asyncio.sleep(self._HEARTBEAT_INTERVAL)
 
-    async def _send_error(self, sender_id: bytes, error: str):
+    async def _send_error(self, from_id: bytes, error: str):
         """发送错误消息"""
         error_response = ErrorBlock(
             request_id=str(uuid.uuid4()),
@@ -177,11 +177,11 @@ class ServiceRouter:
             state="error"
         )
         await self._socket.send_multipart([
-            sender_id,
+            from_id,
             b"error",
             serialize_message(error_response)
         ])
-        self._logger.error(f"Error sending to {sender_id}: {error}")
+        self._logger.error(f"Error sending to {from_id}: {error}")
 
     async def _route_messages(self):
         """消息路由主循环
@@ -196,37 +196,37 @@ class ServiceRouter:
         while self._running:
             try:
                 multipart = await self._socket.recv_multipart()
-                sender_id_bytes = multipart[0]
+                from_id_bytes = multipart[0]
                 try:
-                    sender_id = sender_id_bytes.decode()
+                    from_id = from_id_bytes.decode()
                 except UnicodeDecodeError:
-                    await self._send_error(sender_id_bytes, "Invalid sender ID format: must be UTF-8 encoded string")
+                    await self._send_error(from_id_bytes, "Invalid sender ID format: must be UTF-8 encoded string")
                     continue
 
                 if len(multipart) < 2:
-                    await self._send_error(sender_id_bytes, "Invalid message format: missing message type")
+                    await self._send_error(from_id_bytes, "Invalid message format: missing message type")
                     continue
 
                 message_type = multipart[1].decode()
                 if message_type != "heartbeat":
                     self._logger.debug(
-                        f"Router received message: type={message_type} from={sender_id}, {multipart}"
+                        f"Router received message: type={message_type} from={from_id}, {multipart}"
                     )
 
                 # 处理其他消息类型
                 if message_type == "heartbeat":
-                    if sender_id in self._services:
-                        self._services[sender_id].last_heartbeat = time()
+                    if from_id in self._services:
+                        self._services[from_id].last_heartbeat = time()
                         await self._socket.send_multipart([
-                            sender_id_bytes,  # 发送给原始发送者
+                            from_id_bytes,  # 发送给原始发送者
                             b"heartbeat_ack",         # 消息类型
                             b""          # 响应内容
                         ])
                         
                 elif message_type == "ping":
-                    self._logger.debug(f"Handling ping from {sender_id}")
+                    self._logger.debug(f"Handling ping from {from_id}")
                     await self._socket.send_multipart([
-                        sender_id_bytes,  # 发送给原始发送者
+                        from_id_bytes,  # 发送给原始发送者
                         b"ping_ack",         # 消息类型
                         b"pong"          # 响应内容
                     ])
@@ -240,7 +240,7 @@ class ServiceRouter:
                         }
                     )
                     await self._socket.send_multipart([
-                        sender_id_bytes,
+                        from_id_bytes,
                         b"clusters_ack",
                         serialize_message(response)
                     ])
@@ -260,24 +260,24 @@ class ServiceRouter:
                         result=available_methods
                     )
                     await self._socket.send_multipart([
-                        sender_id_bytes,
+                        from_id_bytes,
                         b"methods_ack",
                         serialize_message(response)
                     ])
                     
                 elif message_type == "register":
                     service_info = json.loads(multipart[2].decode())
-                    self.register_service(sender_id, service_info)
+                    self.register_service(from_id, service_info)
                     router_config = {
                         "heartbeat_interval": self._HEARTBEAT_INTERVAL / 2,
                     }
                     await self._socket.send_multipart([
-                        sender_id_bytes,
+                        from_id_bytes,
                         b"register_ack",
                         json.dumps(router_config).encode()
                     ])
                     
-                elif message_type == "call":
+                elif message_type == "call_from_client":
                     if len(multipart) < 3:
                         self._logger.error("Invalid call message format")
                         continue
@@ -288,10 +288,11 @@ class ServiceRouter:
                     if target_service and target_service.state == ServiceState.ACTIVE:
                         target_service.accept_request()
                         self._services[target_service.service_id].accept_request()
+                        service_dealer_id = target_service.service_id.encode()
                         await self._socket.send_multipart([
-                            target_service.service_id.encode(),
-                            b"call",
-                            sender_id_bytes,
+                            service_dealer_id,
+                            b"call_from_router",
+                            from_id_bytes,
                             *multipart[2:]
                         ])
                     else:
@@ -302,31 +303,31 @@ class ServiceRouter:
                             error=error_msg
                         )
                         await self._socket.send_multipart([
-                            sender_id_bytes,
-                            b"reply",
+                            from_id_bytes,
+                            b"reply_from_router",
                             serialize_message(error)
                         ])
 
                 elif message_type in ["overload", "resume", "shutdown"]:
                     # 处理服务状态变更消息
-                    if sender_id in self._services:
+                    if from_id in self._services:
                         if message_type == "shutdown":
-                            self._services[sender_id].state = ServiceState.SHUTDOWN
+                            self._services[from_id].state = ServiceState.SHUTDOWN
                             await self._socket.send_multipart([
-                                sender_id_bytes,
+                                from_id_bytes,
                                 b"shutdown_ack",
                             ])
                         elif message_type == "overload":
                             # 不必回复
-                            self._services[sender_id].state = ServiceState.OVERLOAD
+                            self._services[from_id].state = ServiceState.OVERLOAD
                         elif message_type == "resume":
                             # 不必回复
-                            self._services[sender_id].state = ServiceState.ACTIVE
+                            self._services[from_id].state = ServiceState.ACTIVE
 
                 # 如果是已注册服务的回复消息，直接转发给客户端
-                elif sender_id in self._services and message_type == "reply":
+                elif from_id in self._services and message_type == "reply_from_dealer":
                     if len(multipart) < 3:
-                        await self._send_error(sender_id_bytes, "Invalid reply format")
+                        await self._send_error(from_id_bytes, "Invalid reply format")
                         continue
                         
                     target_client_id = multipart[2]  # 目标客户端ID
@@ -335,17 +336,17 @@ class ServiceRouter:
                     # 直接转发响应给客户端
                     await self._socket.send_multipart([
                         target_client_id,
-                        b"reply",
+                        b"reply_from_router",
                         response_data
                     ])
-                    self._services[sender_id].complete_request()
+                    self._services[from_id].complete_request()
 
                 else:
-                    await self._send_error(sender_id_bytes, f"Unknown message type: {message_type}")
+                    await self._send_error(from_id_bytes, f"Unknown message type: {message_type}")
 
             except Exception as e:
                 self._logger.error(f"Router error: {e}", exc_info=True)
-                await self._send_error(sender_id_bytes, f"Service Router Error")
+                await self._send_error(from_id_bytes, f"Service Router Error")
 
     def _select_best_service(self, method_name: str) -> Optional[ServiceInfo]:
         """选择最佳服务实例"""

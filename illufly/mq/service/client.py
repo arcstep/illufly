@@ -166,7 +166,7 @@ class ClientDealer:
         try:
             # 发送请求
             await self._socket.send_multipart([
-                b"call",  # 添加消息类型
+                b"call_from_client",  # 添加消息类型
                 method.encode(),  # 服务名称
                 serialize_message(request)  # 请求数据
             ])

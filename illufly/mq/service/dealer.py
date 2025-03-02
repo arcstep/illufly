@@ -315,14 +315,14 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 multipart = await self._socket.recv_multipart()
                 self._logger.debug(f"{self.__class__.__name__}{[self._service_id]} DEALER Received message: {multipart}")
                 # 正确的格式应当是
-                # multipart[0] 客户端ID
-                # multipart[1] 消息类型，目前全部为 b'reply'
-                # multipart[2] 方法名称
-                # multipart[3] RequestBlock（也包含了方法名称）
+                # multipart[0] 消息类型
+                # multipart[1] 客户端 Dealer 调用时的senderID
+                # multipart[-1] RequestBlock（也包含了方法名称）
                 message_type = multipart[0]
-                request = deserialize_message(multipart[-1]) if len(multipart) >= 3 else None                
-                if isinstance(request, RequestBlock):
-                    task = asyncio.create_task(self._process_request(request), name=f"{self._service_id}-{request.request_id}")
+                target_client_id = multipart[1]
+                request = deserialize_message(multipart[-1]) if len(multipart) >= 3 else None
+                if message_type == b"call_from_router" and isinstance(request, RequestBlock):
+                    task = asyncio.create_task(self._process_request(target_client_id, request), name=f"{self._service_id}-{request.request_id}")
                     self._pending_tasks.add(task)
                     task.add_done_callback(self._pending_tasks.discard)
                 elif len(multipart) >= 2 and message_type == b"heartbeat_ack":
@@ -335,13 +335,12 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
             except Exception as e:
                 self._logger.error(f"HistoryMessage processing error: {e}", exc_info=True)
 
-    async def _process_request(self, request: RequestBlock):
+    async def _process_request(self, target_client_id: bytes, request: RequestBlock):
         """处理单个请求"""
         self._logger.info(f"DEALER Processing request: {request}")
         if self._current_load >= self._max_concurrent:
             await self._send_error(
-                self._service_id,
-                request.request_id, 
+                target_client_id,
                 "Service overloaded"
             )
             self._logger.info(f"DEALER Service overloaded, rejecting request from {self._service_id}")
@@ -366,8 +365,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                         is_coroutine = handler_info['is_coroutine']
                     else:
                         await self._send_error(
-                            self._service_id,
-                            request.request_id,
+                            target_client_id,
                             f"Method {request.func_name} not found"
                         )
                         return
@@ -385,7 +383,8 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                                     block= chunk
 
                                 await self._socket.send_multipart([
-                                    b"reply",
+                                    b"reply_from_dealer",
+                                    target_client_id,
                                     serialize_message(block)
                                 ])
                             
@@ -394,7 +393,8 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                                 request_id=request.request_id
                             )
                             await self._socket.send_multipart([
-                                b"reply",
+                                b"reply_from_dealer",
+                                target_client_id,
                                 serialize_message(end_block)
                             ])
                         else:
@@ -408,13 +408,14 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                                 result=result
                             )
                             await self._socket.send_multipart([
-                                b"reply",
+                                b"reply_from_dealer",
+                                target_client_id,
                                 serialize_message(reply)
                             ])
                         
                     except Exception as e:
                         self._logger.error(f"DEALER Handler error: {e}", exc_info=True)
-                        await self._send_error(self._service_id, request.request_id, str(e))
+                        await self._send_error(target_client_id, str(e))
                 except Exception as e:
                     self._logger.error(f"DEALER Request processing error: {e}", exc_info=True)
         finally:
@@ -427,14 +428,14 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 self._is_overload = False
                 await self._socket.send_multipart([b"resume", b""])
 
-    async def _send_error(self, request_id: str, error_msg: str):
+    async def _send_error(self, target_client_id: bytes, error_msg: str):
         """发送错误响应"""
         error = ErrorBlock(
-            request_id=request_id,
             error=error_msg
         )
         await self._socket.send_multipart([
-            b"reply",
+            b"reply_from_dealer",
+            target_client_id,
             serialize_message(error)
         ])
 
@@ -453,34 +454,6 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
             except Exception as e:
                 self._logger.error(f"Heartbeat error: {e}")
                 await asyncio.sleep(self._heartbeat_interval)
-
-    async def _handle_result(self, request_id: str, result: Any):
-        """处理服务返回结果"""
-        if isinstance(result, AsyncGenerator):
-            try:
-                async for chunk in result:
-                    self._logger.info(f"Streaming chunk: {chunk}")
-                    if isinstance(chunk, StreamingBlock):
-                        block = chunk
-                    else:
-                        block = StreamingBlock.create_block(
-                            block_type=BlockType.CONTENT,
-                            request_id=request_id,
-                            content=chunk
-                        )
-                    await self._send_message(self._service_id, block)
-                
-                # 发送结束标记
-                end_block = EndBlock(request_id=request_id)
-                await self._send_message(self._service_id, end_block)
-            except Exception as e:
-                await self._send_error(request_id, str(e))
-        else:
-            reply = ReplyBlock(
-                request_id=request_id,
-                result=result
-            )
-            await self._send_message(self._service_id, reply)
 
     def check_overload(self) -> bool:
         """检查是否接近满载（可重写）
