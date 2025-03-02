@@ -78,6 +78,7 @@ async def create_app(
     title: str = "Illufly API",
     description: str = "Illufly 后端 API 服务",
     prefix: str = "/api",
+    base_url: str = "/api",
     static_dir: Optional[str] = None,
     cors_origins: Optional[List[str]] = None,
     log_level: int = logging.INFO
@@ -163,7 +164,7 @@ async def create_app(
     api_keys_manager = ApiKeysManager(db, logger=logger)
 
     mount_auth_api(app, prefix, tokens_manager, users_manager, logger)
-    mount_api_keys_api(app, prefix, tokens_manager, api_keys_manager, logger)
+    mount_api_keys_api(app, prefix, base_url, tokens_manager, api_keys_manager, logger)
     mount_agent_api(app, prefix, zmq_client, tokens_manager, logger)
 
     # 按照 Imitator 挂载 OpenAI 兼容接口
@@ -208,13 +209,14 @@ def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, use
             description=getattr(handler, "__doc__", None),
             tags=["Illufly Backend - Auth"])
 
-def mount_api_keys_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, api_keys_manager: ApiKeysManager, logger: logging.Logger):
+def mount_api_keys_api(app: FastAPI, prefix: str, base_url: str, tokens_manager: TokensManager, api_keys_manager: ApiKeysManager, logger: logging.Logger):
     # APIKEY 路由
     api_keys_handlers = create_api_keys_endpoints(
         app=app,
         tokens_manager=tokens_manager,
         api_keys_manager=api_keys_manager,
         prefix=prefix,
+        base_url=base_url,
         logger=logger
     )
     for (method, path, handler) in api_keys_handlers:

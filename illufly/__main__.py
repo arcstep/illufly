@@ -16,6 +16,7 @@ def _parse_args():
         ("--title", "Illufly API", "API 标题 (默认: Illufly API)"),
         ("--description", "Illufly 后端 API 服务", "API 描述"),
         ("--prefix", "/api", "API 路由前缀 (默认: /api)"),
+        ("--base_url", "http://127.0.0.1:8000/api", "OpenAI兼容接口 路由前缀 (默认: http://127.0.0.1:8000/api)"),
         ("--host", "0.0.0.0", "服务主机地址 (默认: 0.0.0.0)"),
         ("--port", 8000, "服务端口 (默认: 8000)"),
         ("--ssl-keyfile", None, "SSL 密钥文件路径"),
@@ -52,6 +53,7 @@ async def main():
         title=args.title,
         description=args.description,
         prefix=args.prefix,
+        base_url=args.base_url,
         static_dir=args.static_dir,
         cors_origins=args.cors_origins,
         log_level=args.log_level

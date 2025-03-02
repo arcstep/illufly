@@ -15,7 +15,8 @@ def create_api_keys_endpoints(
     app: FastAPI,
     tokens_manager: TokensManager = None,
     api_keys_manager: ApiKeysManager = None,
-    prefix: str="/api",
+    prefix: str = "/api",
+    base_url: str = "/api",
     logger: logging.Logger = None
 ) -> Dict[str, Tuple[HttpMethod, str, Callable]]:
     """创建认证相关的API端点
@@ -76,7 +77,7 @@ def create_api_keys_endpoints(
                 detail="API密钥管理器未初始化"
             )
         try:
-            result = api_keys_manager.list_api_keys(token_claims['user_id'])
+            result = api_keys_manager.list_api_keys(token_claims['user_id'], base_url=base_url)
             if result.is_ok():
                 return result
             else:

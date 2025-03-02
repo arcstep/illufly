@@ -22,7 +22,7 @@ def api_keys_manager(mock_db):
 class TestApiKey:
     def test_generate_key(self):
         """测试生成 API 密钥"""
-        key = ApiKey(user_id="test_user", imitator="QWEN").apikey
+        key = ApiKey(user_id="test_user", imitator="QWEN").api_key
         assert key.startswith("sk-")
         assert len(key) > 10  # 确保密钥长度合理
 
@@ -32,7 +32,7 @@ class TestApiKey:
         api_key = ApiKey(user_id=user_id, imitator="QWEN")
         
         assert api_key.user_id == user_id
-        assert api_key.apikey.startswith("sk-")
+        assert api_key.api_key.startswith("sk-")
         assert isinstance(api_key.created_at, datetime)
         assert isinstance(api_key.expires_at, datetime)
         assert api_key.expires_at > api_key.created_at
@@ -77,14 +77,14 @@ class TestApiKeysManager:
         api_key_dict = result.data
         assert api_key_dict['user_id'] == user_id
         assert api_key_dict['description'] == description
-        assert api_key_dict['apikey'].startswith(f"sk-")
+        assert api_key_dict['api_key'].startswith(f"sk-")
 
         # 验证数据库调用
         mock_db.update_with_indexes.assert_called_once()
 
         # 验证
         mock_db.values_with_index.return_value = [ApiKey.model_validate(api_key_dict)]
-        result = api_keys_manager.verify_api_key(user_id, api_key_dict['apikey'])
+        result = api_keys_manager.verify_api_key(user_id, api_key_dict['api_key'])
         assert result.is_ok()
         ak = ApiKey.model_validate(result.data)
         assert ak.is_expired == False
@@ -114,7 +114,7 @@ class TestApiKeysManager:
         user_id = "test_user"
         imitator = "QWEN"
         key = "sk-test"
-        ak = ApiKey(user_id=user_id, imitator=imitator, apikey=key)
+        ak = ApiKey(user_id=user_id, imitator=imitator, api_key=key)
 
         mock_db.values_with_index.return_value = [ak]        
         result = api_keys_manager.verify_api_key(user_id, key)
