@@ -11,8 +11,6 @@ from ..thread.models import QuestionBlock, AnswerBlock, ToolBlock
 from .base_tool import BaseTool
 from .models import TextFinal, ToolCallFinal, TextChunk
 
-logger = logging.getLogger(__name__)
-
 def normalize_messages(messages: Union[str, List[str], List[Tuple[str, Any]], List[Dict[str, Any]]]):
     _messages = messages if isinstance(messages, list) else [messages]
     new_messages = []
@@ -166,7 +164,7 @@ class BaseChat(ABC):
             text_finals = []
 
             # 生成查询流事件
-            logger.info(f"conv_messages: {conv_messages}")
+            self._logger.info(f"conv_messages: {conv_messages}")
             # 如果 tools 为空，则不传递 tools 参数：
             #   Qwen 接口不兼容 []
             answer_message_id = uuid.uuid4().hex[:8]
@@ -188,7 +186,7 @@ class BaseChat(ABC):
             except Exception as e:
                 answer_created_at = query_completed_at
                 answer_completed_at = datetime.now().timestamp()
-                logger.error(f"生成模型响应失败: {e}")
+                self._logger.error(f"生成模型响应失败: {e}")
                 error_chunk = TextChunk(
                     message_id=answer_message_id,
                     response_id=uuid.uuid4().hex[:8],

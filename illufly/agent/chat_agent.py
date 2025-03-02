@@ -57,7 +57,6 @@ class BaseAgent(ServiceDealer):
 
         # 补充记忆
         messages_with_memory = self.patch_memory(user_id, thread_id, normalized_messages)
-        self._logger.info(f"messages_with_memory: {messages_with_memory}")
 
         async for b in self.llm.chat(
             messages=messages_with_memory,

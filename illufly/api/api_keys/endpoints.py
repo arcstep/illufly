@@ -90,7 +90,7 @@ def create_api_keys_endpoints(
                 detail=str(e)
             )
 
-    async def delete_api_key(
+    async def revoke_api_key(
         api_key: str,
         response: Response,
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
@@ -102,7 +102,7 @@ def create_api_keys_endpoints(
                 detail="API密钥管理器未初始化"
             )
         try:
-            result = api_keys_manager.delete_api_key(token_claims['user_id'], api_key)
+            result = api_keys_manager.revoke_api_key(token_claims['user_id'], api_key)
             if result.is_ok():
                 return result
             else:
