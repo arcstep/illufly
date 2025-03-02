@@ -30,6 +30,7 @@ def create_api_keys_endpoints(
 
     class CreateApiKeyRequest(BaseModel):
         """创建API密钥请求"""
+        imitator: str = Field(default="OPENAI", description="OpenAI兼容接口的模仿来源")
         description: str = Field(default=None, description="API密钥描述")
 
     async def create_api_key(
@@ -46,6 +47,7 @@ def create_api_keys_endpoints(
         try:
             result = api_keys_manager.create_api_key(
                 user_id=token_claims['user_id'],
+                imitator=api_key_form.imitator,
                 description=api_key_form.description
             )
             logger.info(f"创建 API 密钥结果: {result.data}")
@@ -119,7 +121,7 @@ def create_api_keys_endpoints(
             )
 
     return {
-        "create_api_key": (HttpMethod.POST, f"{prefix}/api-keys", create_api_key),
-        "list_api_keys": (HttpMethod.GET, f"{prefix}/api-keys", list_api_keys),
-        "delete_api_key": (HttpMethod.DELETE, f"{prefix}/api-keys/{{api_key}}", delete_api_key),
+        (HttpMethod.POST, f"{prefix}/api-keys", create_api_key),
+        (HttpMethod.GET, f"{prefix}/api-keys", list_api_keys),
+        (HttpMethod.POST, f"{prefix}/api-keys/{{api_key}}", revoke_api_key),
     }

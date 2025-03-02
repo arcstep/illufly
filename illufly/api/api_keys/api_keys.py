@@ -38,7 +38,6 @@ class ApiKey(BaseModel):
         imitator = imitator or "OPENAI"
         return f"{cls.get_prefix(user_id, imitator)}:{apikey}"
 
-
     apikey: str = Field(
         default=generate_apikey(), 
         description="OpenAI兼容的APIKEY管理"
@@ -62,6 +61,7 @@ class ApiKey(BaseModel):
     def is_expired(self) -> bool:
         """判断是否过期"""
         return self.expires_at < datetime.now(timezone.utc)
+
 class ApiKeysManager:
     def __init__(self, db: IndexedRocksDB, logger: logging.Logger = None):
         self._db = db
@@ -76,12 +76,12 @@ class ApiKeysManager:
         self._db.update_with_indexes(__API_KEY_MODEL_NAME__, db_key, ak)
         return Result.ok(data=ak.model_dump())
     
-    def list_api_keys(self, user_id: str, imitator: str) -> Result[List[ApiKey]]:
+    def list_api_keys(self, user_id: str) -> Result[List[ApiKey]]:
         """列出APIKEY"""
-        keys = self._db.values(prefix=ApiKey.get_prefix(user_id, imitator))
+        keys = self._db.values(prefix=ApiKey.get_prefix(user_id))
         return Result.ok(data=[{**ak.model_dump(), "is_expired": ak.is_expired} for ak in keys])
 
-    def verify_api_key(self, api_key: str) -> Result[ApiKey]:
+    def verify_api_key(self, user_id: str, api_key: str) -> Result[ApiKey]:
         """验证APIKEY"""
         keys = self._db.values_with_index(__API_KEY_MODEL_NAME__, "apikey", api_key)
         if len(keys) == 0:
@@ -89,17 +89,22 @@ class ApiKeysManager:
         ak = keys[0]
         if ak.is_expired:
             return Result.fail(error="API密钥已过期")
+        if ak.user_id != user_id:
+            return Result.fail(error="API密钥不属于当前用户")
+
         return Result.ok(data=ak.model_dump())
 
-    def revoke_api_key(self, user_id: str, imitator: str, apikey: str) -> Result[None]:
+    def revoke_api_key(self, user_id: str, apikey: str) -> Result[None]:
         """撤销APIKEY"""
-        db_key = ApiKey.get_db_key(user_id, apikey)
-        ak = self._db.get(db_key)
-        if ak is None:
+        keys = self._db.values_with_index(__API_KEY_MODEL_NAME__, "apikey", apikey)
+        if len(keys) == 0:
             return Result.fail(error="API密钥不存在")
+        ak = keys[0]
         if ak.is_expired:
             return Result.fail(error="API密钥已过期")
+        if ak.user_id != user_id:
+            return Result.fail(error="API密钥不属于当前用户")
 
         ak.expires_at = ak.created_at
-        self._db.put(db_key, ak)
+        self._db.update_with_indexes(__API_KEY_MODEL_NAME__, ApiKey.get_db_key(ak.apikey, user_id), ak)
         return Result.ok()

@@ -84,7 +84,7 @@ class TestApiKeysManager:
 
         # 验证
         mock_db.values_with_index.return_value = [ApiKey.model_validate(api_key_dict)]
-        result = api_keys_manager.verify_api_key(api_key_dict['apikey'])
+        result = api_keys_manager.verify_api_key(user_id, api_key_dict['apikey'])
         assert result.is_ok()
         ak = ApiKey.model_validate(result.data)
         assert ak.is_expired == False
@@ -98,7 +98,7 @@ class TestApiKeysManager:
             ApiKey(user_id=user_id, imitator=imitator, description="Key 2")
         ]
         mock_db.values.return_value = mock_keys        
-        result = api_keys_manager.list_api_keys(user_id, imitator)
+        result = api_keys_manager.list_api_keys(user_id)
         
         assert result.is_ok()
         assert len(result.data) == 2
@@ -117,16 +117,16 @@ class TestApiKeysManager:
         ak = ApiKey(user_id=user_id, imitator=imitator, apikey=key)
 
         mock_db.values_with_index.return_value = [ak]        
-        result = api_keys_manager.verify_api_key(key)
+        result = api_keys_manager.verify_api_key(user_id, key)
         assert result.is_ok()
         
         mock_db.get.return_value = ak
-        result = api_keys_manager.revoke_api_key(user_id, imitator, key)
+        result = api_keys_manager.revoke_api_key(user_id, key)
         assert result.is_ok()
 
         ak.expires_at = ak.created_at
         mock_db.values_with_index.return_value = [ak]
-        result = api_keys_manager.verify_api_key(key)
+        result = api_keys_manager.verify_api_key(user_id, key)
         assert result.is_fail()
 
     @pytest.mark.asyncio
