@@ -18,8 +18,8 @@ class IndexedRocksDB(BaseRocksDB):
     在增加、删除、修改对象时根据注册的索引路径自动更新索引。
     """
 
-    def __init__(self, path: str = None, options: Optional[Options] = None, logger=None):
-        super().__init__(path, options, logger)
+    def __init__(self, path: str = None, options: Optional[Options] = None):
+        super().__init__(path, options)
 
         # 创建索引元数据的列族
         all_cfs = self.list_column_families(self.path)

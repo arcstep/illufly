@@ -78,7 +78,6 @@ class FactsTask(BaseTask):
         messages: List[Dict[str, Any]],
         question: str,
         answer: str,
-        logger: logging.Logger,
         assistant: ChatOpenAI
     ):
         """生成事实"""
@@ -163,7 +162,7 @@ class FactsTask(BaseTask):
 
         try:
             messages = [m.message_dict for m in task.messages]
-            await cls._generate_facts(db, messages, task.question, task.answer, logger, assistant)
+            await cls._generate_facts(db, messages, task.question, task.answer, assistant)
             task.task_extract_facts = TaskState.DONE
             db.update_with_indexes(MemoryType.QA, task.key, task.model_dump())
 

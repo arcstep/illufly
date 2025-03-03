@@ -109,14 +109,14 @@ class TokensManager:
     - 支持自动清理过期令牌
     """
     
-    def __init__(self, db: IndexedRocksDB, logger: logging.Logger = None):
+    def __init__(self, db: IndexedRocksDB):
         """初始化认证管理器
 
         刷新令牌持久化保存在 rocksdb 中，访问令牌保存在内存中。
         刷新令牌应当在用户登录时颁发，访问令牌应当在用户每次授权请求时验证，如果缺少合法的访问令牌就使用刷新令牌重新颁发；
         """
 
-        self._logger = logger or logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
 
         # 刷新令牌持久化保存在数据库中
         self._cache = CachedRocksDB(db)

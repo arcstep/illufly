@@ -10,8 +10,8 @@ class TestAsyncUtils:
     """测试AsyncUtils在各种环境下的行为"""
     
     def setup_method(self):
-        self.logger = logging.getLogger(__name__)
-        self.service = AsyncUtils(self.logger)
+        self._logger = logging.getLogger(__name__)
+        self.service = AsyncUtils(self._logger)
         
     async def dummy_task(self, duration=0.1):
         """测试用的异步任务"""

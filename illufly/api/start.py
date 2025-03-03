@@ -21,6 +21,8 @@ from .openai import create_openai_endpoints
 from .chat import create_chat_endpoints
 from .static_files import StaticFilesManager
 
+logger = logging.getLogger("illufly")
+
 def setup_logging(log_level: int = logging.INFO):
     """配置全局日志"""
     # 配置根记录器
@@ -74,7 +76,7 @@ def setup_spa_middleware(app: FastAPI, static_dir: Path, exclude_paths: List[str
 async def create_app(
     db_path: str = "./db",
     openai_imitators: Optional[List[str]] = None,
-    router_address: str = "inproc://router-bus",
+    router_address: str = None,
     title: str = "Illufly API",
     description: str = "Illufly 后端 API 服务",
     prefix: str = "/api",
@@ -91,7 +93,6 @@ async def create_app(
         openai_imitators = ["OPENAI"]
 
     setup_logging(log_level)
-    logger = logging.getLogger("illufly")
 
     # 创建 FastAPI 应用实例
     version = __version__
@@ -120,18 +121,19 @@ async def create_app(
     # 初始化数据库
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    db = IndexedRocksDB(str(db_path), logger=logger)
+    db = IndexedRocksDB(str(db_path))
 
     # 初始化 ZMQ 路由、客户端
+    router_address = router_address or "inproc://router-bus"
     zmq_context = zmq.asyncio.Context()
     router = ServiceRouter(router_address, context=zmq_context)
-    zmq_client = ClientDealer(router_address, context=zmq_context, logger=logger)
+    zmq_client = ClientDealer(router_address, context=zmq_context)
 
     # 初始化 ThreadManagerDealer
-    thread_manager_dealer = ThreadManagerDealer(db, router_address=router_address, context=zmq_context, logger=logger)
+    thread_manager_dealer = ThreadManagerDealer(db, router_address=router_address, context=zmq_context)
 
     # 初始化 MemoryManager
-    memory_manager = MemoryManager(db, logger=logger)
+    memory_manager = MemoryManager(db)
 
     # 初始化 Agent
     agents = []
@@ -140,10 +142,9 @@ async def create_app(
             memory_manager=memory_manager,
             db=db,
             group=imitator,
-            llm=ChatOpenAI(imitator=imitator, logger=logger),
+            llm=ChatOpenAI(imitator=imitator),
             router_address=router_address,
-            context=zmq_context,
-            logger=logger
+            context=zmq_context
         )
         agents.append(agent)
 
@@ -159,19 +160,19 @@ async def create_app(
         await zmq_client.connect()
 
     # 初始化管理器实例
-    tokens_manager = TokensManager(db, logger=logger)
-    users_manager = UsersManager(db, logger=logger)
-    api_keys_manager = ApiKeysManager(db, logger=logger)
+    tokens_manager = TokensManager(db)
+    users_manager = UsersManager(db)
+    api_keys_manager = ApiKeysManager(db)
 
-    mount_auth_api(app, prefix, tokens_manager, users_manager, logger)
-    mount_api_keys_api(app, prefix, base_url, tokens_manager, api_keys_manager, logger)
-    mount_agent_api(app, prefix, zmq_client, tokens_manager, logger)
+    mount_auth_api(app, prefix, tokens_manager, users_manager)
+    mount_api_keys_api(app, prefix, base_url, tokens_manager, api_keys_manager)
+    mount_agent_api(app, prefix, zmq_client, tokens_manager)
 
     # 按照 Imitator 挂载 OpenAI 兼容接口
-    mount_openai_imitators(app, prefix, openai_imitators, logger)
-    mount_openai_api(app, prefix, zmq_client, api_keys_manager, openai_imitators, logger)
+    mount_openai_imitators(app, prefix, openai_imitators)
+    mount_openai_api(app, prefix, zmq_client, api_keys_manager, openai_imitators)
     
-    static_manager = mount_static_files(app, prefix, static_dir, logger)
+    static_manager = mount_static_files(app, prefix, static_dir)
 
     @app.on_event("shutdown")
     async def cleanup():
@@ -191,14 +192,13 @@ async def create_app(
     logger.info(f"Illufly API 启动完成: {prefix}/docs")
     return app
 
-def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, users_manager: UsersManager, logger: logging.Logger):
+def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, users_manager: UsersManager):
     # 用户管理和认证路由
     auth_handlers = create_auth_endpoints(
         app=app,
         tokens_manager=tokens_manager,
         users_manager=users_manager,
-        prefix=prefix,
-        logger=logger
+        prefix=prefix
     )
     for (method, path, handler) in auth_handlers:
         app.add_api_route(
@@ -210,15 +210,14 @@ def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, use
             description=getattr(handler, "__doc__", None),
             tags=["Illufly Backend - Auth"])
 
-def mount_api_keys_api(app: FastAPI, prefix: str, base_url: str, tokens_manager: TokensManager, api_keys_manager: ApiKeysManager, logger: logging.Logger):
+def mount_api_keys_api(app: FastAPI, prefix: str, base_url: str, tokens_manager: TokensManager, api_keys_manager: ApiKeysManager):
     # APIKEY 路由
     api_keys_handlers = create_api_keys_endpoints(
         app=app,
         tokens_manager=tokens_manager,
         api_keys_manager=api_keys_manager,
         prefix=prefix,
-        base_url=base_url,
-        logger=logger
+        base_url=base_url
     )
     for (method, path, handler) in api_keys_handlers:
         app.add_api_route(
@@ -230,13 +229,13 @@ def mount_api_keys_api(app: FastAPI, prefix: str, base_url: str, tokens_manager:
             description=getattr(handler, "__doc__", None),
             tags=["Illufly Backend - API Keys"])
 
-def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str], logger: logging.Logger):
+def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
     # 加载静态资源环境
     static_manager = None
     if Path(__file__).parent.joinpath("static").exists() and static_dir is None:
         static_path = Path(__file__).parent.joinpath("static")
     else:
-        static_manager = StaticFilesManager(static_dir=static_dir, logger=logger)
+        static_manager = StaticFilesManager(static_dir=static_dir)
         static_path = static_manager.setup()
 
     if static_path:
@@ -251,7 +250,7 @@ def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str], log
     
     return static_manager
 
-def mount_openai_imitators(app: FastAPI, prefix: str, imitators: List[str], logger: logging.Logger):
+def mount_openai_imitators(app: FastAPI, prefix: str, imitators: List[str]):
     # 挂载 imitators 路由
     app.add_api_route(
         path=f"{prefix}/imitators",
@@ -263,14 +262,13 @@ def mount_openai_imitators(app: FastAPI, prefix: str, imitators: List[str], logg
         tags=["Illufly Backend - Imitators"]
     )
 
-def mount_agent_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, tokens_manager: TokensManager, logger: logging.Logger):
+def mount_agent_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, tokens_manager: TokensManager):
     # Chat 路由
     chat_handlers = create_chat_endpoints(
         app=app,
         zmq_client=zmq_client,
         tokens_manager=tokens_manager,
-        prefix=prefix,
-        logger=logger
+        prefix=prefix
     )
     for (method, path, handler) in chat_handlers:
         app.add_api_route(
@@ -282,7 +280,7 @@ def mount_agent_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, tokens_
             description=getattr(handler, "__doc__", None),
             tags=["Illufly Backend - Chat"])
 
-def mount_openai_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, api_keys_manager: ApiKeysManager, openai_imitators: List[str], logger: logging.Logger):
+def mount_openai_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, api_keys_manager: ApiKeysManager, openai_imitators: List[str]):
     # OpenAI 兼容接口使用独立的 FastAPI 实例
     openai_app = FastAPI()
     openai_app.add_middleware(
@@ -300,8 +298,7 @@ def mount_openai_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, api_ke
             app=openai_app,
             imitator=imitator,
             zmq_client=zmq_client,
-            api_keys_manager=api_keys_manager,
-            logger=logger
+            api_keys_manager=api_keys_manager
         )
         for (method, path, handler) in openai_handlers:
             openai_app.add_api_route(

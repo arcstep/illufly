@@ -31,7 +31,7 @@ class BaseAgent(ServiceDealer):
         self.runnable_tools = runnable_tools
         if not group:
             group = self.llm.group
-        super().__init__(group=group, **kwargs)
+        super().__init__(group=group, service_name=getattr(self.llm, 'imitator', '__class__.__name__'), **kwargs)
 
         self.db = db or default_rocksdb
         self.db.register_model(MESSAGE_MODEL, HistoryMessage)

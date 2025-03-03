@@ -11,7 +11,7 @@ import asyncio
 class ChatOpenAI(BaseChat):
     """OpenAI 对话模型"""
 
-    def __init__(self, model: str=None, imitator: str=None, logger: logging.Logger = None, **kwargs):
+    def __init__(self, model: str=None, imitator: str=None, **kwargs):
         """
         使用 imitator 参数指定兼容 OpenAI 接口协议的模型来源，默认 imitator="OPENAI"。
         只需要在环境变量中配置 imitator 对应的 API_KEY 和 BASE_URL 即可。
@@ -25,7 +25,7 @@ class ChatOpenAI(BaseChat):
             )
 
         self.imitator = (imitator or "").upper() or "OPENAI"
-        super().__init__(logger=logger)
+        super().__init__()
 
         # 按照 imitator 参数指定组名，以便于作为 DEALER 服务注册时按 imitator 作为默认分组
         self.group = self.imitator

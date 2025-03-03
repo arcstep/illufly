@@ -22,8 +22,8 @@ class MemoryManager:
     L4: 观点，CoreView 应当被持久化
     """
 
-    def __init__(self, db: IndexedRocksDB, logger: logging.Logger = None):
-        self._logger = logger or logging.getLogger(__name__)
+    def __init__(self, db: IndexedRocksDB):
+        self._logger = logging.getLogger(__name__)
 
         self.db = db or default_rocksdb
         self.db.register_model(MESSAGE_MODEL, HistoryMessage)

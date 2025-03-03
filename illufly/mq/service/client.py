@@ -19,13 +19,12 @@ class ClientDealer:
         router_address: str,
         context: Optional[zmq.asyncio.Context] = None,
         hwm: int = 1000,
-        timeout: Optional[float] = None,
-        logger = None
+        timeout: Optional[float] = None
     ):
         self._router_address = router_address
         self._hwm = hwm
         self._timeout = timeout
-        self._logger = logger or logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
         
         self._context = context or zmq.asyncio.Context.instance()
         self._socket = None

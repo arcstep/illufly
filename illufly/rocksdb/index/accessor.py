@@ -54,7 +54,7 @@ class ValueAccessor(Protocol):
 class SequenceAccessor(ValueAccessor):
     """序列类型访问器（支持所有类似列表的类型）"""
     def __init__(self, logger: Optional[logging.Logger] = None):
-        self._logger = logger or logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
         
     def get_field_value(self, obj: Sequence, path_segments: Tuple[PathSegment, ...]) -> Any:
         if not path_segments:
@@ -194,7 +194,7 @@ class MappingAccessor(ValueAccessor):
 class ModelAccessor(ValueAccessor):
     """Pydantic模型访问器"""
     def __init__(self, logger: Optional[logging.Logger] = None):
-        self._logger = logger or logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
         
     def get_field_value(self, obj: BaseModel, path_segments: Tuple[PathSegment, ...]) -> Any:
         if not path_segments:
@@ -246,7 +246,7 @@ class ModelAccessor(ValueAccessor):
 class CompositeAccessor(ValueAccessor):
     """组合访问器"""
     def __init__(self, logger: Optional[logging.Logger] = None):
-        self._logger = logger or logging.getLogger(self.__class__.__name__)
+        self._logger = logging.getLogger(self.__class__.__name__)
         # 调整访问器顺序，确保特定类型在前
         self._accessors = [
             ModelAccessor(),     # 然后是模型类型

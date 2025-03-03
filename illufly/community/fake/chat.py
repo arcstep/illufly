@@ -14,10 +14,9 @@ class ChatFake(BaseChat):
         self,
         response: Union[str, List[str]]=None, 
         tool_responses: List[Dict] = None,  # 新增工具响应配置
-        sleep: float=0.1,
-        logger: logging.Logger = None,
+        sleep: float=0.1
     ):
-        super().__init__(logger=logger)
+        super().__init__()
         
         # 处理响应设置
         if response is None:

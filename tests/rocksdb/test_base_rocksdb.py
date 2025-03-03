@@ -25,7 +25,7 @@ class TestBasicOperations:
     
     @pytest.fixture
     def db(self, db_path):
-        db = BaseRocksDB(db_path, logger=logger)
+        db = BaseRocksDB(db_path)
         try:
             yield db
         finally:
@@ -141,7 +141,7 @@ class TestIterationOperations:
     
     @pytest.fixture
     def db(self, db_path):
-        db = BaseRocksDB(db_path, logger=logger)
+        db = BaseRocksDB(db_path)
         try:
             yield db
         finally:
@@ -344,7 +344,7 @@ class TestColumnFamilies:
     
     @pytest.fixture
     def db(self, db_path):
-        db = BaseRocksDB(db_path, logger=logger)
+        db = BaseRocksDB(db_path)
         try:
             yield db
         finally:
@@ -391,7 +391,7 @@ class TestBatchOperations:
     
     @pytest.fixture
     def db(self, db_path):
-        db = BaseRocksDB(db_path, logger=logger)
+        db = BaseRocksDB(db_path)
         try:
             yield db
         finally:

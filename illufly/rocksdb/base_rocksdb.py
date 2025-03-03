@@ -40,8 +40,7 @@ class BaseRocksDB:
     def __init__(
         self,
         path: str = None,
-        options: Optional[Options] = None,
-        logger: Optional[logging.Logger] = None,
+        options: Optional[Options] = None
     ):
         """初始化BaseRocksDB
         
@@ -52,7 +51,7 @@ class BaseRocksDB:
         """
         self.path = path or get_env("ILLUFLY_ROCKSDB_TEMP")
         self._db = Rdict(self.path, options)
-        self._logger = logger or logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
         self._default_cf = self._db.get_column_family("default")
         self._default_cf_name = "default"
 

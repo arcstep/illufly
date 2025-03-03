@@ -10,7 +10,7 @@ from .models import HistoryMessage, QA
 
 class QAManager():
     """问答管理器，保存一个 thread_id 的所有问答"""
-    def __init__(self, db: IndexedRocksDB, user_id: str = None, logger: logging.Logger = None):
+    def __init__(self, db: IndexedRocksDB, user_id: str = None):
         self.user_id = user_id or "default"
         self.db = db
 
@@ -18,7 +18,7 @@ class QAManager():
         self.db.register_index(MemoryType.QA, QA, "task_summarize")
         self.db.register_index(MemoryType.QA, QA, "task_extract_facts")
 
-        self._logger = logger or logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
 
     def set_qa(self, qa: QA):
         """添加一个对话"""

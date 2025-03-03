@@ -61,9 +61,9 @@ class ApiKey(BaseModel):
         return self.expires_at < datetime.now().timestamp()
 
 class ApiKeysManager:
-    def __init__(self, db: IndexedRocksDB, logger: logging.Logger = None):
+    def __init__(self, db: IndexedRocksDB):
         self._db = db
-        self._logger = logger or logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
         self._db.register_model(__API_KEY_MODEL_NAME__, ApiKey)
         self._db.register_index(__API_KEY_MODEL_NAME__, ApiKey, "api_key")
 

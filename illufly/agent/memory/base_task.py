@@ -113,7 +113,6 @@ class BaseTask(ABC):
         cls,
         db: IndexedRocksDB,
         max_concurrent_tasks: int = None,
-        logger: Optional[logging.Logger] = None,
         **kwargs: Any
     ) -> None:
         """启动任务
@@ -121,7 +120,6 @@ class BaseTask(ABC):
         Args:
             db: RocksDB实例
             sleep_time: 轮询间隔时间(秒)
-            logger: 日志记录器
             **kwargs: 传递给 _process_task 的额外参数
         """
         if max_concurrent_tasks is None:
@@ -138,7 +136,7 @@ class BaseTask(ABC):
         # 初始化任务相关变量
         cls._instances[task_id] = cls
         cls._stop_events[task_id] = asyncio.Event()
-        cls._loggers[task_id] = logger or logging.getLogger(cls.__name__)
+        cls._loggers[task_id] = logging.getLogger(cls.__name__)
         
         # 创建异步任务
         async_utils = AsyncUtils()

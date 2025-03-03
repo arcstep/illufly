@@ -91,7 +91,7 @@ def create_openai_endpoints(
             )
 
     # 流式响应模型
-    @handle_errors(logger=logger)
+    @handle_errors()
     async def chat_completion(chat_request: OpenaiRequest, ak: str = Depends(verify_api_key)):
         logger.info(f"chat_request: {chat_request.model_dump()}")
         created_timestamp = int(datetime.now().timestamp())
@@ -206,7 +206,7 @@ def create_openai_endpoints(
         object: str = "list"
         data: List[dict]
 
-    @handle_errors(logger=logger)
+    @handle_errors()
     async def list_models():
         """列出可用模型
         

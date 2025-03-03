@@ -22,7 +22,7 @@ def db_path():
 
 @pytest.fixture
 def db(db_path):
-    db = IndexedRocksDB(db_path, logger=logger)
+    db = IndexedRocksDB(db_path)
     try:
         yield db
     finally:

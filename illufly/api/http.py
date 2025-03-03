@@ -4,7 +4,7 @@ import logging
 from typing import get_type_hints
 from fastapi import HTTPException, status
 
-def handle_errors(logger: logging.Logger = None):
+def handle_errors():
     """保留函数签名的异常处理装饰器"""
     def decorator(func):
         # 保留原始签名信息
@@ -18,7 +18,7 @@ def handle_errors(logger: logging.Logger = None):
             except HTTPException:
                 raise
             except Exception as e:
-                local_logger = logger or logging.getLogger(func.__module__)
+                local_logger = logging.getLogger(func.__module__)
                 local_logger.error(
                     f"处理 {func.__name__} 时发生未捕获异常",
                     exc_info=True,

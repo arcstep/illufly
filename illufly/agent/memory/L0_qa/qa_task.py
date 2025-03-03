@@ -77,7 +77,6 @@ class QaTask(BaseTask):
         db: IndexedRocksDB,
         messages: List[Dict[str, Any]],
         content: str,
-        logger: logging.Logger,
         assistant: ChatOpenAI
     ):
         """处理摘要"""

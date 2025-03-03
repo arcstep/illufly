@@ -14,8 +14,8 @@ class AsyncUtils:
     2. 任务生命周期（创建、跟踪、清理）
     3. 异步/同步转换
     """
-    def __init__(self, logger: Optional[logging.Logger] = None):
-        self._logger = logger or logging.getLogger(__name__)
+    def __init__(self):
+        self._logger = logging.getLogger(__name__)
         self._tasks = set()
         self._cleanup_lock = asyncio.Lock()
         self._logger.debug(f"AsyncUtils created: {id(self)}")

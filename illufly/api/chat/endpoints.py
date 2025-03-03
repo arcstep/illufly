@@ -38,28 +38,28 @@ def create_chat_endpoints(
             值为元组 (HTTP方法, 路由路径, 处理函数)
     """
 
-    logger = logger or logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
 
-    @handle_errors(logger=logger)
+    @handle_errors()
     async def all_threads(
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager))
     ):
         """获取所有连续对话线程"""
         threads = await zmq_client.invoke(THREAD["all_threads"], user_id=token_claims['user_id'])
         return threads[0] or []
 
-    @handle_errors(logger=logger)
+    @handle_errors()
     async def new_thread(
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager))
     ):
         """创建新的连续对话线程"""
         result = await zmq_client.invoke(THREAD["new_thread"], user_id=token_claims['user_id'])
         return result[0] or {}
 
-    @handle_errors(logger=logger)
+    @handle_errors()
     async def load_messages(
         thread_id: str,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager))
     ):
         """获取连续对话线程的消息"""
         messages = await zmq_client.invoke(
@@ -69,10 +69,10 @@ def create_chat_endpoints(
         )
         return messages[0] or []
 
-    @handle_errors(logger=logger)
+    @handle_errors()
     async def models(
         imitator: str = "OPENAI",
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager))
     ):
         """获取模型列表"""
         models = await zmq_client.invoke(f"{imitator}.models")
@@ -83,10 +83,10 @@ def create_chat_endpoints(
         thread_id: str = Field(..., description="线程ID")
         imitator: str = Field(default="OPENAI", description="模仿者")
 
-    @handle_errors(logger=logger)
+    @handle_errors()
     async def chat(
         chat_request: ChatRequest,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager))
     ):
         """与大模型对话"""
         async def stream_response():

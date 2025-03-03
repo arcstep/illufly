@@ -295,7 +295,6 @@ class TestQaTask:
                 db=db,
                 messages=messages,
                 content=answer,
-                logger=logger,
                 assistant=chat_openai
             )
             logger.info(f"摘要处理结果: {summary}")

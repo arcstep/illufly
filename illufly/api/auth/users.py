@@ -20,9 +20,9 @@ class UsersManager:
 
     管理用户注册、登录、密码重置、角色管理等操作；
     """
-    def __init__(self, db: IndexedRocksDB, logger: logging.Logger = None):
+    def __init__(self, db: IndexedRocksDB):
         """初始化用户管理器"""
-        self._logger = logger or logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
 
         self._db = db
         self._db.register_model(__USER_MODEL_NAME__, User)
