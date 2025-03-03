@@ -79,7 +79,7 @@ def create_api_keys_endpoints(
         try:
             result = api_keys_manager.list_api_keys(token_claims['user_id'], base_url=base_url)
             if result.is_ok():
-                return result
+                return sorted(result.data, key=lambda x: x['expires_at'], reverse=True)
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,

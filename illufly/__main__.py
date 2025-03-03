@@ -13,6 +13,7 @@ def _parse_args():
     arguments = [
         ("--db-path", "./db", "数据库路径 (默认: ./db)"),
         ("--openai", None, "OpenAI模仿者列表 (默认: OPENAI)"),
+        ("--router-address", None, "ZMQ 路由地址 (默认: inproc://router-bus)"),
         ("--title", "Illufly API", "API 标题 (默认: Illufly API)"),
         ("--description", "Illufly 后端 API 服务", "API 描述"),
         ("--prefix", "/api", "API 路由前缀 (默认: /api)"),
@@ -50,6 +51,7 @@ async def main():
     app = await create_app(
         db_path=args.db_path,
         openai_imitators=args.openai,
+        router_address=args.router_address,
         title=args.title,
         description=args.description,
         prefix=args.prefix,

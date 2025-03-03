@@ -241,7 +241,7 @@ def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str], log
 
     if static_path:
         # 设置 SPA 中间件
-        setup_spa_middleware(app, static_path, exclude_paths=[prefix, "/docs", "/openapi.json"])
+        setup_spa_middleware(app, static_path, exclude_paths=[f"{prefix}/", "/docs", "/openapi.json"])
         
         # 挂载静态文件（作为后备）
         app.mount("/", StaticFiles(
