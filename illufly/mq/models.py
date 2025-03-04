@@ -12,6 +12,15 @@ from .enum import BlockType, ReplyState, RequestStep
 
 logger = logging.getLogger(__name__)
 
+class ZmqServiceState(Enum):
+    """ZMQ 服务状态枚举"""
+    INIT = 0       # 初始化状态
+    RUNNING = 1    # 正常运行
+    RECONNECTING = 2 # 重连中
+    STOPPING = 3   # 停止中
+    STOPPED = 4    # 已停止
+
+
 @serialize
 class BaseBlock(BaseModel):
     """基础数据块"""

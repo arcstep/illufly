@@ -9,8 +9,9 @@ import asyncio
 import logging
 import json
 import uuid
+import async_timeout
 
-from ..models import ReplyErrorBlock, RequestBlock, ReplyState, ReplyBlock, ErrorBlock
+from ..models import ZmqServiceState, ReplyErrorBlock, RequestBlock, ReplyState, ReplyBlock, ErrorBlock
 from ..utils import serialize_message, deserialize_message
 
 class ServiceState(str, Enum):
@@ -63,6 +64,7 @@ class ServiceRouter:
         address: str, 
         context: Optional[zmq.asyncio.Context] = None,
         heartbeat_timeout: float = 30.0,     # 心跳超时时间（秒）
+        monitor_interval: float = 1.0,      # 自监控间隔时间（秒）
     ):
         self._context = context or zmq.asyncio.Context()
         self._address = address
@@ -74,44 +76,101 @@ class ServiceRouter:
         
         # 可配置的超时参数
         self._HEARTBEAT_TIMEOUT = heartbeat_timeout
+        self._monitor_interval = monitor_interval
         
+        # 状态管理
+        self._state = ZmqServiceState.INIT
+        self._state_lock = asyncio.Lock()  # 状态锁
+        self._reconnect_in_progress = False
+
         # 心跳日志控制
-        self._last_heartbeat_logs = {}  # 记录每个服务上次的心跳日志状态
         self._service_lock = asyncio.Lock()  # 服务状态修改锁
+        self._last_heartbeat_logs = {}  # 记录每个服务上次的心跳日志状态
         self._last_health_check = time()     # 最后检查时间戳
+
+        # 消息处理任务
+        self._message_task = None
+
+        # 服务健康检查任务
+        self._service_health_check_task = None
+
+    async def _force_reconnect(self):
+        """强制完全重置连接"""
+        self._logger.info("Initiating forced reconnection...")
+        
+        # 重新初始化socket
+        self._socket = self._context.socket(zmq.ROUTER)
+        self._socket.setsockopt(zmq.LINGER, 0)  # 设置无等待关闭
+        self._socket.setsockopt(zmq.IMMEDIATE, 1)  # 禁用缓冲
+        self._socket.bind(self._address)
+        
+        # 重置心跳状态
+        self._last_heartbeat_logs = {}  # 记录每个服务上次的心跳日志状态
+        self._last_health_check = time()     # 最后检查时间戳
+
+    async def _reconnect(self):
+        """尝试重新连接到路由器"""
+        self._logger.info(f"开始执行重连...")
+        
+        try:
+            # 关闭现有连接
+            if self._socket and not self._socket.closed:
+                self._socket.close()
+            
+            await self._force_reconnect()
+
+            # 重连状态
+            self._reconnect_in_progress = False
+            self._logger.info(f"重连成功")
+            return True
+            
+        except Exception as e:
+            self._logger.error(f"重连过程中发生错误: {e}", exc_info=True)            
+            return False
 
     async def start(self):
         """启动路由器"""
-        if self._running:
-            return
-            
-        try:
-            # 先尝试绑定地址
-            self._socket.bind(self._address)
-            self._running = True
-            self._message_task = asyncio.create_task(self._route_messages(), name="router-route_messages")
-            self._health_check_task = asyncio.create_task(self._check_service_health(), name="router-check_service_health")
-            self._logger.info(f"Router started at {self._address}")
-        except Exception as e:
-            self._logger.error(f"Failed to start router: {e}")
-            raise RuntimeError(f"Failed to start router: {e}") from e
+        async with self._state_lock:
+            if self._state not in [ZmqServiceState.INIT, ZmqServiceState.STOPPED]:
+                self._logger.warning(f"Cannot start from {self._state} state")
+                return False
+                
+            self._state = ZmqServiceState.RUNNING
+
+        # 重建连接
+        if not await self._reconnect():
+            self._logger.error(f"网络连接失败")
+            return False
+
+        self._message_task = asyncio.create_task(self._route_messages(), name="router-route_messages")
+        self._service_health_check_task = asyncio.create_task(self._check_service_health(), name="router-check_service_health")
+        self._logger.info(f"Router started at {self._address}")
 
     async def stop(self):
         """停止路由器"""
-        if not self._running:
-            return
-            
-        self._running = False
-        if hasattr(self, '_message_task'):
+        async with self._state_lock:
+            if self._state == ZmqServiceState.STOPPED:
+                return
+                
+            self._state = ZmqServiceState.STOPPING
+
+        tasks = []
+        if self._message_task:
             self._message_task.cancel()
-        if hasattr(self, '_health_check_task'):
-            self._health_check_task.cancel()
+            tasks.append(self._message_task)
+        if self._service_health_check_task:
+            self._service_health_check_task.cancel()
+            tasks.append(self._service_health_check_task)
+
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
             
-        try:
-            self._socket.close()
+        self._socket.close(linger=0)
+        self._socket = None
+            
+        async with self._state_lock:
+            self._state = ZmqServiceState.STOPPED
             self._logger.info(f"Router stopped")
-        except Exception as e:
-            self._logger.error(f"Error stopping router: {e}")
 
     def register_service(self, service_id: str, service_info: Dict[str, Any]):
         """注册服务"""
@@ -157,8 +216,8 @@ class ServiceRouter:
             - multipart[1] 为消息类型
             - multipart[2:] 根据消息类型各自约定
         """
-        self._logger.info(f"Routing messages on {self._address}, {self._socket}")
-        while self._running:
+        self._logger.info(f"Routing messages handler started on {self._address}, {self._socket}")
+        while self._state == ZmqServiceState.RUNNING:
             try:
                 multipart = await self._socket.recv_multipart()
                 if len(multipart) < 2:
@@ -181,7 +240,14 @@ class ServiceRouter:
                         service.last_heartbeat = time()
 
                 # 然后再处理特定消息类型
-                if message_type == "register":
+                if message_type == "router_monitor":
+                    await self._socket.send_multipart([
+                        from_id_bytes,
+                        b"heartbeat_ack",
+                        b""
+                    ])
+
+                elif message_type == "register":
                     async with self._service_lock:  # 单独加锁
                         service_info = json.loads(multipart[2].decode())
                         self.register_service(from_id, service_info)
@@ -206,14 +272,6 @@ class ServiceRouter:
                     else:
                         # 未注册的服务发送心跳
                         self._logger.warning(f"Received heartbeat from unregistered service: {from_id}")
-                
-                elif message_type == "ping":
-                    self._logger.debug(f"Handling ping from {from_id}")
-                    await self._socket.send_multipart([
-                        from_id_bytes,  # 发送给原始发送者
-                        b"ping_ack",         # 消息类型
-                        b"pong"          # 响应内容
-                    ])
                 
                 elif message_type == "clusters":
                     # 收集所有可用的 DEALERS 节点信息
@@ -340,7 +398,8 @@ class ServiceRouter:
 
     async def _check_service_health(self):
         """检查服务健康状态"""
-        while self._running:
+        self._logger.info(f"Dealer service health check handler started")
+        while self._state == ZmqServiceState.RUNNING:
             current_time = time()
             
             # 检查服务心跳
@@ -359,4 +418,3 @@ class ServiceRouter:
                         self._logger.info(f"Service {service_id} is living!")
             
             await asyncio.sleep(self._HEARTBEAT_TIMEOUT)
-

@@ -227,10 +227,9 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
             self._reconnect_in_progress = False
             self._reconnect_attempts = 0
             self._max_reconnect_attempts = 5
+            self._service_registered = False
 
             self._logger.info(f"<{self._service_id}> 重连成功")
-
-            await self._register_to_router()
 
             return True
             
@@ -261,7 +260,9 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name=f"{self._service_id}-heartbeat")
         self._process_messages_task = asyncio.create_task(self._process_messages(), name=f"{self._service_id}-process_messages")
         self._reconnect_monitor_task = asyncio.create_task(self._reconnect_monitor(), name=f"{self._service_id}-reconnect_monitor")
-        
+
+        await self._register_to_router()
+
         self._logger.info(f"<{self._service_id}> Service {self._service_id} started with {len(self._handlers)} methods")
         self._last_successful_heartbeat = time.time()
         return True
@@ -278,6 +279,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
         tasks = []
         if self._process_messages_task:
             self._process_messages_task.cancel()
+            self._service_registered = False
             tasks.append(self._process_messages_task)
             
         if self._heartbeat_task:
@@ -304,6 +306,10 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
     async def _register_to_router(self):
         """向Router注册服务信息"""
         try:
+            if not self._socket:
+                return
+            
+            self._service_registered = True
             # 创建一个可序列化的方法信息副本，移除方法对象
             methods = {}
             for method_name, method_info in self._handlers.items():
@@ -328,12 +334,19 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 b"register",
                 json.dumps(service_info).encode()
             ])
-            
+        
+        except asyncio.CancelledError:
+            return
+        except zmq.ZMQError as e:
+            self._service_registered = False
+            self._logger.error(f"<{self._service_id}> Registration failed: {str(e)}")
         except Exception as e:
+            self._service_registered = False
             self._logger.error(f"<{self._service_id}> Registration failed: {str(e)}", exc_info=True)
 
     async def _process_messages(self):
         """处理消息主循环"""
+        counter = 0
         while self._state == DealerState.RUNNING:
             try:
                 await asyncio.sleep(0)
@@ -351,8 +364,12 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 is_heartbeat_ack = len(multipart) >= 1 and multipart[0] == b'heartbeat_ack'
                 
                 # 只打印非心跳消息
-                if not is_heartbeat_ack:
-                    self._logger.debug(f"<{self._service_id}> DEALER Received message: {multipart}")
+                if is_heartbeat_ack:
+                    counter = counter + 1 if counter < 10 else 0
+                    if counter == 0:
+                        self._logger.info(f"<{self._service_id}> HEARTBEAT ACK")
+                else:
+                    self._logger.info(f"<{self._service_id}> DEALER Received message: {multipart}")
                 
                 if len(multipart) < 1:
                     self._logger.warning(f"<{self._service_id}> Received empty message")
@@ -468,10 +485,12 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                                 target_client_id,
                                 serialize_message(reply)
                             ])
-                        
+                    except zmq.ZMQError as e:
+                        self._logger.error(f"<{self._service_id}> DEALER ZMQError: {e}")
+                        await asyncio.sleep(2)
                     except Exception as e:
                         self._logger.error(f"<{self._service_id}> DEALER Handler error: {e}", exc_info=True)
-                        await self._send_error(target_client_id, str(e))
+                        await asyncio.sleep(2)
                 except Exception as e:
                     self._logger.error(f"<{self._service_id}> DEALER Request processing error: {e}", exc_info=True)
         finally:
@@ -497,18 +516,41 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
 
     async def _heartbeat_loop(self):
         """心跳和健康监控循环"""
+        counter = 0
         while self._state == DealerState.RUNNING:
             try:
                 # 发送心跳
                 if self._socket and self._state == DealerState.RUNNING:
                     await self._socket.send_multipart([b"heartbeat", b""])
                 
+                if not self._service_registered:
+                    await self._register_to_router()
+
+                # if counter % 100 == 19:
+                #     self._socket.close()
+                #     self._logger.info(f"<{self._service_id}> MOCK ERROR")                
             except asyncio.CancelledError:
                 break
+            except zmq.ZMQError as e:
+                self._logger.error(f"<{self._service_id}> ZMQError in heartbeat loop: {e}")
+                await self.request_reconnect()
+                await asyncio.sleep(2)
             except Exception as e:
                 self._logger.error(f"<{self._service_id}> Error in heartbeat loop: {e}")
+                await self.request_reconnect()
+                await asyncio.sleep(2)
             finally:
+                counter = counter if counter < 100 else 0
                 await asyncio.sleep(self._heartbeat_interval)
+
+    async def request_reconnect(self):
+        """请求重连"""
+        self._heartbeat_status = False
+        self._socket.close()
+        self._socket = None
+        self._service_registered = False
+        self._process_messages_task.cancel()
+        await asyncio.gather(self._process_messages_task, return_exceptions=True)
 
     async def _reconnect_monitor(self):
         """监控并处理重连请求"""        
@@ -526,16 +568,20 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 # 检查心跳状态
                 if self._heartbeat_status and not_living_interval > self._heartbeat_timeout:
                     self._reconnect_in_progress = True
-                    self._heartbeat_status = False
                     self._logger.warning(f"<{self._service_id}> Heartbeat timeout detected")
+                    await self.request_reconnect()
                     
-                    # 尝试重连
+                # 尝试重连
+                if not self._heartbeat_status:
                     if await self._reconnect():
                         self._logger.info(f"<{self._service_id}> 重连成功 - 重置心跳状态")
                         # 确保心跳状态重置
                         self._last_successful_heartbeat = time.time()
                         self._heartbeat_status = True
                         self._reconnect_attempts = 0
+                        self._process_messages_task = asyncio.create_task(self._process_messages(), name=f"{self._service_id}-process_messages")
+                        await self._register_to_router()
+
                     else:
                         self._reconnect_attempts += 1
                         self._logger.warning(
