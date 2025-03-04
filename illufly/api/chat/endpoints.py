@@ -42,7 +42,7 @@ def create_chat_endpoints(
 
     @handle_errors()
     async def all_threads(
-        token_claims: TokenClaims = Depends(require_user(tokens_manager))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """获取所有连续对话线程"""
         threads = await zmq_client.invoke(THREAD["all_threads"], user_id=token_claims['user_id'])
@@ -50,7 +50,7 @@ def create_chat_endpoints(
 
     @handle_errors()
     async def new_thread(
-        token_claims: TokenClaims = Depends(require_user(tokens_manager))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """创建新的连续对话线程"""
         result = await zmq_client.invoke(THREAD["new_thread"], user_id=token_claims['user_id'])
@@ -59,7 +59,7 @@ def create_chat_endpoints(
     @handle_errors()
     async def load_messages(
         thread_id: str,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """获取连续对话线程的消息"""
         messages = await zmq_client.invoke(
@@ -72,7 +72,7 @@ def create_chat_endpoints(
     @handle_errors()
     async def models(
         imitator: str = "OPENAI",
-        token_claims: TokenClaims = Depends(require_user(tokens_manager))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """获取模型列表"""
         models = await zmq_client.invoke(f"{imitator}.models")
@@ -86,7 +86,7 @@ def create_chat_endpoints(
     @handle_errors()
     async def chat(
         chat_request: ChatRequest,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """与大模型对话"""
         async def stream_response():

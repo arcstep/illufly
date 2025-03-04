@@ -13,7 +13,7 @@ from .models import User, UserRole
 from .tokens import TokensManager, TokenClaims
 from .users import UsersManager
 
-def _set_auth_cookies(response: Response, access_token: str) -> None:
+def _set_auth_cookies(response: Response, access_token: str, logger: logging.Logger) -> None:
     """设置认证Cookie"""
     try:
         if access_token:
@@ -44,8 +44,6 @@ def require_user(
         tokens_manager: 令牌管理器
         require_roles: 要求的角色
     """
-
-    logger = logging.getLogger(__name__)
 
     async def verified_user(
         request: Request,
@@ -240,7 +238,7 @@ def create_auth_endpoints(
         logger.debug(f"创建设备访问令牌: {result}")
         if result.is_ok():
             access_token = TokenClaims.create_access_token(**result.data).jwt_encode()
-            _set_auth_cookies(response, access_token=access_token, )
+            _set_auth_cookies(response, access_token=access_token, logger=logger)
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -252,7 +250,7 @@ def create_auth_endpoints(
     async def logout_device(
         request: Request,
         response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, update_access_token=False, ))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, update_access_token=False, logger=logger))
     ):
         """退出在设备上的登录"""
         logger.debug(f"要注销的用户信息: {token_claims}")
@@ -272,7 +270,7 @@ def create_auth_endpoints(
         logger.debug(f"撤销当前设备的访问令牌: {token_claims['user_id']}, {token_claims['device_id']}")
 
         # 删除当前设备的cookie
-        _set_auth_cookies(response, access_token=None, )
+        _set_auth_cookies(response, access_token=None, logger=logger)
 
         return {"message": "注销成功"}
 
@@ -285,7 +283,7 @@ def create_auth_endpoints(
     async def change_password(
         change_password_form: ChangePasswordRequest,
         response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, ))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """修改密码"""
         result = users_manager.change_password(
@@ -303,7 +301,7 @@ def create_auth_endpoints(
 
     @handle_errors()
     async def get_user_profile(
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, ))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """获取当前用户信息"""
         return token_claims
@@ -316,7 +314,7 @@ def create_auth_endpoints(
     async def update_user_profile(
         update_form: UpdateUserProfileRequest,
         response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, ))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """更新当前用户的个人设置"""
         result = users_manager.update_user(token_claims['user_id'], **update_form.to_update)

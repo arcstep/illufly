@@ -37,7 +37,7 @@ def create_api_keys_endpoints(
     async def create_api_key(
         api_key_form: CreateApiKeyRequest,
         response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """创建API密钥"""
         if not api_keys_manager:
@@ -68,7 +68,7 @@ def create_api_keys_endpoints(
             )
         
     async def list_api_keys(
-        token_claims: TokenClaims = Depends(require_user(tokens_manager))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """列出API密钥"""
         if not api_keys_manager:
@@ -96,7 +96,7 @@ def create_api_keys_endpoints(
     async def revoke_api_key(
         api_key: str,
         response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager))
+        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """撤销API密钥"""
         if not api_keys_manager:

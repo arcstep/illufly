@@ -283,7 +283,7 @@ class TestUsersManager:
         response = Response()
 
         # 调用中间件
-        middleware = require_user(mock_tokens_manager)
+        middleware = require_user(mock_tokens_manager, logger=logger)
         result = await middleware(request, response)
 
         # 验证结果
