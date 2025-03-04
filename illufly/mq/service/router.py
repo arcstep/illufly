@@ -62,9 +62,7 @@ class ServiceRouter:
         self, 
         address: str, 
         context: Optional[zmq.asyncio.Context] = None,
-        heartbeat_interval: float = 10.0,    # 心跳检查间隔（秒）
         heartbeat_timeout: float = 30.0,     # 心跳超时时间（秒）
-        request_timeout: float = 30.0,       # 请求超时时间（秒）
     ):
         self._context = context or zmq.asyncio.Context()
         self._address = address
@@ -72,17 +70,15 @@ class ServiceRouter:
         self._socket.set_hwm(1000)  # 设置高水位标记
         self._running = False
         self._services: Dict[str, ServiceInfo] = {}
-        self._request_timeouts = {}  # 请求超时追踪
+        self._logger = logging.getLogger(__name__)
         
         # 可配置的超时参数
-        self._HEARTBEAT_INTERVAL = heartbeat_interval
         self._HEARTBEAT_TIMEOUT = heartbeat_timeout
-        self._REQUEST_TIMEOUT = request_timeout
-        
-        self._logger = logging.getLogger(__name__)
         
         # 心跳日志控制
         self._last_heartbeat_logs = {}  # 记录每个服务上次的心跳日志状态
+        self._service_lock = asyncio.Lock()  # 服务状态修改锁
+        self._last_health_check = time()     # 最后检查时间戳
 
     async def start(self):
         """启动路由器"""
@@ -95,7 +91,6 @@ class ServiceRouter:
             self._running = True
             self._message_task = asyncio.create_task(self._route_messages(), name="router-route_messages")
             self._health_check_task = asyncio.create_task(self._check_service_health(), name="router-check_service_health")
-            self._heartbeat_check_task = asyncio.create_task(self._check_heartbeats())
             self._logger.info(f"Router started at {self._address}")
         except Exception as e:
             self._logger.error(f"Failed to start router: {e}")
@@ -111,8 +106,6 @@ class ServiceRouter:
             self._message_task.cancel()
         if hasattr(self, '_health_check_task'):
             self._health_check_task.cancel()
-        if hasattr(self, '_heartbeat_check_task'):
-            self._heartbeat_check_task.cancel()
             
         try:
             self._socket.close()
@@ -140,40 +133,6 @@ class ServiceRouter:
         if service_id in self._services:
             del self._services[service_id]
             self._logger.info(f"Unregistered service: {service_id}")
-
-    async def _check_service_health(self):
-        """检查服务健康状态"""
-        while self._running:
-            current_time = time()
-            
-            # 检查服务心跳
-            for service_id, service in list(self._services.items()):
-                if service.state != ServiceState.SHUTDOWN:  # 不检查已主动下线的服务
-                    if current_time - service.last_heartbeat > self._HEARTBEAT_TIMEOUT:
-                        if service.state != ServiceState.INACTIVE:
-                            service.state = ServiceState.INACTIVE
-                            # 服务变为不可用时记录日志
-                            self._logger.warning(
-                                f"Service {service_id} marked as inactive: "
-                                f"last heartbeat was {current_time - service.last_heartbeat:.1f}s ago"
-                            )
-                            service.current_load = 0
-            
-            # 检查请求超时
-            for request_id, (service_id, timestamp) in list(self._request_timeouts.items()):
-                if current_time - timestamp > self._REQUEST_TIMEOUT:
-                    if service_id in self._services:
-                        service = self._services[service_id]
-                        service.current_load -= 1
-                        if service.current_load < 0:
-                            service.current_load = 0
-                        self._logger.warning(
-                            f"Request {request_id} to service {service_id} timed out after "
-                            f"{current_time - timestamp:.1f}s"
-                        )
-                    del self._request_timeouts[request_id]
-            
-            await asyncio.sleep(self._HEARTBEAT_INTERVAL)
 
     async def _send_error(self, from_id: bytes, error: str):
         """发送错误消息"""
@@ -203,46 +162,50 @@ class ServiceRouter:
             try:
                 multipart = await self._socket.recv_multipart()
                 if len(multipart) < 2:
+                    self._logger.warning(f"Received invalid message format: {multipart}")
                     continue
                 
-                from_id_bytes = multipart[0]
-                from_id = from_id_bytes.decode('utf-8')
-                message_type = multipart[1].decode('utf-8')
+                from_id_bytes = multipart[0]  # 消息来源ID (bytes)
+                from_id = from_id_bytes.decode()  # 消息来源ID (str)
+                message_type_bytes = multipart[1]  # 消息类型 (bytes)
+                message_type = message_type_bytes.decode()  # 消息类型 (str)
                 
-                if message_type != "heartbeat":
-                    self._logger.debug(
-                        f"Router received message: type={message_type} from={from_id}, {multipart}"
-                    )
-
-                # 处理心跳消息
-                if message_type == "heartbeat":
-                    # 更新服务的最后心跳时间
-                    if from_id in self._services:
+                # 将锁的范围缩小到关键部分
+                async with self._service_lock:
+                    # 更新心跳时间（所有消息类型）
+                    if from_id in self._services.keys():
                         service = self._services[from_id]
-                        old_state = service.state
-                        service.last_heartbeat = time()
-                        
-                        # 如果服务之前是非活跃状态，重新标记为活跃
                         if service.state == ServiceState.INACTIVE:
                             service.state = ServiceState.ACTIVE
-                            self._logger.info(f"Service {from_id} is now active again")
-                        
-                        # 发送心跳确认消息
+                            self._logger.info(f"Service {from_id} reactivated after receiving message of type {message_type}")
+                        service.last_heartbeat = time()
+
+                # 然后再处理特定消息类型
+                if message_type == "register":
+                    async with self._service_lock:  # 单独加锁
+                        service_info = json.loads(multipart[2].decode())
+                        self.register_service(from_id, service_info)
+                        # 只在首次注册时设置ACTIVE状态
+                        if from_id not in self._services:
+                            self._services[from_id].state = ServiceState.ACTIVE
+                    await self._socket.send_multipart([
+                        from_id_bytes,
+                        b"register_ack",
+                        b""
+                    ])
+                    
+                elif message_type == "heartbeat":
+                    # 处理心跳消息 - 始终响应，无论服务之前状态如何
+                    if from_id in self._services.keys():
+                        # 发送心跳确认消息 (已在上面更新了状态)
                         await self._socket.send_multipart([
                             from_id_bytes,  # 目标服务的ID
                             b"heartbeat_ack",  # 心跳确认类型
                             b""  # 空负载
                         ])
-                        
-                        # 仅在状态变化或首次收到该服务心跳时打印日志
-                        log_status = f"{old_state}→{service.state}"
-                        if from_id not in self._last_heartbeat_logs or self._last_heartbeat_logs[from_id] != log_status:
-                            self._logger.debug(f"Sent heartbeat_ack to {from_id} (State: {log_status})")
-                            self._last_heartbeat_logs[from_id] = log_status
                     else:
                         # 未注册的服务发送心跳
                         self._logger.warning(f"Received heartbeat from unregistered service: {from_id}")
-                        await self._send_error(from_id_bytes, "Service not registered")
                 
                 elif message_type == "ping":
                     self._logger.debug(f"Handling ping from {from_id}")
@@ -286,18 +249,6 @@ class ServiceRouter:
                         serialize_message(response)
                     ])
                     
-                elif message_type == "register":
-                    service_info = json.loads(multipart[2].decode())
-                    self.register_service(from_id, service_info)
-                    router_config = {
-                        "heartbeat_interval": self._HEARTBEAT_INTERVAL / 2,
-                    }
-                    await self._socket.send_multipart([
-                        from_id_bytes,
-                        b"register_ack",
-                        json.dumps(router_config).encode()
-                    ])
-                    
                 elif message_type == "call_from_client":
                     if len(multipart) < 3:
                         self._logger.error(f"Invalid call message format")
@@ -317,7 +268,7 @@ class ServiceRouter:
                             *multipart[2:]
                         ])
                     else:
-                        error_msg = f"No available service for method {method_name}"
+                        error_msg = f"No available service for method {service_name}"
                         self._logger.error(f"{error_msg}")
                         error = ReplyErrorBlock(
                             request_id=str(uuid.uuid4()),
@@ -387,32 +338,25 @@ class ServiceRouter:
         # 选择负载最小的服务
         return min(available_services, key=lambda s: s.current_load)
 
-    async def _check_heartbeats(self):
-        """定期检查服务心跳状态"""
+    async def _check_service_health(self):
+        """检查服务健康状态"""
         while self._running:
-            try:
-                current_time = time()
-                status_changed = False
-                inactive_services = []
-                
-                for service_id, service in list(self._services.items()):
-                    old_state = service.state
-                    # 检查心跳超时
+            current_time = time()
+            
+            # 检查服务心跳
+            for service_id, service in list(self._services.items()):
+                if service.state != ServiceState.SHUTDOWN:  # 不检查已主动下线的服务
                     if current_time - service.last_heartbeat > self._HEARTBEAT_TIMEOUT:
-                        if service.state == ServiceState.ACTIVE:
+                        if service.state != ServiceState.INACTIVE:
                             service.state = ServiceState.INACTIVE
-                            status_changed = True
-                            self._logger.warning(f"Service {service_id} marked as inactive due to missed heartbeats")
-                            inactive_services.append(service_id)
-                
-                # 只在有状态变化时打印活跃服务统计
-                if status_changed and self._services:
-                    self._logger.info(f"Active services: {len(self._services) - len(inactive_services)}, "
-                                     f"Inactive services: {len(inactive_services)}")
-                
-                await asyncio.sleep(self._HEARTBEAT_INTERVAL)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self._logger.error(f"Error in heartbeat check: {e}")
-                await asyncio.sleep(5)
+                            # 服务变为不可用时记录日志
+                            self._logger.warning(
+                                f"Service {service_id} marked as inactive: "
+                                f"last heartbeat was {current_time - service.last_heartbeat:.1f}s ago"
+                            )
+                            service.current_load = 0
+                    else:
+                        self._logger.info(f"Service {service_id} is living!")
+            
+            await asyncio.sleep(self._HEARTBEAT_TIMEOUT)
+
