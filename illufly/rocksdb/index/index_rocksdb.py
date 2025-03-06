@@ -286,6 +286,8 @@ class IndexedRocksDB(BaseRocksDB):
         except KeyError:  # 确实不存在
             self.indexes_metadata_cf[key] = base_type
             self._logger.debug(f"注册索引元数据: {key} -> {cf_name}.{model_name}#{field_path}")
+        except ModuleNotFoundError:
+            self._logger.warning(f"曾经注册的模块无法找到，这可能导致数据无法正确读取: {model_class}")
 
     def _make_index_key(self, model_name: str, field_path: str, field_value: Any, key: str, cf_name: str=None) -> str:
         """创建索引键"""

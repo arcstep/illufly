@@ -21,7 +21,7 @@ from ..models import HttpMethod, Result, OpenaiRequest, ChatMessage
 from ...community.models import TextChunk, ToolCallChunk, TextFinal, ToolCallFinal, UsageBlock
 from ..http import handle_errors
 
-CHAT_DIRECTLY_THREAD_ID = "chat_directly_thread"
+CHAT_THREAD_NO_RECENT = "chat_thread_no_recent"
 
 # 模拟的API_KEY
 VALID_API_KEY = "sk-1234567890abcdef"
@@ -105,7 +105,7 @@ def create_openai_endpoints(
                 async for chunk in zmq_client.stream(
                     f'{imitator}.chat',
                     user_id=ak['user_id'],
-                    thread_id=CHAT_DIRECTLY_THREAD_ID,
+                    thread_id=CHAT_THREAD_NO_RECENT,
                     **chat_request.model_dump()
                 ):
                     finish_reason = getattr(chunk, 'finish_reason', finish_reason)
@@ -169,7 +169,7 @@ def create_openai_endpoints(
             async for chunk in zmq_client.stream(
                 f'{ak["imitator"]}.chat',
                 user_id=ak['user_id'],
-                thread_id=CHAT_DIRECTLY_THREAD_ID,
+                thread_id=CHAT_THREAD_NO_RECENT,
                 **chat_request.model_dump()
             ):
                 is_text_final = getattr(chunk, 'block_type', None) == BlockType.TEXT_FINAL

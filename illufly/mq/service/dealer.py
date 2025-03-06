@@ -142,15 +142,17 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
         # 记录是否需要自行创建context
         self._context = context or zmq.asyncio.Context()
         self._socket = None
-        self._heartbeat_task = None
-        self._process_messages_task = None
         self._semaphore = None
-        self._pending_tasks = set()
         self._current_load = 0
         self._is_overload = False
         self._heartbeat_interval = heartbeat_interval
         self._heartbeat_timeout = heartbeat_timeout
         self._group = group or self._service_name
+
+        self._heartbeat_task = None
+        self._process_messages_task = None
+        self._reconnect_monitor_task = None
+        self._pending_tasks = set({})
         
         # 从类注册表中复制服务方法到实例
         self._handlers = {}
@@ -272,8 +274,9 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 
             self._state = DealerState.STOPPING
             
-        # 取消任务（注意顺序）
-        tasks = []
+        # 取消任务，包括手动添加的协程任务
+        tasks = list(self._pending_tasks)
+
         if self._process_messages_task:
             self._process_messages_task.cancel()
             self._service_registered = False
@@ -364,7 +367,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
                 if is_heartbeat_ack:
                     counter = counter + 1 if counter < 10 else 0
                     if counter == 0:
-                        self._logger.info(f"<{self._service_id}> HEARTBEAT ACK")
+                        self._logger.debug(f"<{self._service_id}> HEARTBEAT ACK")
                 else:
                     self._logger.info(f"<{self._service_id}> DEALER Received message: {multipart}")
                 

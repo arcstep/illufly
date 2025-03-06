@@ -415,6 +415,6 @@ class ServiceRouter:
                             )
                             service.current_load = 0
                     else:
-                        self._logger.info(f"Service {service_id} is living!")
+                        self._logger.debug(f"Service {service_id} is living!")
             
             await asyncio.sleep(self._HEARTBEAT_TIMEOUT)

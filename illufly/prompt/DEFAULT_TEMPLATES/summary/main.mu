@@ -2,11 +2,18 @@
 不要啰嗦，不要评论。
 
 对话过程如下:
-```
-{{memory}}
-```
 
-根据以上对话，请你对下面内容做摘要:
-```
-{{content}}
+Human Question: 
+{{{question}}}
+
+AI Answer: 
+{{{answer}}}
+
+请解读对话内容并按照下面的格式给出摘要：
+```json
+{
+    "topic": "xxxxx",
+    "question": "xxxxx",
+    "answer": "xxxxx"
+}
 ```

@@ -1,1 +1,3 @@
-from .chat_agent import ChatAgent, MemoryManager
+from .chat import ChatAgent
+
+__all__ = ["ChatAgent"]
