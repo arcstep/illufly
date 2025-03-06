@@ -130,7 +130,8 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
         group: str = None,
         service_name: str = None,
         heartbeat_interval: float = 0.5,
-        heartbeat_timeout: float = 5.0
+        heartbeat_timeout: float = 5.0,
+        service_id: str = None
     ):
         self._router_address = router_address
         self._hwm = hwm
@@ -160,7 +161,7 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
             }
 
         # 生成一个随机的 UUID 作为服务标识
-        self._service_id = f'{self._service_name}-{str(uuid.uuid4().hex[:8])}'
+        self._service_id = service_id or f'{self._service_name}-{str(uuid.uuid4().hex[:8])}'
 
         # 状态管理
         self._state = DealerState.INIT
@@ -176,10 +177,6 @@ class ServiceDealer(metaclass=ServiceDealerMeta):
     async def _force_reconnect(self):
         """强制完全重置连接"""
         self._logger.info("Initiating forced reconnection...")
-        
-        # # 完全重置ZMQ上下文
-        # self._context.term()  # 终止旧上下文
-        # self._context = zmq.asyncio.Context()
         
         # 重新初始化socket
         self._socket = self._context.socket(zmq.DEALER)
