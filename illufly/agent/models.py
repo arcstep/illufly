@@ -25,7 +25,7 @@ class MemoryDomain(BaseModel):
 class MemoryTopic(BaseModel):
     user_id: str = Field(..., description="用户ID")
     thread_id: str = Field(..., description="线程ID")
-    topic_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="主题ID")
+    topic_id: str = Field(default_factory=lambda: str(uuid.uuid4().hex), description="主题ID")
     title: str = Field(default="New Topic", description="主题标题")
     summary: str = Field(default="", description="主题摘要")
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="创建时间")
@@ -42,7 +42,7 @@ class MemoryChunk(BaseModel):
     user_id: str = Field(..., description="用户ID")
     thread_id: str = Field(..., description="线程ID")
     topic_id: str = Field(default="_", description="主题ID")
-    chunk_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="记忆片段ID")
+    chunk_id: str = Field(default_factory=lambda: str(uuid.uuid4().hex), description="记忆片段ID")
     question: str = Field(..., description="问题")
     answer: str = Field(..., description="答案")
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="创建时间")

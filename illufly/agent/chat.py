@@ -1,6 +1,5 @@
 from typing import List, Dict, Any, Union, Tuple
 
-import json
 import hashlib
 import asyncio
 
@@ -10,6 +9,7 @@ from ..mq import ServiceDealer, service_method
 from ..mq.models import BlockType
 from ..thread import Thread, HistoryMessage, QuestionBlock, AnswerBlock
 from ..prompt import PromptTemplate
+from .utils import extract_json_text
 from .models import (
     MemoryDomain,
     MemoryTopic,
@@ -29,16 +29,19 @@ class ChatAgent(ServiceDealer):
     def __init__(
         self,
         llm: BaseChat,
+        summary_llm: BaseChat = None,
         db: IndexedRocksDB = None,
         group: str = None,
         runnable_tools: list = None,
         **kwargs
     ):
         self.llm = llm
+        self.summary_llm = summary_llm or llm
         self.runnable_tools = runnable_tools
         if not group:
             group = self.llm.group
-        super().__init__(group=group, service_name=getattr(self.llm, 'imitator', '__class__.__name__'), **kwargs)
+        service_name = getattr(self.llm, 'imitator', None) or self.llm.__class__.__name__
+        super().__init__(group=group, service_name=service_name, **kwargs)
 
         self.db = db or default_rocksdb
 
@@ -170,26 +173,32 @@ class ChatAgent(ServiceDealer):
             self._logger.info(f"update thread title: {title}")
 
     @service_method(name="list_memory_topics", description="列出所有记忆主题")
-    async def _list_memory_topics(self, user_id: str):
+    async def _list_memory_topics(self, user_id: str, thread_id: str = None):
         """列出所有记忆主题"""
         topics = self.db.values(
-            prefix=MemoryTopic.get_user_prefix(user_id)
+            prefix=MemoryTopic.get_user_prefix(user_id, thread_id)
         )
         return topics
     
     @service_method(name="list_memory_chunks", description="列出所有记忆片段")
-    async def _list_memory_chunks(self, user_id: str, topic_id: str):
+    async def _list_memory_chunks(self, user_id: str, topic_id: str, thread_id: str = None):
         """列出所有记忆片段"""
         chunks = self.db.values(
-            prefix=MemoryChunk.get_user_prefix(user_id, topic_id)
+            prefix=MemoryChunk.get_user_prefix(user_id, thread_id, topic_id)
         )
         return chunks
 
     async def _create_memory_topic(self, user_id: str, thread_id: str, title: str, summary: str = None):
         """创建记忆主题"""
+        if not title:
+            return None
+
+        topic_id = hashlib.md5(title.encode()).hexdigest()
+        summary = summary or ""
         topic = MemoryTopic(
             user_id=user_id,
             thread_id=thread_id,
+            topic_id=topic_id,
             title=title,
             summary=summary
         )
@@ -208,45 +217,41 @@ class ChatAgent(ServiceDealer):
         return chunk
 
     async def _archive_messages(self, user_id: str, thread_id: str, question: QuestionBlock, answer: AnswerBlock):
-        """从问答内容中提取内容做记忆归档"""
+        """从问答内容中提取内容做记忆归档
+        - 是否具有实质性内容，值得做摘要？
+        - 是否与已存在话题相关？还是创建新话题？
+        - 是否与已有问答对冲突？
+        - 是否应当合并到已有问答中？
+        """
+
         if not question or not answer:
             return
 
+        # 构建消息
         template = PromptTemplate(template_id="summary")
         system_prompt = template.format({
             "question": question.text,
             "answer": answer.text
         })
         user_prompt = "请直接输出json的解读结果。"
-
-        # 构建消息
         messages = [
             {"role": 'system', "content": system_prompt},
             {"role": 'user', "content": user_prompt}
         ]
 
-        # 将内容发送给zmq_dealer_name
-        final_text = ""
-        async for b in self.llm.chat(messages=messages):
+        # 大模型生成摘要
+        async for b in self.summary_llm.chat(messages=messages):
             if b.block_type == BlockType.TEXT_FINAL:
                 self._logger.info(f"archive result: {b.text}")
-                final_text += b.text
 
-        # 去除markdown格式
-        final_text = final_text.strip()
-        if final_text.startswith("```json"):
-            final_text = final_text[len("```json"):].strip()
-        if final_text.endswith("```"):
-            final_text = final_text[:-len("```")]
+                # 解析json
+                final_dict = extract_json_text(b.text, self._logger)
+                if final_dict:
+                    title = final_dict.get("topic", None)
+                    question = final_dict.get("question", None)
+                    answer = final_dict.get("answer", None)
 
-        # 解析json
-        if final_text:
-            memory_chunk_dict = json.loads(final_text)
-            topic = memory_chunk_dict.get("topic", None)
-            question = memory_chunk_dict.get("question", None)
-            answer = memory_chunk_dict.get("answer", None)
-
-            if topic and question and answer:
-                topic_id = hashlib.md5(topic.encode()).hexdigest()
-                await self._create_memory_topic(user_id, thread_id, topic_id, topic)
-                await self._create_memory_chunk(user_id, thread_id, topic_id, question, answer)
+                    if title and question and answer:
+                        topic_obj = await self._create_memory_topic(user_id, thread_id, title)
+                        if topic_obj:
+                            await self._create_memory_chunk(user_id, thread_id, topic_obj.topic_id, question, answer)
