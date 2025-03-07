@@ -1,3 +1,3 @@
-from .chroma_db import ChromaDB
+from .chroma_db import ChromaDB, RemoteChromaDB
 
-__all__ = ["ChromaDB"]
+__all__ = ["ChromaDB", "RemoteChromaDB"]
