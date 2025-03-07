@@ -2,6 +2,7 @@ from typing import Any, List
 from http import HTTPStatus
 
 import os
+from ...rocksdb import IndexedRocksDB
 from ..base_embeddings import BaseEmbeddings
 
 class OpenAIEmbeddings(BaseEmbeddings):
@@ -9,44 +10,50 @@ class OpenAIEmbeddings(BaseEmbeddings):
     def __init__(
         self,
         model: str=None,
+        imitator: str=None,
         base_url: str=None,
         api_key: str=None,
         dim: int=None,
+        output_type: str=None,
+        max_lines: int=None,
+        db: IndexedRocksDB=None,
         extra_args: dict={},
         **kwargs
     ):
+        self.imitator = imitator or "OPENAI"
+        self.base_url = base_url or os.getenv(f"{self.imitator}_BASE_URL")
+        self.api_key = api_key or os.getenv(f"{self.imitator}_API_KEY")
+        self.model = model or os.getenv(f"{self.imitator}_MODEL") or "text-embedding-ada-002"
+
         super().__init__(
-            model=model or "text-embedding-ada-002",
-            base_url=base_url or os.getenv("OPENAI_BASE_URL"),
-            api_key=api_key or os.getenv("OPENAI_API_KEY"),
-            dim=dim or 1536,
+            model=self.model,
+            dim=dim,
+            output_type=output_type or "dense",
+            max_lines=max_lines,
+            db=db,
             **kwargs
         )
         try:
-            from openai import OpenAI
+            from openai import AsyncOpenAI
         except ImportError:
             raise ImportError(
                 "Could not import openai package. "
                 "Please install it via 'pip install -U openai'"
             )
-        
-        self.client = OpenAI(base_url=self.base_url, api_key=self.api_key, **extra_args)
 
+        self.client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key, **kwargs)
 
-    def query(self, text: str,  **kwargs) -> List[float]:
-        """
-        查询文本向量。
-        """
-        return self.embed_documents([text], **kwargs)[0]
-
-    def embed_documents(self, texts: List[str], **kwargs) -> List[List[float]]:
+    async def _embed_texts(self, texts: List[str], **kwargs) -> List[List[float]]:
         """
         编码文本向量。
         """
-        response = self.client.embeddings.create(
+        response = await self.client.embeddings.create(
             model=self.model,
             input=texts,
+            dimensions=self.dim,
             **kwargs
         )
+        self.model = response.model
+        self.dim = len(response.data[0].embedding)
         return [ed.embedding for ed in response.data]
 

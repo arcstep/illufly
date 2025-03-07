@@ -1,139 +1,102 @@
 from abc import ABC, abstractmethod
 from typing import List, Union
+from pydantic import BaseModel, Field
+
 from ..utils import hash_text, clean_filename, raise_invalid_params
-from ..envir import get_env
+from ..rocksdb import IndexedRocksDB, default_rocksdb
 
-import os
-import pickle
+import hashlib
+import logging
 
-class Document():
-    pass
+def hash_text(text: str):
+    return hashlib.md5(text.encode('utf-8')).hexdigest()
+
+class EmbeddingText(BaseModel):
+    model: str = Field(description="模型名称")
+    dim: int = Field(description="向量维度")
+    output_type: str = Field(description="输出类型")
+    text: str = Field(description="文本内容")
+    vector: List[float] = Field(description="文本向量")
+
+    @property
+    def text_hash(self):
+        return hash_text(self.text)
+
+    @classmethod
+    def get_key(cls, model: str, dim: int, output_type: str, text: str):
+        hash_id = hash_text(text)
+        return f"emb:{model}:{dim}:{output_type}:{hash_id}"
+    
+    def __str__(self):
+        return f"EmbeddingText(model={self.model}, dim={self.dim}, output_type={self.output_type}, text={self.text[:100]}, vector=float[{len(self.vector)}])"
 
 class BaseEmbeddings(ABC):
-    """
-    句子嵌入模型。
+    """句子嵌入模型"""
 
-    使用向量模型，将文本转换为向量，以便入库或查询。
-    Document(text, meta={'source': str}) -> Document(text, meta={'embeddings': Vectors})
-
-    例如：
-    ```
-    from illufly.types import Document
-    from illufly.embeddings import TextEmbeddings # 通义千问文本向量模型
-
-    embeddings = TextEmbeddings()
-    docs = [Document("这是一个测试文本", meta={"source": "test"})]
-    embeddings(docs)
-    print(embeddings.last_output[0].meta['embeddings'])
-    ```
-    """
-    @classmethod
-    def allowed_params(cls):
-        return {
-            "model": "文本嵌入模型的名称",
-            "base_url": "BASE_URL",
-            "api_key": "API_KEY",
-            "dim": "编码时使用的向量维度",
-            "max_lines": "每次编码时处理的最大行数",
-            **Runnable.allowed_params()
-        }
-
-    def __init__(self, model: str=None, base_url: str=None, api_key: str=None, dim: int=None, max_lines: int=None, **kwargs):
-        raise_invalid_params(kwargs, self.__class__.allowed_params())
-
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        model: str=None,
+        dim: int=None,
+        output_type: str=None,
+        max_lines: int=None,
+        db: IndexedRocksDB=None,
+        **kwargs
+    ):
         self.dim = dim
         self.model = model
-        self.base_url = base_url
-        self.api_key = api_key
+        self.output_type = output_type or "dense"
         self.max_lines = max_lines or 5
-        self.clear_output()
+        self.db = db or default_rocksdb
+        self.db.register_model(EmbeddingText.__name__, EmbeddingText)
+        self._logger = logging.getLogger(self.__class__.__name__)
 
-    def clear_output(self):
-        self._last_output = []
-
-    def query(self, text: str, *args, **kwargs) -> List[float]:
-        """将文本转换为向量，以便查询"""
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    async def _embed_texts(self, texts: List[str]) -> List[List[float]]:
         """将文本转换为向量，以便入库"""
+        pass
 
-    def _get_embeddings_folder(self):
-        return os.path.join(get_env("ILLUFLY_CACHE_EMBEDDINGS"), self.__class__.__name__, self.model)
-
-    def call(
+    async def embed_texts(
         self,
-        docs: Union[str, List[str], List[Document]],
+        texts: Union[str, List[str]],
         **kwargs
-    ) -> List[Document]:
+    ) -> List[EmbeddingText]:
         """
-        将文本字符串或 Document 类型，转换为带有文本向量的 Document 列表。
-
-        如果提供参数是字符串，则表示查询模式，自动填写 source 为 '__query__'。
-        (这可能在使用某些模型时有必要，例如通义千问的 embedding-v2 以下版本)
+        将文本字符串或 EmbeddingText 类型，转换为带有文本向量的 EmbeddingText 列表。
         """
-        self._last_output = []
-        if isinstance(docs, str):
-            docs = [Document(docs, meta={'source': '__query__'})]
-        elif isinstance(docs, Document):
-            docs.meta['source'] = '__query__'
+        texts = [texts] if isinstance(texts, str) else texts
 
-        if not isinstance(docs, list):
-            raise ValueError("docs 必须是字符串或 Document 类型列表，但实际为: {type(docs)}")
+        if not isinstance(texts, list):
+            raise ValueError("texts 必须是字符串列表")
 
-        vector_folder = self._get_embeddings_folder()
+        embedding_texts = []
 
-        for index, d in enumerate(docs):
-            if isinstance(d, str):
-                docs[index] = Document(d)
-            elif not isinstance(d, Document):
-                raise ValueError(f"文档类型错误: {type(d)}")
-
-        yield from self._process_batch(docs, vector_folder)
-
-        self._last_output = docs
-        return docs
-
-    def _process_batch(self, docs, vector_folder):
-        batch_texts = []
-        batch_docs = []
-
-        for i in range(0, len(docs), self.max_lines):
-            batch = docs[i:i + self.max_lines]
-            batch_texts = [d.text for d in batch]
-            batch_docs = batch
+        for i in range(0, len(texts), self.max_lines):
+            batch_texts = texts[i:i + self.max_lines]
 
             # 检查哪些文件已经存在
-            existing_files = self._check_existing_files(batch_docs, batch_texts, vector_folder)
-            batch_texts = [text for text, exists in zip(batch_texts, existing_files) if not exists]
-            batch_docs = [doc for doc, exists in zip(batch_docs, existing_files) if not exists]
+            to_embeeding = []
+            for text in batch_texts:
+                found, _ = self.db.key_exist(EmbeddingText.get_key(self.model, self.dim, self.output_type, text))
+                if not found:
+                    to_embeeding.append(text)
 
-            if batch_texts:
-                yield self.create_event_block("info", f"文本向量转换 {sum(len(d.text) for d in batch_docs)} 字 / {len(batch_docs)} 个文件")
-                vectors = self.embed_documents(batch_texts)
-                yield from self._save_vectors_to_cache(batch_docs, batch_texts, vectors, vector_folder)
+            # 嵌入文本
+            if to_embeeding:
+                vectors = await self._embed_texts(to_embeeding)
+                emb_texts = [
+                    EmbeddingText(
+                        text=text,
+                        model=self.model,
+                        dim=len(vector),
+                        output_type=self.output_type,
+                        vector=vector
+                    )
+                    for text, vector
+                    in zip(to_embeeding, vectors)
+                ]
+                embedding_texts.extend(emb_texts)
+                self._logger.info(f"嵌入 `{to_embeeding[0][:20]}` 等 {len(emb_texts)} 个文本")
+                for emb_text in emb_texts:
+                    key = EmbeddingText.get_key(self.model, self.dim, self.output_type, emb_text.text)
+                    self.db.update_with_indexes(EmbeddingText.__name__, key, emb_text)
 
-    def _check_existing_files(self, docs, batch_texts, vector_folder):
-        existing_files = []
-        for index, text in enumerate(batch_texts):
-            vector_path = hash_text(text) + ".emb"
-            source = clean_filename(docs[index].meta['source'])
-            cache_path = os.path.join(vector_folder, source or "no_source", vector_path)
-            if os.path.exists(cache_path):
-                with open(cache_path, 'rb') as f:
-                    docs[index].meta['embeddings'] = pickle.load(f)
-                existing_files.append(True)
-            else:
-                existing_files.append(False)
-        return existing_files
-
-    def _save_vectors_to_cache(self, docs, batch_texts, vectors, vector_folder):
-        for index, text in enumerate(batch_texts):
-            vector_path = hash_text(text) + ".emb"
-            source = clean_filename(docs[index].meta['source'])
-            cache_path = os.path.join(vector_folder, source or "no_source", vector_path)
-            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-            with open(cache_path, 'wb') as f:
-                pickle.dump(vectors[index], f)
-                docs[index].meta['embeddings'] = vectors[index]
-                yield self.create_event_block('info', f'wrote embedding cache {cache_path} {text[0:50]}{"..." if len(text) > 50 else ""}')
+        return embedding_texts
