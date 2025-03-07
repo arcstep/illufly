@@ -5,30 +5,10 @@ from pydantic import BaseModel, Field
 from ..utils import hash_text, clean_filename, raise_invalid_params
 from ..rocksdb import IndexedRocksDB, default_rocksdb
 
+from .models import EmbeddingText
+
 import hashlib
 import logging
-
-def hash_text(text: str):
-    return hashlib.md5(text.encode('utf-8')).hexdigest()
-
-class EmbeddingText(BaseModel):
-    model: str = Field(description="模型名称")
-    dim: int = Field(description="向量维度")
-    output_type: str = Field(description="输出类型")
-    text: str = Field(description="文本内容")
-    vector: List[float] = Field(description="文本向量")
-
-    @property
-    def text_hash(self):
-        return hash_text(self.text)
-
-    @classmethod
-    def get_key(cls, model: str, dim: int, output_type: str, text: str):
-        hash_id = hash_text(text)
-        return f"emb:{model}:{dim}:{output_type}:{hash_id}"
-    
-    def __str__(self):
-        return f"EmbeddingText(model={self.model}, dim={self.dim}, output_type={self.output_type}, text={self.text[:100]}, vector=float[{len(self.vector)}])"
 
 class BaseEmbeddings(ABC):
     """句子嵌入模型"""
@@ -73,15 +53,17 @@ class BaseEmbeddings(ABC):
             batch_texts = texts[i:i + self.max_lines]
 
             # 检查哪些文件已经存在
-            to_embeeding = []
+            to_embedding = []
             for text in batch_texts:
-                found, _ = self.db.key_exist(EmbeddingText.get_key(self.model, self.dim, self.output_type, text))
-                if not found:
-                    to_embeeding.append(text)
+                found_embedding = self.db.get(EmbeddingText.get_key(self.model, self.dim, self.output_type, text))
+                if found_embedding:
+                    embedding_texts.append(found_embedding)
+                else:
+                    to_embedding.append(text)
 
             # 嵌入文本
-            if to_embeeding:
-                vectors = await self._embed_texts(to_embeeding)
+            if to_embedding:
+                vectors = await self._embed_texts(to_embedding)
                 emb_texts = [
                     EmbeddingText(
                         text=text,
@@ -91,10 +73,10 @@ class BaseEmbeddings(ABC):
                         vector=vector
                     )
                     for text, vector
-                    in zip(to_embeeding, vectors)
+                    in zip(to_embedding, vectors)
                 ]
                 embedding_texts.extend(emb_texts)
-                self._logger.info(f"嵌入 `{to_embeeding[0][:20]}` 等 {len(emb_texts)} 个文本")
+                self._logger.info(f"嵌入 `{to_embedding[0][:20]}` 等 {len(emb_texts)} 个文本")
                 for emb_text in emb_texts:
                     key = EmbeddingText.get_key(self.model, self.dim, self.output_type, emb_text.text)
                     self.db.update_with_indexes(EmbeddingText.__name__, key, emb_text)

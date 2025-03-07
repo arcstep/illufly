@@ -1,5 +1,8 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel, Field
+
 import logging
+import hashlib
 
 from ..mq.models import StreamingBlock, BlockType
 from ..mq.utils import serialize
@@ -80,3 +83,33 @@ class UsageBlock(StreamingBlock):
                 "reasoning_tokens": self.reasoning_tokens,
             }
         }
+
+def hash_text(text: str):
+    return hashlib.md5(text.encode('utf-8')).hexdigest()
+
+class EmbeddingText(BaseModel):
+    model: str = Field(description="模型名称")
+    dim: int = Field(description="向量维度")
+    output_type: str = Field(description="输出类型")
+    text: str = Field(description="文本内容")
+    vector: List[float] = Field(description="文本向量")
+
+    @property
+    def text_hash(self):
+        return hash_text(self.text)
+
+    @classmethod
+    def get_key(cls, model: str, dim: int, output_type: str, text: str):
+        hash_id = hash_text(text)
+        return f"emb:{model}:{dim}:{output_type}:{hash_id}"
+    
+    def __str__(self):
+        return f"EmbeddingText(model={self.model}, dim={self.dim}, output_type={self.output_type}, text={self.text[:100]}, vector=float[{len(self.vector)}])"
+
+class TextIndexing(BaseModel):
+    """文本索引"""
+    text: str = Field(..., description="文本")
+    vector: List[float] = Field(..., description="向量")
+    index_key: str = Field(..., description="索引键")
+    metadata: Dict[str, Any] = Field(default={}, description="元数据")
+
