@@ -1,4 +1,4 @@
-from speedict import Rdict, Options, WriteBatch, SstFileWriter, ReadOptions, WriteOptions
+from rocksdict import Rdict, Options, WriteBatch, SstFileWriter, ReadOptions, WriteOptions
 from typing import Any, Iterator, Optional, Union, Tuple, Literal
 import logging
 import itertools

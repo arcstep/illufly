@@ -1,5 +1,5 @@
 import pytest
-from speedict import Rdict, Options, ReadOptions, WriteOptions
+from rocksdict import Rdict, Options, ReadOptions, WriteOptions
 from illufly.rocksdb.base_rocksdb import BaseRocksDB, WriteBatch
 import tempfile
 import os
