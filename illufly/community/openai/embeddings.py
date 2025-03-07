@@ -50,7 +50,6 @@ class OpenAIEmbeddings(BaseEmbeddings):
         response = await self.client.embeddings.create(
             model=self.model,
             input=texts,
-            dimensions=self.dim,
             **kwargs
         )
         self.model = response.model

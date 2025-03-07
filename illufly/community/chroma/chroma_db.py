@@ -28,6 +28,8 @@ class ChromaDB(BaseVectorDB):
     async def add(self, texts: List[str], collection_name: str = None, metadatas: List[Dict[str, Any]] = None, **kwargs) -> Any:
         """添加文本，如果存在就更新"""
         collection_name = collection_name or "default"
+        if isinstance(texts, str):
+            texts = [texts]
 
         if not isinstance(texts, list):
             raise ValueError("texts 必须是列表")
@@ -88,7 +90,6 @@ class ChromaDB(BaseVectorDB):
         if where_document:
             kwargs["where_document"] = where_document
 
-        texts = [texts] if isinstance(texts, str) else texts
         embeddings = await self.embeddings.embed_texts(texts)
         query_embeddings = [e.vector for e in embeddings]
         results = collection.query(query_embeddings=query_embeddings, **kwargs)
