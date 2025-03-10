@@ -56,8 +56,8 @@ class ChromaDB(BaseVectorDB):
 
     def delete(
         self,
-        collection_name: str,
         texts: List[str],
+        collection_name: str,
         where: Dict[str, Any] = None,
         **kwargs
     ) -> None:

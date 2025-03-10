@@ -26,16 +26,16 @@ class BaseVectorDB(ABC):
         pass
 
     @abstractmethod
-    def add(self, collection_name: str, texts: List[str], **kwargs) -> None:
+    def add(self, texts: List[str], collection_name: str = None, **kwargs) -> None:
         """添加文本，如果存在就更新"""
         pass
 
     @abstractmethod
-    def delete(self, collection_name: str, texts: List[str], **kwargs) -> None:
+    def delete(self, texts: List[str], collection_name: str = None, **kwargs) -> None:
         """删除文本"""
         pass
 
     @abstractmethod
-    def query(self, collection_name: str, text: str, **kwargs) -> List[str]:
+    def query(self,  texts: List[str], collection_name: str = None, **kwargs) -> List[str]:
         """查询"""
         pass
