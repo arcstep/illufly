@@ -41,55 +41,106 @@ def raise_not_supply_all(info: str, *args):
 def extract_segments(text: str, marker: Tuple[str, str], include_markers: bool = False, strict: bool = False) -> List[str]:
     """
     根据模式提取文本中符合条件的片段。
-    mode='multiple'：提取每一对start_marker和end_marker之间的内容。
-    mode='single'：提取第一个start_marker和最后一个end_marker之间的内容。
+    1、从一对标记中提取，比如 ```turtle 和 ``` 之间，返回提取结果到列表中。
+    2、如果包含多对标记，就返回提取到的多个结果列表。
+    3、允许内容中同时存在多种标记，比如内容有些包含 ```turtle 和 ``` 之间，有些包含在```json 和 ``` 之间，应不会干扰。
+    
+    注意：开始标记必须严格位于行首（不允许有前导空格）。结束标记可以在行内或行首。
     """
+    if not text or text.strip() == "":
+        return []
+        
     if not marker:
-        return [text] if text else []
+        return [text]
 
     start_marker, end_marker = marker
+    start_marker_lower = start_marker.lower()
+    end_marker_lower = end_marker.lower()
+    
     lines = text.split('\n')
     segments = []
 
     capture = False
     current_segment = []
-    for line in lines:
-        stripped_line = line.strip().lower()
-        if not capture and start_marker.lower() in stripped_line:
-            capture = True
-            if include_markers:
-                current_segment.append(line)
-                start_pos = stripped_line.index(start_marker.lower()) + len(start_marker)
-            else:
-                start_pos = line.lower().index(start_marker.lower()) + len(start_marker)
-                current_segment.append(line[start_pos:].strip())
-            # 检查 end_marker 是否在同一行
-            if end_marker.lower() in stripped_line[start_pos:]:
-                end_pos = line.lower().index(end_marker.lower(), start_pos)
-                current_segment[-1] = line[start_pos:end_pos].strip()
-                segments.append('\n'.join(current_segment).strip())
-                capture = False
-                current_segment = []  # 重置 current_segment
-        elif capture and end_marker.lower() in stripped_line:
-            if include_markers:
-                current_segment.append(line)
-            else:
-                end_pos = line.lower().index(end_marker.lower())
-                current_segment.append(line[:end_pos].strip())
-            segments.append('\n'.join(current_segment).strip())
-            capture = False
-            current_segment = []  # 重置 current_segment
-        elif capture:
-            current_segment.append(line.strip())
-    # 确保在捕获结束后清空 current_segment
-    if capture:
-        segments.append('\n'.join(current_segment).strip())
-        capture = False
+    i = 0
     
-    if not strict and not segments:
-        # 如果什么都没发现就返回原始输入
-        return [text]
-
+    while i < len(lines):
+        line = lines[i]
+        
+        # 处理开始标记（必须严格在行首）
+        if not capture and line.lower().startswith(start_marker_lower):
+            capture = True
+            content_after_marker = line[len(start_marker):]
+            
+            if include_markers:
+                current_segment.append(line)
+            else:
+                current_segment.append(content_after_marker.strip())
+            
+            # 检查同一行中的结束标记
+            if end_marker_lower in content_after_marker.lower():
+                # 找到结束标记的位置
+                end_pos = content_after_marker.lower().find(end_marker_lower)
+                
+                # 判断是否为真正的结束标记：如果后面没有更多内容或后面不再包含结束标记
+                is_real_end = True
+                rest_of_line = content_after_marker[end_pos + len(end_marker_lower):].lower()
+                if end_marker_lower in rest_of_line:
+                    is_real_end = False
+                
+                if is_real_end:
+                    if not include_markers:
+                        # 提取标记之间的内容
+                        content = content_after_marker[:end_pos].strip()
+                        current_segment[-1] = content
+                    
+                    segments.append('\n'.join(current_segment).strip())
+                    current_segment = []
+                    capture = False
+        
+        # 在捕获模式下处理结束标记
+        elif capture:
+            if line.lower().startswith(end_marker_lower) or end_marker_lower in line.lower():
+                # 两种情况：1. 行首结束标记 2. 行内结束标记
+                is_real_end = True
+                
+                if line.lower().startswith(end_marker_lower):
+                    # 行首结束标记通常是真正的结束标记
+                    if include_markers:
+                        current_segment.append(line)
+                else:
+                    # 行内结束标记，需要判断是否真正的结束标记
+                    end_pos = line.lower().find(end_marker_lower)
+                    rest_of_line = line[end_pos + len(end_marker_lower):].lower()
+                    
+                    # 如果后面还有结束标记，当前不是真正的结束
+                    if end_marker_lower in rest_of_line:
+                        is_real_end = False
+                        current_segment.append(line)
+                    else:
+                        if include_markers:
+                            current_segment.append(line)
+                        else:
+                            current_segment.append(line[:end_pos + len(end_marker_lower)].strip())
+                
+                if is_real_end:
+                    segments.append('\n'.join(current_segment).strip())
+                    current_segment = []
+                    capture = False
+            else:
+                # 正常捕获的行
+                current_segment.append(line)
+        
+        i += 1
+    
+    # 处理未闭合的标记
+    if capture and current_segment and not strict:
+        segments.append('\n'.join(current_segment).strip())
+    
+    # 如果没有找到任何片段
+    if not segments:
+        return [] if strict or not text else [text]
+    
     return segments
 
 def extract_text(resp_md: str, marker: Tuple[str, str], include_markers: bool=False, strict: bool=False):
