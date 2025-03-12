@@ -47,12 +47,12 @@ class ChromaDB(BaseVectorDB):
         # 提取文本、向量、索引键和元数据
         texts = [e.text for e in embs]
         if metadatas is not None:
-            metadatas = [{**e.model_dump(exclude={"vector"}), **metadata} for e, metadata in zip(embs, metadatas)]
+            meta = [{**e.model_dump(exclude={"vector"}), **metadata} for e, metadata in zip(embs, metadatas)]
         else:
-            metadatas = [e.model_dump(exclude={"vector"}) for e in embs]
+            meta = [e.model_dump(exclude={"vector"}) for e in embs]
         ids = [EmbeddingText.get_key(e.model, e.dim, e.output_type, e.text) for e in embs]
         embeddings = [e.vector for e in embs]
-        return collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
+        return collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=meta)
 
     def delete(
         self,
@@ -92,7 +92,6 @@ class ChromaDB(BaseVectorDB):
         query_embeddings = [e.vector for e in embeddings]
         results = collection.query(query_embeddings=query_embeddings, **kwargs)
         return results
-        
 
 class RemoteChromaDB(BaseVectorDB):
     def __init__(self, embeddings: BaseEmbeddings, host: str = None, port: int = None, **kwargs):

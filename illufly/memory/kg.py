@@ -2,52 +2,169 @@ from typing import Dict, List, Tuple, Optional, Any, Set, Union
 from rdflib import Graph, Namespace, Literal, URIRef, BNode
 from rdflib.namespace import RDF, RDFS
 from rdflib.plugins.sparql import prepareQuery
+from datetime import datetime
+from pydantic import BaseModel, Field
 
 import logging
 import uuid
-from datetime import datetime
+from hashlib import md5
 
 from ..utils import extract_segments
 from ..community import BaseVectorDB, BaseChat
 from ..rocksdb import IndexedRocksDB, default_rocksdb
 from ..prompt import PromptTemplate
 from .sparqls import (
-    TURTLE_QUERY_PREDICATES_TEMPLATES,
-    TURTLE_QUERY_NEWEST_TRIPLES
+    TURTLE_QUERY_NEWEST_TRIPLES,
+    TURTLE_QUERY_WITHOUT_INVALIDATED
 )
 
+class Turtle(BaseModel):
+    user_id: str = Field(..., description="用户ID")
+    turtle_text: str = Field(..., description="Turtle表达式")
+    turtle_id: str = Field(default_factory=lambda: str(uuid.uuid4().hex[:8]), description="Turtle表达式ID")
+    timestamp: float = Field(default_factory=lambda: datetime.now().timestamp(), description="生成时间")
+    
+    model_config = {
+        "arbitrary_types_allowed": True
+    }
+
+    @classmethod
+    def get_user_prefix(cls, user_id: str) -> str:
+        """获取用户前缀"""
+        return f"kg-{user_id}"
+
+    @classmethod
+    def get_key(cls, user_id: str, turtle_id: str) -> str:
+        """获取Turtle表达式键值"""
+        return f"{cls.get_user_prefix(user_id)}:{turtle_id}"
+
 class KnowledgeGraph:
-    """RDF知识图谱包装类
+    """知识图谱包装类"""
     
-    管理用户的知识图谱，支持从文本生成图谱、解决冲突和查询相关知识
+    @classmethod
+    def _extract_local_name(cls, uri: URIRef) -> str:
+        """从 URI 中提取最后的路径或片段作为名称"""
+        uri_str = str(uri)
+        if "#" in uri_str:
+            return uri_str.split("#")[-1]
+        elif "/" in uri_str:
+            return uri_str.split("/")[-1]
+        else:
+            return uri_str
 
-    1. 生成记忆逻辑
-    - 根据问题从向量库中检索已存在的三元组turtle表达式及其自然语言表述
-    - 将已存在三元组与用户输入的文本一起构建大模型提示语
-    - 使用大模型生成Turtle表达式（包括所有主语谓语宾语的中文标签）
-    - 提取turtle表达式：拆解为单个三元组清单和谓词清单
-    - 对于新的谓词，使用大模型生成谓词模板（包括一主一宾、一主多宾、多主一宾、多主多宾等模式）
-    - 将三元组清单和谓词清单，按谓词模板生成自然语言表述
-        - 保存到rocksdb：
-            - 三元组的turtle表达式，建为三元组主语谓语宾语的hash值，值为turtle表达式
-            - 谓词模板，键为谓词hash值，值为谓词模板
-        - 更新到向量数据库：针对三元组的自然语言表述嵌入，检索三元组turtle表达式、自然语言表述
-        - 更新到图谱：针对三元组turtle表达式
-    - 解决图谱合并时的概念冲突
-        - 提取冲突：从注释中识别冲突
-        - 解决冲突：从图中移除有冲突的三元组
-
-    2. 查询记忆逻辑
-    - 根据问题从向量数据库中检索已存在的三元组turtle表达式
-    - 根据三元组检索子图，并提取所有三元组
-    - 根据谓词模板生成自然语言表述，作为记忆返回
-
-    3. 初始化向量库和图谱的逻辑
-    - 读取rocksdb中用户所有的三元组数据
-        - 初始化向量数据库，为每个用户建立独立的集合，针对三元组的自然语言表述嵌入，检索三元组turtle表达式
-        - 为每个用户初始化独立的图谱，将三元组turtle表达式添加到图谱
-    """
+    @classmethod
+    def get_newest_triples(cls, graph: Graph) -> Graph:
+        """获取图谱中的最新三元组"""
+        return graph.query(TURTLE_QUERY_NEWEST_TRIPLES)
     
+    @classmethod
+    def get_without_invalidated(cls, graph: Graph) -> Graph:
+        """获取图谱中的最新三元组（不包含失效的三元组）"""
+        return graph.query(TURTLE_QUERY_WITHOUT_INVALIDATED)
+
+    @classmethod
+    def split_turtle(cls, turtle: str) -> List[Tuple[str, str]]:
+        """将Turtle表达式拆分为独立的三元组"""
+        # 解析 Turtle 数据到图
+        g = Graph()
+        g.parse(data=turtle, format="turtle")
+        
+        # 提取所有三元组
+        triples = list(g.triples((None, None, None)))
+        
+        # 生成独立的三元组 Turtle 表达式（保留前缀）
+        def serialize_single_triple(s, p, o):
+            temp_g = Graph()
+            # 继承原图的命名空间绑定
+            for prefix, namespace in g.namespaces():
+                temp_g.bind(prefix, namespace)
+            temp_g.add((s, p, o))
+            return temp_g.serialize(format="turtle").strip()
+        
+        # 输出每个独立三元组
+        turtles = []
+        for i, (s, p, o) in enumerate(triples, 1):
+            sub = cls._extract_local_name(s)
+            pred = cls._extract_local_name(p)
+            obj = cls._extract_local_name(o)
+            text = f"({sub} - {pred} - {obj})"
+            turtle_text = serialize_single_triple(s, p, o)
+            turtles.append((turtle_text, text))
+
+        return turtles    
+    
+    @classmethod
+    def extract_related_subgraph_sparql(
+        cls,
+        graph: Graph,
+        sub_graph: Graph,
+    ) -> Graph:
+        """使用SPARQL查询提取相关子图"""
+        subgraph = Graph()
+        
+        # 添加初始三元组并收集所有起始实体
+        entities = set()
+        
+        for s, _, o in sub_graph:
+            # 收集实体
+            if isinstance(s, URIRef):
+                entities.add(s)
+            if isinstance(o, URIRef):
+                entities.add(o)
+        
+        # 如果没有实体，直接返回空图
+        if not entities:
+            return subgraph
+            
+        entity_values = ", ".join(f"<{e}>" for e in entities)
+        
+        # 修改：避免使用可能与SPARQL语法冲突的模板变量格式
+        # 使用一个不太可能出现在SPARQL中的占位符
+        sparql_template = """
+        CONSTRUCT { ?s ?p ?o }
+        WHERE {
+            { ?s ?p ?o . FILTER(?s IN (ENTITY_VALUES_PLACEHOLDER)) }
+            UNION
+            { ?s ?p ?o . FILTER(?o IN (ENTITY_VALUES_PLACEHOLDER)) }
+        }
+        """
+        
+        # 简单替换占位符而不使用模板引擎
+        sparql_query = sparql_template.replace("ENTITY_VALUES_PLACEHOLDER", entity_values)
+        
+        # 执行SPARQL查询并添加结果到子图
+        results = graph.query(sparql_query)
+        for s, p, o in results:
+            subgraph.add((s, p, o))
+        
+        # 收集第一度关系中的新实体
+        new_entities = set()
+        for s, p, o in subgraph.triples((None, None, None)):
+            if isinstance(s, URIRef) and s not in entities:
+                new_entities.add(s)
+            if isinstance(o, URIRef) and o not in entities:
+                new_entities.add(o)
+        
+        # 只有当有新实体时才执行第二个查询
+        if new_entities:
+            new_entity_values = ", ".join(f"<{e}>" for e in new_entities)
+            # 同样使用占位符替换而非模板
+            second_query_template = """
+            CONSTRUCT { ?s ?p ?o }
+            WHERE {
+                { ?s ?p ?o . FILTER(?s IN (NEW_ENTITY_VALUES_PLACEHOLDER)) }
+                UNION
+                { ?s ?p ?o . FILTER(?o IN (NEW_ENTITY_VALUES_PLACEHOLDER)) }
+            }
+            """
+            second_query = second_query_template.replace("NEW_ENTITY_VALUES_PLACEHOLDER", new_entity_values)
+            
+            results = graph.query(second_query)
+            for s, p, o in results:
+                subgraph.add((s, p, o))
+        
+        return subgraph
+
     def __init__(
         self,
         llm: Optional[BaseChat] = None,
@@ -64,74 +181,47 @@ class KnowledgeGraph:
         self.graph = Graph()
         self._logger = logging.getLogger(__name__)
 
-    async def extract(self, text: str, user_id: str = None) -> Graph:
-        """从文本生成知识并添加到图谱
-        
-        Args:
-            user_id: 用户ID
-            text: 输入文本
-            
-        Returns:
-            更新后的RDF图谱
-        """
+    async def query(self, text: str, user_id: str = None, limit: int = 5) -> str:
+        """根据文本查询Turtle表达式"""
         user_id = user_id or "default"
-        # 检索历史信息
-        existing_turtles = await self._retrieve_existing_turtles(text, user_id)
-        # 组合提示并生成Turtle表达式
-        turtle_data = await self._generate_turtle(
-            prompt=text,
+        limit = int(limit / 2)
+        limit = 1 if limit <= 0 else limit
+        sub_graph, part_graph = await self._query_vector_db(text, user_id, limit)
+        def _ex(s, p, o):
+            return f"({self._extract_local_name(s)} {self._extract_local_name(p)} {self._extract_local_name(o)})"
+        triples = [_ex(s, p, o) for s, p, o in part_graph]
+        for s, p, o in sub_graph:
+            triple = _ex(s, p, o)
+            if triple not in triples:
+                triples.append(triple)
+        return "\n".join(triples[:limit])
+
+    async def extract(self, text: str, user_id: str = None, limit: int = 5) -> Graph:
+        """从文本生成知识并添加到图谱"""
+        user_id = user_id or "default"
+
+        _, part_graph = await self._query_vector_db(text, user_id, limit)
+        existing_turtles = part_graph.serialize(format="turtle")
+
+        turtle = await self.generate_turtle(
+            content=text,
             user_id=user_id,
             existing_turtles=existing_turtles
         )
-        
+
         # 解析并合并到图谱
-        new_graph = Graph()
-        if turtle_data and turtle_data.strip():
-            try:
-                new_graph.parse(data=turtle_data, format="turtle")
-            except Exception as e:
-                raise Exception(f"解析Turtle数据时出错: {e}")
-        
-        # 合并图谱
-        await self._resolve_conflicts(new_graph)
-            
+        try:
+            self.graph.parse(data=turtle, format="turtle")
+        except Exception as e:
+            raise Exception(f"解析Turtle数据时出错: {e}")
+
+        # 保存到数据库
+        await self._save_to_docs_db(turtle, user_id)
         # 保存到向量数据库
-        await self._save_to_vector_db(new_graph, user_id)
+        await self._save_to_vector_db(turtle, user_id)
         
-        return self.graph
+        return turtle
     
-    async def query(self, text: str, user_id: str = None) -> str:
-        """根据文本查询相关知识
-        
-        Args:
-            user_id: 用户ID
-            text: 查询文本
-            
-        Returns:
-            格式化的知识文本
-        """
-        user_id = user_id or "default"
-        results = await self.vector_db.query(
-            texts=[text],
-            collection_name=user_id,
-            n_results=5
-        )
-        
-        results = results["documents"][0] if results["documents"][0] else []
-        return "\n".join(results)
-
-    
-    async def _retrieve_existing_turtles(self, text: str, user_id: str = None) -> str:
-        """从向量数据库检索相关历史信息"""
-        user_id = user_id or "default"
-        if not self.vector_db:
-            return "", self.namespaces
-        
-        # 从向量数据库检索相似三元组
-        result = await self.vector_db.query(texts=[text], collection_name=user_id, n_results=5)
-        print(result)
-        return "\n".join(result["documents"][0]) if result["documents"][0] else ""
-
     async def generate_turtle(self, content: str, existing_turtles: str = None, user_id: str = None) -> str:
         """使用大模型生成Turtle表达式"""
         user_id = user_id or "default"
@@ -140,7 +230,7 @@ class KnowledgeGraph:
             return ""
         
         system_prompt = self.prompt_template.format({
-            "namespacePrefix": f"http://illufly.com/u-{user_id}/memory#",
+            "namespacePrefix": f"http://illufly.com/{user_id}/memory#",
             "namespaceURI": "m",
             "content": content,
             "existing_turtles": existing_turtles or ""
@@ -154,110 +244,75 @@ class KnowledgeGraph:
                 print(x.text, end="")
                 final_text += x.text
         turtles = extract_segments(final_text, ("```turtle", "```"))
+        return "\n".join(turtles)
 
-        try:
-            g = Graph()
-            g.parse(data=turtles[0], format="turtle")
-            return g
-        except Exception as e:
-            raise Exception(f"解析Turtle数据时出错: {e}")
+    async def _save_to_docs_db(self, turtle: str, user_id: str = None) -> None:
+        """将四元组文本保存到rocksdb"""
+        user_id = user_id or "default"
+        if not self.docs_db:
+            return
+        
+        turtle = Turtle(
+            user_id=user_id,
+            turtle_text=turtle
+        )
+        self.docs_db.put(key=Turtle.get_key(user_id, turtle.turtle_id), value=turtle)
+    
+    async def _load_from_docs_db(self, user_id: str = None) -> Graph:
+        """从rocksdb中加载Turtle表达式"""
+        user_id = user_id or "default"
 
-    @classmethod
-    def _extract_local_name(cls, uri: URIRef) -> str:
-        """从 URI 中提取最后的路径或片段作为名称"""
-        uri_str = str(uri)
-        if "#" in uri_str:
-            return uri_str.split("#")[-1]
-        elif "/" in uri_str:
-            return uri_str.split("/")[-1]
-        else:
-            return uri_str
+        if self.docs_db:
+            for doc in self.docs_db.values(prefix=Turtle.get_user_prefix(user_id)):
+                print(f"[{doc.turtle_id}] {doc.turtle_text}")
+                self.graph.parse(data=doc.turtle_text, format="turtle")
+        return self.graph
 
-    @classmethod
-    def get_turtle(cls, graph: Graph) -> str:
-        """将图谱转换为Turtle表达式"""
-        return graph.serialize(format="turtle")
-
-    @classmethod
-    def _get_predicates_templates(cls, graph: Graph) -> Set[URIRef]:
-        """获取图谱中的谓词"""
-        template_mapping = {}
-        for row in graph.query(TURTLE_QUERY_PREDICATES_TEMPLATES):
-            template_mapping[str(row.sub)] = str(row.obj)
-        return template_mapping
-
-    @classmethod
-    def get_newest_triples(cls, graph: Graph) -> List[Tuple[URIRef, URIRef, URIRef]]:
-        """获取图谱中的最新三元组"""
-        return list(graph.query(TURTLE_QUERY_NEWEST_TRIPLES))
-
-    @classmethod
-    def get_triple_texts(cls, graph: Graph) -> List[Tuple[URIRef, URIRef, URIRef, str]]:
-        """获取四元组文本"""
-        triples = cls.get_newest_triples(graph)
-        def default_template(p: URIRef) -> str:
-            return "{subject} " + cls._extract_local_name(p) + " {object}"
-        templates = cls._get_predicates_templates(graph)
-
-        return [
-        (s, p, o,
-        templates.get(str(p), default_template(p)).format(
-            subject=cls._extract_local_name(s),
-            object=cls._extract_local_name(o)
-        ))
-        for s, p, o
-        in triples]
-
-    async def _save_to_vector_db(self, new_graph: Graph, user_id: str = None) -> None:
-        """将图谱中的三元组保存到向量数据库"""
+    async def _save_to_vector_db(self, turtle: str, user_id: str = None) -> None:
+        """将图谱中的Turtle表达式保存到向量数据库"""
         user_id = user_id or "default"
         if not self.vector_db:
             return
         
-        # 处理所有主语
-        for subject in set(s for s, _, _ in new_graph):
-            # 获取主语的所有标签和注释
-            labels = [str(label) for label in new_graph.objects(subject, RDFS.label)]
-            comments = [str(comment) for comment in new_graph.objects(subject, RDFS.comment)]
-            
-            # 获取主语的所有三元组
-            triples = list(new_graph.triples((subject, None, None)))
-            
-            # 组合文档内容
-            doc_text = " ".join([
-                f"{str(s)} {str(p)} {str(o)}" for s, p, o in triples
-            ])
-            if labels:
-                doc_text += " 标签: " + ", ".join(labels)
-            if comments:
-                doc_text += " 描述: " + ", ".join(comments)
-            
-            self._logger.info(f"嵌入三元组描述: {doc_text}")
-            await self.vector_db.add(texts=[doc_text], collection_name=user_id)
-    
-    @classmethod
-    def extract_related_subgraph(cls, graph: Graph, triples: List[Tuple[URIRef, URIRef, URIRef]]) -> Graph:
-        subgraph = Graph()
-        visited = set()
+        turtle_texts = self.split_turtle(turtle)
+        texts = []
+        metadatas = []
+        ids = []
+        for turtle_text, triple_text in turtle_texts:
+            texts.append(triple_text)
+            metadatas.append({"turtle": turtle_text})
+            ids.append(f'{user_id}:{md5(triple_text.encode()).hexdigest()}')
 
-        def traverse(node):
-            if node in visited:
-                return
-            visited.add(node)
-            for s, p, o in graph.triples((node, None, None)):
-                subgraph.add((s, p, o))
-                if isinstance(o, URIRef):
-                    traverse(o)
-            for s, p, o in graph.triples((None, None, node)):
-                subgraph.add((s, p, o))
-                if isinstance(s, URIRef):
-                    traverse(s)
+        await self.vector_db.add(
+            texts=texts,
+            collection_name=user_id,
+            metadatas=metadatas,
+            ids=ids
+        )
 
-        for row in triples:
-            # row 可以是三元组或增加了谓词模板文本的四元组
-            subgraph.add((row[0], row[1], row[2]))
-            traverse(row[0])
-            traverse(row[2])
-
-        return subgraph
+    async def _query_vector_db(self, texts: Union[str, List[str]], user_id: str = None, limit: int = 5, distance: float = 0.8) -> Tuple[Graph, Graph]:
+        """根据文本查询相关知识
+        
+        Args:
+            user_id: 用户ID
+            text: 查询文本
+            
+        Returns:
+            格式化的知识文本
+        """
+        user_id = user_id or "default"
+        results = await self.vector_db.query(
+            texts=texts,
+            collection_name=user_id,
+            n_results=limit
+        )
+        turtle = ""
+        part_graph = Graph()
+        if results['metadatas']:
+            for i in range(len(results['metadatas'][0])):
+                if results['distances'][0][i] <= distance:
+                    turtle += results['metadatas'][0][i]['turtle']
+                    part_graph.parse(data=results['metadatas'][0][i]['turtle'], format="turtle")
+        subgraph = self.extract_related_subgraph_sparql(self.graph, part_graph)
+        return (self.get_newest_triples(subgraph), part_graph)
 

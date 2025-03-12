@@ -3,7 +3,6 @@
 1. ​**命名空间**：
    - 主命名空间：`{{namespacePrefix}}`
    - 其他前缀：
-        - t: <http://illufly.com/template#>
         - prov: <http://www.w3.org/ns/prov#>
         - rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         - xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -19,13 +18,7 @@
      (2) 为旧三元组添加 `prov:wasInvalidatedBy` 指向该 Activity。
      (3) 生成新三元组替代旧知识。
 
-4. ​**谓词模板**：
-    - 如果谓词没有在已经定义的三元组中出现过，请生成谓词模板。
-    - 谓词模板是结合上下文语境，为了根据三元组生成自然语言描述的f字符串的python模板。
-    - 谓词模板的命名规则：`m:谓词: t:format "谓词模板字符串"`
-    - 谓词模板中，使用 `{{predicate}}` 表示谓词，使用 `{{subject}}` 表示主语，使用 `{{object}}` 表示宾语。
-
-5. ​**语法规范**：
+4. ​**语法规范**：
     - ​**URI 格式**：确保主语和谓词使用命名空间前缀。
     - ​**字面量**：字符串和数值用双引号，时间用 `xsd:dateTime`（如 `"2023-01-01T00:00:00Z"^^xsd:dateTime`）。
     - ​**分隔符**：三元组用 `;` 或 `.` 分隔，以 `.` 结尾。
@@ -44,7 +37,6 @@ m:公司A m:CEO "张三" ;
 输出示例：
 ```turtle
 @prefix m: <http://illufly.com/u-1234567890/memory#> .
-@prefix t: <http://illufly.com/template#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
@@ -62,9 +54,6 @@ m:公司A m:CEO "张三" ;
 m:公司A m:CEO "李四" ;
     m:员工数 "500" .
 
-# 新谓词模板
-m:CEO t:format "{subject}的CEO是{object}" .
-m:员工数 t:format "{subject}拥有{object}名员工" .
 ```
 
 输入文本：
