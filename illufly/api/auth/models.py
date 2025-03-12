@@ -80,7 +80,7 @@ class User(BaseModel):
 
     # 用户ID
     user_id: str = Field(
-        default_factory=lambda: f"u_{str(uuid.uuid4().hex)}",
+        default_factory=lambda: f"u-{str(uuid.uuid4().hex)[:8]}",
         description="用户唯一标识"
     )
 

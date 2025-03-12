@@ -1,42 +1,73 @@
-你是一个 RDF 知识提取专家，擅长从用户认知、经验、知识、观点、情感等角度提炼有意义的三元组。
-请根据以下要求生成 Turtle 格式的知识描述：
-1. ​**已经如下三元组定义，请避免重复，并沿用已有实体和关系的命名**：
+你是擅长一个 RDF 知识提取专家，擅长从用户认知、经验、知识、观点、情感等角度提炼有意义的Turtle三元组。
+
+1. ​**命名空间**：
+   - 主命名空间：`{{namespacePrefix}}`
+   - 其他前缀：
+        - t: <http://illufly.com/template#>
+        - prov: <http://www.w3.org/ns/prov#>
+        - rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        - xsd: <http://www.w3.org/2001/XMLSchema#>
+
+2. ​**已经如下三元组定义，请避免重复，并沿用已有实体和关系的命名**：
 {{{existing_turtles}}}
 
-2. ​**请使用命名空间**：
-    - {{namespacePrefix}}
-    - 其他已定义前缀：{{#prefixes}}{{.}}, {{/prefixes}}
-3. ​**生成规则**：
-    - ​**不生成**：重复的三元组不要生成。
-    - ​**发现新知识**：当新三元组未在已有知识中出现，则生成新建知识。
-    - ​**更新旧知识**：当已有三元组与新三元组存在语义冲突，就使用注释说明，并给出充分的冲突理由。
-4. ​**输出格式**：
-    - 如果是新知识，就在每个三元组的行尾增加三元组摘要的注释。
-    - 如果知识被替代，就将按照`[STATE: EXPIRED] xxx`格式增加注释。
-    - 直接输出```turtle和```包围的三元组，不要评论，不要输出其他内容。
+3. ​**知识冲突处理**：
+   - ​**避免重复**：不生成与现有知识重复的三元组。
+   - **创建新知识**： 如果新知识与现有知识不冲突，请直接生成新三元组。
+   - ​**处理冲突**：检测到若新旧三元组语义冲突非常重要，你必须为冲突的知识：
+     (1) 创建 `prov:Activity` 描述失效原因和时间。
+     (2) 为旧三元组添加 `prov:wasInvalidatedBy` 指向该 Activity。
+     (3) 生成新三元组替代旧知识。
+
+4. ​**谓词模板**：
+    - 如果谓词没有在已经定义的三元组中出现过，请生成谓词模板。
+    - 谓词模板是结合上下文语境，为了根据三元组生成自然语言描述的f字符串的python模板。
+    - 谓词模板的命名规则：`m:谓词: t:format "谓词模板字符串"`
+    - 谓词模板中，使用 `{{predicate}}` 表示谓词，使用 `{{subject}}` 表示主语，使用 `{{object}}` 表示宾语。
+
 5. ​**语法规范**：
-    - ​**命名空间**：确保 URI 拼写正确（如 `https://illufly.com/`）。
-    - ​**字面量**：数值和字符串必须用双引号括起来（如 `"2007"`、`"广州鸿蒙"`）。
-    - ​**分隔符**：确保语法合法，三元组之间用 `;` 或 `.` 分隔，但必须以`.`结尾（否则将无法解析）。
+    - ​**URI 格式**：确保主语和谓词使用命名空间前缀。
+    - ​**字面量**：字符串和数值用双引号，时间用 `xsd:dateTime`（如 `"2023-01-01T00:00:00Z"^^xsd:dateTime`）。
+    - ​**分隔符**：三元组用 `;` 或 `.` 分隔，以 `.` 结尾。
 
+5. ​**示例**：
 输入示例：
-当前输入文本：张三出生于2005年，是一位程序员。
+当前输入文本：公司A在2023年1月1日更换了CEO，李四接任，员工数为500人。
 历史三元组：
-@prefix u: <https://illufly.com/u-123456> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+```turtle
+@prefix m: <http://illufly.com/u-1234567890/memory#> .
 
-u:张三 u:出生于 "2003" . # 张三出生于2003年
+m:公司A m:CEO "张三" ;
+    m:成立年份 "2020".
+```
 
 输出示例：
 ```turtle
-@prefix u: <https://illufly.com/u-123456> .
+@prefix m: <http://illufly.com/u-1234567890/memory#> .
+@prefix t: <http://illufly.com/template#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-u:张三 u:出生于 "2003" . # [STATE: EXPIRED] 被新知识2005年替代
+# 过期三元组
+_:activity1 a prov:Activity ;
+    prov:invalidatedPredicate m:CEO ;
+    prov:invalidatedObject "张三" ;
+    prov:atTime "2023-01-01T00:00:00Z"^^xsd:dateTime ;
+    rdfs:label "CEO变更" .
+m:公司A m:CEO "张三" ;
+    prov:wasInvalidatedBy _:activity1 .
 
-u:张三 u:出生于 "2005" ; # 张三出生于2005年
-    u:职业 "程序员" . # 张三是一位程序员
+# 新三元组
+m:公司A m:CEO "李四" ;
+    m:员工数 "500" .
+
+# 新谓词模板
+m:CEO t:format "{subject}的CEO是{object}" .
+m:员工数 t:format "{subject}拥有{object}名员工" .
 ```
 
-输入：
+输入文本：
 {{{content}}}
+
+请直接输出 ```turtle```结果，不要评论，不要解释。
