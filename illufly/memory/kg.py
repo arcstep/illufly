@@ -182,6 +182,8 @@ class KnowledgeGraph:
         self.graph = Graph()
         self._logger = logging.getLogger(__name__)
 
+        self.loaded_users = set({})
+
     async def query(self, text: str, user_id: str = None, limit: int = 5) -> str:
         """根据文本查询Turtle表达式"""
         user_id = user_id or "default"
@@ -266,16 +268,22 @@ class KnowledgeGraph:
         )
         self.docs_db.put(key=Turtle.get_key(user_id, turtle.turtle_id), value=turtle)
     
-    async def init(self, user_id: str = None) -> Graph:
+    async def load_for_user(self, user_id: str = None) -> Graph:
         """从rocksdb中加载Turtle表达式"""
         user_id = user_id or "default"
 
+        if user_id in self.loaded_users:
+            return
+        else:
+            self.loaded_users.add(user_id)
+
         if self.docs_db:
-            for doc in self.docs_db.values(prefix=Turtle.get_user_prefix(user_id)):
+            kg = self.docs_db.values(prefix=Turtle.get_user_prefix(user_id))
+            for doc in kg:
                 self._logger.debug(f"[{doc.turtle_id}] {doc.turtle_text}")
                 self.graph.parse(data=doc.turtle_text, format="turtle")
                 await self._save_to_vector_db(doc.turtle_text, user_id)
-        self._logger.info(f"[{len(self.graph)}] 条知识已加载")
+            self._logger.info(f"[{len(kg)}] 条旧知识被加载")
 
     async def _save_to_vector_db(self, turtle: str, user_id: str = None) -> None:
         """将图谱中的Turtle表达式保存到向量数据库"""
@@ -314,6 +322,9 @@ class KnowledgeGraph:
         Returns:
             格式化的知识文本
         """
+        if not self.vector_db:
+            return (Graph(), Graph())
+
         user_id = user_id or "default"
         results = await self.vector_db.query(
             texts=texts,

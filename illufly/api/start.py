@@ -12,7 +12,8 @@ import zmq.asyncio
 from ..__version__ import __version__
 from ..rocksdb import IndexedRocksDB
 from ..mq.service import ServiceRouter, ClientDealer
-from ..community.openai import ChatOpenAI
+from ..community.openai import ChatOpenAI, OpenAIEmbeddings
+from ..community.chroma import ChromaDB
 from ..agent import ChatAgent
 from ..thread import ThreadManagerDealer
 from .auth import TokensManager, UsersManager, create_auth_endpoints
@@ -140,7 +141,13 @@ async def create_app(
             group=imitator,
             llm=ChatOpenAI(imitator=imitator),
             router_address=router_address,
-            context=zmq_context
+            context=zmq_context,
+            vector_db=ChromaDB(
+                embeddings=OpenAIEmbeddings(
+                    imitator="QWEN",
+                    db=db,
+                    model="text-embedding-v3"
+                ))
         )
         agents.append(agent)
 

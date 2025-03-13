@@ -4,11 +4,11 @@ import hashlib
 import asyncio
 
 from ..rocksdb import default_rocksdb, IndexedRocksDB
-from ..community import BaseChat, normalize_messages
+from ..community import BaseVectorDB, BaseChat, normalize_messages
 from ..mq import ServiceDealer, service_method
 from ..mq.models import BlockType
 from ..thread import Thread, HistoryMessage, QuestionBlock, AnswerBlock
-from ..prompt import PromptTemplate
+from ..memory import KnowledgeGraph
 from .utils import extract_json_text
 from .models import (
     MemoryDomain,
@@ -31,6 +31,7 @@ class ChatAgent(ServiceDealer):
         llm: BaseChat,
         summary_llm: BaseChat = None,
         db: IndexedRocksDB = None,
+        vector_db: BaseVectorDB = None,
         group: str = None,
         runnable_tools: list = None,
         **kwargs
@@ -50,6 +51,14 @@ class ChatAgent(ServiceDealer):
         self.db.register_model(CHUNK_MODEL, MemoryChunk)
         self.db.register_model(MESSAGE_MODEL, HistoryMessage)
         self.db.register_index(MESSAGE_MODEL, HistoryMessage, "created_with_thread")
+
+        self.memory = KnowledgeGraph(
+            llm=self.llm,
+            docs_db=self.db,
+            vector_db=vector_db
+        )
+
+        self._pending_lock = asyncio.Lock()
 
     @service_method(name="models", description="列出所有模型")
     async def _list_models(self):
@@ -71,7 +80,9 @@ class ChatAgent(ServiceDealer):
         normalized_messages = normalize_messages(messages)
 
         # 补充记忆
-        converted_messages = self._convert_messages(user_id, thread_id, normalized_messages)
+        await self._load_memory(user_id)
+
+        converted_messages = await self._convert_messages(user_id, thread_id, normalized_messages)
 
         quesiton = None
         answer = None
@@ -101,9 +112,9 @@ class ChatAgent(ServiceDealer):
             yield b
         
         # 异步执行消息归档
-        fetch_summary = asyncio.create_task(self._archive_messages(user_id, thread_id, question, answer))
-        self._pending_tasks.add(fetch_summary)
-        fetch_summary.add_done_callback(self._pending_tasks.discard)
+        memory_fetch = asyncio.create_task(self._archive_messages(user_id, thread_id, question, answer))
+        self._pending_tasks.add(memory_fetch)
+        memory_fetch.add_done_callback(self._pending_tasks.discard)
     
     def _load_recent_messages(self, user_id: str, thread_id: str) -> str:
         """加载最近的消息"""
@@ -123,15 +134,18 @@ class ChatAgent(ServiceDealer):
         self._logger.info(f"load_memory: {messages}")
         return "\n".join([str(m['role']) + ": " + str(m['content']) for m in messages])
 
-    def _convert_messages(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]) -> str:
+    async def _convert_messages(self, user_id: str, thread_id: str, messages: List[Dict[str, Any]]) -> str:
         """补充消息中的记忆"""
         messages = messages or []
-        recent_dialogue = self._load_recent_messages(user_id, thread_id)        
+        recent_dialogue = "\n<details><summary>历史对话</summary>\n" + self._load_recent_messages(user_id, thread_id) + "\n</details>\n"
+
+        query_texts = "\n".join([m['content'] for m in messages if m['role'] in ["user", "assistant"]])
+        existing_kg = "\n<details><summary>已有知识</summary>\n" + await self.memory.query(query_texts, user_id, limit=20) + "\n</details>\n"   
+        self._logger.info(f"existing_kg: {existing_kg}")
 
         if not recent_dialogue:
             self._logger.info(f"no memory")
             self._update_thread_title(user_id, thread_id, messages)
-            return messages
 
         self._logger.info(f"recent_dialogue: {recent_dialogue}")
 
@@ -139,13 +153,13 @@ class ChatAgent(ServiceDealer):
             return [
                 {
                     'role': 'system',
-                    'content': messages[0]['content'] + f'\n\n<details><summary>Memory</summary>\n\n{recent_dialogue}\n\n</details>'
+                    'content': messages[0]['content'] + existing_kg + recent_dialogue
                 },
                 *messages[1:]
             ]
         else:
             return [
-                {'role': 'system', 'content': recent_dialogue},
+                {'role': 'system', 'content': "你是一个AI助手，请根据已知知识回答问题。\n" + existing_kg + recent_dialogue},
                 *messages
             ]
 
@@ -172,86 +186,19 @@ class ChatAgent(ServiceDealer):
             )
             self._logger.info(f"update thread title: {title}")
 
-    @service_method(name="list_memory_topics", description="列出所有记忆主题")
-    async def _list_memory_topics(self, user_id: str, thread_id: str = None):
-        """列出所有记忆主题"""
-        topics = self.db.values(
-            prefix=MemoryTopic.get_user_prefix(user_id, thread_id)
-        )
-        return topics
-    
-    @service_method(name="list_memory_chunks", description="列出所有记忆片段")
-    async def _list_memory_chunks(self, user_id: str, topic_id: str, thread_id: str = None):
-        """列出所有记忆片段"""
-        chunks = self.db.values(
-            prefix=MemoryChunk.get_user_prefix(user_id, thread_id, topic_id)
-        )
-        return chunks
+    @service_method(name="list_memory", description="列出所有记忆")
+    async def _list_memory(self, user_id: str):
+        """列出所有记忆"""
+        return list(self.memory.get_newest_triples(user_id))
 
-    async def _create_memory_topic(self, user_id: str, thread_id: str, title: str, summary: str = None):
-        """创建记忆主题"""
-        if not title:
-            return None
-
-        topic_id = hashlib.md5(title.encode()).hexdigest()
-        summary = summary or ""
-        topic = MemoryTopic(
-            user_id=user_id,
-            thread_id=thread_id,
-            topic_id=topic_id,
-            title=title,
-            summary=summary
-        )
-        self.db.update_with_indexes(TOPIC_MODEL, MemoryTopic.get_key(user_id, thread_id, topic.topic_id), topic)
-        return topic
-    
-    async def _create_memory_chunk(self, user_id: str, thread_id: str, topic_id: str, question: str, answer: str):
-        """创建记忆片段"""
-        chunk = MemoryChunk(
-            user_id=user_id,
-            thread_id=thread_id,
-            topic_id=topic_id,
-            question=question,
-            answer=answer)
-        self.db.update_with_indexes(CHUNK_MODEL, MemoryChunk.get_key(user_id, thread_id, topic_id, chunk.chunk_id), chunk)
-        return chunk
+    async def _load_memory(self, user_id: str):
+        """加载记忆"""
+        self._logger.info(f"加载记忆: {user_id}")
+        await self.memory.load_for_user(user_id)
 
     async def _archive_messages(self, user_id: str, thread_id: str, question: QuestionBlock, answer: AnswerBlock):
-        """从问答内容中提取内容做记忆归档
-        - 是否具有实质性内容，值得做摘要？
-        - 是否与已存在话题相关？还是创建新话题？
-        - 是否与已有问答对冲突？
-        - 是否应当合并到已有问答中？
-        """
+        """从问答内容中提取内容做记忆归档"""
+        AQ = f"问题：{question.text}\n答案：{answer.text}"
+        self._logger.info(f"归档记忆: {AQ}")
+        await self.memory.extract(AQ, user_id, limit=20)
 
-        if not question or not answer:
-            return
-
-        # 构建消息
-        template = PromptTemplate(template_id="summary")
-        system_prompt = template.format({
-            "question": question.text,
-            "answer": answer.text
-        })
-        user_prompt = "请直接输出json的解读结果。"
-        messages = [
-            {"role": 'system', "content": system_prompt},
-            {"role": 'user', "content": user_prompt}
-        ]
-
-        # 大模型生成摘要
-        async for b in self.summary_llm.chat(messages=messages):
-            if b.block_type == BlockType.TEXT_FINAL:
-                self._logger.info(f"archive result: {b.text}")
-
-                # 解析json
-                final_dict = extract_json_text(b.text, self._logger)
-                if final_dict:
-                    title = final_dict.get("topic", None)
-                    question = final_dict.get("question", None)
-                    answer = final_dict.get("answer", None)
-
-                    if title and question and answer:
-                        topic_obj = await self._create_memory_topic(user_id, thread_id, title)
-                        if topic_obj:
-                            await self._create_memory_chunk(user_id, thread_id, topic_obj.topic_id, question, answer)
