@@ -13,6 +13,7 @@ from ..utils import extract_segments
 from ..community import BaseVectorDB, BaseChat
 from ..rocksdb import IndexedRocksDB, default_rocksdb
 from ..prompt import PromptTemplate
+from ..mq.enum import BlockType
 from .sparqls import (
     TURTLE_QUERY_NEWEST_TRIPLES,
     TURTLE_QUERY_WITHOUT_INVALIDATED
@@ -87,9 +88,9 @@ class KnowledgeGraph:
             sub = cls._extract_local_name(s)
             pred = cls._extract_local_name(p)
             obj = cls._extract_local_name(o)
-            text = f"({sub} - {pred} - {obj})"
+            comment = f"({sub} - {pred} - {obj})"
             turtle_text = serialize_single_triple(s, p, o)
-            turtles.append((turtle_text, text))
+            turtles.append((turtle_text, comment))
 
         return turtles    
     
@@ -208,18 +209,25 @@ class KnowledgeGraph:
             user_id=user_id,
             existing_turtles=existing_turtles
         )
+        self._logger.debug(f"raw_turtle: \n{turtle}")
+
+        if not turtle:
+            self._logger.warning(f"[{user_id}] 空的Turtle表达式")
+            return ""
 
         # 解析并合并到图谱
         try:
+            # 更新图谱
             self.graph.parse(data=turtle, format="turtle")
+
+            # 保存到数据库
+            await self._save_to_docs_db(turtle, user_id)
+            # 保存到向量数据库
+            await self._save_to_vector_db(turtle, user_id)
+
         except Exception as e:
             raise Exception(f"解析Turtle数据时出错: {e}")
 
-        # 保存到数据库
-        await self._save_to_docs_db(turtle, user_id)
-        # 保存到向量数据库
-        await self._save_to_vector_db(turtle, user_id)
-        
         return turtle
     
     async def generate_turtle(self, content: str, existing_turtles: str = None, user_id: str = None) -> str:
@@ -235,15 +243,15 @@ class KnowledgeGraph:
             "content": content,
             "existing_turtles": existing_turtles or ""
         })
-        final_text = ""
+
+        turtles = []
         async for x in self.llm.generate([
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": "请开始"}
+            {"role": "user", "content": "请开始生成Turtle表达式"}
         ]):
-            if x.message_type == "text_chunk":
-                print(x.text, end="")
-                final_text += x.text
-        turtles = extract_segments(final_text, ("```turtle", "```"))
+            if x.block_type == BlockType.TEXT_FINAL:
+                self._logger.debug(f"TEXT_FINAL: \n{x.text}")
+                turtles.extend(extract_segments(x.text, ("```turtle", "```")))
         return "\n".join(turtles)
 
     async def _save_to_docs_db(self, turtle: str, user_id: str = None) -> None:
@@ -258,15 +266,16 @@ class KnowledgeGraph:
         )
         self.docs_db.put(key=Turtle.get_key(user_id, turtle.turtle_id), value=turtle)
     
-    async def _load_from_docs_db(self, user_id: str = None) -> Graph:
+    async def init(self, user_id: str = None) -> Graph:
         """从rocksdb中加载Turtle表达式"""
         user_id = user_id or "default"
 
         if self.docs_db:
             for doc in self.docs_db.values(prefix=Turtle.get_user_prefix(user_id)):
-                print(f"[{doc.turtle_id}] {doc.turtle_text}")
+                self._logger.debug(f"[{doc.turtle_id}] {doc.turtle_text}")
                 self.graph.parse(data=doc.turtle_text, format="turtle")
-        return self.graph
+                await self._save_to_vector_db(doc.turtle_text, user_id)
+        self._logger.info(f"[{len(self.graph)}] 条知识已加载")
 
     async def _save_to_vector_db(self, turtle: str, user_id: str = None) -> None:
         """将图谱中的Turtle表达式保存到向量数据库"""
@@ -278,17 +287,22 @@ class KnowledgeGraph:
         texts = []
         metadatas = []
         ids = []
-        for turtle_text, triple_text in turtle_texts:
-            texts.append(triple_text)
-            metadatas.append({"turtle": turtle_text})
-            ids.append(f'{user_id}:{md5(triple_text.encode()).hexdigest()}')
+        for turtle_text, comment in turtle_texts:
+            turtle_id = md5(turtle_text.encode()).hexdigest() # 生成 MD5 的 ID
+            texts.append(f'{comment}\n{turtle_text}') # 将 turtle_text 和 comment 一起嵌入
+            metadatas.append({"turtle": turtle_text}) # 只保存 turtle_text
+            ids.append(f'{user_id}:{turtle_id}') # 保存向量嵌入 ID
+            self._logger.info(f"[{user_id}:{turtle_id}] 加载到向量数据库 turtle_text: \n{turtle_text}")
 
-        await self.vector_db.add(
-            texts=texts,
-            collection_name=user_id,
-            metadatas=metadatas,
-            ids=ids
-        )
+        if texts:
+            await self.vector_db.add(
+                texts=texts,
+                collection_name=user_id,
+                metadatas=metadatas,
+                ids=ids
+            )
+        else:
+            self._logger.warning(f"[{user_id}] 没有可保存的文本")
 
     async def _query_vector_db(self, texts: Union[str, List[str]], user_id: str = None, limit: int = 5, distance: float = 0.8) -> Tuple[Graph, Graph]:
         """根据文本查询相关知识

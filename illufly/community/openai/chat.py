@@ -78,7 +78,7 @@ class ChatOpenAI(BaseChat):
         try:
             async for response in completion:
                 # 打印流式块信息
-                self._logger.info(
+                self._logger.debug(
                     f"收到流式块 | ID: {response.id} "
                     f"response: {response}"
                 )
@@ -86,10 +86,10 @@ class ChatOpenAI(BaseChat):
                 count += 1
                 # 新增结束条件检查
                 if count > 1000:
-                    self._logger.info(f"超出循环次数，结束循环 >>> count: {count}")
+                    self._logger.debug(f"超出循环次数，结束循环 >>> count: {count}")
                     break
                 elif not response.choices:
-                    self._logger.info("流数据结束传输")
+                    self._logger.debug("流数据结束传输")
                     break
 
                 model = response.model
@@ -121,7 +121,7 @@ class ChatOpenAI(BaseChat):
                         current = final_tool_calls[tool_id]
                         current['name'] += tool_call.function.name or ""
                         current['arguments'] += tool_call.function.arguments or ""
-                        self._logger.info(f"current tool_calls >>> {final_tool_calls}")
+                        self._logger.debug(f"current tool_calls >>> {final_tool_calls}")
 
                         # 实时生成chunk（即使字段不完整）
                         yield ToolCallChunk(
@@ -139,7 +139,7 @@ class ChatOpenAI(BaseChat):
                     content = ai_output.content
                     if content:
                         final_text += content
-                        self._logger.info(f"收到流式文本块: {content}")
+                        self._logger.debug(f"收到流式文本块: {content}")
                         yield TextChunk(
                             service_name=f"{self.imitator}({model})",
                             response_id=response.id,
@@ -159,7 +159,7 @@ class ChatOpenAI(BaseChat):
                         finish_reason=finish_reason,
                         created_at=created_at
                     )
-                    self._logger.info(f"收到流式结束信号: {finish_reason}")
+                    self._logger.debug(f"收到流式结束信号: {finish_reason}")
                     break
 
             # 循环结束后立即释放资源
@@ -168,7 +168,7 @@ class ChatOpenAI(BaseChat):
             
             # 生成最终结果
             if final_tool_calls:
-                self._logger.info(f"final_tool_calls >>> {final_tool_calls}")
+                self._logger.debug(f"final_tool_calls >>> {final_tool_calls}")
                 for key, call_data in final_tool_calls.items():
                     yield ToolCallFinal(
                         service_name=f"{self.imitator}({model})",

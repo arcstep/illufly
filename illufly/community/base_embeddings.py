@@ -52,7 +52,7 @@ class BaseEmbeddings(ABC):
         for i in range(0, len(texts), self.max_lines):
             batch_texts = texts[i:i + self.max_lines]
 
-            # 检查哪些文件已经存在
+            # 检查哪些文本已经嵌入
             to_embedding = []
             for text in batch_texts:
                 found_embedding = self.db.get(EmbeddingText.get_key(self.model, self.dim, self.output_type, text))

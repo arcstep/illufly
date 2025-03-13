@@ -164,7 +164,7 @@ class BaseChat(ABC):
             text_finals = []
 
             # 生成查询流事件
-            self._logger.info(f"conv_messages: {conv_messages}")
+            self._logger.debug(f"conv_messages: {conv_messages}")
             # 如果 tools 为空，则不传递 tools 参数：
             #   Qwen 接口不兼容 []
             answer_message_id = uuid.uuid4().hex[:8]

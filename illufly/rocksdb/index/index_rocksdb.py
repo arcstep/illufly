@@ -304,7 +304,7 @@ class IndexedRocksDB(BaseRocksDB):
     
     def update_with_indexes(self, model_name: str, key: str, value: Any, cf_name: str=None):
         """更新键值，并自动更新索引"""
-        self._logger.info(f"开始更新索引: model_name={model_name}, key={key}, value=`{str(value)[:300]}`, cf_name={cf_name}")
+        self._logger.debug(f"开始更新索引: model_name={model_name}, key={key}, value=`{str(value)[:300]}`, cf_name={cf_name}")
 
         cf_name = cf_name or self.default_cf_name
         cf = self.get_column_family(cf_name)
