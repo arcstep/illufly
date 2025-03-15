@@ -216,7 +216,7 @@ CONNECTORS = [
 ]
 
 def encode_path(path: List[Tuple[Node, URIRef, Node]], 
-               mode: str = "hybrid") -> str:
+                mode: str = "hybrid") -> str:
     """
     将路径编码为指定格式
     mode: compressed|verbose|hybrid
