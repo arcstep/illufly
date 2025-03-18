@@ -168,3 +168,7 @@ notes/*/images
 __USERS__
 db/
 kg/__*
+
+tests/pn/models/
+tests/pn/data/policy_data_batch*
+tests/pn/embeddings/

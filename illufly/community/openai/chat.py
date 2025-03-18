@@ -7,6 +7,8 @@ from ..models import TextChunk, TextFinal, ToolCallChunk, ToolCallFinal, UsageBl
 import os
 import logging
 import asyncio
+import time
+import httpx
 
 class ChatOpenAI(BaseChat):
     """OpenAI 对话模型"""
@@ -57,152 +59,179 @@ class ChatOpenAI(BaseChat):
             return []
 
     async def generate(self, messages: Union[str, List[Dict[str, Any]]], **kwargs):
+        max_retries = 3  # 最大重试次数
+        retry_delay = 5  # 重试间隔(秒)
+        
+        for attempt in range(max_retries):
+            try:
+                _kwargs = self.default_call_args
+                _kwargs.update({
+                    "messages": messages,
+                    **kwargs,
+                    **{"stream": True, "stream_options": {"include_usage": True}}
+                })
 
-        _kwargs = self.default_call_args
-        _kwargs.update({
-            "messages": messages,
-            **kwargs,
-            **{"stream": True, "stream_options": {"include_usage": True}}
-        })
-
-        completion = await self.client.chat.completions.create(**_kwargs)
-
-        usage = None
-        finish_reason = None
-        model = None
-        final_text = ""
-        final_tool_calls = {}
-        last_tool_call_id = None
-        response_id = ""
-        count = 0
-        try:
-            async for response in completion:
-                # 打印流式块信息
-                self._logger.debug(
-                    f"收到流式块 | ID: {response.id} "
-                    f"response: {response}"
-                )
+                completion = await self.client.chat.completions.create(**_kwargs)
                 
-                count += 1
-                # 新增结束条件检查
-                if count > 1000:
-                    self._logger.debug(f"超出循环次数，结束循环 >>> count: {count}")
-                    break
-                elif not response.choices:
-                    self._logger.debug("流数据结束传输")
-                    break
+                # 在流式处理外层添加心跳检测
+                last_received = time.time()
+                usage = None
+                finish_reason = None
+                model = None
+                final_text = ""
+                final_tool_calls = {}
+                last_tool_call_id = None
+                response_id = ""
+                count = 0
+                async for response in completion:
+                    last_received = time.time()
+                    # 打印流式块信息
+                    self._logger.debug(
+                        f"收到流式块 | ID: {response.id} "
+                        f"response: {response}"
+                    )
+                    
+                    count += 1
+                    # 新增结束条件检查
+                    if count > 1000:
+                        self._logger.debug(f"超出循环次数，结束循环 >>> count: {count}")
+                        break
+                    elif not response.choices:
+                        self._logger.debug("流数据结束传输")
+                        break
 
-                model = response.model
-                created_at = response.created
-                response_id = response.id
-                finish_reason = response.choices[0].finish_reason
+                    model = response.model
+                    created_at = response.created
+                    response_id = response.id
+                    finish_reason = response.choices[0].finish_reason
 
-                if response.usage:
-                    usage = response.usage
+                    if response.usage:
+                        usage = response.usage
 
-                ai_output = response.choices[0].delta if response.choices else None
-                if ai_output.tool_calls:
-                    for tool_call in ai_output.tool_calls:
-                        # 处理ID可能分块到达的情况
-                        tool_id = tool_call.id or last_tool_call_id
-                        
-                        if tool_id:
-                            last_tool_call_id = tool_id
-                        
-                        # 初始化工具调用记录
-                        if tool_id not in final_tool_calls.keys():
-                            final_tool_calls[tool_id] = {
-                                'name': '',
-                                'arguments': '',
-                                'created_at': created_at,
-                            }
-                        
-                        # 累积各字段（处理字段分块到达）
-                        current = final_tool_calls[tool_id]
-                        current['name'] += tool_call.function.name or ""
-                        current['arguments'] += tool_call.function.arguments or ""
-                        self._logger.debug(f"current tool_calls >>> {final_tool_calls}")
+                    ai_output = response.choices[0].delta if response.choices else None
+                    if ai_output.tool_calls:
+                        for tool_call in ai_output.tool_calls:
+                            # 处理ID可能分块到达的情况
+                            tool_id = tool_call.id or last_tool_call_id
+                            
+                            if tool_id:
+                                last_tool_call_id = tool_id
+                            
+                            # 初始化工具调用记录
+                            if tool_id not in final_tool_calls.keys():
+                                final_tool_calls[tool_id] = {
+                                    'name': '',
+                                    'arguments': '',
+                                    'created_at': created_at,
+                                }
+                            
+                            # 累积各字段（处理字段分块到达）
+                            current = final_tool_calls[tool_id]
+                            current['name'] += tool_call.function.name or ""
+                            current['arguments'] += tool_call.function.arguments or ""
+                            self._logger.debug(f"current tool_calls >>> {final_tool_calls}")
 
-                        # 实时生成chunk（即使字段不完整）
-                        yield ToolCallChunk(
-                            service_name=f"{self.imitator}({model})",
-                            response_id=response.id,
-                            tool_call_id=tool_id,
-                            tool_name=tool_call.function.name or "",
-                            arguments=tool_call.function.arguments or "",
-                            created_at=created_at,
-                            model=model,
-                            finish_reason=finish_reason
-                        )
+                            # 实时生成chunk（即使字段不完整）
+                            yield ToolCallChunk(
+                                service_name=f"{self.imitator}({model})",
+                                response_id=response.id,
+                                tool_call_id=tool_id,
+                                tool_name=tool_call.function.name or "",
+                                arguments=tool_call.function.arguments or "",
+                                created_at=created_at,
+                                model=model,
+                                finish_reason=finish_reason
+                            )
 
-                else:
-                    content = ai_output.content
-                    if content:
-                        final_text += content
-                        self._logger.debug(f"收到流式文本块: {content}")
+                    else:
+                        content = ai_output.content
+                        if content:
+                            final_text += content
+                            self._logger.debug(f"收到流式文本块: {content}")
+                            yield TextChunk(
+                                service_name=f"{self.imitator}({model})",
+                                response_id=response.id,
+                                text=content,
+                                model=model,
+                                finish_reason=finish_reason,
+                                created_at=created_at
+                            )
+
+                    # 如果返回携带了结束信号，则退出循环
+                    if finish_reason:
                         yield TextChunk(
                             service_name=f"{self.imitator}({model})",
                             response_id=response.id,
-                            text=content,
+                            text="",
                             model=model,
                             finish_reason=finish_reason,
                             created_at=created_at
                         )
+                        self._logger.debug(f"收到流式结束信号: {finish_reason}")
+                        break
 
-                # 如果返回携带了结束信号，则退出循环
-                if finish_reason:
-                    yield TextChunk(
-                        service_name=f"{self.imitator}({model})",
-                        response_id=response.id,
-                        text="",
-                        model=model,
-                        finish_reason=finish_reason,
-                        created_at=created_at
-                    )
-                    self._logger.debug(f"收到流式结束信号: {finish_reason}")
-                    break
+                    # 添加心跳超时检测
+                    if time.time() - last_received > 30:  # 30秒无数据视为超时
+                        raise TimeoutError("流式响应超时")
 
-            # 循环结束后立即释放资源
-            await completion.close()  # 确保资源释放
-            self._logger.debug("流式连接已关闭")
-            
-            # 生成最终结果
-            if final_tool_calls:
-                self._logger.debug(f"final_tool_calls >>> {final_tool_calls}")
-                for key, call_data in final_tool_calls.items():
-                    yield ToolCallFinal(
+                # 循环结束后立即释放资源
+                await completion.close()  # 确保资源释放
+                self._logger.debug("流式连接已关闭")
+                
+                # 生成最终结果
+                if final_tool_calls:
+                    self._logger.debug(f"final_tool_calls >>> {final_tool_calls}")
+                    for key, call_data in final_tool_calls.items():
+                        yield ToolCallFinal(
+                            service_name=f"{self.imitator}({model})",
+                            response_id=response_id,
+                            model=model,
+                            finish_reason=finish_reason,
+                            tool_call_id=key,
+                            tool_name=call_data['name'].strip(),
+                            arguments=call_data['arguments'].strip(),
+                            created_at=call_data['created_at']
+                        )
+
+                if final_text:
+                    yield TextFinal(
                         service_name=f"{self.imitator}({model})",
                         response_id=response_id,
-                        model=model,
-                        finish_reason=finish_reason,
-                        tool_call_id=key,
-                        tool_name=call_data['name'].strip(),
-                        arguments=call_data['arguments'].strip(),
-                        created_at=call_data['created_at']
+                        text=final_text,
+                        created_at=created_at
                     )
 
-            if final_text:
-                yield TextFinal(
-                    service_name=f"{self.imitator}({model})",
-                    response_id=response_id,
-                    text=final_text,
-                    created_at=created_at
-                )
+                if usage:
+                    usage_dict = {
+                        "prompt_tokens": usage.prompt_tokens,
+                        "completion_tokens": usage.completion_tokens,
+                        "total_tokens": usage.total_tokens
+                    }
+                    yield UsageBlock(
+                        **usage_dict,
+                        response_id=response_id,
+                        service_name=f"{self.imitator}({model})",
+                        model=model,
+                        provider=self.imitator,
+                        created_at=created_at
+                    )
 
-            if usage:
-                usage_dict = {
-                    "prompt_tokens": usage.prompt_tokens,
-                    "completion_tokens": usage.completion_tokens,
-                    "total_tokens": usage.total_tokens
-                }
-                yield UsageBlock(
-                    **usage_dict,
-                    response_id=response_id,
-                    service_name=f"{self.imitator}({model})",
-                    model=model,
-                    provider=self.imitator,
-                    created_at=created_at
-                )
+                break  # 成功执行后退出循环
 
-        except asyncio.CancelledError:
-            self._logger.warning("流式请求被取消")
+            except asyncio.CancelledError as e:
+                self._logger.warning(f"生成请求被取消: {str(e)}")
+                break
+
+            except (httpx.RemoteProtocolError, TimeoutError) as e:
+                self._logger.warning(f"连接中断 (尝试 {attempt+1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay ** (attempt + 1))  # 指数退避
+                    continue
+                else:
+                    self._logger.error("达到最大重试次数")
+                    break
+
+    async def cancel(self):
+        # Implementation of cancel method
+        pass
+
