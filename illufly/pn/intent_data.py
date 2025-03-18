@@ -55,7 +55,7 @@ class IntentDataset(Dataset):
         
         # 获取嵌入向量
         embeddings = self.embedding_model.sync_embed_texts([query])
-        embedding = torch.tensor(embeddings[0].vector, dtype=torch.float32)
+        embedding = embeddings[0].vector
         if embedding is None:
             raise ValueError(f"未找到查询的嵌入向量: {query}")
         

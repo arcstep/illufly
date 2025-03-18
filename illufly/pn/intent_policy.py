@@ -9,7 +9,6 @@ import logging
 import traceback
 
 from typing import List, Dict, Any, Optional, Tuple, Union
-from torch.utils.data import Dataset, DataLoader
 from datetime import datetime
 from tqdm import tqdm
 from collections import defaultdict
@@ -298,6 +297,74 @@ class ModuleSelector(nn.Module):
             self.enabled = not self.enabled
         return self.enabled
 
+class ToggleableModule(nn.Module):
+    """可启用/禁用的模块基类"""
+    def __init__(self, enabled=True):
+        super().__init__()
+        self.enabled = enabled
+    
+    def toggle(self, enabled=None):
+        """切换模块状态"""
+        if enabled is not None:
+            self.enabled = enabled
+        else:
+            self.enabled = not self.enabled
+        return self.enabled
+
+class FusionLayer(ToggleableModule):
+    """可切换的融合层，带自适应维度处理"""
+    def __init__(self, in_features, out_features, enabled=True):
+        super().__init__(enabled)
+        self.in_features = in_features
+        self.out_features = out_features
+        
+        # 高级融合网络
+        self.advanced = nn.Sequential(
+            nn.Linear(in_features, out_features // 2),
+            nn.ReLU(),
+            nn.Linear(out_features // 2, out_features),
+            nn.ReLU()
+        )
+        
+        # 简单线性映射
+        self.simple = nn.Sequential(
+            nn.Linear(in_features, out_features),
+            nn.ReLU()
+        )
+        
+        print(f"创建融合层: 输入维度={in_features}, 输出维度={out_features}, 初始状态={'启用' if enabled else '禁用'}")
+    
+    def forward(self, x):
+        # 检查输入维度是否匹配
+        if x.size(-1) != self.in_features:
+            print(f"警告: 融合层输入维度不匹配: 预期 {self.in_features}, 实际 {x.size(-1)}")
+            # 创建适应新维度的网络
+            device = x.device
+            
+            # 创建新的高级网络
+            self.advanced = nn.Sequential(
+                nn.Linear(x.size(-1), self.out_features // 2),
+                nn.ReLU(),
+                nn.Linear(self.out_features // 2, self.out_features),
+                nn.ReLU()
+            ).to(device)
+            
+            # 创建新的简单网络
+            self.simple = nn.Sequential(
+                nn.Linear(x.size(-1), self.out_features),
+                nn.ReLU()
+            ).to(device)
+            
+            # 更新内部维度记录
+            self.in_features = x.size(-1)
+            print(f"已重建融合层以匹配新维度: 输入维度={self.in_features}, 输出维度={self.out_features}")
+        
+        # 执行选定的模式
+        if self.enabled:
+            return self.advanced(x)
+        else:
+            return self.simple(x)
+
 class EnhancedIntentPolicyNetwork(nn.Module):
     """
     高度模块化的意图策略网络，支持各层的开关控制
@@ -387,27 +454,34 @@ class EnhancedIntentPolicyNetwork(nn.Module):
             hidden_dim=history_dim
         )
         
-        # 融合层 - 高级版本
-        advanced_fusion = nn.Sequential(
-            nn.Linear(embed_dim + history_dim, fusion_dim),
-            nn.LayerNorm(fusion_dim),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(fusion_dim, fusion_dim),
-            nn.LayerNorm(fusion_dim),
-            nn.GELU()
-        )
+        # 检测嵌入维度
+        print("检测嵌入向量维度...")
+        self.embedding_dim = self.embedding_model.dim  # 默认值
+        try:
+            temp_embedding = self.embedding_model.sync_embed_texts(["测试查询"])
+            if temp_embedding and hasattr(temp_embedding[0], 'vector'):
+                self.embedding_dim = len(temp_embedding[0].vector)
+                print(f"检测到实际嵌入维度: {self.embedding_dim}")
+        except Exception as e:
+            print(f"嵌入测试失败: {e}, 使用默认维度: {self.embedding_dim}")
         
-        # 融合层 - 基础版本
-        basic_fusion = nn.Sequential(
-            nn.Linear(embed_dim + history_dim, fusion_dim),
-            nn.ReLU()
-        )
+        # 根据嵌入维度动态调整隐藏层维度
+        hidden_dim = 256  # 基础隐藏层维度
         
-        self.fusion_layer = ModuleSelector(
-            primary_module=advanced_fusion,
-            fallback_module=basic_fusion,
-            enabled=use_fusion
+        # 动态计算组合特征维度
+        if self.config["use_hierarchical"]:
+            combined_dim = self.embedding_dim + hidden_dim * 2
+        else:
+            combined_dim = self.embedding_dim + hidden_dim
+            
+        print(f"组合特征维度: {combined_dim}")
+        
+        # 使用可切换的融合层
+        fusion_out_dim = hidden_dim * 2
+        self.fusion_layer = FusionLayer(
+            combined_dim, 
+            fusion_out_dim,
+            enabled=self.config["use_fusion"]
         )
         
         # 决策头
@@ -455,8 +529,7 @@ class EnhancedIntentPolicyNetwork(nn.Module):
             self.optimizer, 
             mode='min', 
             factor=0.5, 
-            patience=5,
-            verbose=True
+            patience=5
         )
     
     def _find_latest_model(self) -> Optional[str]:
@@ -617,8 +690,37 @@ class EnhancedIntentPolicyNetwork(nn.Module):
         # 编码历史
         history_features = self.history_encoder(history_tensor, history_lengths)
         
-        # 特征融合
-        combined = torch.cat([query_features, history_features], dim=1)
+        # 在合并特征前检查和打印维度
+        if self.training:
+            print(f"查询嵌入形状: {query_features.shape}")
+            print(f"历史特征形状: {history_features.shape}")
+        
+        # 拼接特征
+        if self.config["use_hierarchical"]:
+            combined = torch.cat([query_features, history_features], dim=1)
+        else:
+            combined = torch.cat([query_features, history_features], dim=1)
+            
+        if self.training:
+            print(f"合并特征形状: {combined.shape}，预期融合层输入维度: {self.fusion_layer.in_features}")
+        
+        # 检查维度匹配，必要时调整
+        if hasattr(self.fusion_layer, 'in_features') and combined.shape[1] != self.fusion_layer.in_features:
+            print(f"警告：特征维度不匹配！调整维度从 {combined.shape[1]} 到 {self.fusion_layer.in_features}")
+            
+            # 动态创建新的融合层
+            device = combined.device
+            new_fusion_layer = FusionLayer(
+                combined.shape[1], 
+                self.fusion_layer.out_features,
+                enabled=self.fusion_layer.enabled
+            ).to(device)
+            
+            # 替换旧的融合层
+            self.fusion_layer = new_fusion_layer
+            print("已重新创建匹配维度的融合层")
+            
+        # 现在进行融合
         fusion_features = self.fusion_layer(combined)
         
         # 意图预测

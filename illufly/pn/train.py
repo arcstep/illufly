@@ -4,13 +4,64 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import logging
 
+from torch.utils.data import Dataset, DataLoader
 from typing import List, Dict, Any, Optional
 from tqdm import tqdm
 
 from ..community import OpenAIEmbeddings
 from .intent_policy import EnhancedIntentPolicyNetwork
 from .intent_data import IntentDataset
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def custom_collate(batch):
+    """处理不同长度的样本批次"""
+    # 过滤掉空的或无效的样本
+    batch = [b for b in batch if b is not None and all(k in b for k in ['query_embed', 'intent_id', 'history', 'history_len'])]
+    
+    if not batch:
+        return None  # 如果批次为空，返回None
+    
+    # 检查历史张量的形状并打印出来
+    history_shapes = [item['history'].shape for item in batch]
+    if len(set(str(shape) for shape in history_shapes)) > 1:
+        print(f"警告：批次中的历史张量形状不一致: {history_shapes}")
+        
+        # 统一历史张量的形状
+        max_len = max(s[0] for s in history_shapes if len(s) > 0)
+        for i, item in enumerate(batch):
+            if item['history'].shape[0] == 0 or item['history'].shape[0] < max_len:
+                # 创建一个适当尺寸的零张量
+                batch[i]['history'] = torch.zeros(max_len, dtype=torch.long)
+                batch[i]['history_len'] = torch.tensor(0, dtype=torch.long)
+    
+    # 分别处理每个字段
+    try:
+        query_embeds = torch.stack([item['query_embed'] for item in batch])
+        intent_ids = torch.stack([item['intent_id'] for item in batch])
+        history = torch.stack([item['history'] for item in batch])
+        history_len = torch.stack([item['history_len'] for item in batch])
+        
+        # 元数据保持为列表
+        metadata = [item['metadata'] for item in batch]
+        
+        return {
+            'query_embed': query_embeds,
+            'intent_id': intent_ids,
+            'history': history,
+            'history_len': history_len,
+            'metadata': metadata
+        }
+    except Exception as e:
+        print(f"在合并批次时出错: {e}")
+        print(f"批次大小: {len(batch)}")
+        print(f"样本字段: {list(batch[0].keys())}")
+        
+        # 返回一个空批次
+        return None
 
 def train_intent_policy(
     train_data: List[Dict[str, Any]],
@@ -77,7 +128,8 @@ def train_intent_policy(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=0
+        num_workers=0,
+        collate_fn=custom_collate
     )
     
     # 如果有验证集，准备验证集
@@ -94,7 +146,8 @@ def train_intent_policy(
             val_dataset,
             batch_size=batch_size,
             shuffle=False,
-            num_workers=0
+            num_workers=0,
+            collate_fn=custom_collate
         )
     
     # 初始化模型
@@ -126,7 +179,7 @@ def train_intent_policy(
     # 设置优化器
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-5)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=3, verbose=True
+        optimizer, mode='min', factor=0.5, patience=3
     )
     
     # 损失函数
@@ -216,7 +269,12 @@ def train_intent_policy(
             history["accuracy"].append(accuracy)
             
             # 更新学习率
+            old_lr = optimizer.param_groups[0]['lr']
             scheduler.step(avg_val_loss)
+            new_lr = optimizer.param_groups[0]['lr']
+            
+            if new_lr != old_lr:
+                logger.info(f"学习率从 {old_lr:.6f} 调整为 {new_lr:.6f}")
             
             # 打印信息
             logger.info(
@@ -224,6 +282,7 @@ def train_intent_policy(
                 f"Train Loss: {avg_train_loss:.4f}, "
                 f"Val Loss: {avg_val_loss:.4f}, "
                 f"Accuracy: {accuracy:.4f}"
+                f"LR: {new_lr:.6f}"
             )
             
             # 检查是否有改进
