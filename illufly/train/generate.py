@@ -93,46 +93,40 @@ class GenerateData:
             return []
         
         try:
-            # 查找JSON内容 - 尝试几种常见的包裹方式
-            json_pattern = r'```(?:json)?(.*?)```|(\[.*\])'
-            matches = re.findall(json_pattern, text, re.DOTALL)
+            # 首先提取JSON部分
+            pattern = r'```(?:json)?\s*([\s\S]*?)\s*```'
+            match = re.search(pattern, text)
+            if match:
+                json_text = match.group(1).strip()
+            else:
+                # 如果没有代码块标记，尝试寻找JSON数组
+                array_match = re.search(r'\[\s*\{[\s\S]*\}\s*\]', text)
+                if array_match:
+                    json_text = array_match.group(0)
+                else:
+                    json_text = text  # 使用整个文本
             
-            if matches:
-                # 使用第一个匹配项
-                for match in matches:
-                    # 可能有多个捕获组，选择非空的那个
-                    json_text = next((m.strip() for m in match if m.strip()), None)
-                    if json_text:
-                        break
-                    else:
-                        # 没找到格式化的JSON块，尝试解析整个文本
-                        json_text = text
+            # 替换Python风格的单引号为双引号（处理嵌套引号）
+            # 这是一个关键修复：将{'key': value} 转换为 {"key": value}
+            json_text = re.sub(r"'([^']*?)': ", r'"\1": ', json_text)
+            json_text = re.sub(r"'([^']*?)'", r'"\1"', json_text)
             
-            # 尝试直接解析
+            # 简化JSON，移除尾部逗号
+            json_text = re.sub(r',\s*}', '}', json_text)
+            json_text = re.sub(r',\s*]', ']', json_text)
+            
+            # 尝试解析
             try:
                 data = json.loads(json_text)
-            except json.JSONDecodeError:
-                # 尝试修复常见JSON错误
-                cleaned_text = json_text.replace('""', '"')
-                cleaned_text = re.sub(r',\s*\]', ']', cleaned_text)
-                cleaned_text = re.sub(r',\s*\}', '}', cleaned_text)
-                # 尝试去除非ASCII字符
-                cleaned_text = re.sub(r'[^\x00-\x7F]+', ' ', cleaned_text)
-                
-                try:
-                    data = json.loads(cleaned_text)
-                except json.JSONDecodeError:
-                    # 再尝试提取可能的JSON部分
-                    json_obj_match = re.search(r'\[\s*\{.*\}\s*\]', cleaned_text, re.DOTALL)
-                    if json_obj_match:
-                        try:
-                            data = json.loads(json_obj_match.group(0))
-                        except:
-                            print("JSON解析失败，所有尝试均未成功")
-                            return []
-                    else:
-                        print("未找到有效的JSON结构")
-                        return []
+                print("JSON解析成功")
+            except json.JSONDecodeError as e:
+                print(f"JSON解析错误: {e}")
+                # 保存问题JSON以便调试
+                debug_file = f"debug_json_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                with open(debug_file, 'w', encoding='utf-8') as f:
+                    f.write(f"原始响应:\n{text}\n\n处理后文本:\n{json_text}")
+                print(f"已保存调试信息到 {debug_file}")
+                return []
             
             # 确保数据是列表格式
             if not isinstance(data, list):
@@ -174,9 +168,9 @@ class GenerateData:
         self,
         system_prompt: Union[str, PromptTemplate],
         user_prompt_template: Union[str, PromptTemplate], 
-        num_batches: int, 
-        batch_metadata: Optional[List[Dict[str, Any]]] = None,
-        metadata_fields: Optional[List[str]] = None
+        batch_metadata: List[Dict[str, Any]] = None,
+        num_batches: int = None, 
+        metadata_fields: List[str] = None
     ) -> List[Dict[str, Any]]:
         """
         生成所有批次的数据
@@ -192,6 +186,10 @@ class GenerateData:
             所有生成的数据列表
         """
         all_data = []
+        if batch_metadata:
+            num_batches = len(batch_metadata)
+        elif num_batches is None:
+            num_batches = 1
         
         # 使用时间戳生成唯一输出文件名
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

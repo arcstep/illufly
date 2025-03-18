@@ -913,17 +913,6 @@ def collate_fn(batch: List[Dict]):
         torch.tensor([x["action_type"] for x in batch])
     )
 
-def generate_training_report(results: dict):
-    """生成训练报告"""
-    report = f"""
-## 训练报告
-- 最佳验证准确率: {results['best_val_acc']:.2%}
-- 最终训练损失: {results['final_train_loss']:.4f}
-- 总训练时间: {results['total_time']:.1f}s
-- 使用批次演进: {results['batch_evolution']}
-    """
-    print(report)
-
 def generate_enhanced_report(results: dict, path: str):
     """增强健壮性的报告生成"""
     # 添加默认值处理
@@ -993,11 +982,11 @@ async def main():
     else:
         # 创建数据生成器并生成新数据
         generator = TrainingDataGenerator(
-        output_dir=args.output,
-        model=args.model,
-        imitator=args.imitator,
-        batch_size=args.batch_size
-    )    
+            output_dir=args.output,
+            model=args.model,
+            imitator=args.imitator,
+            batch_size=args.batch_size
+        )
         print(f"开始生成 {args.batches} 批训练数据，每批 {args.batch_size} 条...")
         all_data = await generator.generate_all_data(args.batches)
     
