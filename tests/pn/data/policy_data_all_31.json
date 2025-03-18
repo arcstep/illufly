@@ -1,0 +1,301 @@
+[
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323804",
+    "user_query": "如何查看我的磁盘使用情况？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个关于Linux命令的普通问题，不需要查询知识库或数据库，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323833",
+    "user_query": "如何在Linux中安装软件包？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个关于Linux操作的基本问题，可以通过直接对话解答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323842",
+    "user_query": "什么是Linux内核？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "关键词": "Linux内核"
+      }
+    },
+    "explanation": "这是一个关于Linux的基本知识性问题，适合查询知识库来获取定义和背景信息。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323849",
+    "user_query": "我的Linux系统上哪个进程消耗的CPU最多？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这问题与系统监控工具相关，适合直接对话，解释如何使用工具查看进程CPU使用情况。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323856",
+    "user_query": "如何查看Linux中的所有网络接口？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个Linux命令行的常见问题，适合通过直接对话提供解决方案。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323862",
+    "user_query": "Linux上有哪些常用的文本编辑器？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "关键词": "Linux 文本编辑器"
+      }
+    },
+    "explanation": "这是一个通用的Linux知识问题，适合查询知识库来列出常见的文本编辑器。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323869",
+    "user_query": "如何查看系统中所有的环境变量？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个常见的Linux命令行操作，适合直接对话提供解决方案。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323875",
+    "user_query": "我如何设置Linux服务器的IP地址？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个操作系统配置类问题，适合通过直接对话提供设置方法。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323881",
+    "user_query": "Linux中的root用户是什么？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "关键词": "Linux root 用户"
+      }
+    },
+    "explanation": "这是关于Linux用户权限的基础知识问题，适合查询知识库获取定义和作用。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323887",
+    "user_query": "如何在Linux上创建新的用户？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个常见的Linux命令操作问题，可以通过直接对话提供创建用户的命令。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323896",
+    "user_query": "如何查找一个文件的大小？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个关于Linux命令行操作的问题，适合直接对话解答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323902",
+    "user_query": "如何在Linux中查看内存使用情况？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个系统监控相关的常见问题，可以通过直接对话解答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323909",
+    "user_query": "如何更新Linux软件包？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个常见的系统维护问题，适合通过直接对话提供命令行解决方案。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323915",
+    "user_query": "在Linux中如何创建一个软链接？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个Linux命令操作问题，适合直接对话解答如何创建软链接。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323922",
+    "user_query": "如何查看系统日志？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个系统管理问题，适合通过直接对话解释如何查看日志。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323928",
+    "user_query": "什么是Linux中的sudo命令？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "关键词": "Linux sudo 命令"
+      }
+    },
+    "explanation": "这是关于Linux权限管理的知识性问题，适合查询知识库来解释sudo命令的用途和功能。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323934",
+    "user_query": "如何查看某个进程的PID？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个Linux命令行查询问题，适合直接对话解答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323940",
+    "user_query": "Linux中如何安装Python？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个关于Linux软件安装的问题，适合直接对话提供安装命令。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323946",
+    "user_query": "如何查看Linux系统的内核版本？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个关于系统信息查询的基础问题，适合通过直接对话给出查看内核版本的命令。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323952",
+    "user_query": "Linux中的cron作业如何设置？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个常见的系统任务调度问题，适合通过直接对话提供相关命令和方法。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323958",
+    "user_query": "如何查询Linux中所有已挂载的磁盘？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个查询系统挂载信息的常见问题，适合直接对话解答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323964",
+    "user_query": "如何查看Linux中的所有用户？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个系统用户查询问题，适合直接对话提供命令。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323990",
+    "user_query": "我的Linux系统上有没有安装Apache服务器？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个关于软件安装状态的常见问题，适合直接对话查询安装情况。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.323997",
+    "user_query": "如何修改Linux系统的时间？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个关于系统配置的常见问题，适合通过直接对话解答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.324003",
+    "user_query": "如何在Linux上重启网络服务？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个与系统管理相关的问题，适合直接对话提供重启网络服务的命令。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.324010",
+    "user_query": "如何查询我Linux系统的版本号？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个查询系统版本号的基本问题，适合通过直接对话解答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.324016",
+    "user_query": "如何在Linux上查看正在监听的端口？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个系统监控命令问题，适合直接对话解答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.324022",
+    "user_query": "在Linux中，如何查找一个文件的路径？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个关于文件搜索的问题，适合直接对话解答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.324029",
+    "user_query": "Linux中如何停止一个服务？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个常见的Linux系统管理问题，适合直接对话提供停止服务的命令。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.324035",
+    "user_query": "Linux的shell是什么？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "关键词": "Linux shell"
+      }
+    },
+    "explanation": "这是一个关于Linux基本组件的知识性问题，适合查询知识库解释shell的作用。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:41:56.324041",
+    "user_query": "如何查看Linux系统中的所有日志文件？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个系统管理类问题，适合通过直接对话提供查看日志文件的命令。"
+  }
+]

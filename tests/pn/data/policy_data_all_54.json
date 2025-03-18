@@ -1,0 +1,684 @@
+[
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784056",
+    "user_query": "这个月的销售总额是多少？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "本月销售总额"
+      }
+    },
+    "explanation": "用户需要具体的销售数据，适合查询数据库以获取最新的销售额统计。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784092",
+    "user_query": "如何提高销售转化率？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "提高销售转化率方法"
+      }
+    },
+    "explanation": "用户在寻找提升销售转化率的策略，适合查询知识库获取相关信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784102",
+    "user_query": "上个月最畅销的产品是什么？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "上月销量最高的产品"
+      }
+    },
+    "explanation": "需要查询具体的销售数据，适合使用数据库查询获取销售排名信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784109",
+    "user_query": "销售漏斗是什么？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "销售漏斗定义"
+      }
+    },
+    "explanation": "这是一个关于销售概念的问题，适合查询知识库获取解释。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784116",
+    "user_query": "我的最新订单状态是什么？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "当前用户最新订单状态"
+      }
+    },
+    "explanation": "用户查询自己的订单信息，需要访问数据库获取实时数据。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784122",
+    "user_query": "销售预测一般如何进行？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "销售预测方法"
+      }
+    },
+    "explanation": "用户想了解销售预测的方法，适合查询知识库获取相关资料。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784129",
+    "user_query": "这个季度的销售增长趋势如何？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "本季度销售增长趋势"
+      }
+    },
+    "explanation": "涉及具体的销售数据，适合数据库查询以获取统计分析。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784135",
+    "user_query": "CRM系统的作用是什么？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "CRM系统作用"
+      }
+    },
+    "explanation": "用户在询问CRM系统的作用，适合查询知识库提供概念解释。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784142",
+    "user_query": "请给我推荐几本关于销售的好书。",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个一般性的对话问题，不需要查询外部数据。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784149",
+    "user_query": "今年到目前为止，我们的总销售额是多少？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "本年度至今销售总额"
+      }
+    },
+    "explanation": "涉及具体数据查询，适合使用数据库获取最新的销售统计。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784155",
+    "user_query": "如何更好地管理销售团队？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "销售团队管理"
+      }
+    },
+    "explanation": "用户在寻找销售管理建议，适合查询知识库获取管理策略。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784162",
+    "user_query": "上周的销售额是多少？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "上周销售总额"
+      }
+    },
+    "explanation": "涉及具体时间段的销售数据查询，需要从数据库获取准确信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784170",
+    "user_query": "如何制定有效的销售计划？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "销售计划制定"
+      }
+    },
+    "explanation": "用户在寻找销售策略，适合查询知识库获取相关方法。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784176",
+    "user_query": "哪些因素会影响客户的购买决策？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "客户购买决策因素"
+      }
+    },
+    "explanation": "这是一个关于销售心理学的问题，适合查询知识库获取研究和见解。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784182",
+    "user_query": "最近的销售趋势如何？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "最近销售趋势分析"
+      }
+    },
+    "explanation": "涉及具体数据分析，需要从数据库中获取销售数据进行评估。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784189",
+    "user_query": "为什么客户流失率很高？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "客户流失原因"
+      }
+    },
+    "explanation": "用户在寻找客户流失的原因，适合查询知识库获取相关研究和经验。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784195",
+    "user_query": "我上个月的销售业绩如何？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "当前用户上月销售业绩"
+      }
+    },
+    "explanation": "涉及个人业绩数据，需要查询数据库获取相关信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784201",
+    "user_query": "销售转介绍是什么意思？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "销售转介绍"
+      }
+    },
+    "explanation": "用户在询问销售术语，适合查询知识库提供解释。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784207",
+    "user_query": "请给我一个提高销售额的技巧。",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这是一个一般性的对话问题，可以直接回答。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784216",
+    "user_query": "哪些销售策略对B2B客户有效？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "B2B销售策略"
+      }
+    },
+    "explanation": "用户在寻找B2B销售策略，适合查询知识库获取相关信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784222",
+    "user_query": "我的客户反馈评分是多少？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "当前用户客户反馈评分"
+      }
+    },
+    "explanation": "涉及个人客户评分数据，需要查询数据库获取具体数值。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784228",
+    "user_query": "今年的销售目标达成率是多少？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "年度销售目标达成率"
+      }
+    },
+    "explanation": "涉及销售KPI数据，需要查询数据库计算销售目标的完成情况。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784240",
+    "user_query": "如何提高客户忠诚度？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "提高客户忠诚度"
+      }
+    },
+    "explanation": "用户在寻找方法提升客户忠诚度，适合查询知识库获取策略。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784247",
+    "user_query": "我们公司历史上最高的月销售额是多少？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "公司历史最高月销售额"
+      }
+    },
+    "explanation": "涉及具体销售数据查询，需要从数据库获取历史记录。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784253",
+    "user_query": "如何降低销售成本？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "降低销售成本方法"
+      }
+    },
+    "explanation": "用户在寻找降低销售成本的方法，适合查询知识库获取建议。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784259",
+    "user_query": "最近三个月客户投诉的主要原因是什么？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "最近三个月客户投诉原因统计"
+      }
+    },
+    "explanation": "涉及具体客户投诉数据分析，需要查询数据库获取相关信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T06:45:34.784265",
+    "user_query": "我能查看竞争对手的销售数据吗？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "这个问题涉及敏感数据，通常无法查询数据库或知识库，可以直接回答相关法律和商业道德问题。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.344986",
+    "user_query": "如何安装Apache服务器？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "安装 Apache 服务器"
+      }
+    },
+    "explanation": "用户询问关于安装Apache服务器的步骤，属于查询知识库的范畴。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345005",
+    "user_query": "Linux系统如何查看当前的IP地址？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 查看 IP 地址"
+      }
+    },
+    "explanation": "用户需要获取查看IP地址的方式，适合从知识库获取信息。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345010",
+    "user_query": "什么是虚拟内存？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "虚拟内存 Linux"
+      }
+    },
+    "explanation": "这是一个关于虚拟内存概念的基础性问题，需要查询相关的知识库。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345014",
+    "user_query": "如何创建一个新的用户账户？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 创建 新用户 账户"
+      }
+    },
+    "explanation": "用户询问如何在Linux系统中创建新账户，适合查询知识库的操作。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345019",
+    "user_query": "我需要检查服务器是否正常运行",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "检查 Linux 服务器 是否正常运行"
+      }
+    },
+    "explanation": "用户需要获取关于检查服务器状态的操作，属于知识库查询。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345023",
+    "user_query": "如何用Linux命令删除一个文件夹？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 删除 文件夹 命令"
+      }
+    },
+    "explanation": "这是一个常见的Linux命令问题，适合从知识库获取解答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345027",
+    "user_query": "我的系统无法启动，怎么办？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户的查询是求助性质的，不需要查询数据库或知识库，属于直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345032",
+    "user_query": "如何设置定时任务？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 设置 定时任务"
+      }
+    },
+    "explanation": "用户想了解如何设置Linux系统中的定时任务，适合查询知识库。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345036",
+    "user_query": "如何检查硬盘空间使用情况？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 检查 硬盘空间 使用情况"
+      }
+    },
+    "explanation": "这是一个关于硬盘空间的查询问题，适合查询知识库的内容。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345040",
+    "user_query": "哪个命令可以查看系统的负载？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 查看 系统负载 命令"
+      }
+    },
+    "explanation": "用户想要查看Linux系统负载的命令，适合查询知识库。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345044",
+    "user_query": "如何配置防火墙规则？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 配置 防火墙 规则"
+      }
+    },
+    "explanation": "涉及到防火墙配置的问题，适合查询知识库。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345048",
+    "user_query": "怎样创建一个SSH密钥对？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "创建 SSH 密钥对 Linux"
+      }
+    },
+    "explanation": "这是一个关于SSH密钥创建的操作，查询知识库能提供详细步骤。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345052",
+    "user_query": "我可以查看当前系统的时间吗？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "查看 Linux 系统 时间"
+      }
+    },
+    "explanation": "用户希望查看系统时间，适合查询知识库中的命令和方法。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345056",
+    "user_query": "如何使用sudo命令执行操作？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "sudo 使用 方法 Linux"
+      }
+    },
+    "explanation": "用户询问如何使用sudo命令，适合查询知识库以获得相关说明。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345061",
+    "user_query": "请帮我查询下服务器状态。",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "服务器状态"
+      }
+    },
+    "explanation": "用户想查询服务器的具体状态，需要从数据库中获取该数据。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345079",
+    "user_query": "我的账户最近的登录记录是什么？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "账户 最近 登录 记录"
+      }
+    },
+    "explanation": "用户希望查看账户的登录记录，适合通过数据库查询获取具体数据。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345084",
+    "user_query": "我需要查询系统的内存使用情况",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 查询 内存 使用情况"
+      }
+    },
+    "explanation": "用户希望获取关于内存使用情况的查询，适合查询知识库。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345088",
+    "user_query": "如何添加一个新的磁盘分区？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 添加 磁盘 分区"
+      }
+    },
+    "explanation": "这是一个关于磁盘管理的操作问题，适合查询知识库。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345092",
+    "user_query": "如何启动或停止一个服务？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 启动 停止 服务"
+      }
+    },
+    "explanation": "涉及到系统服务的控制，适合查询知识库。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345096",
+    "user_query": "我的账户余额是多少？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "当前用户帐户余额"
+      }
+    },
+    "explanation": "用户想要查询特定账户的余额信息，适合使用数据库查询来获取用户的具体数据。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345100",
+    "user_query": "如何更新系统的软件包？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 更新 软件包"
+      }
+    },
+    "explanation": "用户希望更新软件包，适合查询知识库。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345104",
+    "user_query": "如何查看系统的日志文件？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 查看 系统日志 文件"
+      }
+    },
+    "explanation": "用户询问如何查看系统日志文件，适合查询知识库。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345108",
+    "user_query": "我的硬盘坏了，能修复吗？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户面临硬盘损坏问题，适合进行对话并提供帮助。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345112",
+    "user_query": "如何清理系统缓存？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 清理 系统缓存"
+      }
+    },
+    "explanation": "用户需要清理系统缓存，适合从知识库查询解决方法。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345116",
+    "user_query": "我想知道当前的系统版本",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 查看 系统版本"
+      }
+    },
+    "explanation": "用户想了解系统版本信息，适合从知识库查询。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345125",
+    "user_query": "如何查看网络接口配置？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 查看 网络接口 配置"
+      }
+    },
+    "explanation": "用户希望查看网络接口的配置，适合查询知识库中的相关命令。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T06:45:49.345130",
+    "user_query": "如何设置Linux主机的时区？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 设置 时区"
+      }
+    },
+    "explanation": "用户需要设置时区，适合查询知识库获取详细步骤。"
+  }
+]

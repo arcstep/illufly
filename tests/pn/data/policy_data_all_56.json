@@ -1,0 +1,630 @@
+[
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482098",
+    "user_query": "请告诉我你们的退货政策。",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "退货政策"
+      }
+    },
+    "explanation": "用户想了解公司的退货政策，这是一类常见的知识性查询，适合从知识库检索。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482118",
+    "user_query": "我可以通过哪些方式付款？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "付款方式"
+      }
+    },
+    "explanation": "用户询问支付方式的相关信息，这类问题属于一般性常识，适合查询知识库。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482123",
+    "user_query": "最近的促销活动有哪些？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "促销活动"
+      }
+    },
+    "explanation": "用户想了解公司当前的促销活动，属于需要查询公共知识库的信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482127",
+    "user_query": "我怎么跟你们的销售团队联系？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "销售团队联系方式"
+      }
+    },
+    "explanation": "用户希望获得联系方式，这类问题可以通过查询知识库来提供答案。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482130",
+    "user_query": "订单号为12345的发货状态是什么？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "订单号 12345 发货状态"
+      }
+    },
+    "explanation": "用户查询的是特定订单的发货状态，因此需要通过数据库查询用户订单的具体信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482132",
+    "user_query": "你们的公司在哪里注册的？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "公司注册地点"
+      }
+    },
+    "explanation": "这是一个涉及公司背景的常识性问题，适合查询知识库。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482140",
+    "user_query": "如何申请成为你们的代理商？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "代理商申请流程"
+      }
+    },
+    "explanation": "这是一个关于合作流程的常见问题，适合从知识库获取信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482142",
+    "user_query": "你们提供国际运输吗？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "国际运输"
+      }
+    },
+    "explanation": "这是关于公司服务范围的常识性问题，可以从知识库中检索相关信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482144",
+    "user_query": "我什么时候可以收到我的订单？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "订单号 98765 预计收货时间"
+      }
+    },
+    "explanation": "用户希望查询具体订单的预计收货时间，需通过数据库查询订单信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482147",
+    "user_query": "你们的产品保修期是多久？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "产品保修期"
+      }
+    },
+    "explanation": "这是一个常见的售后服务问题，适合从知识库中获取答案。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482149",
+    "user_query": "我可以用积分抵扣订单吗？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "用户积分抵扣信息"
+      }
+    },
+    "explanation": "用户询问积分相关的操作，需要查询数据库中的用户积分数据。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482152",
+    "user_query": "能否告诉我最新的市场趋势？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "市场趋势"
+      }
+    },
+    "explanation": "这是一个针对行业动态的知识性问题，适合从知识库中获取信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482158",
+    "user_query": "我可以选择哪些产品组合包？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "产品组合包"
+      }
+    },
+    "explanation": "用户询问关于产品组合的信息，适合查询知识库。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482160",
+    "user_query": "如何查询我的订单历史？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "用户订单历史"
+      }
+    },
+    "explanation": "这是一个用户自助查询订单历史的请求，适合通过数据库查询。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482163",
+    "user_query": "我能否使用优惠券与其他折扣一起使用？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "优惠券与折扣"
+      }
+    },
+    "explanation": "这是关于优惠券使用规则的问题，适合从知识库中获取答案。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482165",
+    "user_query": "如何申请公司产品的批发价格？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "批发价格申请"
+      }
+    },
+    "explanation": "这是一个关于商业合作的问题，适合通过知识库获取信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482167",
+    "user_query": "我需要修改我的发票地址。",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "用户发票地址修改"
+      }
+    },
+    "explanation": "用户请求更改个人账户信息，适合查询数据库中的用户信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482170",
+    "user_query": "最近的销售报告能否分享一下？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "销售报告"
+      }
+    },
+    "explanation": "这是一个与公司销售数据相关的问题，适合查询知识库。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482172",
+    "user_query": "你们的产品是如何定价的？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "产品定价"
+      }
+    },
+    "explanation": "这是关于产品定价机制的常识性问题，适合查询知识库。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482175",
+    "user_query": "如何参与你们的客户推荐计划？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "客户推荐计划"
+      }
+    },
+    "explanation": "这是一个关于参与公司推荐计划的常见问题，适合通过知识库获取答案。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482177",
+    "user_query": "订单号56789的付款是否已完成？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "订单号 56789 付款状态"
+      }
+    },
+    "explanation": "用户询问订单的付款状态，需要查询数据库中的订单支付信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482180",
+    "user_query": "你们支持哪些货币支付？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "货币支付"
+      }
+    },
+    "explanation": "用户想了解支持的支付货币，属于常识性问题，适合查询知识库。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482184",
+    "user_query": "你们的销售团队都有哪些成员？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "销售团队成员"
+      }
+    },
+    "explanation": "这是关于团队成员的查询，适合从知识库中获取信息。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482187",
+    "user_query": "能否给我推荐一些热销产品？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "热销产品"
+      }
+    },
+    "explanation": "这是一个需要从产品数据库中获取推荐信息的请求，适合查询知识库。"
+  },
+  {
+    "batch_id": 1,
+    "domain": "sales",
+    "timestamp": "2025-03-17T08:30:37.482189",
+    "user_query": "如何取消我的订单？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "订单取消流程"
+      }
+    },
+    "explanation": "用户希望了解如何取消订单，适合通过查询数据库中订单的取消状态来获取答案。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972904",
+    "user_query": "如何查看我的IP地址？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问关于如何查看IP地址，属于直接对话范畴。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972926",
+    "user_query": "Linux中的文件权限是什么意思？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 文件权限"
+      }
+    },
+    "explanation": "用户想了解文件权限的定义，适合通过知识库查询。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972932",
+    "user_query": "如何创建一个新用户？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问创建新用户的方法，适合直接对话回答。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972937",
+    "user_query": "如何列出当前目录下的所有文件？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何列出目录下文件，属于常见的Linux命令操作，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972943",
+    "user_query": "如何查看硬盘的使用情况？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问硬盘使用情况，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972948",
+    "user_query": "什么是Linux的内核？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 内核"
+      }
+    },
+    "explanation": "用户询问Linux内核的定义，适合通过知识库查询。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972953",
+    "user_query": "如何查看磁盘分区信息？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何查看磁盘分区，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972973",
+    "user_query": "Linux下如何修改文件权限？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问修改文件权限的方法，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972978",
+    "user_query": "Linux中如何创建一个软链接？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何创建软链接，属于直接对话范畴。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972983",
+    "user_query": "我的服务器当前运行的是哪个版本的Linux？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问操作系统版本，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972988",
+    "user_query": "Linux中如何查看系统负载？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问查看系统负载的方式，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972993",
+    "user_query": "如何安装一个新的软件包？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何安装软件包，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.972998",
+    "user_query": "Linux中有哪些常用的文本编辑器？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 常用文本编辑器"
+      }
+    },
+    "explanation": "用户想了解Linux常用的文本编辑器，适合通过知识库查询。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973002",
+    "user_query": "如何查看当前系统的内存使用情况？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问查看内存使用情况的方法，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973007",
+    "user_query": "如何查找一个文件？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问查找文件的方法，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973012",
+    "user_query": "Linux中如何备份文件？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何备份文件，属于常见操作，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973017",
+    "user_query": "如何检查Linux系统的硬件信息？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何检查硬件信息，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973025",
+    "user_query": "怎么查看系统日志？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何查看系统日志，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973030",
+    "user_query": "如何查看当前系统的网络连接状态？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问查看网络连接状态，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973035",
+    "user_query": "什么是Linux的sudo命令？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux sudo命令"
+      }
+    },
+    "explanation": "用户想了解sudo命令的含义，适合通过知识库查询。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973040",
+    "user_query": "Linux中如何修改环境变量？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问修改环境变量的方法，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973044",
+    "user_query": "如何查询我的系统上的所有用户？",
+    "action_type": 2,
+    "action_params": {
+      "sql": {
+        "查询内容": "所有系统用户"
+      }
+    },
+    "explanation": "用户想要查询系统中所有的用户信息，适合通过数据库查询。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973050",
+    "user_query": "我的Linux服务器的IP地址是什么？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问服务器IP地址，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973055",
+    "user_query": "如何设置定时任务？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何设置定时任务，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973060",
+    "user_query": "如何监控Linux系统的进程？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何监控进程，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973064",
+    "user_query": "如何让文件在Linux中不可读取？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何设置文件不可读取，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973069",
+    "user_query": "如何安装Java开发工具包？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问安装Java开发工具包的方式，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973075",
+    "user_query": "Linux中如何查看用户的组信息？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问查看用户组信息，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973081",
+    "user_query": "如何管理Linux系统中的磁盘空间？",
+    "action_type": 1,
+    "action_params": {
+      "query": {
+        "检索关键词": "Linux 磁盘空间管理"
+      }
+    },
+    "explanation": "用户询问磁盘空间管理的方法，适合通过知识库查询。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973095",
+    "user_query": "如何查找一个进程的PID？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问如何查找进程PID，适合直接对话。"
+  },
+  {
+    "batch_id": 2,
+    "domain": "linux",
+    "timestamp": "2025-03-17T08:31:12.973100",
+    "user_query": "如何查询Linux系统的版本信息？",
+    "action_type": 0,
+    "action_params": {},
+    "explanation": "用户询问查询系统版本信息的方法，适合直接对话。"
+  }
+]
