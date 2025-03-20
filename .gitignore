@@ -172,3 +172,6 @@ kg/__*
 tests/pn/models/
 tests/pn/data/policy_data_batch*
 tests/pn/embeddings/
+
+scripts/data/
+scripts/models/
