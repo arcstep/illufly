@@ -175,3 +175,6 @@ tests/pn/embeddings/
 
 scripts/data/
 scripts/models/
+scripts/cached_models/
+scripts/model_convert/
+scripts/hf_model/

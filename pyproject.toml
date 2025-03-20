@@ -31,6 +31,12 @@ speedict = "^0.3.12"
 numpy = "^1.24.3"
 ujson = "^5.10.0"
 anyio = "^4.9.0"
+llama-cpp-python = "^0.3.8"
+transformers = "^4.49.0"
+torch = "2.2.0"
+torchvision = "0.17.0"
+torchaudio = "2.2.0"
+accelerate = "^1.5.2"
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^69.1.0"
@@ -72,7 +78,3 @@ include = "illufly/**/*"
 [tool.anyio]
 backend = "asyncio"
 
-[[tool.poetry.source]]
-name = "pytorch"
-url = "https://download.pytorch.org/whl/cu121"  # 根据你的 CUDA 版本调整
-priority = "explicit"
