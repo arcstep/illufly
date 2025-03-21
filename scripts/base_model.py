@@ -12,6 +12,7 @@ import json
 import requests
 from dataclasses import dataclass
 import os
+import argparse
 
 @dataclass
 class OllamaConfig:
@@ -32,7 +33,8 @@ class ModelConfig:
         top_p: float = 0.95,
         max_tokens: int = 512,
         device: str = "cpu",  # 新增：明确指定设备
-        n_gpu_layers: int = 0  # 新增：GPU 层数
+        n_gpu_layers: int = 0,  # 新增：GPU 层数
+        max_history: int = 5,  # 新增：最大历史对话轮数
     ):
         self.cache_dir = Path(cache_dir)
         self.llama_cpp_dir = Path(llama_cpp_dir)
@@ -44,6 +46,71 @@ class ModelConfig:
         self.max_tokens = max_tokens
         self.device = device.lower()
         self.n_gpu_layers = n_gpu_layers
+        self.max_history = max_history
+
+@dataclass
+class ModelArguments:
+    """模型运行参数"""
+    model_id: str
+    backend: str = "hf"      # hf/llama/ollama
+    device: str = "cpu"      # cpu/metal/cuda
+    n_ctx: int = 512        # 上下文长度
+    n_threads: int = 1      # 线程数
+    n_batch: int = 8        # 批处理大小
+    cache_dir: str = "models"
+    llama_cpp_dir: str = "llama.cpp"
+    quantization: str = "q4_0"
+    temperature: float = 0.7
+    top_p: float = 0.95
+    max_tokens: int = 512
+    n_gpu_layers: int = 0
+
+def create_base_parser(description: str) -> argparse.ArgumentParser:
+    """创建基础命令行参数解析器"""
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument('--model_id', help="模型ID")
+    parser.add_argument('--backend', choices=['hf', 'llama', 'ollama'], default='hf', 
+                       help="运行后端：hf/llama/ollama")
+    parser.add_argument('--device', choices=['cpu', 'metal', 'cuda'], default='cpu', 
+                       help="设备类型：cpu/metal(Mac)/cuda")
+    parser.add_argument('--n_ctx', type=int, default=512, help="上下文长度")
+    parser.add_argument('--n_threads', type=int, default=1, help="线程数")
+    parser.add_argument('--n_batch', type=int, default=8, help="批处理大小")
+    parser.add_argument('--cache_dir', default="models", help="模型缓存目录")
+    parser.add_argument('--llama_cpp_dir', default="llama.cpp", help="llama.cpp目录")
+    parser.add_argument('--quantization', default="q4_0", help="量化类型")
+    parser.add_argument('--temperature', type=float, default=0.7, help="采样温度")
+    parser.add_argument('--top_p', type=float, default=0.95, help="Top-p采样")
+    parser.add_argument('--max_tokens', type=int, default=512, help="最大生成长度")
+    parser.add_argument('--n_gpu_layers', type=int, default=0, help="GPU层数")
+    parser.add_argument('--max_history', type=int, default=5, help="最大历史对话轮数")
+    return parser
+
+def create_model_config(args: ModelArguments) -> ModelConfig:
+    """根据参数创建模型配置"""
+    config = ModelConfig(
+        cache_dir=args.cache_dir,
+        llama_cpp_dir=args.llama_cpp_dir,
+        n_ctx=args.n_ctx,
+        n_threads=args.n_threads,
+        n_batch=args.n_batch,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        max_tokens=args.max_tokens,
+        device=args.device,
+        n_gpu_layers=args.n_gpu_layers,
+        max_history=args.max_history
+    )
+    
+    if args.backend == 'ollama':
+        # 根据模型类型设置不同的名称
+        model_name = args.model_id.split('/')[-1].lower()
+        config.ollama = OllamaConfig(
+            model_name=model_name,
+            stop_words=["<END>"]
+        )
+    
+    return config
 
 class BaseModel(ABC):
     def __init__(
@@ -75,35 +142,12 @@ class BaseModel(ABC):
         # 确保目录存在
         self.config.cache_dir.mkdir(exist_ok=True)
         
+        self.conversation_history = []  # 添加对话历史列表
+        self.max_history = 5  # 默认保留最近5轮对话
+        
         if use_ollama:
-            # 检查 Ollama 服务是否可用
-            try:
-                response = requests.get(f"{self.config.ollama.url}/api/tags")
-                if response.status_code != 200:
-                    raise ConnectionError("Ollama 服务未启动")
-                print(f"Ollama 服务正常")
-                
-                # 检查模型是否已存在
-                models = response.json().get("models", [])
-                model_exists = any(m["name"] == self.config.ollama.model_name for m in models)
-                
-                if not model_exists:
-                    # 如果模型不存在，尝试导入
-                    if quantized_path and Path(quantized_path).exists():
-                        print(f"正在导入模型到 Ollama: {quantized_path}")
-                        self._import_model_to_ollama(quantized_path)
-                    else:
-                        # 尝试从 Modelfile 创建
-                        if self._create_ollama_model():
-                            print(f"已创建 Ollama 模型: {self.config.ollama.model_name}")
-                        else:
-                            raise ValueError("无法创建 Ollama 模型")
-                
-            except requests.exceptions.ConnectionError:
-                print("请先启动 Ollama 服务")
-                print("安装说明: https://ollama.ai/download")
+            if not self._setup_ollama(quantized_path):
                 sys.exit(1)
-                
         elif use_llama:
             model_loaded = False
             
@@ -145,36 +189,35 @@ class BaseModel(ABC):
 
     def _load_llama_model(self, model_path: str):
         """加载 llama.cpp 模型"""
+        # 基础参数
         params = {
             "model_path": model_path,
-            "n_ctx": min(2048, self.config.n_ctx),  # 减小上下文长度
-            "n_threads": min(4, self.config.n_threads),  # 减小线程数
-            "n_batch": min(128, self.config.n_batch),  # 减小批处理大小
-            "use_mlock": False,  # 禁用内存锁定
+            "n_ctx": self.config.n_ctx,
+            "n_threads": self.config.n_threads,
+            "n_batch": self.config.n_batch,
+            "use_mlock": False,
             "use_mmap": True,
             "vocab_only": False,
             "seed": -1,
-            "f16_kv": True,  # 使用 float16 来存储 key 和 value
+            "f16_kv": True,
             "logits_all": False,
             "embedding": False
         }
 
+        # 根据设备类型设置加速参数
         if self.config.device == "cpu":
-            # CPU 模式
             params.update({
                 "n_gpu_layers": 0,
                 "use_metal": False,
                 "use_cuda": False
             })
-        elif self.config.device == "metal" and sys.platform == "darwin":
-            # Metal GPU 模式 (仅 Mac)
+        elif self.config.device == "metal":
             params.update({
-                "n_gpu_layers": min(1, self.config.n_gpu_layers),  # 先尝试只用1层
+                "n_gpu_layers": self.config.n_gpu_layers,
                 "use_metal": True,
                 "use_cuda": False
             })
         elif self.config.device == "cuda":
-            # CUDA GPU 模式
             params.update({
                 "n_gpu_layers": self.config.n_gpu_layers,
                 "use_metal": False,
@@ -185,38 +228,35 @@ class BaseModel(ABC):
             print(f"使用 {self.config.device.upper()} 模式加载模型...")
             print(f"参数配置: {params}")
             self.model = Llama(**params)
+            print("✓ 模型加载成功！")
         except Exception as e:
-            print(f"首次加载失败: {str(e)}")
-            print("尝试使用最小配置重新加载...")
+            error_msg = str(e)
+            print(f"模型加载失败: {error_msg}")
             
-            # 使用最小配置
-            minimal_params = {
-                "model_path": model_path,
-                "n_ctx": 512,        # 最小上下文
-                "n_threads": 1,      # 单线程
-                "n_batch": 8,        # 最小批处理
-                "use_mlock": False,
-                "use_mmap": True,
-                "n_gpu_layers": 0,   # 纯 CPU
-                "use_metal": False,
-                "use_cuda": False,
-                "vocab_only": False,
-                "f16_kv": True,
-                "logits_all": False,
-                "embedding": False
-            }
-            
-            try:
-                print("使用最小配置加载...")
-                self.model = Llama(**minimal_params)
-                print("加载成功！可以尝试逐步增加参数值")
-            except Exception as e:
-                print(f"最小配置加载也失败了: {str(e)}")
-                print("请检查：")
-                print("1. 模型文件是否完整")
-                print("2. 系统可用内存是否充足")
-                print("3. 是否有其他程序占用了大量资源")
-                raise
+            # 根据错误类型给出具体建议
+            if "Metal" in error_msg:
+                print("\n建议：")
+                print("1. 检查是否支持 Metal API")
+                print("2. 尝试使用 CPU 模式: --device cpu")
+                print("3. 或者使用 Ollama: --backend ollama")
+            elif "CUDA" in error_msg:
+                print("\n建议：")
+                print("1. 检查 CUDA 环境")
+                print("2. 尝试使用 CPU 模式: --device cpu")
+                print("3. 或者使用 Ollama: --backend ollama")
+            else:
+                print("\n可能的原因：")
+                print("1. 内存不足")
+                print("2. 模型文件损坏")
+                print("3. 硬件不支持")
+                print("\n建议：")
+                print("1. 减小参数：")
+                print("   --n_ctx 512 --n_threads 1 --n_batch 8")
+                print("2. 使用较小的量化模型：")
+                print("   --quantization q4_0")
+                print("3. 或者使用 Ollama：")
+                print("   --backend ollama")
+            raise
 
     def _find_original_model(self) -> Optional[str]:
         """查找原始模型"""
@@ -322,10 +362,22 @@ class BaseModel(ABC):
         """生成 Modelfile 内容"""
         pass
 
+    def _add_to_history(self, role: str, content: str):
+        """添加消息到对话历史"""
+        self.conversation_history.append({"role": role, "content": content})
+        # 保持历史记录在最大长度以内
+        if len(self.conversation_history) > self.max_history * 2:  # 每轮对话有用户和助手两条消息
+            self.conversation_history = self.conversation_history[-self.max_history * 2:]
+
     def generate_stream(self, query: str, **kwargs):
         """流式生成回答"""
+        # 将用户问题添加到历史
+        self._add_to_history("user", query)
+        
+        # 准备带有历史记录的提示词
         prompt = self._prepare_prompt(query, **kwargs)
         
+        response_text = ""
         if self.use_ollama:
             # Ollama 的流式输出
             response = requests.post(
@@ -346,6 +398,7 @@ class BaseModel(ABC):
                     if line:
                         chunk = json.loads(line)
                         if not chunk.get('done', False):
+                            response_text += chunk['response']
                             yield chunk['response']
             else:
                 raise Exception(f"Ollama API 错误: {response.text}")
@@ -362,6 +415,7 @@ class BaseModel(ABC):
             
             for chunk in response:
                 chunk_text = chunk['choices'][0]['text']
+                response_text += chunk_text
                 yield chunk_text
                 
         else:
@@ -398,7 +452,11 @@ class BaseModel(ABC):
             thread.start()
 
             for new_text in streamer:
+                response_text += new_text
                 yield new_text
+
+        # 将助手的回答添加到历史
+        self._add_to_history("assistant", response_text)
 
     def interactive_session(self):
         """交互式会话"""
@@ -438,11 +496,81 @@ class BaseModel(ABC):
 
     def _show_special_commands(self):
         """显示特殊命令说明"""
-        pass
+        super()._show_special_commands()
+        print("/clear 或 /c - 清除对话历史")
 
     def _handle_special_command(self, command: str) -> bool:
-        """处理特殊命令，返回是否已处理"""
+        """处理特殊命令"""
+        if command.lower() in ["/clear", "/c"]:
+            self.clear_history()
+            return True
         return False
+
+    def _format_history(self) -> str:
+        """格式化对话历史"""
+        formatted = []
+        for msg in self.conversation_history[:-1]:  # 不包含最新的用户问题
+            role = "用户" if msg["role"] == "user" else "助手"
+            formatted.append(f"{role}：{msg['content']}")
+        return "\n\n".join(formatted)
+
+    def clear_history(self):
+        """清除对话历史"""
+        self.conversation_history = []
+        print("已清除对话历史")
+
+    def _setup_ollama(self, quantized_path: Optional[str] = None):
+        """设置 Ollama 环境"""
+        try:
+            # 检查 Ollama 服务
+            response = requests.get(f"{self.config.ollama.url}/api/tags")
+            if response.status_code != 200:
+                raise ConnectionError("Ollama 服务未启动")
+            print(f"Ollama 服务正常")
+            
+            # 检查模型是否存在
+            models = response.json().get("models", [])
+            model_exists = any(m["name"] == self.config.ollama.model_name for m in models)
+            
+            if not model_exists:
+                print(f"\n=== 创建 Ollama 模型：{self.config.ollama.model_name} ===")
+                
+                # 1. 如果提供了量化模型路径，使用该路径
+                if quantized_path and Path(quantized_path).exists():
+                    model_path = Path(quantized_path)
+                    print(f"使用指定的量化模型: {model_path}")
+                else:
+                    # 2. 否则查找或创建量化模型
+                    model_path = self._get_quantized_path()
+                    if not model_path.exists():
+                        print("✗ 未找到量化模型，请先完成模型量化")
+                        return False
+                
+                # 创建 Modelfile
+                modelfile = self._generate_modelfile(str(model_path.absolute()))
+                modelfile_path = self.config.cache_dir / "Modelfile"
+                modelfile_path.write_text(modelfile)
+                print(f"已创建 Modelfile: {modelfile_path}")
+                
+                # 创建模型
+                cmd = f"ollama create {self.config.ollama.model_name} -f {modelfile_path}"
+                print(f"执行命令: {cmd}")
+                result = os.system(cmd)
+                
+                if result != 0:
+                    print("✗ 模型创建失败")
+                    return False
+                
+                print(f"✓ 模型创建成功: {self.config.ollama.model_name}")
+            else:
+                print(f"✓ 模型已存在: {self.config.ollama.model_name}")
+            
+            return True
+            
+        except requests.exceptions.ConnectionError:
+            print("请先启动 Ollama 服务")
+            print("安装说明: https://ollama.ai/download")
+            return False
 
 # Qwen Coder 实现
 class QwenCoder(BaseModel):
