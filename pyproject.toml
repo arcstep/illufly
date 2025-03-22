@@ -37,6 +37,7 @@ torch = "2.2.0"
 torchvision = "0.17.0"
 torchaudio = "2.2.0"
 accelerate = "^1.5.2"
+litellm = "^1.63.14"
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^69.1.0"
