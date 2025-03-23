@@ -178,3 +178,23 @@ scripts/models/
 scripts/cached_models/
 scripts/model_convert/
 scripts/hf_model/
+
+# Dependencies
+/docs/node_modules
+
+# Production
+/docs/build
+
+# Generated files
+/docs/.docusaurus
+/docs/.cache-loader
+
+# Misc
+/docs/.env.local
+/docs/.env.development.local
+/docs/.env.test.local
+/docs/.env.production.local
+
+/docs/npm-debug.log*
+/docs/yarn-debug.log*
+/docs/yarn-error.log*
