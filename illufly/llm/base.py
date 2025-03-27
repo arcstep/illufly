@@ -3,16 +3,6 @@ import litellm
 from litellm.caching.caching import Cache
 import os
 
-# litellm.set_verbose = False
-def success_callback(
-    kwargs,                 # kwargs to completion
-    completion_response,    # response from completion
-    start_time, end_time    # start/end time
-):
-    # print(f"\n\nCALLBACK >> kwargs: {kwargs.keys()}\n\n")
-    print(f"\n[CALLBACK] TEXT_FINAL: {completion_response.choices[0].message.content}")
-    print(f"[CALLBACK] used-time: {end_time - start_time}")
-
 class LiteLLM():
     """LiteLLM基于OpenAI的API接口，支持多种模型，支持异步请求"""
     def __init__(self, provider: str=None, imitator: str=None, router_obj=None, **kwargs):
@@ -29,12 +19,8 @@ class LiteLLM():
         model = f"{self.provider}/{kwargs.pop('model', None)}"
         self.kwargs = {**kwargs, "model": model}
 
-        if success_callback not in litellm.success_callback:
-            litellm.logging_callback_manager.add_litellm_success_callback(success_callback)
-        if success_callback not in litellm._async_success_callback:
-            litellm.logging_callback_manager.add_litellm_async_success_callback(success_callback)
-
-    def _get_kwargs(self, **kwargs):
+    def get_kwargs(self, **kwargs):
+        """重构 litellm 输入参数"""
         return {
             "api_key": kwargs.pop("api_key", os.getenv(f"{self.imitator}_API_KEY")),
             "api_base": kwargs.pop("api_base", os.getenv(f"{self.imitator}_BASE_URL")),
@@ -43,33 +29,31 @@ class LiteLLM():
         }
 
     def completion(self, messages: Union[str, List[Dict[str, Any]]], **kwargs) -> Any:
+        """对话完成"""
         messages = [{"role": "user", "content": messages}] if isinstance(messages, str) else messages
         if self.router_obj:
-            return self.router_obj.completion(messages, **self._get_kwargs(**kwargs))
+            return self.router_obj.completion(messages, **self.get_kwargs(**kwargs))
         else:
-            return litellm.completion(messages=messages, **self._get_kwargs(**kwargs))
+            return litellm.completion(messages=messages, **self.get_kwargs(**kwargs))
 
     def acompletion(self, messages: Union[str, List[Dict[str, Any]]], **kwargs) -> Any:
+        """异步对话完成"""
         messages = [{"role": "user", "content": messages}] if isinstance(messages, str) else messages
         if self.router_obj:
-            return self.router_obj.acompletion(messages, **self._get_kwargs(**kwargs))
+            return self.router_obj.acompletion(messages, **self.get_kwargs(**kwargs))
         else:
-            return litellm.acompletion(messages=messages, **self._get_kwargs(**kwargs))
+            return litellm.acompletion(messages=messages, **self.get_kwargs(**kwargs))
     
-    def batch_complete(self, messages: List[List[Dict[str, Any]]], **kwargs) -> Any:
-        return litellm.batch_complete(
-            messages=messages,
-            **self._get_kwargs(**kwargs)
-        )
-
     def embedding(self, input: List[str], **kwargs) -> Any:
-        request_kwargs = self._get_kwargs(**kwargs)
+        """文本嵌入"""
+        request_kwargs = self.get_kwargs(**kwargs)
         model = request_kwargs.pop("model", None)
         request_kwargs["input"] = input
         return litellm.embedding(model, **request_kwargs)
     
     def aembedding(self, input: List[str], **kwargs) -> Any:
-        request_kwargs = self._get_kwargs(**kwargs)
+        """异步文本嵌入"""
+        request_kwargs = self.get_kwargs(**kwargs)
         model = request_kwargs.pop("model", None)
         request_kwargs["input"] = input
         return litellm.aembedding(model, **request_kwargs)
