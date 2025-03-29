@@ -169,18 +169,14 @@ class BaseRocksDB:
         """返回键值对迭代器
         
         Args:
+            rdict: 可选的RocksDict实例
+            prefix: 键前缀
             start: 起始键（包含）
             end: 结束键（不包含）
             reverse: 是否反向迭代
-            
-        Note:
-            如果 start > end，会自动交换两者的值
+            fill_cache: 是否填充缓存
+            options: 读取选项
         """
-        # 如果 start 和 end 都存在，确保 start < end
-        if start is not None and end is not None and start > end:
-            start, end = end, start
-            reverse = not reverse  # 同时翻转迭代方向
-        
         target = rdict if rdict is not None else self._db
         
         opts = options or ReadOptions()
@@ -189,49 +185,71 @@ class BaseRocksDB:
         
         it = target.iter(opts)
         
+        # 处理前缀搜索的边界
+        if prefix is not None:
+            if start is None:
+                start = prefix
+            if end is None:
+                # 创建一个比前缀大的最小字符串作为上界
+                end = prefix[:-1] + chr(ord(prefix[-1]) + 1)
+        
+        # 如果 start 和 end 都存在，确保 start < end
+        if start is not None and end is not None and start > end:
+            start, end = end, start
+            reverse = not reverse
+        
         # 设置迭代器起始位置
         if reverse:
-            if end is not None:  # 反向时从 end 开始
+            if end is not None:
                 it.seek(end)
-                if it.valid() and it.key() >= end:  # 如果找到了 end，需要往前移一位
+                # 如果找到了end或大于end的键，需要往前移
+                if it.valid() and it.key() >= end:
                     it.prev()
             else:
                 it.seek_to_last()
+                # 检查迭代器是否有效
+                if not it.valid():
+                    return
         else:
             if start is not None:
                 it.seek(start)
-            elif prefix is not None:
-                it.seek(prefix)
             else:
                 it.seek_to_first()
+            # 检查迭代器是否有效
+            if not it.valid():
+                return
         
         # 迭代并应用过滤
-        count = 0
         while it.valid():
             key = it.key()
             
-            # 检查前缀
-            if prefix is not None and not key.startswith(prefix):
-                break
-            
             # 检查范围
             if reverse:
-                if start is not None and key < start:  # 反向时 start 是下界（包含）
+                if start is not None and key < start:
                     break
-                if end is not None and key >= end:  # 反向时 end 是上界（不包含）
+                if end is not None and key >= end:
                     it.prev()
                     continue
             else:
-                if start is not None and key < start:  # 正向时 start 是下界（包含）
+                if end is not None and key >= end:
                     break
-                if end is not None and key >= end:  # 正向时 end 是上界（不包含）
+                if start is not None and key < start:
+                    it.next()
+                    continue
+            
+            # 检查前缀（仅在未设置精确范围时）
+            if prefix is not None and not key.startswith(prefix):
+                if reverse:
+                    it.prev()
+                    continue
+                else:
                     break
             
-            count += 1
             try:
                 yield key, it.value()
             except Exception as e:
                 self._logger.error(f"iter error: {e}")
+                break
             
             if reverse:
                 it.prev()
