@@ -13,6 +13,7 @@ class ChatAgent():
     def __init__(self, db: IndexedRocksDB=None, **kwargs):
         self.llm = LiteLLM(**kwargs)
         self.db = db or default_rocksdb
+        self.recent_messages_count = 10
 
         DialougeChunk.register_indexes(self.db)
 
@@ -27,6 +28,12 @@ class ChatAgent():
         
         if not isinstance(messages, list):
             raise ValueError("messages 必须是形如 [{'role': 'user', 'content': '用户输入'}, ...] 的列表")
+        else:
+            history_messages = self._load_recent_messages(user_id, thread_id)
+            if messages[0].get("role", None) == "system":
+                messages = messages[:1] + history_messages + messages[1:]
+            else:
+                messages = history_messages + messages
 
         # 保存用户输入
         if messages:
@@ -47,7 +54,6 @@ class ChatAgent():
                     output_text=ai_output.content
                 )
                 final_text += ai_output.content
-                self.save_dialog_chunk(dialog_chunk)
                 yield dialog_chunk.model_dump()
 
             elif ai_output and ai_output.tool_calls:
@@ -102,12 +108,27 @@ class ChatAgent():
                 value=chunk
             )
 
-    def load_messages(self, user_id: str, thread_id: str):
+    def load_history(self, user_id: str, thread_id: str, limit: int = 100):
         """加载历史对话"""
 
-        return sorted(
+        resp = sorted(
             self.db.values(
-                prefix=DialougeChunk.get_prefix(user_id, thread_id)
+                prefix=DialougeChunk.get_prefix(user_id, thread_id),
+                limit=limit,
+                reverse=True
             ),
             key=lambda x: x.created_at
         )
+        messages = []
+        for m in resp:
+            if m.chunk_type == ChunkType.USER_INPUT:
+                messages.append(m.input_messages[-1])
+            elif m.chunk_type == ChunkType.AI_MESSAGE:
+                messages.append({"role": "assistant", "content": m.output_text})
+        return messages
+
+    def _load_recent_messages(self, user_id: str=None, thread_id: str=None) -> str:
+        """加载最近的消息"""
+        if not user_id or not thread_id:
+            return ""
+        return self.load_history(user_id, thread_id, limit=self.recent_messages_count)

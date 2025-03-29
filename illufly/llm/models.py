@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Union
 
 from enum import Enum
 import uuid
+import time
 
 from ..rocksdb import IndexedRocksDB
 
@@ -40,8 +41,14 @@ class ChunkType(Enum):
 class DialougeChunk(BaseModel):
     user_id: Union[str, None] = Field(default=None, description="用户ID")
     thread_id: Union[str, None] = Field(default=None, description="线程ID")
-    dialouge_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="对话ID")
-    created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="创建时间")
+    dialouge_id: str = Field(
+        default_factory=lambda: f"{int(time.time()*1000):013d}-{time.monotonic_ns()%1000:03d}",
+        description="对话ID，格式：时间戳(毫秒)-单调递增值"
+    )
+    created_at: float = Field(
+        default_factory=lambda: datetime.now().timestamp(),
+        description="创建时间"
+    )
     chunk_type: ChunkType = Field(default=ChunkType.USER_INPUT, description="角色")
     input_messages: List[Dict[str, Any]] = Field(default=[], description="输入消息")
     output_text: str = Field(default="", description="输出消息")
