@@ -1,73 +1,43 @@
 from typing import List, Dict, Any, Union
 from pydantic import BaseModel, Field
-from enum import Enum
 
 from ..rocksdb import default_rocksdb, IndexedRocksDB
 from .base import LiteLLM
+from .models import ChunkType, DialougeChunk, ToolCalling
 
-import time
 import logging
 logger = logging.getLogger(__name__)
 
-class ToolCalling(BaseModel):
-    tool_id: str = Field(default="", description="工具ID")
-    name: str = Field(default="", description="工具名称")
-    arguments: str = Field(default="", description="工具参数")
-
-class ChunkType(Enum):
-    USER_INPUT = "user_input"
-    AI_DELTA = "ai_delta"
-    AI_MESSAGE = "ai_message"
-
-class DialougeChunk(BaseModel):
-    user_id: str = Field(default="", description="用户ID")
-    thread_id: str = Field(default="", description="线程ID")
-    dialouge_id: str = Field(default="", description="对话ID")
-    created_at: float = Field(default_factory=time.time, description="创建时间")
-    chunk_type: ChunkType = Field(default=ChunkType.USER_INPUT, description="角色")
-    input_messages: List[Dict[str, Any]] = Field(default=[], description="输入消息")
-    output_text: str = Field(default="", description="输出消息")
-    tool_calls: List[ToolCalling] = Field(default=[], description="工具调用")
-
-    def model_dump(self):
-        common_fields = {
-            "user_id": self.user_id,
-            "thread_id": self.thread_id,
-            "dialouge_id": self.dialouge_id,
-            "created_at": self.created_at,
-        }
-        if self.chunk_type == ChunkType.USER_INPUT:
-            return {
-                **common_fields,
-                "chunk_type": self.chunk_type,
-                "input_messages": self.input_messages,
-            }
-        elif self.chunk_type == ChunkType.AI_DELTA:
-            return {
-                **common_fields,
-                "chunk_type": self.chunk_type,
-                "output_text": self.output_text,
-            }
-        elif self.chunk_type == ChunkType.AI_MESSAGE:
-            return {
-                **common_fields,
-                "chunk_type": self.chunk_type,
-                "output_text": self.output_text,
-                "tool_calls": [v.model_dump() for v in self.tool_calls],
-            }
-        else:
-            raise ValueError(f"Invalid chunk type: {self.chunk_type}")
-
 class ChatAgent():
     """对话智能体"""
-    def __init__(self, history: IndexedRocksDB=None, **kwargs):
+    def __init__(self, db: IndexedRocksDB=None, **kwargs):
         self.llm = LiteLLM(**kwargs)
-        self.history_db = history or default_rocksdb
+        self.db = db or default_rocksdb
 
-    async def chat(self, messages: List[Dict[str, Any]], **kwargs):
+        DialougeChunk.register_indexes(self.db)
+
+    async def chat(self, messages: List[Dict[str, Any]], user_id: str=None, thread_id: str=None, **kwargs):
         """对话"""
+        final_text = ""
         final_tool_calls = {}
         last_tool_call_id = None
+
+        if isinstance(messages, str):
+            messages = [{"role": "user", "content": messages}]
+        
+        if not isinstance(messages, list):
+            raise ValueError("messages 必须是形如 [{'role': 'user', 'content': '用户输入'}, ...] 的列表")
+
+        # 保存用户输入
+        if messages:
+            dialog_chunk = DialougeChunk(
+                user_id=user_id,
+                thread_id=thread_id,
+                chunk_type=ChunkType.USER_INPUT,
+                input_messages=messages
+            )
+            self.save_dialog_chunk(dialog_chunk)
+
         resp = await self.llm.acompletion(messages, stream=True, **kwargs)
         async for chunk in resp:
             ai_output = chunk.choices[0].delta if chunk.choices else None
@@ -76,6 +46,8 @@ class ChatAgent():
                     chunk_type=ChunkType.AI_DELTA,
                     output_text=ai_output.content
                 )
+                final_text += ai_output.content
+                self.save_dialog_chunk(dialog_chunk)
                 yield dialog_chunk.model_dump()
 
             elif ai_output and ai_output.tool_calls:
@@ -97,8 +69,45 @@ class ChatAgent():
                 # print(chunk)
                 pass
 
-        dialog_chunk = DialougeChunk(
-            chunk_type=ChunkType.AI_MESSAGE,
-            tool_calls=list(final_tool_calls.values())
+        # 保存 AI 文本输出
+        if final_text:
+            dialog_chunk = DialougeChunk(
+                user_id=user_id,
+                thread_id=thread_id,
+                chunk_type=ChunkType.AI_MESSAGE,
+                output_text=final_text
+            )
+            self.save_dialog_chunk(dialog_chunk)
+
+        # 保存 AI 工具调用
+        if final_tool_calls:
+            dialog_chunk = DialougeChunk(
+                user_id=user_id,
+                thread_id=thread_id,
+                chunk_type=ChunkType.AI_MESSAGE,
+                tool_calls=list(final_tool_calls.values())
+            )
+            self.save_dialog_chunk(dialog_chunk)
+            yield dialog_chunk.model_dump()
+
+    def save_dialog_chunk(self, chunk: DialougeChunk):
+        """保存对话片段
+
+        仅当用户ID和线程ID存在时，才保存对话片段
+        """
+        if chunk.user_id and chunk.thread_id:
+            self.db.update_with_indexes(
+                model_name=DialougeChunk.__name__,
+                key=DialougeChunk.get_key(chunk.user_id, chunk.thread_id, chunk.dialouge_id),
+                value=chunk
+            )
+
+    def load_messages(self, user_id: str, thread_id: str):
+        """加载历史对话"""
+
+        return sorted(
+            self.db.values(
+                prefix=DialougeChunk.get_prefix(user_id, thread_id)
+            ),
+            key=lambda x: x.created_at
         )
-        yield dialog_chunk.model_dump()
