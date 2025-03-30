@@ -13,12 +13,18 @@ class ChatAgent():
     def __init__(self, db: IndexedRocksDB=None, **kwargs):
         self.llm = LiteLLM(**kwargs)
         self.db = db or default_rocksdb
-        self.recent_messages_count = 10
 
+        self.recent_messages_count = 10
         DialougeChunk.register_indexes(self.db)
 
     async def chat(self, messages: List[Dict[str, Any]], user_id: str=None, thread_id: str=None, **kwargs):
-        """对话"""
+        """对话
+
+        对话核心流程：
+        1. 加载历史 + 检索记忆
+        2. 捕捉反馈 + 对话补全（并执行MCP工具）
+        3. 推荐追问
+        """
         final_text = ""
         final_tool_calls = {}
         last_tool_call_id = None
@@ -31,9 +37,9 @@ class ChatAgent():
         else:
             history_messages = self._load_recent_messages(user_id, thread_id)
             if messages[0].get("role", None) == "system":
-                messages = messages[:1] + history_messages + messages[1:]
+                messages = [messages[0], *history_messages, *messages[1:]]
             else:
-                messages = history_messages + messages
+                messages = [*history_messages, *messages]
 
         # 保存用户输入
         if messages:
@@ -45,6 +51,7 @@ class ChatAgent():
             )
             self.save_dialog_chunk(dialog_chunk)
 
+        # 执行对话补全
         resp = await self.llm.acompletion(messages, stream=True, **kwargs)
         async for chunk in resp:
             ai_output = chunk.choices[0].delta if chunk.choices else None
@@ -110,7 +117,6 @@ class ChatAgent():
 
     def load_history(self, user_id: str, thread_id: str, limit: int = 100):
         """加载历史对话"""
-
         resp = sorted(
             self.db.values(
                 prefix=DialougeChunk.get_prefix(user_id, thread_id),
