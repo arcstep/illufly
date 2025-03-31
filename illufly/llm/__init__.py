@@ -3,7 +3,7 @@ from .base import litellm, LiteLLM
 from .retriever import ChromaRetriever
 from .chat import ChatAgent
 from .thread import ThreadManager
-from .models import MemoryTopic, MemoryQA, Thread, DialougeChunk, ChunkType
+from .models import MemoryQA, Thread, DialougeChunk, ChunkType
 
 litellm.enable_cache(
     type="disk",

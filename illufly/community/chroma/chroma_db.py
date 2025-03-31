@@ -18,6 +18,8 @@ class ChromaDB(BaseVectorDB):
                     "Could not import chromadb package. "
                     "Please install it via 'pip install -U chromadb'"
                 )
+        if self.embeddings is None:
+            raise ValueError("embeddings 不能为空")
 
     def create_collection(self, name: str, **kwargs) -> Any:
         """创建集合"""
