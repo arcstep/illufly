@@ -97,34 +97,12 @@ class DialougeChunk(BaseModel):
         else:
             raise ValueError(f"Invalid chunk type: {self.chunk_type}")
 
-class MemoryTopic(BaseModel):
-    user_id: Union[str, None] = Field(default=None, description="用户ID")
-    created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="创建时间")
-    topic_text: str = Field(default="", description="记忆文本")
-    topic_text_hash: str = Field(default="", description="记忆文本的hash值")
-
-    def model_post_init(self, __context: Any) -> None:
-        """Pydantic v2 初始化后处理方法"""
-        super().model_post_init(__context)
-        # 计算并设置哈希值
-        self.topic_text_hash = hashlib.sha256(self.topic_text.encode("utf-8")).hexdigest()
-
-    @classmethod
-    def register_indexes(cls, db: IndexedRocksDB):
-        db.register_model(cls.__name__, cls)
-        db.register_index(cls.__name__, cls, "created_at")
-
-    @classmethod
-    def get_prefix(cls, user_id: str):
-        return f"topic-{user_id}"
-
-    @classmethod
-    def get_key(cls, user_id: str, topic_text_hash: str):
-        return f"{cls.get_prefix(user_id)}-{topic_text_hash}"
-
 class MemoryQA(BaseModel):
+    """
+    使用主题、问题、答案这样的标准形式来表示用户反馈或用户经验。
+    """
     user_id: Union[str, None] = Field(default=None, description="用户ID")
-    topic_text_hash: str = Field(default="", description="话题的hash值")
+    topic: str = Field(default="", description="话题")
     question_hash: str = Field(default="", description="问题的hash值")
     question: str = Field(default="", description="问题")
     answer: str = Field(default="", description="答案")
@@ -139,6 +117,7 @@ class MemoryQA(BaseModel):
     @classmethod
     def register_indexes(cls, db: IndexedRocksDB):
         db.register_model(cls.__name__, cls)
+        db.register_index(cls.__name__, cls, "topic")
         db.register_index(cls.__name__, cls, "created_at")
 
     @classmethod
@@ -148,3 +127,26 @@ class MemoryQA(BaseModel):
     @classmethod
     def get_key(cls, user_id: str, topic_text_hash: str, question_hash: str):
         return f"{cls.get_prefix(user_id, topic_text_hash)}-{question_hash}"
+
+    def to_retrieve(self):
+        return {
+            "user_id": self.user_id,
+            "texts": [
+                self.question,
+                self.answer,
+            ],
+            "metadatas": [
+                {
+                    "topic": self.topic,
+                    "question": self.question,
+                    "answer": self.answer,
+                    "created_at": self.created_at,
+                },
+                {
+                    "topic": self.topic,
+                    "question": self.question,
+                    "answer": self.answer,
+                    "created_at": self.created_at,
+                }
+            ]
+        }

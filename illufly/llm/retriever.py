@@ -32,10 +32,10 @@ class ChromaRetriever():
             "hnsw:search_ef": 100
         }
 
-    def create_collection(self, name: str, metadata: Dict[str, Any] = {}) -> Any:
+    def get_or_create_collection(self, name: str, metadata: Dict[str, Any] = {}) -> Any:
         """创建集合"""
         metadata = {**self._default_collection_metadata(), **metadata}
-        collection = self.client.create_collection(name, metadata=metadata)
+        collection = self.client.get_or_create_collection(name, metadata=metadata)
         self._logger.info(f"创建集合: {name}")
         return collection
 
@@ -181,7 +181,8 @@ class ChromaRetriever():
             filtered_result = {
                 "text": texts[i],
                 "ids": [results['ids'][i][j] for j in filtered_indices],
-                "documents": [results['metadatas'][i][j].get("qa", results['documents'][i][j]) for j in filtered_indices],
+                "metadatas": [results['metadatas'][i][j] for j in filtered_indices],
+                "documents": [results['documents'][i][j] for j in filtered_indices],
                 "distances": [results['distances'][i][j] for j in filtered_indices]
             }
             final_results.append(filtered_result)
