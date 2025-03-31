@@ -65,18 +65,30 @@ class ChromaRetriever():
         self,
         texts: Union[str, List[str]],
         collection_name: str = None,
-        metadatas: List[Dict[str, Any]] = None,
+        user_id: str = None,
+        metadatas: Union[str, List[Dict[str, Any]]] = None,
         embedding_config: Dict[str, Any] = {},
         collection_config: Dict[str, Any] = {},
     ) -> None:
-        """添加文本，如果存在就更新"""
+        """
+        添加文本，如果存在就更新。
+
+        Args:
+            collection_name: 用来区分不同的内容集合，默认为 default
+            texts: 检索的文本内容, 如果是QA记忆则应分别将问和答作为 texts 编码保存到向量数据库中
+            ids: 使用文本的哈希值作为ID
+            user_id: 用来区分不同的用户, 放入metadata中, 查询时通过元数据过滤
+            metadatas: 除了用户ID, 元数据中还可以包含记忆的主题、问题和答案
+        """
         collection_name = collection_name or "default"
         collection_config = {**self._default_collection_metadata(), **collection_config}
 
         # 对输入文本去重
         texts = self._deduplicate_texts(texts)
 
-        # 元数据必须是字典列表
+        user_id = user_id or "default"
+
+        # 元数据
         if metadatas is not None:
             if isinstance(metadatas, dict):
                 metadatas = [metadatas]
@@ -84,6 +96,10 @@ class ChromaRetriever():
                 raise ValueError("metadatas 必须是列表")
             if len(metadatas) != len(texts):
                 raise ValueError("metadatas 的长度必须与 texts 的长度相同")
+        else:
+            metadatas = [{} for _ in texts]
+        
+        metadatas = [{"user_id": user_id, **m} for m in metadatas]
 
         # 确认集合存在
         collection = self.client.get_or_create_collection(collection_name, metadata=collection_config)
@@ -114,6 +130,7 @@ class ChromaRetriever():
         texts: Union[str, List[str]],
         threshold: float = 0.5,
         collection_name: str = None,
+        user_id: str = None,
         embedding_config: Dict[str, Any] = {},
         query_config: Dict[str, Any] = {},
     ) -> List[Dict[str, List]]:
@@ -123,6 +140,7 @@ class ChromaRetriever():
             texts: 查询文本，可以是单个字符串或字符串列表
             threshold: 相似度阈值，距离小于此值的结果会被保留
             collection_name: 集合名称
+            user_id: 按用户ID过滤
             embedding_config: 嵌入向量配置
             query_config: ChromaDB查询配置，例如 {"n_results": 3} 表示返回3个结果
             
@@ -136,9 +154,14 @@ class ChromaRetriever():
         texts = self._deduplicate_texts(texts)
 
         # 确保查询配置包含必要的返回字段
-        query_config.update({
-            "include": ["documents", "distances", "metadatas"]
-        })
+        query_config.update({"include": ["documents", "distances", "metadatas"]})
+
+        # 如果指定了用户ID, 则通过元数据过滤
+        if user_id is not None:
+            if query_config.get("where", None) is None:
+                query_config["where"] = {"user_id": user_id}
+            else:
+                query_config["where"]["user_id"] = user_id
 
         # 获取嵌入向量并查询
         resp = await self.llm.aembedding(texts, **embedding_config)
@@ -158,7 +181,7 @@ class ChromaRetriever():
             filtered_result = {
                 "text": texts[i],
                 "ids": [results['ids'][i][j] for j in filtered_indices],
-                "documents": [results['documents'][i][j] for j in filtered_indices],
+                "documents": [results['metadatas'][i][j].get("qa", results['documents'][i][j]) for j in filtered_indices],
                 "distances": [results['distances'][i][j] for j in filtered_indices]
             }
             final_results.append(filtered_result)
