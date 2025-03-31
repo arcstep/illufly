@@ -4,6 +4,7 @@ import html
 
 from typing import List, Dict, Any
 
+from ..prompt import PromptTemplate
 from ..rocksdb import default_rocksdb, IndexedRocksDB
 from .base import LiteLLM
 from .retriever import ChromaRetriever
@@ -31,7 +32,7 @@ class Memory():
                 metadatas=qa.metadatas
             )
     
-    async def extract(self, input_messages: List[Dict[str, Any]], existing_memory: str=None, user_id: str=None) -> str:
+    async def extract(self, input_messages: List[Dict[str, Any]], existing_memory: str=None, user_id: str=None, **kwargs) -> str:
         """提取记忆"""
         if user_id is None:
             user_id = "default"
@@ -72,10 +73,10 @@ class Memory():
             user_id=user_id,
             collection_name=MEMORY_COLLECTION,
             threshold=0.3,
-            n_results=10
+            query_config={"n_results": 10}
         )
         
-        items = [f'|{r.topic}|{r.question}|{r.answer}|' for r in results]
+        items = [f'|{r["topic"]}|{r["question"]}|{r["answer"]}|' for r in results[0]["metadatas"]]
         return "\n".join(list(dict.fromkeys(items)))
     
     def inject(self, input_messages: List[Dict[str, Any]], existing_memory: str=None) -> List[Dict[str, Any]]:
@@ -88,7 +89,7 @@ class Memory():
         """将消息转换为文本"""
         return "\n".join([f"{m['role']}: {str(m['content'])}" for m in input_messages])
 
-    def safe_extract_markdown_tables(md_text):
+    def safe_extract_markdown_tables(self, md_text: str) -> List[pd.DataFrame]:
         """安全提取Markdown表格为结构化数据（支持多表）"""
         tables = []
         # 匹配所有表格（非贪婪模式）

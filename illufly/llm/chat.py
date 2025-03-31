@@ -1,8 +1,6 @@
 from typing import List, Dict, Any, Union
 from pydantic import BaseModel, Field
 
-from ..community import BaseVectorDB
-from ..prompt import PromptTemplate
 from ..rocksdb import default_rocksdb, IndexedRocksDB
 from .base import LiteLLM
 from .models import ChunkType, DialougeChunk, ToolCalling, MemoryQA
