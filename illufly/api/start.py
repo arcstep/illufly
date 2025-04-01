@@ -7,15 +7,11 @@ from pathlib import Path
 from typing import Optional, List, Set
 
 import logging
-import zmq.asyncio
 
 from ..__version__ import __version__
 from ..rocksdb import IndexedRocksDB
-from ..mq.service import ServiceRouter, ClientDealer
-from ..community.openai import ChatOpenAI, OpenAIEmbeddings
-from ..community.chroma import ChromaDB
-from ..agent import ChatAgent
-from ..thread import ThreadManagerDealer
+from ..llm import ChatAgent
+from ..llm import ThreadManager
 from .auth import TokensManager, UsersManager, create_auth_endpoints
 from .api_keys import ApiKeysManager, create_api_keys_endpoints
 from .openai import create_openai_endpoints
@@ -76,8 +72,8 @@ def setup_spa_middleware(app: FastAPI, static_dir: Path, exclude_paths: List[str
 
 async def create_app(
     db_path: str = "./db",
-    openai_imitators: Optional[List[str]] = None,
-    router_address: str = None,
+    openai_imitator: str = None,
+    provider: str = None,
     title: str = "Illufly API",
     description: str = "Illufly 后端 API 服务",
     prefix: str = "/api",
@@ -87,11 +83,6 @@ async def create_app(
     log_level: int = logging.INFO
 ) -> FastAPI:
     """创建 FastAPI 应用"""
-
-    if isinstance(openai_imitators, str):
-        openai_imitators = [openai_imitators]
-    elif not openai_imitators:
-        openai_imitators = ["OPENAI"]
 
     setup_logging(log_level)
 
@@ -124,43 +115,22 @@ async def create_app(
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db = IndexedRocksDB(str(db_path))
 
-    # 初始化 ZMQ 路由、客户端
-    router_address = router_address or "inproc://router-bus"
-    zmq_context = zmq.asyncio.Context()
-    router = ServiceRouter(router_address, context=zmq_context)
-    zmq_client = ClientDealer(router_address, context=zmq_context)
-
-    # 初始化 ThreadManagerDealer
-    thread_manager_dealer = ThreadManagerDealer(db, router_address=router_address, context=zmq_context)
+    # 初始化 ThreadManager
+    thread_manager = ThreadManager(db)
 
     # 初始化 Agent
-    agents = []
-    for imitator in openai_imitators:
-        agent = ChatAgent(
-            db=db,
-            group=imitator,
-            llm=ChatOpenAI(imitator=imitator),
-            router_address=router_address,
-            context=zmq_context,
-            vector_db=ChromaDB(
-                embeddings=OpenAIEmbeddings(
-                    imitator="QWEN",
-                    db=db,
-                    model="text-embedding-v3"
-                ))
-        )
-        agents.append(agent)
+    agent = ChatAgent(
+        db=db,
+        provider=provider,
+        imitator=openai_imitator
+    )
 
     @app.on_event("startup")
     async def startup():
         """
         应用启动时初始化资源
         """
-        await router.start()
-        await thread_manager_dealer.start()
-        for agent in agents:
-            await agent.start()
-        await zmq_client.connect()
+        await agent.memory.init_retriever()
 
     # 初始化管理器实例
     tokens_manager = TokensManager(db)
@@ -169,11 +139,7 @@ async def create_app(
 
     mount_auth_api(app, prefix, tokens_manager, users_manager)
     mount_api_keys_api(app, prefix, base_url, tokens_manager, api_keys_manager)
-    mount_agent_api(app, prefix, zmq_client, tokens_manager)
-
-    # 按照 Imitator 挂载 OpenAI 兼容接口
-    mount_openai_imitators(app, prefix, openai_imitators)
-    mount_openai_api(app, prefix, zmq_client, api_keys_manager, openai_imitators)
+    mount_agent_api(app, prefix, agent, thread_manager, tokens_manager)
     
     static_manager = mount_static_files(app, prefix, static_dir)
 
@@ -185,11 +151,6 @@ async def create_app(
         if static_manager:
             static_manager.cleanup()
         
-        await zmq_client.close()
-        await thread_manager_dealer.stop()
-        for agent in agents:
-            await agent.stop()
-        await router.stop()
         logger.warning(f"Illufly API 关闭完成")
 
     logger.info(f"Illufly API 启动完成: {prefix}/docs")
@@ -253,23 +214,12 @@ def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
     
     return static_manager
 
-def mount_openai_imitators(app: FastAPI, prefix: str, imitators: List[str]):
-    # 挂载 imitators 路由
-    app.add_api_route(
-        path=f"{prefix}/imitators",
-        endpoint=lambda: imitators,
-        methods=["GET"],
-        response_model=List[str],
-        summary="获取支持的模仿来源",
-        description="返回支持的模仿来源列表",
-        tags=["Illufly Backend - Imitators"]
-    )
-
-def mount_agent_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, tokens_manager: TokensManager):
+def mount_agent_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager: ThreadManager, tokens_manager: TokensManager):
     # Chat 路由
     chat_handlers = create_chat_endpoints(
         app=app,
-        zmq_client=zmq_client,
+        agent=agent,
+        thread_manager=thread_manager,
         tokens_manager=tokens_manager,
         prefix=prefix
     )
@@ -282,37 +232,3 @@ def mount_agent_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, tokens_
             summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
             description=getattr(handler, "__doc__", None),
             tags=["Illufly Backend - Chat"])
-
-def mount_openai_api(app: FastAPI, prefix: str, zmq_client: ClientDealer, api_keys_manager: ApiKeysManager, openai_imitators: List[str]):
-    # OpenAI 兼容接口使用独立的 FastAPI 实例
-    openai_app = FastAPI()
-    openai_app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,  # 关键：禁用凭证
-        allow_methods=["*"],
-        allow_headers=["*"]
-    )
-
-    # 注册路由
-    for imitator in openai_imitators:
-        # 修改create_openai_endpoints函数调用，不需要传递prefix
-        openai_handlers = create_openai_endpoints(
-            app=openai_app,
-            imitator=imitator,
-            zmq_client=zmq_client,
-            api_keys_manager=api_keys_manager
-        )
-        for (method, path, handler) in openai_handlers:
-            openai_app.add_api_route(
-                path=f'/{imitator.lower()}{path}',
-                endpoint=handler,
-                methods=[method],
-                response_model=getattr(handler, "__annotations__", {}).get("return"),
-                summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
-                description=getattr(handler, "__doc__", None),
-                tags=["OpenAI Compatible"]
-            )
-
-    app.mount(f'{prefix}/imitator', openai_app)
-    logger.info(f"OpenAI 兼容接口挂载完成: {prefix}/imitator/docs")

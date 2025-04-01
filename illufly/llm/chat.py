@@ -21,7 +21,7 @@ class ChatAgent():
         self.recent_messages_count = 10
         DialougeChunk.register_indexes(self.db)
 
-    async def chat(self, messages: List[Dict[str, Any]], user_id: str=None, thread_id: str=None, **kwargs):
+    async def chat(self, messages: List[Dict[str, Any]], model: str, user_id: str=None, thread_id: str=None, **kwargs):
         """对话
 
         对话核心流程：
@@ -64,13 +64,18 @@ class ChatAgent():
 
         # 4. 并行执行记忆提取和对话补全
         extract_task = asyncio.create_task(
-            self.memory.extract(messages, existing_memory, user_id)
+            self.memory.extract(messages, model, existing_memory, user_id)
         )
 
-        print("\nchat completion >>> ", messages)
+        print(f"\nchat completion [{model}] >>> ", messages)
 
         # 执行对话补全
-        resp = await self.llm.acompletion(messages, stream=True, **kwargs)
+        try:
+            resp = await self.llm.acompletion(messages, model=model, stream=True, **kwargs)
+        except Exception as e:
+            logger.error(f"\nchat completion [{model}] >>> {messages}\n\nerror >>> {e}")
+            return
+
         async for chunk in resp:
             ai_output = chunk.choices[0].delta if chunk.choices else None
             if ai_output and ai_output.content:

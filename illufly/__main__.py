@@ -12,6 +12,7 @@ def _parse_args():
     parser = argparse.ArgumentParser(description="Illufly API 服务")
     arguments = [
         ("--db-path", "./db", "数据库路径 (默认: ./db)"),
+        ("--provider", None, "兼容 LiteLLM 的服务提供者 (默认: OPENAI)"),
         ("--openai", None, "OpenAI模仿者列表 (默认: OPENAI)"),
         ("--router-address", None, "ZMQ 路由地址 (默认: inproc://router-bus)"),
         ("--title", "Illufly API", "API 标题 (默认: Illufly API)"),
@@ -28,7 +29,7 @@ def _parse_args():
     ]
     
     for arg, default, help in arguments:
-        if arg in ["--cors-origins", "--openai"]:
+        if arg in ["--cors-origins"]:
             # 特殊处理 cors-origins 参数，支持多个参数值
             parser.add_argument(arg, nargs='+', default=default, help=help)
         else:
@@ -50,8 +51,8 @@ async def main():
     
     app = await create_app(
         db_path=args.db_path,
-        openai_imitators=args.openai,
-        router_address=args.router_address,
+        openai_imitator=args.openai,
+        provider=args.provider,
         title=args.title,
         description=args.description,
         prefix=args.prefix,

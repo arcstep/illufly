@@ -10,6 +10,9 @@ from .base import LiteLLM
 from .retriever import ChromaRetriever
 from .models import MemoryQA
 
+import logging
+logger = logging.getLogger(__name__)
+
 ROCKSDB_PREFIX = "mem"
 CHROMA_COLLECTION = "memory"
 DEFAULT_FEEDBACK_PROMPT = "feedback"
@@ -33,7 +36,14 @@ class Memory():
                 metadatas=qa_data["metadatas"]
             )
     
-    async def extract(self, input_messages: List[Dict[str, Any]], existing_memory: str=None, user_id: str=None, **kwargs) -> str:
+    def all_memory(self, user_id: str=None, limit: int=100) -> List[MemoryQA]:
+        """获取所有记忆"""
+        if user_id is None:
+            return self.memory_db.values(prefix=ROCKSDB_PREFIX, limit=limit)
+        else:
+            return self.memory_db.values(prefix=MemoryQA.get_prefix(user_id), limit=limit)
+    
+    async def extract(self, input_messages: List[Dict[str, Any]], model: str, existing_memory: str=None, user_id: str=None, **kwargs) -> str:
         """提取记忆"""
         if user_id is None:
             user_id = "default"
@@ -47,8 +57,13 @@ class Memory():
             "memory": existing_memory,
             "messages": input_messages
         })
-        resp = await self.llm.acompletion(feedback_input, stream=False, **kwargs)
-        feedback_text = resp.choices[0].message.content
+
+        try:
+            resp = await self.llm.acompletion(feedback_input, stream=False, model=model, **kwargs)
+            feedback_text = resp.choices[0].message.content
+        except Exception as e:
+            logger.error(f"\nfeedback_input >>> {feedback_input}\n\nmemory.extract >>> [{model}] 提取记忆失败: {e}")
+            return
         
         # 如果返回SKIP，直接返回
         if feedback_text.strip() == "SKIP":

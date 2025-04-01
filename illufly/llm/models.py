@@ -78,19 +78,19 @@ class DialougeChunk(BaseModel):
         if self.chunk_type == ChunkType.USER_INPUT:
             return {
                 **common_fields,
-                "chunk_type": self.chunk_type,
+                "chunk_type": self.chunk_type.value,
                 "input_messages": self.input_messages,
             }
         elif self.chunk_type == ChunkType.AI_DELTA:
             return {
                 **common_fields,
-                "chunk_type": self.chunk_type,
+                "chunk_type": self.chunk_type.value,
                 "output_text": self.output_text,
             }
         elif self.chunk_type == ChunkType.AI_MESSAGE:
             return {
                 **common_fields,
-                "chunk_type": self.chunk_type,
+                "chunk_type": self.chunk_type.value,
                 "output_text": self.output_text,
                 "tool_calls": [v.model_dump() for v in self.tool_calls],
             }
@@ -121,12 +121,12 @@ class MemoryQA(BaseModel):
         db.register_index(cls.__name__, cls, "created_at")
 
     @classmethod
-    def get_prefix(cls, user_id: str, topic_text_hash: str):
-        return f"mem-{user_id}-{topic_text_hash}"
+    def get_prefix(cls, user_id: str):
+        return f"mem-{user_id}"
 
     @classmethod
-    def get_key(cls, user_id: str, topic_text_hash: str, question_hash: str):
-        return f"{cls.get_prefix(user_id, topic_text_hash)}-{question_hash}"
+    def get_key(cls, user_id: str, topic: str, question_hash: str):
+        return f"{cls.get_prefix(user_id)}-{topic}-{question_hash}"
 
     def to_retrieve(self):
         return {

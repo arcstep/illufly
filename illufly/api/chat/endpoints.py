@@ -9,24 +9,18 @@ import uuid
 import logging
 import json
 
-from ...mq.service import ClientDealer
-from ...community.models import BlockType
 from ..models import Result, HttpMethod
 from ..http import handle_errors
 from ..auth import require_user, TokensManager, TokenClaims
 from ..models import Result, OpenaiRequest
-from ...community.models import TextChunk
-
-THREAD = {
-    "all_threads": "ThreadManagerDealer.all_threads",
-    "new_thread": "ThreadManagerDealer.new_thread",
-    "load_messages": "ThreadManagerDealer.load_messages",
-}
+from ...llm import ChatAgent, ThreadManager
+from ...envir import get_env
 
 def create_chat_endpoints(
     app: FastAPI,
-    zmq_client: ClientDealer = None,
-    tokens_manager: TokensManager = None,
+    tokens_manager: TokensManager,
+    agent: ChatAgent,
+    thread_manager: ThreadManager,
     prefix: str="/api",
     logger: logging.Logger = None
 ) -> Dict[str, Tuple[HttpMethod, str, Callable]]:
@@ -45,16 +39,14 @@ def create_chat_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """获取所有连续对话线程"""
-        threads = await zmq_client.invoke(THREAD["all_threads"], user_id=token_claims['user_id'])
-        return threads[0] or []
+        return thread_manager.all_threads(token_claims['user_id'])
 
     @handle_errors()
     async def new_thread(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """创建新的连续对话线程"""
-        result = await zmq_client.invoke(THREAD["new_thread"], user_id=token_claims['user_id'])
-        return result[0] or {}
+        return thread_manager.new_thread(token_claims['user_id'])
 
     @handle_errors()
     async def load_messages(
@@ -62,26 +54,21 @@ def create_chat_endpoints(
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
         """获取连续对话线程的消息"""
-        messages = await zmq_client.invoke(
-            THREAD["load_messages"],
-            user_id=token_claims['user_id'],
-            thread_id=thread_id
-        )
-        return messages[0] or []
+        return agent.load_history(token_claims['user_id'], thread_id)
+
+    def _get_models():
+        return [m.strip() for m in get_env("ILLUFLY_VALID_MODELS").split(",")]
 
     @handle_errors()
     async def models(
-        imitator: str = "OPENAI",
         token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
     ):
-        """获取模型列表"""
-        models = await zmq_client.invoke(f"{imitator}.models")
-        return models[0] or []
+        """获取可用的模型列表"""
+        return _get_models()
 
     class ChatRequest(OpenaiRequest):
         """聊天请求"""
         thread_id: str = Field(..., description="线程ID")
-        imitator: str = Field(default="OPENAI", description="模仿者")
 
     @handle_errors()
     async def chat(
@@ -90,32 +77,19 @@ def create_chat_endpoints(
     ):
         """与大模型对话"""
         async def stream_response():
-            async for chunk in zmq_client.stream(
-                f"{chat_request.imitator}.chat",
+            kwargs = chat_request.model_dump(exclude={"thread_id"})
+            logger.info(f"\nchat kwargs >>> {kwargs}")
+            model = kwargs.pop("model", _get_models()[0])
+            async for chunk in agent.chat(
                 user_id=token_claims['user_id'],
                 thread_id=chat_request.thread_id,
-                **chat_request.model_dump(exclude={"thread_id", "imitator"})
+                model=model,
+                **kwargs
             ):
-                if getattr(chunk, 'block_type', None) in [BlockType.TEXT_CHUNK, BlockType.QUESTION]:
-                    if chunk.block_type == BlockType.QUESTION:
-                        block_type = "question"
-                        message_type = "text"
-                        role = chunk.role or "user"
-                    else:
-                        block_type = "answer"
-                        message_type = chunk.block_type
-                        role = chunk.role or "assistant"
-                    message = {
-                        "service_name": chunk.service_name,
-                        "block_type": block_type,
-                        "role": role,
-                        "message_type": message_type,
-                        "message_id": chunk.message_id,
-                        "text": chunk.text,
-                        "created_at": chunk.created_at,
-                        "completed_at": chunk.completed_at,
-                    }
-                    yield f'data: {json.dumps(message, ensure_ascii=False)}\n\n'
+                try:
+                    yield f'data: {json.dumps(chunk, ensure_ascii=False)}\n\n'
+                except Exception as e:
+                    logger.error(f"\nchat response [{model}] >>> {chat_request.model_dump(exclude={'thread_id'})}\n\nerror >>> {e}")
 
             # 结束标记
             yield "data: [DONE]\n\n"

@@ -15,6 +15,9 @@ def get_env(key: str=None):
         FIXED_TEMP_DIR = os.path.join('/tmp', "__ILLUFLY__")
 
     default_values = {
+        # 支持的模型清单
+        "ILLUFLY_VALID_MODELS": "gpt-4o-mini, gpt-4o",
+
         # 缓存目录
         "ILLUFLY_CACHE_LITELLM": os.path.join(FIXED_TEMP_DIR, "CACHE_LITELLM"), # 缓存调用结果存储目录
         "ILLUFLY_CACHE_ROOT": FIXED_TEMP_DIR, # 缓存调用结果存储目录
