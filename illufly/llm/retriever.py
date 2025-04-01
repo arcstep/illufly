@@ -6,6 +6,9 @@ import hashlib
 
 from .base import LiteLLM
 
+import logging
+logger = logging.getLogger(__name__)
+
 class ChromaRetriever():
     """
     基于 Chroma 向量数据库的检索器
@@ -109,7 +112,7 @@ class ChromaRetriever():
         embeddings = [e['embedding'] for e in resp.data]
         ids = self.get_ids(texts)
 
-        print("\nchroma add >>> ", ids, texts, metadatas)
+        logger.info(f"\nchroma add >>> {ids}, {texts}, {metadatas}")
         return collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
 
     def delete(

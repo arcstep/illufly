@@ -9,6 +9,7 @@ from typing import Optional, List, Set
 import logging
 
 from ..__version__ import __version__
+from ..envir.logging import setup_logging
 from ..rocksdb import IndexedRocksDB
 from ..llm import ChatAgent
 from ..llm import ThreadManager
@@ -18,21 +19,11 @@ from .openai import create_openai_endpoints
 from .chat import create_chat_endpoints
 from .static_files import StaticFilesManager
 
+setup_logging()
 logger = logging.getLogger("illufly")
-
-def setup_logging(log_level: int = logging.INFO):
-    """配置全局日志"""
-    # 配置根记录器
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[logging.StreamHandler()],
-        force=True
-    )
 
 def setup_spa_middleware(app: FastAPI, static_dir: Path, exclude_paths: List[str] = []):
     """设置 SPA 中间件，处理客户端路由"""
-    logger = logging.getLogger("illufly")
     
     # 扫描所有 HTML 文件的路径
     html_routes = set()
@@ -80,11 +71,8 @@ async def create_app(
     base_url: str = "/api",
     static_dir: Optional[str] = None,
     cors_origins: Optional[List[str]] = None,
-    log_level: int = logging.INFO
 ) -> FastAPI:
     """创建 FastAPI 应用"""
-
-    setup_logging(log_level)
 
     # 创建 FastAPI 应用实例
     version = __version__

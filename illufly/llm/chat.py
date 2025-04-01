@@ -67,7 +67,7 @@ class ChatAgent():
             self.memory.extract(messages, model, existing_memory, user_id)
         )
 
-        print(f"\nchat completion [{model}] >>> ", messages)
+        logger.info(f"\nchat completion [{model}] >>> {messages}")
 
         # 执行对话补全
         try:
@@ -135,7 +135,7 @@ class ChatAgent():
         仅当用户ID和线程ID存在时，才保存对话片段
         """
         if chunk.user_id and chunk.thread_id:
-            print("\nsave_dialog_chunk >>> ", chunk)
+            logger.info(f"\nsave_dialog_chunk >>> {chunk}")
             self.db.update_with_indexes(
                 model_name=DialougeChunk.__name__,
                 key=DialougeChunk.get_key(chunk.user_id, chunk.thread_id, chunk.dialouge_id),

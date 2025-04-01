@@ -2,8 +2,8 @@ import uvicorn
 import logging
 import argparse
 import asyncio
-import logging
 import signal
+import os
 
 from .api.start import create_app
 
@@ -48,6 +48,7 @@ def _parse_args():
 async def main():
     """主函数"""
     args = _parse_args()
+    os.environ['LOG_LEVEL'] = str(args.log_level)
     
     app = await create_app(
         db_path=args.db_path,
@@ -58,8 +59,7 @@ async def main():
         prefix=args.prefix,
         base_url=args.base_url,
         static_dir=args.static_dir,
-        cors_origins=args.cors_origins,
-        log_level=args.log_level
+        cors_origins=args.cors_origins
     )
 
     config = uvicorn.Config(    

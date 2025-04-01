@@ -67,19 +67,19 @@ class Memory():
         
         # 如果返回SKIP，直接返回
         if feedback_text.strip() == "SKIP":
-            print("\nmemory.extract >>> SKIP extract")
+            logger.info("\nmemory.extract >>> SKIP extract")
             return
 
         # 提取表格
         tables = self.safe_extract_markdown_tables(feedback_text)
         if not tables:
-            print("\nmemory.extract >>> No tables extract")
+            logger.info("\nmemory.extract >>> No tables extract")
             return
         
         # 只处理第一个表格的第一行数据
         table = tables[0]
         if len(table) == 0:
-            print("\nmemory.extract >>> Zero lines in tables")
+            logger.info("\nmemory.extract >>> Zero lines in tables")
             return
         
         row = table.iloc[0]
@@ -120,7 +120,7 @@ class Memory():
         
         items = [f'|{r["topic"]}|{r["question"]}|{r["answer"]}|' for r in results[0]["metadatas"]]
         uniq_items = "\n".join(list(dict.fromkeys(items)))
-        print("\nmemory.retrieve >>> ", uniq_items)
+        logger.info(f"\nmemory.retrieve >>> {uniq_items}")
         return f"\n\n|主题|问题|答案|\n|---|---|---|\n{uniq_items}\n"
     
     def inject(self, input_messages: List[Dict[str, Any]], existing_memory: str=None) -> List[Dict[str, Any]]:
@@ -176,6 +176,6 @@ class Memory():
                     tables.append(pd.DataFrame(rows, columns=headers))
                 
             except Exception as e:
-                print(f"表格解析失败: {e}")
+                logger.error(f"表格解析失败: {e}")
         
         return tables

@@ -1,12 +1,12 @@
-from speedict import Rdict, Options, WriteBatch, SstFileWriter, ReadOptions, WriteOptions
-from typing import Any, Iterator, Optional, Union, Tuple, Literal
 import logging
 import itertools
+import os
+
+from speedict import Rdict, Options, WriteBatch, SstFileWriter, ReadOptions, WriteOptions
+from typing import Any, Iterator, Optional, Union, Tuple, Literal
 from dataclasses import dataclass
 from enum import Enum
 from itertools import islice
-
-from ..envir import get_env
 
 class BaseRocksDB:
     """RocksDB基础封装类
@@ -39,7 +39,7 @@ class BaseRocksDB:
 
     def __init__(
         self,
-        path: str = None,
+        path: str,
         options: Optional[Options] = None
     ):
         """初始化BaseRocksDB
@@ -49,7 +49,10 @@ class BaseRocksDB:
             options: 可选的RocksDB配置
             logger: 可选的日志记录器
         """
-        self.path = path or get_env("ILLUFLY_ROCKSDB_TEMP")
+        self.path = path
+        if not os.path.exists(self.path):
+            raise FileNotFoundError(f"数据库路径不存在: {self.path}")
+
         self._db = Rdict(self.path, options)
         self._logger = logging.getLogger(__name__)
         self._default_cf = self._db.get_column_family("default")

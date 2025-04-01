@@ -12,6 +12,4 @@ litellm.enable_cache(
     supported_call_types=["embedding", "aembedding", "atranscription", "transcription"]
 )
 
-print(get_env("ILLUFLY_CACHE_LITELLM"))
-
 __all__ = ["litellm", "LiteLLM", "ChatAgent"]
