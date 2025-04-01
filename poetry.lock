@@ -201,7 +201,7 @@ version = "0.7.0"
 description = "Reusable constraint types to use with typing.Annotated"
 optional = false
 python-versions = ">=3.8"
-groups = ["main"]
+groups = ["main", "dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53"},
@@ -920,7 +920,7 @@ files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
     {file = "colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44"},
 ]
-markers = {main = "(python_version == \"3.11\" or python_version >= \"3.12\") and (platform_system == \"Windows\" or os_name == \"nt\" or sys_platform == \"win32\")", dev = "sys_platform == \"win32\" and (python_version == \"3.11\" or python_version >= \"3.12\")", test = "sys_platform == \"win32\" and (python_version == \"3.11\" or python_version >= \"3.12\")"}
+markers = {main = "(python_version == \"3.11\" or python_version >= \"3.12\") and (platform_system == \"Windows\" or os_name == \"nt\" or sys_platform == \"win32\")", dev = "(python_version == \"3.11\" or python_version >= \"3.12\") and (platform_system == \"Windows\" or sys_platform == \"win32\")", test = "sys_platform == \"win32\" and (python_version == \"3.11\" or python_version >= \"3.12\")"}
 
 [[package]]
 name = "coloredlogs"
@@ -1273,7 +1273,7 @@ version = "5.6.3"
 description = "Disk Cache -- Disk and file backed persistent cache."
 optional = false
 python-versions = ">=3"
-groups = ["main"]
+groups = ["dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "diskcache-5.6.3-py3-none-any.whl", hash = "sha256:5e31b2d5fbad117cc363ebaf6b689474db18a1f6438bc82358b024abd4c2ca19"},
@@ -1286,7 +1286,7 @@ version = "1.9.0"
 description = "Distro - an OS platform information API"
 optional = false
 python-versions = ">=3.6"
-groups = ["main"]
+groups = ["main", "dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2"},
@@ -2005,7 +2005,7 @@ version = "0.14.0"
 description = "A pure-Python, bring-your-own-I/O implementation of HTTP/1.1"
 optional = false
 python-versions = ">=3.7"
-groups = ["main", "test"]
+groups = ["main", "dev", "test"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "h11-0.14.0-py3-none-any.whl", hash = "sha256:e3fe4ac4b851c468cc8363d500db52c2ead036020723024a109d37346efaa761"},
@@ -2018,7 +2018,7 @@ version = "1.0.7"
 description = "A minimal low-level HTTP client."
 optional = false
 python-versions = ">=3.8"
-groups = ["main", "test"]
+groups = ["main", "dev", "test"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "httpcore-1.0.7-py3-none-any.whl", hash = "sha256:a3fff8f43dc260d5bd363d9f9cf1830fa3a458b332856f34282de498ed420edd"},
@@ -2098,7 +2098,7 @@ version = "0.28.1"
 description = "The next generation HTTP client."
 optional = false
 python-versions = ">=3.8"
-groups = ["main", "test"]
+groups = ["main", "dev", "test"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad"},
@@ -2452,7 +2452,7 @@ version = "0.8.2"
 description = "Fast iterable JSON parser."
 optional = false
 python-versions = ">=3.8"
-groups = ["main"]
+groups = ["main", "dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "jiter-0.8.2-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:ca8577f6a413abe29b079bc30f907894d7eb07a865c4df69475e868d73e71c7b"},
@@ -3108,7 +3108,7 @@ version = "0.3.8"
 description = "Python bindings for the llama.cpp library"
 optional = false
 python-versions = ">=3.8"
-groups = ["main"]
+groups = ["dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "llama_cpp_python-0.3.8.tar.gz", hash = "sha256:31c91323b555c025a76a30923cead9f5695da103dd68c15cdbb4509b17f0ed77"},
@@ -4302,7 +4302,7 @@ version = "1.68.2"
 description = "The official Python library for the openai API"
 optional = false
 python-versions = ">=3.8"
-groups = ["main"]
+groups = ["main", "dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "openai-1.68.2-py3-none-any.whl", hash = "sha256:24484cb5c9a33b58576fdc5acf0e5f92603024a4e39d0b99793dfa1eb14c2b36"},
@@ -5324,7 +5324,7 @@ version = "2.10.5"
 description = "Data validation using Python type hints"
 optional = false
 python-versions = ">=3.8"
-groups = ["main"]
+groups = ["main", "dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "pydantic-2.10.5-py3-none-any.whl", hash = "sha256:4dd4e322dbe55472cb7ca7e73f4b63574eecccf2835ffa2af9021ce113c83c53"},
@@ -5346,7 +5346,7 @@ version = "2.27.2"
 description = "Core functionality for Pydantic validation and serialization"
 optional = false
 python-versions = ">=3.8"
-groups = ["main"]
+groups = ["main", "dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "pydantic_core-2.27.2-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:2d367ca20b2f14095a8f4fa1210f5a7b78b8a20009ecced6b12818f455b1e9fa"},
@@ -5529,7 +5529,7 @@ version = "3.2.1"
 description = "pyparsing module - Classes and methods to define and execute parsing grammars"
 optional = false
 python-versions = ">=3.9"
-groups = ["main", "dev"]
+groups = ["dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "pyparsing-3.2.1-py3-none-any.whl", hash = "sha256:506ff4f4386c4cec0590ec19e6302d3aedb992fdc02c761e90416f158dacf8e1"},
@@ -5930,7 +5930,7 @@ version = "2.5.0"
 description = "Python Finite State Machines made easy."
 optional = false
 python-versions = ">=3.7"
-groups = ["main"]
+groups = ["dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "python_statemachine-2.5.0-py3-none-any.whl", hash = "sha256:0ed53846802c17037fcb2a92323f4bc0c833290fa9d17a3587c50886c1541e62"},
@@ -6069,7 +6069,7 @@ version = "26.2.0"
 description = "Python bindings for 0MQ"
 optional = false
 python-versions = ">=3.7"
-groups = ["main", "dev"]
+groups = ["dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "pyzmq-26.2.0-cp310-cp310-macosx_10_15_universal2.whl", hash = "sha256:ddf33d97d2f52d89f6e6e7ae66ee35a4d9ca6f36eda89c24591b0c40205a3629"},
@@ -6192,7 +6192,7 @@ version = "7.1.3"
 description = "RDFLib is a Python library for working with RDF, a simple yet powerful language for representing information."
 optional = false
 python-versions = "<4.0.0,>=3.8.1"
-groups = ["main"]
+groups = ["dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "rdflib-7.1.3-py3-none-any.whl", hash = "sha256:5402310a9f0f3c07d453d73fd0ad6ba35616286fe95d3670db2b725f3f539673"},
@@ -7592,7 +7592,7 @@ version = "4.67.1"
 description = "Fast, Extensible Progress Meter"
 optional = false
 python-versions = ">=3.7"
-groups = ["main"]
+groups = ["main", "dev"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
 files = [
     {file = "tqdm-4.67.1-py3-none-any.whl", hash = "sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2"},
@@ -7785,7 +7785,7 @@ files = [
     {file = "typing_extensions-4.12.2-py3-none-any.whl", hash = "sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d"},
     {file = "typing_extensions-4.12.2.tar.gz", hash = "sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8"},
 ]
-markers = {main = "python_version == \"3.11\" or python_version >= \"3.12\"", dev = "python_version >= \"3.12\" and python_version < \"3.13\" or python_version == \"3.11\"", test = "python_version >= \"3.12\" and python_version < \"3.13\" or python_version == \"3.11\""}
+markers = {main = "python_version == \"3.11\" or python_version >= \"3.12\"", dev = "python_version == \"3.11\" or python_version >= \"3.12\"", test = "python_version >= \"3.12\" and python_version < \"3.13\" or python_version == \"3.11\""}
 
 [[package]]
 name = "tzdata"
@@ -8507,4 +8507,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "20d97bbb17c36b46e51d72e58440f722dde8df6516e4ce262d9891facb2ba711"
+content-hash = "a15a38c5a9b5ad4afe276b563f5fd5d907ffcf00003ea9b3a3d56e274e035eac"

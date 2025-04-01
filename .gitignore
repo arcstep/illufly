@@ -169,9 +169,9 @@ __USERS__
 db/
 kg/__*
 
-tests/pn/models/
-tests/pn/data/policy_data_batch*
-tests/pn/embeddings/
+tests/legency/pn/models/
+tests/legency/pn/data/policy_data_batch*
+tests/legency/pn/embeddings/
 
 scripts/data/
 scripts/models/
