@@ -26,12 +26,11 @@ class ChatAgent():
 
         对话核心流程：
         1. 加载历史 + 检索记忆
-        2. 捕捉反馈 + 对话补全（并执行MCP工具）
-        3. 推荐追问
+        2. 注入记忆 + 保存用户输入
+        3. 并行执行：提取新记忆 + 对话补全
         """
         final_text = ""
         final_tool_calls = {}
-        feedback_text = ""
         last_tool_call_id = None
 
         if not messages:
@@ -40,7 +39,7 @@ class ChatAgent():
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
         
-        # 加载历史消息
+        # 1. 加载历史消息
         if not isinstance(messages, list):
             raise ValueError("messages 必须是形如 [{'role': 'user', 'content': '用户输入'}, ...] 的列表")
         else:
@@ -50,16 +49,11 @@ class ChatAgent():
             else:
                 messages = [*history_messages, *messages]
 
-        # 加载记忆
+        # 2. 加载并注入记忆
         existing_memory = await self.memory.retrieve(messages, user_id)
+        messages = self.memory.inject(messages, existing_memory)
 
-        # 提取新的记忆
-        await self.memory.extract(messages, existing_memory, user_id)
-
-        # 注入记忆
-        messages = self.memory.inject(messages, user_id)
-
-        # 保存用户输入
+        # 3. 保存用户输入（包含历史和记忆）
         dialog_chunk = DialougeChunk(
             user_id=user_id,
             thread_id=thread_id,
@@ -67,6 +61,13 @@ class ChatAgent():
             input_messages=messages
         )
         self.save_dialog_chunk(dialog_chunk)
+
+        # 4. 并行执行记忆提取和对话补全
+        extract_task = asyncio.create_task(
+            self.memory.extract(messages, existing_memory, user_id)
+        )
+
+        print("\nchat completion >>> ", messages)
 
         # 执行对话补全
         resp = await self.llm.acompletion(messages, stream=True, **kwargs)
@@ -120,12 +121,16 @@ class ChatAgent():
             self.save_dialog_chunk(dialog_chunk)
             yield dialog_chunk.model_dump()
 
+        # 等待记忆提取完成
+        await extract_task
+
     def save_dialog_chunk(self, chunk: DialougeChunk):
         """保存对话片段
 
         仅当用户ID和线程ID存在时，才保存对话片段
         """
         if chunk.user_id and chunk.thread_id:
+            print("\nsave_dialog_chunk >>> ", chunk)
             self.db.update_with_indexes(
                 model_name=DialougeChunk.__name__,
                 key=DialougeChunk.get_key(chunk.user_id, chunk.thread_id, chunk.dialouge_id),

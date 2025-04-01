@@ -122,7 +122,7 @@ class MemoryQA(BaseModel):
 
     @classmethod
     def get_prefix(cls, user_id: str, topic_text_hash: str):
-        return f"qa-{user_id}-{topic_text_hash}"
+        return f"mem-{user_id}-{topic_text_hash}"
 
     @classmethod
     def get_key(cls, user_id: str, topic_text_hash: str, question_hash: str):

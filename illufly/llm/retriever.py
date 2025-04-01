@@ -108,6 +108,8 @@ class ChromaRetriever():
         resp = await self.llm.aembedding(texts, **embedding_config)
         embeddings = [e['embedding'] for e in resp.data]
         ids = self.get_ids(texts)
+
+        print("\nchroma add >>> ", ids, texts, metadatas)
         return collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
 
     def delete(

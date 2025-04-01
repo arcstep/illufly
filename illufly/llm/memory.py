@@ -10,8 +10,8 @@ from .base import LiteLLM
 from .retriever import ChromaRetriever
 from .models import MemoryQA
 
-QA_PREFIX = "qa"
-MEMORY_COLLECTION = "memory"
+ROCKSDB_PREFIX = "mem"
+CHROMA_COLLECTION = "memory"
 DEFAULT_FEEDBACK_PROMPT = "feedback"
 
 class Memory():
@@ -19,17 +19,17 @@ class Memory():
     def __init__(self, llm: LiteLLM, memory_db: IndexedRocksDB, retriver: ChromaRetriever=None):
         self.memory_db = memory_db
         self.retriver = retriver or ChromaRetriever()
-        self.retriver.get_or_create_collection(MEMORY_COLLECTION)
+        self.retriver.get_or_create_collection(CHROMA_COLLECTION)
         self.llm = llm
 
     async def init_retriever(self):
         """初始化记忆"""
-        for qa in self.memory_db.values(prefix=QA_PREFIX):
+        for qa in self.memory_db.values(prefix=ROCKSDB_PREFIX):
             qa_data = qa.to_retrieve()
             await self.retriver.add(
                 texts=qa_data["texts"],
                 user_id=qa.user_id,
-                collection_name=MEMORY_COLLECTION,
+                collection_name=CHROMA_COLLECTION,
                 metadatas=qa_data["metadatas"]
             )
     
@@ -52,16 +52,19 @@ class Memory():
         
         # 如果返回SKIP，直接返回
         if feedback_text.strip() == "SKIP":
+            print("\nmemory.extract >>> SKIP extract")
             return
 
         # 提取表格
         tables = self.safe_extract_markdown_tables(feedback_text)
         if not tables:
+            print("\nmemory.extract >>> No tables extract")
             return
         
         # 只处理第一个表格的第一行数据
         table = tables[0]
         if len(table) == 0:
+            print("\nmemory.extract >>> Zero lines in tables")
             return
         
         row = table.iloc[0]
@@ -87,7 +90,7 @@ class Memory():
                 metadatas=qa_data["metadatas"]
             )
 
-    async def retrieve(self, input_messages: List[Dict[str, Any]], user_id: str=None) -> str:
+    async def retrieve(self, input_messages: List[Dict[str, Any]], user_id: str=None, threshold: float=1, top_k: int=10) -> str:
         """检索记忆"""
         if user_id is None:
             user_id = "default"
@@ -95,19 +98,22 @@ class Memory():
         results = await self.retriver.query(
             texts=[self.from_messages_to_text(input_messages)],
             user_id=user_id,
-            collection_name=MEMORY_COLLECTION,
-            threshold=0.3,
-            query_config={"n_results": 10}
+            collection_name=CHROMA_COLLECTION,
+            threshold=threshold,
+            query_config={"n_results": top_k}
         )
         
         items = [f'|{r["topic"]}|{r["question"]}|{r["answer"]}|' for r in results[0]["metadatas"]]
         uniq_items = "\n".join(list(dict.fromkeys(items)))
+        print("\nmemory.retrieve >>> ", uniq_items)
         return f"\n\n|主题|问题|答案|\n|---|---|---|\n{uniq_items}\n"
     
     def inject(self, input_messages: List[Dict[str, Any]], existing_memory: str=None) -> List[Dict[str, Any]]:
         """注入记忆"""
         if existing_memory and input_messages[0].get("role", None) == "system":
             input_messages[0]["content"] += f"\n\n**用户记忆清单**\n{existing_memory}\n"
+        else:
+            input_messages.insert(0, {"role": "system", "content": f"**用户记忆清单**\n{existing_memory}\n"})
         return input_messages
 
     def from_messages_to_text(self, input_messages: List[Dict[str, Any]]) -> str:

@@ -1,6 +1,7 @@
 from ..envir import get_env
 from .base import litellm, LiteLLM
 from .retriever import ChromaRetriever
+from .memory import Memory
 from .chat import ChatAgent
 from .thread import ThreadManager
 from .models import MemoryQA, Thread, DialougeChunk, ChunkType

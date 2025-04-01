@@ -110,6 +110,98 @@ def test_safe_extract_markdown_tables_invalid(memory):
     
     assert len(tables) == 0
 
+def test_safe_extract_markdown_tables_multiple_rows(memory):
+    """测试提取包含多条知识的单个表格"""
+    md_text = """
+    |主题|问题|答案|
+    |---|---|---|
+    |测试主题1|测试问题1|测试答案1|
+    |测试主题2|测试问题2|测试答案2|
+    |测试主题3|测试问题3|测试答案3|
+    """
+    
+    tables = memory.safe_extract_markdown_tables(md_text)
+    
+    assert len(tables) == 1
+    assert isinstance(tables[0], pd.DataFrame)
+    assert len(tables[0]) == 3  # 表格应包含3行数据
+    
+    # 验证第一行
+    assert tables[0].iloc[0]["主题"] == "测试主题1"
+    assert tables[0].iloc[0]["问题"] == "测试问题1"
+    assert tables[0].iloc[0]["答案"] == "测试答案1"
+    
+    # 验证第二行
+    assert tables[0].iloc[1]["主题"] == "测试主题2"
+    assert tables[0].iloc[1]["问题"] == "测试问题2"
+    assert tables[0].iloc[1]["答案"] == "测试答案2"
+    
+    # 验证第三行
+    assert tables[0].iloc[2]["主题"] == "测试主题3"
+    assert tables[0].iloc[2]["问题"] == "测试问题3"
+    assert tables[0].iloc[2]["答案"] == "测试答案3"
+
+def test_safe_extract_markdown_tables_code_block(memory):
+    """测试提取被代码块语法包围的表格"""
+    md_text = """
+    这是一些描述文本
+    
+    ```markdown
+    |主题|问题|答案|
+    |---|---|---|
+    |测试主题1|测试问题1|测试答案1|
+    |测试主题2|测试问题2|测试答案2|
+    ```
+    
+    这是更多的描述文本
+    """
+    
+    tables = memory.safe_extract_markdown_tables(md_text)
+    
+    assert len(tables) == 1
+    assert isinstance(tables[0], pd.DataFrame)
+    assert len(tables[0]) == 2  # 表格应包含2行数据
+    
+    # 验证内容
+    assert tables[0].iloc[0]["主题"] == "测试主题1"
+    assert tables[0].iloc[1]["主题"] == "测试主题2"
+
+def test_safe_extract_markdown_tables_multiple_code_blocks(memory):
+    """测试提取多个代码块中的表格"""
+    md_text = """
+    第一个表格:
+    
+    ```
+    |主题|问题|答案|
+    |---|---|---|
+    |测试主题1|测试问题1|测试答案1|
+    ```
+    
+    第二个表格:
+    
+    ```markdown
+    |主题|问题|答案|
+    |---|---|---|
+    |测试主题2|测试问题2|测试答案2|
+    |测试主题3|测试问题3|测试答案3|
+    ```
+    """
+    
+    tables = memory.safe_extract_markdown_tables(md_text)
+    
+    assert len(tables) == 2
+    assert isinstance(tables[0], pd.DataFrame)
+    assert isinstance(tables[1], pd.DataFrame)
+    
+    # 验证第一个表格
+    assert len(tables[0]) == 1
+    assert tables[0].iloc[0]["主题"] == "测试主题1"
+    
+    # 验证第二个表格
+    assert len(tables[1]) == 2
+    assert tables[1].iloc[0]["主题"] == "测试主题2"
+    assert tables[1].iloc[1]["主题"] == "测试主题3"
+
 @pytest.mark.asyncio
 async def test_init_retriever(memory):
     """测试初始化记忆检索器"""
