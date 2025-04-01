@@ -25,11 +25,12 @@ class Memory():
     async def init_retriever(self):
         """初始化记忆"""
         for qa in self.memory_db.values(prefix=QA_PREFIX):
+            qa_data = qa.to_retrieve()
             await self.retriver.add(
-                qa.texts,
+                texts=qa_data["texts"],
                 user_id=qa.user_id,
                 collection_name=MEMORY_COLLECTION,
-                metadatas=qa.metadatas
+                metadatas=qa_data["metadatas"]
             )
     
     async def extract(self, input_messages: List[Dict[str, Any]], existing_memory: str=None, user_id: str=None, **kwargs) -> str:
@@ -48,20 +49,43 @@ class Memory():
         })
         resp = await self.llm.acompletion(feedback_input, stream=False, **kwargs)
         feedback_text = resp.choices[0].message.content
+        
+        # 如果返回SKIP，直接返回
+        if feedback_text.strip() == "SKIP":
+            return
+
+        # 提取表格
         tables = self.safe_extract_markdown_tables(feedback_text)
-        for table in tables:
-            qa_dict = table.to_dict('records')
-            if "主题" in qa_dict and "问题" in qa_dict and "答案" in qa_dict:
-                qa = MemoryQA(
-                    user_id=user_id,
-                    topic=qa_dict["主题"],
-                    question=qa_dict["问题"],
-                    answer=qa_dict["答案"]
-                )
-                # 持久化存储
-                self.memory_db.update_with_indexes(MemoryQA.__name__, qa.get_key(user_id, qa.topic, qa.question_hash), qa)
-                # 更新到向量数据库
-                self.retriver.add(qa.texts, user_id=qa.user_id, collection_name="memory", metadatas=qa.metadatas)
+        if not tables:
+            return
+        
+        # 只处理第一个表格的第一行数据
+        table = tables[0]
+        if len(table) == 0:
+            return
+        
+        row = table.iloc[0]
+        if all(k in row.index for k in ["主题", "问题", "答案"]):
+            qa = MemoryQA(
+                user_id=user_id,
+                topic=row["主题"],
+                question=row["问题"],
+                answer=row["答案"]
+            )
+            # 持久化存储
+            self.memory_db.update_with_indexes(
+                MemoryQA.__name__, 
+                qa.get_key(user_id, qa.topic, qa.question_hash), 
+                qa
+            )
+            # 更新到向量数据库
+            qa_data = qa.to_retrieve()
+            await self.retriver.add(
+                texts=qa_data["texts"],
+                user_id=qa.user_id, 
+                collection_name="memory", 
+                metadatas=qa_data["metadatas"]
+            )
 
     async def retrieve(self, input_messages: List[Dict[str, Any]], user_id: str=None) -> str:
         """检索记忆"""
@@ -77,12 +101,13 @@ class Memory():
         )
         
         items = [f'|{r["topic"]}|{r["question"]}|{r["answer"]}|' for r in results[0]["metadatas"]]
-        return "\n".join(list(dict.fromkeys(items)))
+        uniq_items = "\n".join(list(dict.fromkeys(items)))
+        return f"\n\n|主题|问题|答案|\n|---|---|---|\n{uniq_items}\n"
     
     def inject(self, input_messages: List[Dict[str, Any]], existing_memory: str=None) -> List[Dict[str, Any]]:
         """注入记忆"""
         if existing_memory and input_messages[0].get("role", None) == "system":
-            input_messages[0]["content"] += f"\n\n**用户记忆清单**\n|主题|问题|答案|\n|---|---|---|\n{existing_memory}\n"
+            input_messages[0]["content"] += f"\n\n**用户记忆清单**\n{existing_memory}\n"
         return input_messages
 
     def from_messages_to_text(self, input_messages: List[Dict[str, Any]]) -> str:
@@ -92,30 +117,43 @@ class Memory():
     def safe_extract_markdown_tables(self, md_text: str) -> List[pd.DataFrame]:
         """安全提取Markdown表格为结构化数据（支持多表）"""
         tables = []
-        # 匹配所有表格（非贪婪模式）
-        table_blocks = re.finditer(
-            r'\|(.+?)\|\n\|([\-: ]+\|)+\n((?:\|.*\|\n?)+)',
-            md_text,
-            re.DOTALL
+        # 将输入文本按照空行分割，以便处理多个表格
+        blocks = re.split(r'\n\s*\n', md_text)
+        
+        # 匹配单个表格的模式
+        table_pattern = re.compile(
+            r'^\s*\|(.+?)\|\s*\n\s*\|([\-: ]+\|)+\s*\n((?:\s*\|.+\|\s*\n?)+)',
+            re.MULTILINE
         )
         
-        for table in table_blocks:
+        for block in blocks:
+            if not block.strip():
+                continue
+            
+            match = table_pattern.search(block)
+            if not match:
+                continue
+            
             try:
-                headers = [h.strip() for h in table.group(1).split('|') if h.strip()]
-                rows = []
+                # 提取表头
+                headers = [h.strip() for h in match.group(1).split('|') if h.strip()]
                 
-                for row in table.group(3).split('\n'):
+                # 提取数据行
+                rows = []
+                for row in match.group(3).strip().split('\n'):
                     if not row.strip():
                         continue
+                    # 分割并清理单元格数据
                     cells = [
                         html.unescape(cell).strip() 
-                        for cell in row.split('|')[1:-1]
+                        for cell in row.split('|')[1:-1]  # 去掉首尾的空字符串
                     ]
                     if len(cells) == len(headers):
                         rows.append(cells)
                 
                 if headers and rows:
                     tables.append(pd.DataFrame(rows, columns=headers))
+                
             except Exception as e:
                 print(f"表格解析失败: {e}")
         

@@ -157,7 +157,7 @@ class ChromaRetriever():
         query_config.update({"include": ["documents", "distances", "metadatas"]})
 
         # 如果指定了用户ID, 则通过元数据过滤
-        if user_id is not None:
+        if user_id:
             if query_config.get("where", None) is None:
                 query_config["where"] = {"user_id": user_id}
             else:
