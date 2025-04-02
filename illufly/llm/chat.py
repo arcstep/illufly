@@ -76,15 +76,21 @@ class ChatAgent():
             logger.error(f"\nchat completion [{model}] >>> {messages}\n\nerror >>> {e}")
             return
 
+        first_chunk = None
         async for chunk in resp:
             ai_output = chunk.choices[0].delta if chunk.choices else None
             if ai_output and ai_output.content:
-                dialog_chunk = DialougeChunk(
-                    chunk_type=ChunkType.AI_DELTA,
-                    output_text=ai_output.content
-                )
+                if not first_chunk:
+                    first_chunk = DialougeChunk(
+                        user_id=user_id,
+                        thread_id=thread_id,
+                        chunk_type=ChunkType.AI_DELTA,
+                        output_text=ai_output.content
+                    )
+                else:
+                    first_chunk.output_text = ai_output.content
                 final_text += ai_output.content
-                yield dialog_chunk.model_dump()
+                yield first_chunk.model_dump()
 
             elif ai_output and ai_output.tool_calls:
                 for tool_call in ai_output.tool_calls:
@@ -155,9 +161,18 @@ class ChatAgent():
         messages = []
         for m in resp:
             if m.chunk_type == ChunkType.USER_INPUT:
-                messages.append(m.input_messages[-1])
+                messages.append({
+                    **m.input_messages[-1],
+                    "created_at": m.created_at,
+                    "dialouge_id": m.dialouge_id
+                })
             elif m.chunk_type == ChunkType.AI_MESSAGE:
-                messages.append({"role": "assistant", "content": m.output_text})
+                messages.append({
+                    "role": "assistant", 
+                    "content": m.output_text,
+                    "created_at": m.created_at,
+                    "dialouge_id": m.dialouge_id
+                })
         return messages
 
     def _load_recent_messages(self, user_id: str=None, thread_id: str=None) -> str:
