@@ -41,13 +41,26 @@ class ThreadManager():
     def update_thread_title(self, user_id: str, thread_id: str, title: str):
         """更新对话标题"""
         key = Thread.get_key(user_id, thread_id)
-        thread = self.db.get(key)
-        if thread:
-            thread.title = title
-            self.db.update_with_indexes(
-                model_name=Thread.__name__,
-                key=key,
-                value=thread
-            )
-            return thread
-        return None
+        logging.info(f"开始更新对话标题, key: {key}, title: '{title}'")
+        
+        try:
+            thread = self.db.get(key)
+            if thread:
+                logging.info(f"找到线程: {thread}")
+                old_title = thread.title
+                thread.title = title
+                self.db.update_with_indexes(
+                    model_name=Thread.__name__,
+                    key=key,
+                    value=thread
+                )
+                logging.info(f"成功更新对话标题: '{old_title}' -> '{title}'")
+                return thread
+            else:
+                logging.warning(f"更新标题失败: 未找到线程, key={key}")
+                return None
+        except Exception as e:
+            logging.error(f"更新标题时发生错误: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            return None

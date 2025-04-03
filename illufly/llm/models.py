@@ -136,29 +136,60 @@ class DialougeChunk(BaseModel):
     memory: Optional[MemoryQA] = Field(default=None, description="记忆问答对")
 
     def model_dump(self):
+        """
+        统一格式化对话块，确保所有类型都包含前端所需的基本字段
+        返回的字典必须包含：
+        - 所有基本信息字段(user_id, thread_id, dialouge_id, created_at, chunk_type)
+        - role: 对话角色
+        - content: 前端显示的内容
+        - 其他特有字段
+        """
+        # 基础字段，所有消息类型共有
         common_fields = {
+            "chunk_type": self.chunk_type.value,
             "user_id": self.user_id,
             "thread_id": self.thread_id,
             "dialouge_id": self.dialouge_id,
             "created_at": self.created_at
         }
         
+        # 为不同类型的消息定制处理逻辑
         if self.chunk_type == ChunkType.USER_INPUT:
+            # 用户输入
+            content = ""
+            if self.input_messages and len(self.input_messages) > 0:
+                last_message = self.input_messages[-1]
+                content = last_message.get('content', "")
+                
             return {
                 **common_fields,
-                "chunk_type": self.chunk_type.value,
+                "role": "user",
+                "content": content,
                 "input_messages": self.input_messages
             }
+            
         elif self.chunk_type == ChunkType.AI_DELTA:
+            # AI增量响应
             return {
                 **common_fields,
-                "chunk_type": self.chunk_type.value,
+                "role": "assistant",
+                "content": self.output_text or "",
                 "output_text": self.output_text
             }
+            
         elif self.chunk_type == ChunkType.AI_MESSAGE:
+            # AI完整消息
+            content = self.output_text or ""
+            
+            # 检查是否有工具调用
+            if self.tool_calls and len(self.tool_calls) > 0:
+                tool_info = ", ".join([f"{tc.name}" for tc in self.tool_calls])
+                content = f"工具调用: {tool_info}" if not content else content
+                
             result = {
                 **common_fields,
-                "chunk_type": self.chunk_type.value,
+                "role": "assistant",
+                "content": content,
             }
             
             if self.output_text:
@@ -168,31 +199,40 @@ class DialougeChunk(BaseModel):
                 result["tool_calls"] = [tc.model_dump() for tc in self.tool_calls]
                 
             return result
-        elif self.chunk_type == ChunkType.MEMORY_RETRIEVE or self.chunk_type == ChunkType.MEMORY_EXTRACT:
+            
+        elif self.chunk_type in [ChunkType.MEMORY_RETRIEVE, ChunkType.MEMORY_EXTRACT]:
+            # 记忆相关消息
+            prefix = "记忆" if self.chunk_type == ChunkType.MEMORY_RETRIEVE else "提取记忆"
+            content = f"{prefix}: {self.memory.topic}/{self.memory.question}" if self.memory else ""
+            
             return {
                 **common_fields,
-                "chunk_type": self.chunk_type.value,
+                "role": self.role or "assistant", 
+                "content": content,
                 "memory": self.memory.model_dump() if self.memory else None,
             }
-        elif self.chunk_type == ChunkType.TOOL_RESULT:
-            result = {
-                **common_fields,
-                "chunk_type": self.chunk_type.value,
-                "output_text": self.output_text,
-            }
             
-            if self.tool_id:
-                result["tool_id"] = self.tool_id
-                
-            if self.tool_name:
-                result["tool_name"] = self.tool_name
-                
-            return result
-        elif self.chunk_type == ChunkType.TITLE_UPDATE:
+        elif self.chunk_type == ChunkType.TOOL_RESULT:
+            # 工具调用结果
             return {
                 **common_fields,
-                "chunk_type": self.chunk_type.value,
+                "role": "tool",
+                "content": self.output_text or "",
+                "output_text": self.output_text,
+                "name": self.tool_name or "",
+                "tool_call_id": self.tool_id or "",
+                "tool_id": self.tool_id,
+                "tool_name": self.tool_name,
+            }
+            
+        elif self.chunk_type == ChunkType.TITLE_UPDATE:
+            # 标题更新通知
+            return {
+                **common_fields,
+                "role": self.role or "system",
+                "content": self.output_text or "",
                 "output_text": self.output_text
             }
+            
         else:
             raise ValueError(f"Invalid chunk type: {self.chunk_type}")

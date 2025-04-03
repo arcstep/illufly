@@ -76,12 +76,15 @@ class Memory():
         else:
             return self.memory_db.values(prefix=MemoryQA.get_prefix(user_id), limit=limit)
     
-    async def extract(self, input_messages: List[Dict[str, Any]], model: str, existing_memory: str=None, user_id: str=None, **kwargs) -> str:
+    async def extract(self, input_messages: List[Dict[str, Any]], model: str, existing_memory: str=None, user_id: str=None, **kwargs) -> List[MemoryQA]:
         """提取记忆"""
         if user_id is None:
             user_id = "default"
 
+        logger.info(f"开始提取记忆，用户ID: {user_id}")
+        
         if existing_memory is None:
+            logger.info("获取现有记忆...")
             existing_memory = await self.retrieve(input_messages, user_id)
 
         # 提取新的用户反馈
@@ -90,9 +93,12 @@ class Memory():
             "memory": existing_memory,
             "messages": input_messages
         })
+        
+        logger.info(f"生成记忆提取提示，提示长度: {len(str(feedback_input))}")
 
         try:
             # 确保使用await调用acompletion
+            logger.info(f"调用LLM提取记忆，模型: {model}")
             resp = await self.llm.acompletion(
                 messages=feedback_input, 
                 model=model, 
@@ -107,55 +113,77 @@ class Memory():
                 hasattr(resp.choices[0], 'message') and 
                 hasattr(resp.choices[0].message, 'content')):
                 feedback_text = resp.choices[0].message.content
+                logger.info(f"收到记忆提取响应，长度: {len(feedback_text)}")
             else:
                 logger.warning("\nmemory.extract >>> 无法从响应中提取文本")
-                return
+                return []
                 
         except Exception as e:
             logger.error(f"\nfeedback_input >>> {feedback_input}\n\nmemory.extract >>> [{model}] 提取记忆失败: {e}")
-            return
+            import traceback
+            logger.error(traceback.format_exc())
+            return []
         
         # 如果返回SKIP，直接返回
         if feedback_text.strip() == "SKIP":
             logger.info("\nmemory.extract >>> SKIP extract")
-            return
+            return []
 
         # 提取表格
         tables = self.safe_extract_markdown_tables(feedback_text)
         if not tables:
             logger.info("\nmemory.extract >>> No tables extract")
-            return
+            return []
         
-        # 只处理第一个表格的第一行数据
+        # 只处理第一个表格的数据
         table = tables[0]
         if len(table) == 0:
             logger.info("\nmemory.extract >>> Zero lines in tables")
-            return
+            return []
         
-        row = table.iloc[0]
-        if all(k in row.index for k in ["主题", "问题", "答案"]):
-            qa = MemoryQA(
-                user_id=user_id,
-                topic=row["主题"],
-                question=row["问题"],
-                answer=row["答案"]
-            )
-            # 持久化存储
-            self.memory_db.update_with_indexes(
-                MemoryQA.__name__, 
-                qa.get_key(user_id, qa.topic, qa.question_hash), 
-                qa
-            )
-            # 更新到向量数据库
-            qa_data = qa.to_retrieve()
-            await self.retriver.add(
-                texts=qa_data["texts"],
-                user_id=qa.user_id, 
-                collection_name="memory", 
-                metadatas=qa_data["metadatas"]
-            )
+        # 收集所有提取的记忆
+        extracted_memories = []
+        
+        for i, row in table.iterrows():
+            if all(k in row.index for k in ["主题", "问题", "答案"]):
+                try:
+                    qa = MemoryQA(
+                        user_id=user_id,
+                        topic=row["主题"],
+                        question=row["问题"],
+                        answer=row["答案"]
+                    )
+                    
+                    # 持久化存储
+                    key = qa.get_key(user_id, qa.topic, qa.question_hash)
+                    logger.info(f"保存记忆到数据库: {key}")
+                    self.memory_db.update_with_indexes(
+                        MemoryQA.__name__, 
+                        key, 
+                        qa
+                    )
+                    
+                    # 更新到向量数据库
+                    logger.info(f"更新记忆到向量数据库")
+                    qa_data = qa.to_retrieve()
+                    await self.retriver.add(
+                        texts=qa_data["texts"],
+                        user_id=qa.user_id, 
+                        collection_name="memory", 
+                        metadatas=qa_data["metadatas"]
+                    )
+                    
+                    # 添加到返回结果
+                    extracted_memories.append(qa)
+                    logger.info(f"成功提取记忆: 主题={qa.topic}, 问题={qa.question}")
+                except Exception as e:
+                    logger.error(f"处理记忆行时出错: {e}")
+                    continue
+        
+        logger.info(f"记忆提取完成，共提取 {len(extracted_memories)} 条记忆")
+        return extracted_memories
 
-    async def retrieve(self, input_messages: List[Dict[str, Any]], user_id: str=None, threshold: float=1, top_k: int=10) -> List[MemoryQA]:
+    async def retrieve(self, input_messages: List[Dict[str, Any]], user_id: str=None, threshold: float=0.5, top_k: int=10) -> List[MemoryQA]:
         """检索记忆"""
         if user_id is None:
             user_id = "default"
