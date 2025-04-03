@@ -196,6 +196,7 @@ class ChatAgent():
         """
         if not messages:
             raise ValueError("messages 不能为空")
+        raw_messages = [*messages] if isinstance(messages, list) else messages
 
         # 标准化用户输入并提取用户最新消息
         input_created_at = datetime.now().timestamp()
@@ -225,7 +226,7 @@ class ChatAgent():
         messages, memory_table = self._inject_memory(messages, retrieved_memories)
         
         # 6. 保存用户输入
-        await self._save_user_input(messages, user_id, thread_id, dialogue_id, input_created_at)
+        await self._save_user_input(raw_messages, messages, user_id, thread_id, dialogue_id, input_created_at)
         
         # 7. 并行执行记忆提取和对话补全
         extract_task = asyncio.create_task(
@@ -256,7 +257,7 @@ class ChatAgent():
             # 记录最终的文本和工具调用结果
             if isinstance(chunk, dict):
                 if chunk.get("chunk_type") == ChunkType.AI_MESSAGE.value:
-                    final_text = chunk.get("content", "")
+                    final_text += chunk.get("content", "")
                     if chunk.get("tool_calls"):
                         final_tool_calls = {tc["tool_id"]: tc for tc in chunk.get("tool_calls", [])}
             
@@ -264,6 +265,7 @@ class ChatAgent():
             yield chunk
         
         # 10. 更新对话轮次状态
+        self._save_ai_output(final_text, final_tool_calls, user_id, thread_id)
         self._update_dialogue(dialogue, ai_content=final_text, completed=True)
         
         # 11. 等待记忆提取完成并处理结果
@@ -364,6 +366,7 @@ class ChatAgent():
     
     async def _save_user_input(
         self, 
+        raw_messages: List[Dict[str, Any]], 
         messages: List[Dict[str, Any]], 
         user_id: str=None, 
         thread_id: str=None,
@@ -377,7 +380,8 @@ class ChatAgent():
             dialogue_id=dialogue_id,
             chunk_type=ChunkType.USER_INPUT,
             role="user",
-            input_messages=messages,
+            input_messages=raw_messages,
+            patched_messages=messages,
             is_final=True,
             created_at=created_at or datetime.now().timestamp()
         )
@@ -590,7 +594,7 @@ class ChatAgent():
                         # 跳过AI增量块
                         if chunk.chunk_type == ChunkType.AI_DELTA:
                             continue
-                            
+                        
                         # 其他类型块直接使用model_dump
                         processed_chunks.append(chunk.model_dump())
                     

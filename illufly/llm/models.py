@@ -6,6 +6,7 @@ from enum import Enum
 import uuid
 import time
 import hashlib
+import json
 
 from ..rocksdb import IndexedRocksDB
 
@@ -162,6 +163,7 @@ class DialogueChunk(BaseModel):
     
     # 输入/输出内容（根据类型选择性填写）
     input_messages: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="用户输入的消息列表")
+    patched_messages: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="补充过的消息列表")
     output_text: Optional[str] = Field(default="", description="AI的输出内容")
     
     # 工具调用相关
@@ -202,9 +204,7 @@ class DialogueChunk(BaseModel):
         # 为不同类型的消息定制处理逻辑
         if self.chunk_type == ChunkType.USER_INPUT:
             # 用户输入
-            if not content and self.input_messages and len(self.input_messages) > 0:
-                last_message = self.input_messages[-1]
-                content = last_message.get('content', "")
+            content = self.input_messages[-1].get("content", json.dumps(self.input_messages, ensure_ascii=False))
                 
             return {
                 **common_fields,
