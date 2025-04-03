@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, computed_field, model_validator
 from datetime import datetime
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Optional
 
 from enum import Enum
 import uuid
@@ -96,68 +96,103 @@ class ChunkType(str, Enum):
     MEMORY_RETRIEVE = "memory_retrieve"  # 检索的记忆
     MEMORY_EXTRACT = "memory_extract"  # 提取的记忆
     TITLE_UPDATE = "title_update"  # 标题更新通知
+    TOOL_RESULT = "tool_result"  # 工具调用结果
 
 class DialougeChunk(BaseModel):
-    user_id: Union[str, None] = Field(default=None, description="用户ID")
-    thread_id: Union[str, None] = Field(default=None, description="线程ID")
-    dialouge_id: str = Field(
-        default_factory=lambda: f"{int(time.time()*1000):013d}-{time.monotonic_ns()%1000:03d}",
-        description="对话ID，格式：时间戳(毫秒)-单调递增值"
-    )
-    created_at: float = Field(
-        default_factory=lambda: datetime.now().timestamp(),
-        description="创建时间"
-    )
-    chunk_type: ChunkType = Field(default=ChunkType.USER_INPUT, description="角色")
-    input_messages: List[Dict[str, Any]] = Field(default=[], description="输入消息")
-    output_text: str = Field(default="", description="输出消息")
-    tool_calls: List[ToolCalling] = Field(default=[], description="工具调用")
-    memory: Union[MemoryQA, None] = Field(default=None, description="提取的记忆")
-
+    """对话块，用于记录对话的各个部分"""
     @classmethod
     def register_indexes(cls, db: IndexedRocksDB):
         db.register_model(cls.__name__, cls)
         db.register_index(cls.__name__, cls, "created_at")
-
+    
     @classmethod
     def get_prefix(cls, user_id: str, thread_id: str):
         return f"dlg-{user_id}-{thread_id}"
-
+    
     @classmethod
     def get_key(cls, user_id: str, thread_id: str, dialouge_id: str):
         return f"{cls.get_prefix(user_id, thread_id)}-{dialouge_id}"
+    
+    # 主键字段
+    user_id: Union[str, None] = Field(default=None, description="用户ID")
+    thread_id: Union[str, None] = Field(default=None, description="对话线程ID")
+    dialouge_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="对话片段ID")
+
+    # 基础字段
+    chunk_type: ChunkType = Field(..., description="对话片段类型")
+    role: Optional[str] = Field(default=None, description="对话角色")
+    created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="创建时间")
+    
+    # 输入/输出内容（根据类型选择性填写）
+    input_messages: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="用户输入的消息列表")
+    output_text: Optional[str] = Field(default="", description="AI 的输出内容")
+    
+    # 工具调用相关
+    tool_calls: Optional[List[ToolCalling]] = Field(default=None, description="工具调用列表")
+    tool_id: Optional[str] = Field(default=None, description="工具调用ID")
+    tool_name: Optional[str] = Field(default=None, description="工具名称")
+    
+    # 记忆相关
+    memory: Optional[MemoryQA] = Field(default=None, description="记忆问答对")
 
     def model_dump(self):
         common_fields = {
             "user_id": self.user_id,
             "thread_id": self.thread_id,
             "dialouge_id": self.dialouge_id,
-            "created_at": self.created_at,
+            "created_at": self.created_at
         }
+        
         if self.chunk_type == ChunkType.USER_INPUT:
             return {
                 **common_fields,
                 "chunk_type": self.chunk_type.value,
-                "input_messages": self.input_messages,
+                "input_messages": self.input_messages
             }
         elif self.chunk_type == ChunkType.AI_DELTA:
             return {
                 **common_fields,
                 "chunk_type": self.chunk_type.value,
-                "output_text": self.output_text,
+                "output_text": self.output_text
             }
         elif self.chunk_type == ChunkType.AI_MESSAGE:
-            return {
+            result = {
                 **common_fields,
                 "chunk_type": self.chunk_type.value,
-                "output_text": self.output_text,
-                "tool_calls": [v.model_dump() for v in self.tool_calls],
             }
-        elif self.chunk_type in [ChunkType.MEMORY_EXTRACT, ChunkType.MEMORY_RETRIEVE]:
+            
+            if self.output_text:
+                result["output_text"] = self.output_text
+                
+            if self.tool_calls:
+                result["tool_calls"] = [tc.model_dump() for tc in self.tool_calls]
+                
+            return result
+        elif self.chunk_type == ChunkType.MEMORY_RETRIEVE or self.chunk_type == ChunkType.MEMORY_EXTRACT:
             return {
                 **common_fields,
                 "chunk_type": self.chunk_type.value,
                 "memory": self.memory.model_dump() if self.memory else None,
+            }
+        elif self.chunk_type == ChunkType.TOOL_RESULT:
+            result = {
+                **common_fields,
+                "chunk_type": self.chunk_type.value,
+                "output_text": self.output_text,
+            }
+            
+            if self.tool_id:
+                result["tool_id"] = self.tool_id
+                
+            if self.tool_name:
+                result["tool_name"] = self.tool_name
+                
+            return result
+        elif self.chunk_type == ChunkType.TITLE_UPDATE:
+            return {
+                **common_fields,
+                "chunk_type": self.chunk_type.value,
+                "output_text": self.output_text
             }
         else:
             raise ValueError(f"Invalid chunk type: {self.chunk_type}")
