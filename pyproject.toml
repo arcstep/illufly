@@ -9,7 +9,7 @@ license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<3.13"
 pydantic = "^2.10.4"
 python-dotenv = "^1.0.1"
 asyncio = "^3.4.3"
@@ -35,6 +35,10 @@ accelerate = "^1.5.2"
 litellm = "^1.63.14"
 mcp = "^1.6.0"
 docling = "^2.28.4"
+misaki = {version = ">=0.8.1", extras = ["zh"]}
+kokoro = ">=0.8.1"
+soundfile = "^0.13.1"
+tqdm = "^4.67.1"
 
 [tool.poetry.group.dev.dependencies]
 openai = "^1.59.6"
