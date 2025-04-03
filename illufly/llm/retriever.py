@@ -72,6 +72,7 @@ class ChromaRetriever():
         metadatas: Union[str, List[Dict[str, Any]]] = None,
         embedding_config: Dict[str, Any] = {},
         collection_config: Dict[str, Any] = {},
+        ids: List[str] = None
     ) -> None:
         """
         添加文本，如果存在就更新。
@@ -79,9 +80,11 @@ class ChromaRetriever():
         Args:
             collection_name: 用来区分不同的内容集合，默认为 default
             texts: 检索的文本内容, 如果是QA记忆则应分别将问和答作为 texts 编码保存到向量数据库中
-            ids: 使用文本的哈希值作为ID
             user_id: 用来区分不同的用户, 放入metadata中, 查询时通过元数据过滤
             metadatas: 除了用户ID, 元数据中还可以包含记忆的主题、问题和答案
+            embedding_config: 嵌入向量配置
+            collection_config: 集合配置
+            ids: 文档的唯一标识符，如果不提供则使用文本的哈希值
         """
         collection_name = collection_name or "default"
         collection_config = {**self._default_collection_metadata(), **collection_config}
@@ -110,7 +113,12 @@ class ChromaRetriever():
         # 获取文本索引
         resp = await self.llm.aembedding(texts, **embedding_config)
         embeddings = [e['embedding'] for e in resp.data]
-        ids = self.get_ids(texts)
+        
+        # 如果没有提供ids，则使用文本哈希值作为ids
+        if ids is None:
+            ids = self.get_ids(texts)
+        elif len(ids) != len(texts):
+            raise ValueError("ids 的长度必须与 texts 的长度相同")
 
         logger.info(f"\nchroma add >>> {ids}, {texts}, {metadatas}")
         return collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)

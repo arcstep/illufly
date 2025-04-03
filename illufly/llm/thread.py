@@ -21,10 +21,17 @@ class ThreadManager():
         Thread.register_indexes(self.db)
 
     def all_threads(self, user_id: str):
-        """获取所有对话"""
+        """获取所有对话，如果没有线程则自动创建一个"""
         threads = self.db.values(
             prefix=Thread.get_prefix(user_id)
         )
+        
+        # 如果用户没有任何对话线程，自动创建一个
+        if not threads:
+            logging.info(f"用户 {user_id} 没有对话线程，自动创建一个新线程")
+            new_thread = self.new_thread(user_id)
+            threads = [new_thread]
+            
         return sorted(threads, key=lambda x: x.created_at)
     
     def new_thread(self, user_id: str):

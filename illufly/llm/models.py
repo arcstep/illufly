@@ -15,16 +15,11 @@ class MemoryQA(BaseModel):
     """
     user_id: Union[str, None] = Field(default=None, description="用户ID")
     topic: str = Field(default="", description="话题")
-    question_hash: str = Field(default="", description="问题的hash值")
     question: str = Field(default="", description="问题")
     answer: str = Field(default="", description="答案")
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="创建时间")
-
-    def model_post_init(self, __context: Any) -> None:
-        """Pydantic v2 初始化后处理方法"""
-        super().model_post_init(__context)
-        # 计算并设置问题哈希值
-        self.question_hash = hashlib.sha256(self.question.encode("utf-8")).hexdigest()
+    distance: Optional[float] = Field(default=None, description="搜索距离，越小越相似")
+    memory_id: str = Field(default_factory=lambda: uuid.uuid4().hex, description="记忆唯一ID")
 
     @classmethod
     def register_indexes(cls, db: IndexedRocksDB):
@@ -37,30 +32,30 @@ class MemoryQA(BaseModel):
         return f"mem-{user_id}"
 
     @classmethod
-    def get_key(cls, user_id: str, topic: str, question_hash: str):
-        return f"{cls.get_prefix(user_id)}-{topic}-{question_hash}"
+    def get_key(cls, user_id: str, memory_id: str):
+        return f"{cls.get_prefix(user_id)}-{memory_id}"
 
     def to_retrieve(self):
         return {
             "user_id": self.user_id,
-            "texts": [
-                self.question,
-                self.answer,
-            ],
+            "texts": [self.question, self.answer],
             "metadatas": [
                 {
                     "topic": self.topic,
                     "question": self.question,
                     "answer": self.answer,
                     "created_at": self.created_at,
+                    "memory_id": self.memory_id
                 },
                 {
                     "topic": self.topic,
                     "question": self.question,
                     "answer": self.answer,
                     "created_at": self.created_at,
+                    "memory_id": self.memory_id
                 }
-            ]
+            ],
+            "ids": [self.memory_id, self.memory_id]
         }
 
 class Thread(BaseModel):

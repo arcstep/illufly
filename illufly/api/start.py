@@ -220,3 +220,21 @@ def mount_agent_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager:
             summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
             description=getattr(handler, "__doc__", None),
             tags=["Illufly Backend - Chat"])
+            
+    # Memory 路由
+    from .memory import create_memory_endpoints
+    memory_handlers = create_memory_endpoints(
+        app=app,
+        agent=agent,
+        tokens_manager=tokens_manager,
+        prefix=prefix
+    )
+    for (method, path, handler) in memory_handlers:
+        app.add_api_route(
+            path=path,
+            endpoint=handler,
+            methods=[method],
+            response_model=getattr(handler, "__annotations__", {}).get("return"),
+            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
+            description=getattr(handler, "__doc__", None),
+            tags=["Illufly Backend - Memory"])

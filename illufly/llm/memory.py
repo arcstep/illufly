@@ -2,8 +2,8 @@ import pandas as pd
 import re
 import html
 from datetime import datetime
-
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
+import uuid
 
 from ..prompt import PromptTemplate
 from ..rocksdb import default_rocksdb, IndexedRocksDB
@@ -60,21 +60,145 @@ class Memory():
 
     async def init_retriever(self):
         """初始化记忆"""
+        
+        # 将所有记忆加载到向量库
         for qa in self.memory_db.values(prefix=ROCKSDB_PREFIX):
-            qa_data = qa.to_retrieve()
-            await self.retriver.add(
-                texts=qa_data["texts"],
-                user_id=qa.user_id,
-                collection_name=CHROMA_COLLECTION,
-                metadatas=qa_data["metadatas"]
-            )
-    
+            try:
+                qa_data = qa.to_retrieve()
+                await self.retriver.add(
+                    texts=qa_data["texts"],
+                    user_id=qa.user_id,
+                    collection_name=CHROMA_COLLECTION,
+                    metadatas=qa_data["metadatas"],
+                    ids=qa_data.get("ids", [])
+                )
+            except Exception as e:
+                logger.error(f"初始化记忆时出错: {e}, 记忆: {qa}")
+                continue
+
     def all_memory(self, user_id: str=None, limit: int=100) -> List[MemoryQA]:
         """获取所有记忆"""
         if user_id is None:
             return self.memory_db.values(prefix=ROCKSDB_PREFIX, limit=limit)
         else:
             return self.memory_db.values(prefix=MemoryQA.get_prefix(user_id), limit=limit)
+    
+    async def update_memory(self, user_id: str, memory_id: str, topic: str, question: str, answer: str) -> MemoryQA:
+        """更新记忆
+        
+        Args:
+            user_id: 用户ID
+            memory_id: 记忆ID，用于唯一标识记忆
+            topic: 更新后的主题
+            question: 更新后的问题
+            answer: 更新后的答案
+            
+        Returns:
+            MemoryQA: 更新后的记忆对象
+        """
+        if user_id is None:
+            raise ValueError("用户ID不能为空")
+        
+        if topic is None or topic.strip() == "":
+            raise ValueError("主题不能为空")
+            
+        # 首先尝试获取原始记忆
+        memory_key = MemoryQA.get_key(user_id, memory_id)
+        original_memory = self.memory_db.get(memory_key)
+                
+        if not original_memory:
+            logger.error(f"未找到要更新的记忆: user_id={user_id}, memory_id={memory_id}")
+            raise ValueError(f"未找到记忆: {memory_id}")
+            
+        # 准备更新的记忆对象（保留原始memory_id和created_at）
+        updated_memory = MemoryQA(
+            user_id=user_id,
+            memory_id=memory_id,  # 保留原始memory_id
+            topic=topic,
+            question=question,
+            answer=answer,
+            created_at=original_memory.created_at  # 保留原始创建时间
+        )
+        
+        # 事务性更新：保证RocksDB和向量数据库的一致性
+        try:
+            # 1. 从向量数据库删除旧记录
+            await self.retriver.delete(
+                ids=[memory_id, memory_id],
+                collection_name=CHROMA_COLLECTION
+            )
+            logger.info(f"成功从向量数据库删除旧记忆: {memory_id}")
+            
+            # 2. 添加新记录到向量数据库
+            qa_data = updated_memory.to_retrieve()
+            await self.retriver.add(
+                texts=qa_data["texts"],
+                user_id=updated_memory.user_id,
+                collection_name=CHROMA_COLLECTION,
+                metadatas=qa_data["metadatas"],
+                ids=qa_data["ids"]
+            )
+            logger.info(f"成功添加新记忆到向量数据库")
+            
+            # 3. 更新RocksDB
+            self.memory_db.update_with_indexes(
+                MemoryQA.__name__,
+                memory_key,
+                updated_memory
+            )
+            logger.info(f"成功更新RocksDB中的记忆: {memory_key}")
+            
+            return updated_memory
+            
+        except Exception as e:
+            logger.error(f"更新记忆时出错: {e}")
+            logger.error(f"无法同步更新记忆: {memory_key}")
+            # 在生产环境中，可能需要实现回滚机制或发送告警
+            raise RuntimeError(f"更新记忆失败: {str(e)}")
+    
+    async def delete_memory(self, user_id: str, memory_id: str) -> bool:
+        """删除记忆
+        
+        Args:
+            user_id: 用户ID
+            memory_id: 记忆ID，用于唯一标识记忆
+            
+        Returns:
+            bool: 是否成功删除
+        """
+        if user_id is None:
+            raise ValueError("用户ID不能为空")
+        
+        if memory_id is None or memory_id.strip() == "":
+            raise ValueError("记忆ID不能为空")
+            
+        # 构建记忆key
+        memory_key = MemoryQA.get_key(user_id, memory_id)
+            
+        # 获取记忆对象
+        memory_to_delete = self.memory_db.get(memory_key)
+        if not memory_to_delete:
+            logger.warning(f"未找到要删除的记忆: key={memory_key}")
+            return False
+            
+        # 事务性删除：先尝试从向量数据库删除
+        try:
+            await self.retriver.delete(
+                ids=[memory_id, memory_id],
+                collection_name=CHROMA_COLLECTION
+            )
+            logger.info(f"成功从向量数据库删除记忆: {memory_id}")
+            
+            # 删除成功后，从RocksDB删除
+            self.memory_db.delete(memory_key)
+            logger.info(f"成功从RocksDB删除记忆: {memory_key}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"删除记忆时出错: {e}")
+            logger.error(f"无法同步删除记忆: {memory_key}")
+            # 在生产环境中，可能需要实现回滚机制或发送告警
+            return False
     
     async def extract(self, input_messages: List[Dict[str, Any]], model: str, existing_memory: str=None, user_id: str=None, **kwargs) -> List[MemoryQA]:
         """提取记忆"""
@@ -155,7 +279,7 @@ class Memory():
                     )
                     
                     # 持久化存储
-                    key = qa.get_key(user_id, qa.topic, qa.question_hash)
+                    key = MemoryQA.get_key(user_id, qa.memory_id)
                     logger.info(f"保存记忆到数据库: {key}")
                     self.memory_db.update_with_indexes(
                         MemoryQA.__name__, 
@@ -170,7 +294,8 @@ class Memory():
                         texts=qa_data["texts"],
                         user_id=qa.user_id, 
                         collection_name="memory", 
-                        metadatas=qa_data["metadatas"]
+                        metadatas=qa_data["metadatas"],
+                        ids=qa_data["ids"]
                     )
                     
                     # 添加到返回结果
@@ -183,23 +308,52 @@ class Memory():
         logger.info(f"记忆提取完成，共提取 {len(extracted_memories)} 条记忆")
         return extracted_memories
 
-    async def retrieve(self, input_messages: List[Dict[str, Any]], user_id: str=None, threshold: float=0.5, top_k: int=10) -> List[MemoryQA]:
-        """检索记忆"""
+    async def retrieve(self, input_messages: Union[List[Dict[str, Any]], str], user_id: str=None, threshold: float=1.5, top_k: int=15) -> List[MemoryQA]:
+        """检索记忆或搜索记忆
+        
+        可以接受消息列表或单个查询文本作为输入
+        
+        Args:
+            input_messages: 可以是消息列表或单个查询文本
+            user_id: 用户ID
+            threshold: 距离阈值，Chroma余弦距离范围为0-2，越小越相似，默认1.5
+            top_k: 返回结果数量，默认15个
+            
+        Returns:
+            List[MemoryQA]: 检索或搜索结果列表，每个结果附带distance属性
+        """
         if user_id is None:
             user_id = "default"
+            
+        # 如果是单个字符串，直接作为查询使用
+        if isinstance(input_messages, str):
+            query_text = input_messages
+            if not query_text.strip():
+                return []
+        else:
+            # 否则按照消息列表处理
+            query_text = from_messages_to_text(input_messages)
 
         results = await self.retriver.query(
-            texts=[from_messages_to_text(input_messages)],
+            texts=[query_text],
             user_id=user_id,
             collection_name=CHROMA_COLLECTION,
             threshold=threshold,
             query_config={"n_results": top_k}
         )
         
+        # 如果没有结果，返回空列表
+        if not results or not results[0] or not results[0]["metadatas"]:
+            return []
+            
+        metadatas = results[0]["metadatas"]
+        distances = results[0].get("distances", [])
+        
         # 创建MemoryQA对象并去重
         memory_objects = []
         seen_keys = set()
-        for meta in results[0]["metadatas"]:
+        
+        for i, meta in enumerate(metadatas):
             key = f"{meta['topic']}:{meta['question']}"
             if key not in seen_keys:
                 memory = MemoryQA(
@@ -207,10 +361,17 @@ class Memory():
                     topic=meta["topic"],
                     question=meta["question"],
                     answer=meta["answer"],
-                    created_at=meta.get("created_at", datetime.now().timestamp())
+                    created_at=meta.get("created_at", datetime.now().timestamp()),
+                    distance=distances[i] if distances and i < len(distances) else None,
+                    memory_id=meta.get("memory_id", results[0]["ids"][i] if results[0].get("ids") and i < len(results[0]["ids"]) else uuid.uuid4().hex)
                 )
+                
                 memory_objects.append(memory)
                 seen_keys.add(key)
+        
+        # 按距离排序，最相似的排前面
+        if distances:
+            memory_objects.sort(key=lambda x: getattr(x, "distance", float('inf')))
         
         logger.info(f"\nmemory.retrieve >>> {len(memory_objects)} 个记忆片段")
         return memory_objects

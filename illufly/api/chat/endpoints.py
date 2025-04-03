@@ -105,17 +105,10 @@ def create_chat_endpoints(
             }
         )
     
-    @handle_errors()
-    async def all_memory(
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
-    ):
-        return agent.memory.all_memory(token_claims['user_id'])
-
     return [
         (HttpMethod.POST, f"{prefix}/chat/threads", new_thread),
         (HttpMethod.GET,  f"{prefix}/chat/threads", all_threads),
         (HttpMethod.GET,  f"{prefix}/chat/thread/{{thread_id}}/messages", load_messages),
         (HttpMethod.GET,  f"{prefix}/chat/models", models),
         (HttpMethod.POST, f"{prefix}/chat/complete", chat),
-        (HttpMethod.GET,  f"{prefix}/memory", all_memory)
     ]
