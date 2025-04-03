@@ -18,6 +18,38 @@ ROCKSDB_PREFIX = "mem"
 CHROMA_COLLECTION = "memory"
 DEFAULT_FEEDBACK_PROMPT = "feedback"
 
+def from_messages_to_text(input_messages: List[Dict[str, Any]]) -> str:
+    """将消息转换为文本
+    
+    处理不同类型的消息，安全提取内容
+    """
+    result = []
+    for m in input_messages:
+        role = m.get('role', 'unknown')
+        
+        # 安全获取内容，处理不同类型的消息
+        if 'content' in m:
+            content = str(m['content'])
+        elif 'chunk_type' in m and m.get('chunk_type') == 'memory_retrieve':
+            # 记忆检索消息可能包含memory对象而非content
+            mem = m.get('memory', {})
+            content = f"记忆: {mem.get('topic', '')}/{mem.get('question', '')}"
+        elif 'chunk_type' in m and m.get('chunk_type') == 'memory_extract':
+            # 记忆提取消息可能包含memory对象而非content
+            mem = m.get('memory', {})
+            content = f"提取: {mem.get('topic', '')}/{mem.get('question', '')}"
+        elif 'tool_calls' in m:
+            # 工具调用消息
+            tool_calls = m.get('tool_calls', [])
+            content = f"工具调用: {', '.join([tc.get('name', 'unknown') for tc in tool_calls])}"
+        else:
+            # 处理其他类型的消息或缺少内容的消息
+            content = m.get('output_text', '<无内容>')
+        
+        result.append(f"{role}: {content}")
+        
+    return "\n".join(result)
+
 class Memory():
     """记忆"""
     def __init__(self, llm: LiteLLM, memory_db: IndexedRocksDB, retriver: ChromaRetriever=None):
@@ -60,8 +92,25 @@ class Memory():
         })
 
         try:
-            resp = await self.llm.acompletion(feedback_input, stream=False, model=model, **kwargs)
-            feedback_text = resp.choices[0].message.content
+            # 确保使用await调用acompletion
+            resp = await self.llm.acompletion(
+                messages=feedback_input, 
+                model=model, 
+                stream=False, 
+                **kwargs
+            )
+            
+            # 安全地提取返回内容
+            feedback_text = ""
+            if (hasattr(resp, 'choices') and 
+                resp.choices and 
+                hasattr(resp.choices[0], 'message') and 
+                hasattr(resp.choices[0].message, 'content')):
+                feedback_text = resp.choices[0].message.content
+            else:
+                logger.warning("\nmemory.extract >>> 无法从响应中提取文本")
+                return
+                
         except Exception as e:
             logger.error(f"\nfeedback_input >>> {feedback_input}\n\nmemory.extract >>> [{model}] 提取记忆失败: {e}")
             return
@@ -112,7 +161,7 @@ class Memory():
             user_id = "default"
 
         results = await self.retriver.query(
-            texts=[self.from_messages_to_text(input_messages)],
+            texts=[from_messages_to_text(input_messages)],
             user_id=user_id,
             collection_name=CHROMA_COLLECTION,
             threshold=threshold,
@@ -161,7 +210,7 @@ class Memory():
 
     def from_messages_to_text(self, input_messages: List[Dict[str, Any]]) -> str:
         """将消息转换为文本"""
-        return "\n".join([f"{m['role']}: {str(m['content'])}" for m in input_messages])
+        return from_messages_to_text(input_messages)
 
     def safe_extract_markdown_tables(self, md_text: str) -> List[pd.DataFrame]:
         """安全提取Markdown表格为结构化数据（支持多表）"""

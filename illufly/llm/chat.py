@@ -3,8 +3,8 @@ from pydantic import BaseModel, Field
 
 from ..rocksdb import default_rocksdb, IndexedRocksDB
 from .base import LiteLLM
-from .models import ChunkType, DialougeChunk, ToolCalling, MemoryQA
-from .memory import Memory
+from .models import ChunkType, DialougeChunk, ToolCall, MemoryQA
+from .memory import Memory, from_messages_to_text
 from .retriever import ChromaRetriever
 from .thread import ThreadManager
 from .base_tool import BaseTool
@@ -59,6 +59,7 @@ class ChatAgent():
             raise ValueError("messages 不能为空")
 
         # 标准化用户输入
+        input_created_at = datetime.now().timestamp()
         messages = self._normalize_input_messages(messages)
         
         # 1. 加载历史消息
@@ -80,7 +81,6 @@ class ChatAgent():
         messages, memory_table = self._inject_memory(messages, retrieved_memories)
         
         # 5. 保存用户输入
-        input_created_at = datetime.now().timestamp()
         await self._save_user_input(messages, user_id, thread_id, input_created_at)
         
         # 6. 并行执行记忆提取和对话补全
@@ -213,7 +213,7 @@ class ChatAgent():
     async def _save_ai_output(
         self, 
         final_text: str, 
-        final_tool_calls: Dict[str, ToolCalling], 
+        final_tool_calls: Dict[str, ToolCall], 
         user_id: str=None, 
         thread_id: str=None
     ) -> None:
@@ -276,9 +276,19 @@ class ChatAgent():
         ]
         
         try:
-            # 调用LLM生成标题
-            title_resp = await self.llm.acompletion(title_prompt, model=model, stream=False)
-            if title_resp and title_resp.choices and title_resp.choices[0].message.content:
+            # 调用LLM生成标题，确保使用await
+            title_resp = await self.llm.acompletion(
+                messages=title_prompt, 
+                model=model, 
+                stream=False
+            )
+            
+            # 从acompletion响应中提取标题
+            if (hasattr(title_resp, 'choices') and 
+                title_resp.choices and 
+                hasattr(title_resp.choices[0], 'message') and 
+                hasattr(title_resp.choices[0].message, 'content')):
+                
                 title = title_resp.choices[0].message.content.strip()
                 # 限制标题长度
                 if len(title) > 20:
@@ -316,120 +326,420 @@ class ChatAgent():
             )
 
     def load_history(self, user_id: str, thread_id: str, limit: int = 100):
-        """加载历史对话"""
+        """加载历史对话，并确保消息格式与前端预期一致"""
         prefix = DialougeChunk.get_prefix(user_id, thread_id)
         logger.info(f"加载历史对话 - 用户ID: {user_id}, 线程ID: {thread_id}, 前缀: {prefix}, 限制: {limit}")
         
-        resp = sorted(
-            self.db.values(
-                prefix=prefix,
-                limit=limit,
-                reverse=True
-            ),
-            key=lambda x: x.created_at
-        )
-        messages = []
-        logger.info(f"找到 {len(resp)} 条历史对话记录 ...")
-        for m in resp:
-            logger.info(f"\nload_history >>> {m}")
-            if m.chunk_type == ChunkType.USER_INPUT:
-                messages.append({
-                    "role": "user",
-                    "content": m.input_messages[-1]['content'] if m.input_messages else "",
-                    "chunk_type": m.chunk_type.value,
-                    "created_at": m.created_at,
-                    "dialouge_id": m.dialouge_id
-                })
-            elif m.chunk_type == ChunkType.AI_MESSAGE:
-                messages.append({
-                    "role": "assistant",
-                    "content": m.output_text,
-                    "chunk_type": m.chunk_type.value,
-                    "created_at": m.created_at,
-                    "dialouge_id": m.dialouge_id
-                })
-            elif m.chunk_type == ChunkType.MEMORY_RETRIEVE:
-                messages.append({
-                    "role": "assistant", 
-                    "chunk_type": m.chunk_type.value,
-                    "memory": m.memory.model_dump() if m.memory else None,
-                    "created_at": m.created_at,
-                    "dialouge_id": m.dialouge_id
-                })
-            elif m.chunk_type == ChunkType.MEMORY_EXTRACT:
-                messages.append({
-                    "role": "assistant",
-                    "chunk_type": m.chunk_type.value, 
-                    "memory": m.memory.model_dump() if m.memory else None,
-                    "created_at": m.created_at,
-                    "dialouge_id": m.dialouge_id
-                })
-        
-        logger.info(f"返回 {len(messages)} 条格式化消息")
-        return messages
+        try:
+            resp = sorted(
+                self.db.values(
+                    prefix=prefix,
+                    limit=limit,
+                    reverse=True
+                ),
+                key=lambda x: x.created_at
+            )
+            messages = []
+            logger.info(f"找到 {len(resp)} 条历史对话记录 ...")
+            
+            for m in resp:
+                logger.info(f"\nload_history >>> {m}")
+                try:
+                    # 构建基本消息结构
+                    base_message = {
+                        "dialouge_id": m.dialouge_id,
+                        "created_at": m.created_at,
+                        "chunk_type": m.chunk_type.value
+                    }
+                    
+                    if m.chunk_type == ChunkType.USER_INPUT:
+                        # 用户输入消息
+                        if not m.input_messages or len(m.input_messages) == 0:
+                            logger.warning(f"USER_INPUT没有输入消息: {m}")
+                            continue
+                            
+                        content = ""
+                        if m.input_messages and len(m.input_messages) > 0:
+                            last_message = m.input_messages[-1]
+                            content = last_message.get('content', "")
+                            
+                        messages.append({
+                            **base_message,
+                            "role": "user",
+                            "content": content
+                        })
+                        
+                    elif m.chunk_type == ChunkType.AI_MESSAGE:
+                        # AI消息 - 可能是文本或工具调用
+                        content = m.output_text if m.output_text else ""
+                        
+                        # 检查是否有工具调用
+                        if m.tool_calls and len(m.tool_calls) > 0:
+                            # 工具调用消息，按前端预期格式处理
+                            tool_info = ", ".join([f"{tc.name}" for tc in m.tool_calls])
+                            content = f"工具调用: {tool_info}" if not content else content
+                        
+                        messages.append({
+                            **base_message,
+                            "role": "assistant",
+                            "content": content
+                        })
+                        
+                    elif m.chunk_type == ChunkType.MEMORY_RETRIEVE:
+                        # 记忆检索消息 - 需要包含memory对象
+                        if not m.memory:
+                            logger.warning(f"MEMORY_RETRIEVE没有记忆数据: {m}")
+                            continue
+                            
+                        mem_data = m.memory.model_dump()
+                        # 构建符合前端期望的content
+                        content = f"记忆: {mem_data.get('topic', '')}/{mem_data.get('question', '')}"
+                        
+                        messages.append({
+                            **base_message,
+                            "role": "assistant",
+                            "content": content,
+                            "memory": mem_data
+                        })
+                        
+                    elif m.chunk_type == ChunkType.MEMORY_EXTRACT:
+                        # 记忆提取消息 - 需要包含memory对象
+                        if not m.memory:
+                            logger.warning(f"MEMORY_EXTRACT没有记忆数据: {m}")
+                            continue
+                            
+                        mem_data = m.memory.model_dump()
+                        # 构建符合前端期望的content
+                        content = f"提取记忆: {mem_data.get('topic', '')}/{mem_data.get('question', '')}"
+                        
+                        messages.append({
+                            **base_message,
+                            "role": "assistant",
+                            "content": content,
+                            "memory": mem_data
+                        })
+                        
+                    elif m.chunk_type == ChunkType.TOOL_RESULT:
+                        # 工具结果消息
+                        content = m.output_text if m.output_text else ""
+                        tool_name = m.tool_name if m.tool_name else "未知工具"
+                        
+                        messages.append({
+                            **base_message,
+                            "role": "tool",
+                            "name": tool_name,
+                            "tool_call_id": m.tool_id,
+                            "content": content
+                        })
+                        
+                    elif m.chunk_type == ChunkType.TITLE_UPDATE:
+                        # 标题更新通知消息
+                        content = m.output_text if m.output_text else ""
+                        messages.append({
+                            **base_message,
+                            "role": "system", 
+                            "content": content
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"处理历史消息错误: {e}, 消息: {m}")
+                    continue
+            
+            # 按时间顺序排序消息
+            messages.sort(key=lambda x: x.get("created_at", 0))
+            logger.info(f"返回 {len(messages)} 条格式化消息")
+            return messages
+            
+        except Exception as e:
+            logger.error(f"加载历史对话失败: {e}")
+            return []
 
-    def _load_recent_messages(self, user_id: str=None, thread_id: str=None) -> str:
+    def _load_recent_messages(self, user_id: str=None, thread_id: str=None) -> List[Dict[str, Any]]:
         """加载最近的消息"""
         if not user_id or not thread_id:
-            return ""
+            logger.info("用户ID或线程ID为空，返回空历史消息")
+            return []
         return self.load_history(user_id, thread_id, limit=self.recent_messages_count)
 
-class LLMResponseProcessor:
-    """LLM响应处理器，封装对LLM响应流的处理逻辑"""
-    def __init__(self, llm: LiteLLM, model: str, user_id: str=None, thread_id: str=None):
-        self.llm = llm
-        self.model = model
-        self.user_id = user_id
-        self.thread_id = thread_id
-        self.final_text = ""
-        self.final_tool_calls = {}
-        self.last_tool_call_id = None
-    
-    async def process_response(self, messages: List[Dict[str, Any]], **kwargs) -> AsyncGenerator[Tuple[Dict[str, Any], str, Dict[str, Any]], None]:
-        """处理LLM响应"""
-        logger.info(f"\nchat completion [{self.model}] >>> {messages}")
+    async def _retrieve_memory(
+        self, 
+        user_id: str, 
+        input_text: str, 
+        k: int = 5
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """检索记忆
         
-        try:
-            resp = await self.llm.acompletion(messages, model=self.model, stream=True, **kwargs)
-        except Exception as e:
-            logger.error(f"\nchat completion [{self.model}] >>> {messages}\n\nerror >>> {e}")
+        从记忆中检索与输入文本相关的内容
+        
+        Args:
+            user_id: 用户ID
+            input_text: 查询文本
+            k: 返回记忆数量
+            
+        Yields:
+            包含记忆信息的消息块
+        """
+        if not self.memory:
             return
         
-        first_chunk = None
+        memory_results = await self.memory.retrieve(
+            user_id=user_id,
+            query=input_text,
+            k=k
+        )
         
-        async for chunk in resp:
-            ai_output = chunk.choices[0].delta if chunk.choices else None
+        if not memory_results:
+            return
+        
+        # 对每个记忆结果生成一个块
+        for memory in memory_results:
+            memory_text = f"主题: {memory.topic}\n问题: {memory.question}\n回答: {memory.answer}"
+            memory_retrieve_chunk = DialougeChunk(
+                user_id=user_id,
+                chunk_type=ChunkType.MEMORY_RETRIEVE,
+                output_text=memory_text,
+                memory=memory
+            )
             
-            # 处理文本输出
-            if ai_output and ai_output.content:
-                if not first_chunk:
-                    first_chunk = DialougeChunk(
+            # 保存记忆检索块
+            self.save_dialog_chunk(memory_retrieve_chunk)
+            
+            # 生成前端期望的格式
+            memory_data = {
+                "role": "assistant",
+                "content": memory_text,
+                "chunk_type": ChunkType.MEMORY_RETRIEVE.value,
+                "created_at": memory_retrieve_chunk.created_at,
+                "dialouge_id": memory_retrieve_chunk.dialouge_id,
+                "memory": memory.model_dump()
+            }
+            
+            yield memory_data
+    
+    async def _extract_memory(
+        self, 
+        user_id: str, 
+        messages: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """从对话中提取记忆
+        
+        将对话转换为记忆并存储
+        
+        Args:
+            user_id: 用户ID
+            messages: 消息列表
+            
+        Returns:
+            包含记忆信息的消息块，如果没有提取到记忆则返回None
+        """
+        if not self.memory or not messages:
+            return None
+        
+        # 将消息转换为文本
+        text = from_messages_to_text(messages)
+        
+        # 提取记忆
+        memory = await self.memory.extract(
+            user_id=user_id,
+            text=text
+        )
+        
+        if not memory:
+            return None
+        
+        # 创建记忆提取块
+        memory_text = f"我记住了:\n主题: {memory.topic}\n问题: {memory.question}\n回答: {memory.answer}"
+        memory_extract_chunk = DialougeChunk(
+            user_id=user_id,
+            chunk_type=ChunkType.MEMORY_EXTRACT,
+            output_text=memory_text,
+            memory=memory
+        )
+        
+        # 保存记忆提取块
+        self.save_dialog_chunk(memory_extract_chunk)
+        
+        # 生成前端期望的格式
+        memory_data = {
+            "role": "assistant",
+            "content": memory_text,
+            "chunk_type": ChunkType.MEMORY_EXTRACT.value,
+            "created_at": memory_extract_chunk.created_at,
+            "dialouge_id": memory_extract_chunk.dialouge_id,
+            "memory": memory.model_dump()
+        }
+        
+        return memory_data
+
+class LLMResponseProcessor:
+    """LLM响应处理器，将LLM响应处理为增量块和工具调用"""
+    def __init__(
+        self, 
+        llm: LiteLLM,
+        model: str,
+        user_id: str=None,
+        thread_id: str=None,
+        save_chunk_callback=None
+    ):
+        self.llm = llm
+        self.model = model
+        self.user_id = user_id 
+        self.thread_id = thread_id
+        self.save_chunk_callback = save_chunk_callback
+    
+    async def process_response(
+        self, 
+        messages: List[Dict[str, Any]], 
+        stream: bool = True,
+        **kwargs
+    ) -> AsyncGenerator[Tuple[Dict[str, Any], str, Dict[str, ToolCall]], None]:
+        """处理LLM响应
+        
+        Args:
+            messages: 消息列表
+            stream: 是否使用流式响应
+            
+        Yields:
+            chunk: 增量消息块
+            text: 到目前为止累积的文本
+            tool_calls: 到目前为止累积的工具调用
+        """
+        # 对于流式响应
+        if stream:
+            text_buffer = ""
+            tool_calls = {}  # 使用字典存储工具调用，以工具ID为键
+            
+            # 先获取协程
+            response_coroutine = self.llm.acompletion(
+                messages=messages,
+                model=self.model,
+                stream=True,
+                **kwargs
+            )
+            
+            # 先await协程获取响应对象
+            response = await response_coroutine
+            
+            # 然后使用async for迭代结果
+            async for chunk in response:
+                # 处理acompletion返回的格式
+                ai_output = chunk.choices[0].delta if hasattr(chunk, 'choices') else None
+                
+                # 处理文本内容
+                content = ""
+                if ai_output and hasattr(ai_output, 'content') and ai_output.content:
+                    content = ai_output.content
+                
+                # 用于检查是否有工具调用的标志
+                has_tool_calls = False
+                
+                # 处理工具调用
+                if ai_output and hasattr(ai_output, 'tool_calls') and ai_output.tool_calls:
+                    has_tool_calls = True
+                    for tc in ai_output.tool_calls:
+                        tc_id = tc.id
+                        tc_func = tc.function
+                        
+                        # 如果是新的工具调用，初始化工具调用对象
+                        if tc_id and tc_id not in tool_calls:
+                            tool_calls[tc_id] = ToolCall(
+                                tool_id=tc_id,
+                                name=tc_func.name or "",
+                                arguments=""
+                            )
+                        
+                        # 如果工具调用已存在，更新其参数
+                        if tc_id and tc_id in tool_calls:
+                            if hasattr(tc_func, 'name') and tc_func.name:
+                                tool_calls[tc_id].name = tc_func.name
+                            
+                            if hasattr(tc_func, 'arguments') and tc_func.arguments:
+                                tool_calls[tc_id].arguments += tc_func.arguments
+                
+                # 只有当有内容或工具调用时才创建增量块
+                if content or has_tool_calls:
+                    # 更新文本缓冲区
+                    if content:
+                        text_buffer += content
+                    
+                    # 创建增量块
+                    delta_chunk = DialougeChunk(
                         user_id=self.user_id,
                         thread_id=self.thread_id,
                         chunk_type=ChunkType.AI_DELTA,
-                        output_text=ai_output.content
+                        output_text=content
                     )
-                else:
-                    first_chunk.output_text = ai_output.content
-                self.final_text += ai_output.content
-                # 返回当前块、当前累积的文本和工具调用
-                yield first_chunk.model_dump(), self.final_text, self.final_tool_calls
+                    
+                    # 保存增量块
+                    if self.save_chunk_callback:
+                        self.save_chunk_callback(delta_chunk)
+                    
+                    # 生成前端期望的格式
+                    chunk_data = {
+                        "role": "assistant",
+                        "content": content,
+                        "chunk_type": ChunkType.AI_DELTA.value,
+                        "created_at": delta_chunk.created_at,
+                        "dialouge_id": delta_chunk.dialouge_id
+                    }
+                    
+                    # 只有在实际有内容或工具调用时才yield结果
+                    yield chunk_data, text_buffer, tool_calls
+        
+        # 对于非流式响应
+        else:
+            response = await self.llm.acompletion(
+                messages=messages,
+                model=self.model,
+                stream=False,
+                **kwargs
+            )
             
-            # 处理工具调用
-            elif ai_output and ai_output.tool_calls:
-                for tool_call in ai_output.tool_calls:
-                    tool_id = tool_call.id or self.last_tool_call_id                    
-                    if tool_id:
-                        self.last_tool_call_id = tool_id
-                    if tool_id not in self.final_tool_calls:
-                        self.final_tool_calls[tool_id] = ToolCalling(
-                            tool_id=tool_id,
-                            name="",
-                            arguments=""
+            # 处理acompletion返回的格式
+            content = ""
+            tool_calls = {}
+            
+            if hasattr(response, 'choices') and response.choices:
+                ai_output = response.choices[0].message
+                
+                # 获取内容
+                if hasattr(ai_output, 'content') and ai_output.content:
+                    content = ai_output.content
+                
+                # 获取工具调用
+                if hasattr(ai_output, 'tool_calls') and ai_output.tool_calls:
+                    for tc in ai_output.tool_calls:
+                        tc_id = tc.id
+                        tc_func = tc.function
+                        
+                        tool_calls[tc_id] = ToolCall(
+                            tool_id=tc_id,
+                            name=tc_func.name if hasattr(tc_func, 'name') else "",
+                            arguments=tc_func.arguments if hasattr(tc_func, 'arguments') else ""
                         )
-                    current = self.final_tool_calls[tool_id]
-                    current.name += tool_call.function.name or ""
-                    current.arguments += tool_call.function.arguments or ""
+            
+            # 创建消息块
+            chunk = DialougeChunk(
+                user_id=self.user_id,
+                thread_id=self.thread_id,
+                chunk_type=ChunkType.AI_MESSAGE,
+                output_text=content
+            )
+            
+            # 保存消息块
+            if self.save_chunk_callback:
+                self.save_chunk_callback(chunk)
+            
+            # 生成前端期望的格式
+            chunk_data = {
+                "role": "assistant",
+                "content": content,
+                "chunk_type": ChunkType.AI_MESSAGE.value,
+                "created_at": chunk.created_at,
+                "dialouge_id": chunk.dialouge_id
+            }
+            
+            yield chunk_data, content, tool_calls
 
 class ConversationProcessor:
     """对话处理器，支持工具调用和多轮对话"""
@@ -487,7 +797,16 @@ class ConversationProcessor:
                 )
                 if self.save_chunk_callback:
                     self.save_chunk_callback(ai_message)
-                yield ai_message.model_dump()
+                
+                # 生成前端期望的格式
+                message_data = {
+                    "role": "assistant",
+                    "content": final_text,
+                    "chunk_type": ChunkType.AI_MESSAGE.value,
+                    "created_at": ai_message.created_at,
+                    "dialouge_id": ai_message.dialouge_id
+                }
+                yield message_data
             
             # 检查是否有工具调用
             if final_tool_calls and len(final_tool_calls) > 0:
@@ -502,7 +821,18 @@ class ConversationProcessor:
                 )
                 if self.save_chunk_callback:
                     self.save_chunk_callback(tool_calls_message)
-                yield tool_calls_message.model_dump()
+                
+                # 工具调用总结为文本形式展示
+                tool_names = ", ".join([tc.name for tc in tool_calls_data])
+                message_data = {
+                    "role": "assistant",
+                    "content": f"工具调用: {tool_names}",
+                    "chunk_type": ChunkType.AI_MESSAGE.value,
+                    "created_at": tool_calls_message.created_at,
+                    "dialouge_id": tool_calls_message.dialouge_id,
+                    "tool_calls": [tc.model_dump() for tc in tool_calls_data]
+                }
+                yield message_data
                 
                 # 执行工具调用
                 has_tool_results = False
@@ -511,18 +841,18 @@ class ConversationProcessor:
                     tool_arguments = tool_call.arguments
                     
                     if tool_name in self.tool_map:
-                        # 执行工具并获取结果
-                        tool_result_chunks = []
-                        async for chunk in self._execute_tool(
+                        # 收集工具执行过程中的所有结果
+                        tool_result_text = ""
+                        async for result_chunk in self._execute_tool(
                             tool_id=tool_call.tool_id,
                             tool_class=self.tool_map[tool_name],
                             arguments_json=tool_arguments
                         ):
-                            tool_result_chunks.append(chunk.get("output_text", ""))
-                            yield chunk
-                        
-                        # 合并所有结果块为一个完整的工具结果
-                        tool_result = "".join(tool_result_chunks)
+                            # 如果每个结果块都需要传给前端展示，则yield
+                            yield result_chunk
+                            # 累积结果文本
+                            if 'output_text' in result_chunk:
+                                tool_result_text += result_chunk['output_text']
                         
                         # 将工具结果添加到消息中
                         messages.append({
@@ -542,7 +872,7 @@ class ConversationProcessor:
                             "role": "tool",
                             "tool_call_id": tool_call.tool_id,
                             "name": tool_name,
-                            "content": tool_result
+                            "content": tool_result_text
                         })
                         
                         has_tool_results = True
@@ -587,8 +917,20 @@ class ConversationProcessor:
                 if self.save_chunk_callback:
                     self.save_chunk_callback(tool_result_chunk)
                 
+                # 生成前端期望的格式
+                chunk_data = {
+                    "role": "tool",
+                    "name": tool_class.name,
+                    "tool_call_id": tool_id,
+                    "content": result_chunk,
+                    "chunk_type": ChunkType.TOOL_RESULT.value,
+                    "created_at": tool_result_chunk.created_at,
+                    "dialouge_id": tool_result_chunk.dialouge_id,
+                    "output_text": result_chunk  # 额外字段，与DialougeChunk保持一致
+                }
+                
                 # 生成并返回工具结果块
-                yield tool_result_chunk.model_dump()
+                yield chunk_data
             
         except Exception as e:
             error_message = f"执行工具 '{tool_class.name}' 失败: {str(e)}"
@@ -605,5 +947,17 @@ class ConversationProcessor:
             )
             if self.save_chunk_callback:
                 self.save_chunk_callback(error_chunk)
-                
-            yield error_chunk.model_dump()
+            
+            # 生成前端期望的格式
+            error_data = {
+                "role": "tool",
+                "name": tool_class.name,
+                "tool_call_id": tool_id,
+                "content": error_message,
+                "chunk_type": ChunkType.TOOL_RESULT.value,
+                "created_at": error_chunk.created_at,
+                "dialouge_id": error_chunk.dialouge_id,
+                "output_text": error_message
+            }
+            
+            yield error_data

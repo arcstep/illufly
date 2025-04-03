@@ -52,18 +52,36 @@ class LiteLLM():
     def completion(self, messages: Union[str, List[Dict[str, Any]]], **kwargs) -> Any:
         """对话完成"""
         messages = [{"role": "user", "content": messages}] if isinstance(messages, str) else messages
+        model = self.get_kwargs(**kwargs).get("model")
+        
         if self.router_obj:
-            return self.router_obj.completion(messages, **self.get_kwargs(**kwargs))
+            return self.router_obj.completion(
+                messages=messages,
+                **self.get_kwargs(**kwargs)
+            )
         else:
-            return litellm.completion(messages=messages, **self.get_kwargs(**kwargs))
+            return litellm.completion(
+                model=model,
+                messages=messages,
+                **{k: v for k, v in self.get_kwargs(**kwargs).items() if k != "model"}
+            )
 
     def acompletion(self, messages: Union[str, List[Dict[str, Any]]], **kwargs) -> Any:
         """异步对话完成"""
         messages = [{"role": "user", "content": messages}] if isinstance(messages, str) else messages
+        model = self.get_kwargs(**kwargs).get("model")
+        
         if self.router_obj:
-            return self.router_obj.acompletion(messages, **self.get_kwargs(**kwargs))
+            return self.router_obj.acompletion(
+                messages=messages, 
+                **self.get_kwargs(**kwargs)
+            )
         else:
-            return litellm.acompletion(messages=messages, **self.get_kwargs(**kwargs))
+            return litellm.acompletion(
+                model=model,
+                messages=messages, 
+                **{k: v for k, v in self.get_kwargs(**kwargs).items() if k != "model"}
+            )
     
     def embedding(self, input: List[str], **kwargs) -> Any:
         """文本嵌入"""

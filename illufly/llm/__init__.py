@@ -6,7 +6,7 @@ from .init_litellm import init_litellm
 from .base import LiteLLM, litellm
 from .chat import ChatAgent
 from .memory import Memory
-from .models import ChunkType, DialougeChunk, ToolCalling, MemoryQA
+from .models import ChunkType, DialougeChunk, ToolCall, MemoryQA
 from .thread import ThreadManager
 from .retriever import ChromaRetriever
 

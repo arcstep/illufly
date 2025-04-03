@@ -83,7 +83,7 @@ class Thread(BaseModel):
     title: str = Field(default="", description="连续对话标题")
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp(), description="对话创建时间")
 
-class ToolCalling(BaseModel):
+class ToolCall(BaseModel):
     tool_id: str = Field(default="", description="工具ID")
     name: str = Field(default="", description="工具名称")
     arguments: str = Field(default="", description="工具参数")
@@ -128,7 +128,7 @@ class DialougeChunk(BaseModel):
     output_text: Optional[str] = Field(default="", description="AI 的输出内容")
     
     # 工具调用相关
-    tool_calls: Optional[List[ToolCalling]] = Field(default=None, description="工具调用列表")
+    tool_calls: Optional[List[ToolCall]] = Field(default=None, description="工具调用列表")
     tool_id: Optional[str] = Field(default=None, description="工具调用ID")
     tool_name: Optional[str] = Field(default=None, description="工具名称")
     
