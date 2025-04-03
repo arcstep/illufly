@@ -88,12 +88,14 @@ class ToolCalling(BaseModel):
     name: str = Field(default="", description="工具名称")
     arguments: str = Field(default="", description="工具参数")
 
-class ChunkType(Enum):
-    AI_DELTA = "ai_delta"
-    AI_MESSAGE = "ai_message"
-    USER_INPUT = "user_input"
-    MEMORY_EXTRACT = "memory_extract"
-    MEMORY_RETRIEVE = "memory_retrieve"
+class ChunkType(str, Enum):
+    """对话部分类型"""
+    USER_INPUT = "user_input"  # 用户输入
+    AI_MESSAGE = "ai_message"  # AI 的消息
+    AI_DELTA = "ai_delta"  # AI 的增量消息
+    MEMORY_RETRIEVE = "memory_retrieve"  # 检索的记忆
+    MEMORY_EXTRACT = "memory_extract"  # 提取的记忆
+    TITLE_UPDATE = "title_update"  # 标题更新通知
 
 class DialougeChunk(BaseModel):
     user_id: Union[str, None] = Field(default=None, description="用户ID")

@@ -51,6 +51,9 @@ class ChatAgent():
             else:
                 messages = [*history_messages, *messages]
 
+        # 检查是否为首轮对话
+        is_first_conversation = len(history_messages) == 0
+        
         # 2. 加载并处理检索的记忆
         retrieved_memories = await self.memory.retrieve(messages, user_id)
 
@@ -167,6 +170,43 @@ class ChatAgent():
                 )
                 self.save_dialog_chunk(memory_chunk)
                 yield memory_chunk.model_dump()
+
+        # 8. 如果是首轮对话，根据对话内容生成标题
+        if is_first_conversation and user_id and thread_id and final_text:
+            # 构建生成标题的提示
+            user_content = messages[-1].get("content", "") if messages else ""
+            title_prompt = [
+                {"role": "system", "content": "你是一个对话标题生成助手。请根据用户的消息和AI的回复，提炼出一个简短、准确的对话标题，不超过15个字。只需返回标题本身，不要包含任何其他文字或标点。"},
+                {"role": "user", "content": f"用户消息：{user_content}\nAI回复：{final_text}\n请生成一个简短的对话标题："}
+            ]
+            
+            try:
+                # 调用LLM生成标题
+                title_resp = await self.llm.acompletion(title_prompt, model=model, stream=False)
+                if title_resp and title_resp.choices and title_resp.choices[0].message.content:
+                    title = title_resp.choices[0].message.content.strip()
+                    # 限制标题长度
+                    if len(title) > 20:
+                        title = title[:20]
+                    
+                    # 更新Thread的标题
+                    from .thread import ThreadManager
+                    thread_manager = ThreadManager(db=self.db)
+                    updated_thread = thread_manager.update_thread_title(user_id, thread_id, title)
+                    
+                    if updated_thread:
+                        # 创建标题更新通知
+                        title_chunk = DialougeChunk(
+                            user_id=user_id,
+                            thread_id=thread_id,
+                            chunk_type=ChunkType.TITLE_UPDATE,
+                            output_text=title
+                        )
+                        self.save_dialog_chunk(title_chunk)
+                        yield title_chunk.model_dump()
+            except Exception as e:
+                logger.error(f"生成标题失败: {e}")
+                # 标题生成失败不影响正常对话流程，可以静默失败
 
     def save_dialog_chunk(self, chunk: DialougeChunk):
         """保存对话片段

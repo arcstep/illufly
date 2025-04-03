@@ -37,3 +37,17 @@ class ThreadManager():
             value=new_thread
         )
         return new_thread
+        
+    def update_thread_title(self, user_id: str, thread_id: str, title: str):
+        """更新对话标题"""
+        key = Thread.get_key(user_id, thread_id)
+        thread = self.db.get(key)
+        if thread:
+            thread.title = title
+            self.db.update_with_indexes(
+                model_name=Thread.__name__,
+                key=key,
+                value=thread
+            )
+            return thread
+        return None
