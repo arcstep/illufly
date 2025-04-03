@@ -1,6 +1,7 @@
 import pandas as pd
 import re
 import html
+from datetime import datetime
 
 from typing import List, Dict, Any
 
@@ -105,7 +106,7 @@ class Memory():
                 metadatas=qa_data["metadatas"]
             )
 
-    async def retrieve(self, input_messages: List[Dict[str, Any]], user_id: str=None, threshold: float=1, top_k: int=10) -> str:
+    async def retrieve(self, input_messages: List[Dict[str, Any]], user_id: str=None, threshold: float=1, top_k: int=10) -> List[MemoryQA]:
         """检索记忆"""
         if user_id is None:
             user_id = "default"
@@ -118,18 +119,45 @@ class Memory():
             query_config={"n_results": top_k}
         )
         
-        items = [f'|{r["topic"]}|{r["question"]}|{r["answer"]}|' for r in results[0]["metadatas"]]
-        uniq_items = "\n".join(list(dict.fromkeys(items)))
-        logger.info(f"\nmemory.retrieve >>> {uniq_items}")
-        return f"\n\n|主题|问题|答案|\n|---|---|---|\n{uniq_items}\n"
+        # 创建MemoryQA对象并去重
+        memory_objects = []
+        seen_keys = set()
+        for meta in results[0]["metadatas"]:
+            key = f"{meta['topic']}:{meta['question']}"
+            if key not in seen_keys:
+                memory = MemoryQA(
+                    user_id=user_id,
+                    topic=meta["topic"],
+                    question=meta["question"],
+                    answer=meta["answer"],
+                    created_at=meta.get("created_at", datetime.now().timestamp())
+                )
+                memory_objects.append(memory)
+                seen_keys.add(key)
+        
+        logger.info(f"\nmemory.retrieve >>> {len(memory_objects)} 个记忆片段")
+        return memory_objects
     
-    def inject(self, input_messages: List[Dict[str, Any]], existing_memory: str=None) -> List[Dict[str, Any]]:
-        """注入记忆"""
-        if existing_memory and input_messages[0].get("role", None) == "system":
-            input_messages[0]["content"] += f"\n\n**用户记忆清单**\n{existing_memory}\n"
+    def inject(self, messages: List[Dict[str, Any]], memory_table: str) -> List[Dict[str, Any]]:
+        """注入记忆
+
+        在system消息中注入记忆，如果没有system消息则添加
+        """
+        if not memory_table or not memory_table.strip():
+            return messages
+        
+        # 注入记忆
+        if any(m.get("role", None) == "system" for m in messages):
+            # 添加到已有system消息
+            for i, m in enumerate(messages):
+                if m.get("role", None) == "system":
+                    messages[i]["content"] = f"{m['content']}\n你有以下历史知识记忆：{memory_table}"
+                    break
         else:
-            input_messages.insert(0, {"role": "system", "content": f"**用户记忆清单**\n{existing_memory}\n"})
-        return input_messages
+            # 添加新system消息
+            messages = [{"role": "system", "content": f"你有以下历史知识记忆：{memory_table}"}, *messages]
+        
+        return messages
 
     def from_messages_to_text(self, input_messages: List[Dict[str, Any]]) -> str:
         """将消息转换为文本"""

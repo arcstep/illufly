@@ -7,6 +7,7 @@ from .models import ChunkType, DialougeChunk, ToolCalling, MemoryQA
 from .memory import Memory
 from .retriever import ChromaRetriever
 
+from datetime import datetime
 import asyncio
 import logging
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class ChatAgent():
         final_text = ""
         final_tool_calls = {}
         last_tool_call_id = None
+        input_created_at = datetime.now().timestamp()
 
         if not messages:
             raise ValueError("messages 不能为空")
@@ -49,27 +51,49 @@ class ChatAgent():
             else:
                 messages = [*history_messages, *messages]
 
-        # 2. 加载并注入记忆
-        existing_memory = await self.memory.retrieve(messages, user_id)
-        messages = self.memory.inject(messages, existing_memory)
+        # 2. 加载并处理检索的记忆
+        retrieved_memories = await self.memory.retrieve(messages, user_id)
+
+        # 首先发送检索记忆事件
+        if retrieved_memories:
+            for memory in retrieved_memories:
+                memory_chunk = DialougeChunk(
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    chunk_type=ChunkType.MEMORY_RETRIEVE,
+                    role="assistant",
+                    memory=memory
+                )
+                self.save_dialog_chunk(memory_chunk)
+                yield memory_chunk.model_dump()
+
+        # 将记忆转化为表格形式用于注入提示
+        memory_table = ""
+        if retrieved_memories:
+            items = [f'|{m.topic}|{m.question}|{m.answer}|' for m in retrieved_memories]
+            memory_table = f"\n\n|主题|问题|答案|\n|---|---|---|\n{chr(10).join(items)}\n"
+
+        # 注入记忆到消息中
+        messages = self.memory.inject(messages, memory_table)
 
         # 3. 保存用户输入（包含历史和记忆）
         dialog_chunk = DialougeChunk(
             user_id=user_id,
             thread_id=thread_id,
             chunk_type=ChunkType.USER_INPUT,
-            input_messages=messages
+            input_messages=messages,
+            created_at=input_created_at
         )
         self.save_dialog_chunk(dialog_chunk)
 
         # 4. 并行执行记忆提取和对话补全
         extract_task = asyncio.create_task(
-            self.memory.extract(messages, model, existing_memory, user_id)
+            self.memory.extract(messages, model, memory_table, user_id)
         )
 
         logger.info(f"\nchat completion [{model}] >>> {messages}")
 
-        # 执行对话补全
+        # 5. 执行对话补全
         try:
             resp = await self.llm.acompletion(messages, model=model, stream=True, **kwargs)
         except Exception as e:
@@ -111,7 +135,7 @@ class ChatAgent():
                 # print(chunk)
                 pass
 
-        # 保存 AI 文本输出
+        # 6. 保存 AI 输出
         if final_text:
             dialog_chunk = DialougeChunk(
                 user_id=user_id,
@@ -121,7 +145,6 @@ class ChatAgent():
             )
             self.save_dialog_chunk(dialog_chunk)
 
-        # 保存 AI 工具调用
         if final_tool_calls:
             dialog_chunk = DialougeChunk(
                 user_id=user_id,
@@ -132,8 +155,18 @@ class ChatAgent():
             self.save_dialog_chunk(dialog_chunk)
             yield dialog_chunk.model_dump()
 
-        # 等待记忆提取完成
-        await extract_task
+        # 7. 等待记忆提取完成并返回结果
+        extracted_memories = await extract_task
+        if extracted_memories:
+            for memory in extracted_memories:
+                memory_chunk = DialougeChunk(
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    chunk_type=ChunkType.MEMORY_EXTRACT,
+                    memory=memory
+                )
+                self.save_dialog_chunk(memory_chunk)
+                yield memory_chunk.model_dump()
 
     def save_dialog_chunk(self, chunk: DialougeChunk):
         """保存对话片段
@@ -162,14 +195,33 @@ class ChatAgent():
         for m in resp:
             if m.chunk_type == ChunkType.USER_INPUT:
                 messages.append({
-                    **m.input_messages[-1],
+                    "role": "user",
+                    "content": m.input_messages[-1]['content'],
+                    "chunk_type": m.chunk_type.value,
                     "created_at": m.created_at,
                     "dialouge_id": m.dialouge_id
                 })
             elif m.chunk_type == ChunkType.AI_MESSAGE:
                 messages.append({
-                    "role": "assistant", 
+                    "role": "assistant",
                     "content": m.output_text,
+                    "chunk_type": m.chunk_type.value,
+                    "created_at": m.created_at,
+                    "dialouge_id": m.dialouge_id
+                })
+            elif m.chunk_type == ChunkType.MEMORY_RETRIEVE:
+                messages.append({
+                    "role": "assistant", 
+                    "chunk_type": m.chunk_type.value,
+                    "memory": m.memory.model_dump() if m.memory else None,
+                    "created_at": m.created_at,
+                    "dialouge_id": m.dialouge_id
+                })
+            elif m.chunk_type == ChunkType.MEMORY_EXTRACT:
+                messages.append({
+                    "role": "assistant",
+                    "chunk_type": m.chunk_type.value, 
+                    "memory": m.memory.model_dump() if m.memory else None,
                     "created_at": m.created_at,
                     "dialouge_id": m.dialouge_id
                 })
