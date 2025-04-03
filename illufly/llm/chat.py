@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 from ..rocksdb import default_rocksdb, IndexedRocksDB
 from .base import LiteLLM
-from .models import ChunkType, DialougeChunk, ToolCall, MemoryQA
+from .models import ChunkType, DialogueChunk, Dialogue, Thread, ToolCall, MemoryQA
 from .memory import Memory, from_messages_to_text
 from .retriever import ChromaRetriever
 from .thread import ThreadManager
@@ -33,10 +33,14 @@ class ChatAgent():
         # 创建工具名称到工具类的映射
         self.tool_map = {tool.name: tool for tool in self.tools}
 
-        self.recent_messages_count = 10
-        DialougeChunk.register_indexes(self.db)
+        self.recent_dialogues_count = 5
+        
+        # 注册数据模型到数据库
+        DialogueChunk.register_indexes(self.db)
+        Dialogue.register_indexes(self.db)
+        Thread.register_indexes(self.db)
 
-        logger.info(f'数据库中有 {len(self.db.values())} 条对话记录 ...')
+        logger.info(f'数据库中有 {len(self.db.values())} 条记录 ...')
 
     def register_tool(self, tool_class: Type[BaseTool]) -> None:
         """注册工具到对话智能体"""
@@ -46,54 +50,194 @@ class ChatAgent():
         self.tools.append(tool_class)
         self.tool_map[tool_class.name] = tool_class
         logger.info(f"已注册工具: {tool_class.name}")
+        
+    def _create_new_dialogue(self, user_id: str, thread_id: str, user_content: str = "") -> Dialogue:
+        """创建新的对话轮次"""
+        # 获取当前线程
+        thread_key = Thread.get_key(user_id, thread_id)
+        thread = self.db.get(thread_key)
+        
+        if not thread:
+            # 如果线程不存在，创建新线程
+            thread = Thread(
+                user_id=user_id,
+                thread_id=thread_id,
+                dialogue_count=0
+            )
+            self.db.update_with_indexes(
+                model_name=Thread.__name__,
+                key=thread_key,
+                value=thread
+            )
+        
+        # 增加对话轮次计数
+        thread.dialogue_count += 1
+        self.db.update_with_indexes(
+            model_name=Thread.__name__,
+            key=thread_key,
+            value=thread
+        )
+        
+        # 创建新的对话轮次
+        dialogue = Dialogue(
+            user_id=user_id,
+            thread_id=thread_id,
+            user_content=user_content,
+            chunk_count=0
+        )
+        
+        dialogue_key = Dialogue.get_key(user_id, thread_id, dialogue.dialogue_id)
+        self.db.update_with_indexes(
+            model_name=Dialogue.__name__,
+            key=dialogue_key,
+            value=dialogue
+        )
+        
+        return dialogue
+    
+    def _update_dialogue(self, dialogue: Dialogue, ai_content: str = "", completed: bool = False) -> Dialogue:
+        """更新对话轮次"""
+        dialogue.ai_content = ai_content
+        dialogue.updated_at = datetime.now().timestamp()
+        dialogue.completed = completed
+        
+        dialogue_key = Dialogue.get_key(dialogue.user_id, dialogue.thread_id, dialogue.dialogue_id)
+        self.db.update_with_indexes(
+            model_name=Dialogue.__name__,
+            key=dialogue_key,
+            value=dialogue
+        )
+        
+        return dialogue
+    
+    def save_dialogue_chunk(self, chunk: DialogueChunk) -> None:
+        """保存对话块
+
+        同时更新对话轮次的chunk_count
+        """
+        if not (chunk.user_id and chunk.thread_id and chunk.dialogue_id):
+            logger.warning(f"对话块缺少必要字段，无法保存: {chunk}")
+            return
+        
+        # 保存对话块
+        chunk_key = DialogueChunk.get_key(
+            chunk.user_id, 
+            chunk.thread_id, 
+            chunk.dialogue_id, 
+            chunk.chunk_id
+        )
+        self.db.update_with_indexes(
+            model_name=DialogueChunk.__name__,
+            key=chunk_key,
+            value=chunk
+        )
+        
+        # 更新对话轮次的chunk_count
+        dialogue_key = Dialogue.get_key(chunk.user_id, chunk.thread_id, chunk.dialogue_id)
+        dialogue = self.db.get(dialogue_key)
+        if dialogue:
+            dialogue.chunk_count += 1
+            self.db.update_with_indexes(
+                model_name=Dialogue.__name__,
+                key=dialogue_key,
+                value=dialogue
+            )
+        
+        logger.info(f"已保存对话块: {chunk_key}")
+    
+    def _load_recent_dialogues(self, user_id: str, thread_id: str) -> List[Dialogue]:
+        """加载最近的对话轮次"""
+        if not user_id or not thread_id:
+            return []
+        
+        prefix = Dialogue.get_prefix(user_id, thread_id)
+        dialogues = sorted(
+            self.db.values(
+                prefix=prefix,
+                limit=100,  # 先获取足够多，然后按时间排序后截取
+                reverse=True
+            ),
+            key=lambda x: x.created_at
+        )
+        
+        # 按时间倒序，取最近的几轮
+        if dialogues:
+            dialogues.reverse()
+            dialogues = dialogues[:self.recent_dialogues_count]
+            dialogues.reverse()  # 恢复时间正序
+        
+        return dialogues
+        
+    def _load_dialogue_chunks(self, user_id: str, thread_id: str, dialogue_id: str) -> List[DialogueChunk]:
+        """加载对话轮次的所有对话块"""
+        if not user_id or not thread_id or not dialogue_id:
+            return []
+        
+        prefix = DialogueChunk.get_prefix(user_id, thread_id, dialogue_id)
+        chunks = sorted(
+            self.db.values(
+                prefix=prefix,
+                limit=100,
+                reverse=True
+            ),
+            key=lambda x: (x.created_at, x.sequence)
+        )
+        
+        return chunks
 
     async def chat(self, messages: List[Dict[str, Any]], model: str, user_id: str=None, thread_id: str=None, **kwargs):
         """对话主流程
         
         协调各个处理模块，完成完整的对话流程：
-        1. 加载历史 + 检索记忆
-        2. 注入记忆 + 保存用户输入
-        3. 并行执行：提取新记忆 + 对话补全
+        1. 创建新对话轮次
+        2. 加载历史 + 检索记忆
+        3. 注入记忆 + 保存用户输入
+        4. 并行执行：提取新记忆 + 对话补全
         """
         if not messages:
             raise ValueError("messages 不能为空")
 
-        # 标准化用户输入
+        # 标准化用户输入并提取用户最新消息
         input_created_at = datetime.now().timestamp()
         messages = self._normalize_input_messages(messages)
+        user_content = messages[-1].get('content', '') if messages[-1].get('role') == 'user' else ''
         
-        # 1. 加载历史消息
-        history_messages = await self._load_history_messages(user_id, thread_id)
+        # 1. 创建新对话轮次
+        dialogue = self._create_new_dialogue(user_id, thread_id, user_content)
+        dialogue_id = dialogue.dialogue_id
+        
+        # 2. 加载历史消息
+        history_messages = self.load_history(user_id, thread_id)
         is_first_conversation = len(history_messages) == 0
         
         messages = self._merge_messages(messages, history_messages)
         
-        # 2. 检索记忆
+        # 3. 检索记忆
         retrieved_memories = await self.memory.retrieve(messages, user_id)
         
-        # 3. 发送检索到的记忆
+        # 4. 发送检索到的记忆
         if retrieved_memories:
-            memory_chunks = await self._process_retrieved_memories(retrieved_memories, user_id, thread_id)
+            memory_chunks = await self._process_retrieved_memories(retrieved_memories, user_id, thread_id, dialogue_id)
             for chunk in memory_chunks:
                 yield chunk
         
-        # 4. 注入记忆到提示中
+        # 5. 注入记忆到提示中
         messages, memory_table = self._inject_memory(messages, retrieved_memories)
         
-        # 5. 保存用户输入
-        await self._save_user_input(messages, user_id, thread_id, input_created_at)
+        # 6. 保存用户输入
+        await self._save_user_input(messages, user_id, thread_id, dialogue_id, input_created_at)
         
-        # 6. 并行执行记忆提取和对话补全
+        # 7. 并行执行记忆提取和对话补全
         extract_task = asyncio.create_task(
             self.memory.extract(messages, model, memory_table, user_id)
         )
         
-        # 7. 创建LLM配置并添加工具
+        # 8. 创建LLM配置并添加工具
         llm_kwargs = kwargs.copy()
         if self.tools and not llm_kwargs.get("tools"):
             llm_kwargs["tools"] = [tool.to_openai() for tool in self.tools]
         
-        # 8. 执行对话流程 (可能包括多轮工具调用)
+        # 9. 执行对话流程 (可能包括多轮工具调用)
         final_text = ""
         final_tool_calls = {}
         
@@ -102,8 +246,9 @@ class ChatAgent():
             model=model,
             user_id=user_id,
             thread_id=thread_id,
+            dialogue_id=dialogue_id,
             tool_map=self.tool_map,
-            save_chunk_callback=self.save_dialog_chunk
+            save_chunk_callback=self.save_dialogue_chunk
         )
         
         # 开始对话处理，可能包含多轮工具调用
@@ -118,13 +263,16 @@ class ChatAgent():
             # 将处理后的数据传递给调用者
             yield chunk
         
-        # 9. 等待记忆提取完成并处理结果
+        # 10. 更新对话轮次状态
+        self._update_dialogue(dialogue, ai_content=final_text, completed=True)
+        
+        # 11. 等待记忆提取完成并处理结果
         logger.info("等待记忆提取完成...")
         extracted_memories = await extract_task
         if extracted_memories:
             logger.info(f"成功提取记忆 {len(extracted_memories)} 条，准备推送到前端")
             try:
-                async for chunk in self._process_extracted_memories(extracted_memories, user_id, thread_id):
+                async for chunk in self._process_extracted_memories(extracted_memories, user_id, thread_id, dialogue_id):
                     logger.info(f"推送记忆到前端: {chunk.get('content', '')[:30]}...")
                     yield chunk
             except Exception as e:
@@ -132,11 +280,11 @@ class ChatAgent():
         else:
             logger.info("没有提取到新记忆")
         
-        # 10. 如果是首轮对话，生成标题
+        # 12. 如果是首轮对话，生成标题
         if is_first_conversation and user_id and thread_id and final_text:
             logger.info(f"首轮对话，准备生成标题 (user_id: {user_id}, thread_id: {thread_id})")
             try:
-                title_generator = self._generate_title(messages, final_text, model, user_id, thread_id)
+                title_generator = self._generate_title(messages, final_text, model, user_id, thread_id, dialogue_id)
                 async for title_chunk in title_generator:
                     logger.info(f"推送标题到前端: {title_chunk.get('content', '')}")
                     yield title_chunk
@@ -157,10 +305,13 @@ class ChatAgent():
         """加载历史消息"""
         if not user_id or not thread_id:
             return []
-        return self.load_history(user_id, thread_id, limit=self.recent_messages_count)
+        return self.load_history(user_id, thread_id)
     
     def _merge_messages(self, messages: List[Dict[str, Any]], history_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """合并当前消息和历史消息"""
+        if not messages:
+            return history_messages
+            
         if messages[0].get("role", None) == "system":
             return [messages[0], *history_messages, *messages[1:]]
         else:
@@ -170,20 +321,28 @@ class ChatAgent():
         self,
         retrieved_memories: List[MemoryQA],
         user_id: str=None,
-        thread_id: str=None
+        thread_id: str=None,
+        dialogue_id: str=None
     ) -> List[Dict[str, Any]]:
         """处理检索到的记忆，将其保存并准备发送"""
         memory_chunks = []
+        sequence = 0
+        
         for memory in retrieved_memories:
-            memory_chunk = DialougeChunk(
+            memory_chunk = DialogueChunk(
                 user_id=user_id,
                 thread_id=thread_id,
+                dialogue_id=dialogue_id,
                 chunk_type=ChunkType.MEMORY_RETRIEVE,
                 role="assistant",
-                memory=memory
+                sequence=sequence,
+                memory=memory,
+                is_final=True
             )
-            self.save_dialog_chunk(memory_chunk)
+            self.save_dialogue_chunk(memory_chunk)
             memory_chunks.append(memory_chunk.model_dump())
+            sequence += 1
+            
         return memory_chunks
     
     def _inject_memory(
@@ -208,17 +367,21 @@ class ChatAgent():
         messages: List[Dict[str, Any]], 
         user_id: str=None, 
         thread_id: str=None,
+        dialogue_id: str=None,
         created_at: float=None
     ) -> None:
         """保存用户输入"""
-        dialog_chunk = DialougeChunk(
+        dialog_chunk = DialogueChunk(
             user_id=user_id,
             thread_id=thread_id,
+            dialogue_id=dialogue_id,
             chunk_type=ChunkType.USER_INPUT,
+            role="user",
             input_messages=messages,
+            is_final=True,
             created_at=created_at or datetime.now().timestamp()
         )
-        self.save_dialog_chunk(dialog_chunk)
+        self.save_dialogue_chunk(dialog_chunk)
     
     def _create_llm_response_processor(self, model: str, user_id: str=None, thread_id: str=None):
         """创建LLM响应处理器"""
@@ -234,30 +397,31 @@ class ChatAgent():
         """保存AI输出"""
         # 保存文本输出
         if final_text:
-            dialog_chunk = DialougeChunk(
+            dialogue_chunk = DialogueChunk(
                 user_id=user_id,
                 thread_id=thread_id,
                 chunk_type=ChunkType.AI_MESSAGE,
                 output_text=final_text
             )
-            self.save_dialog_chunk(dialog_chunk)
+            self.save_dialogue_chunk(dialogue_chunk)
         
         # 保存工具调用
         if final_tool_calls:
-            dialog_chunk = DialougeChunk(
+            dialogue_chunk = DialogueChunk(
                 user_id=user_id,
                 thread_id=thread_id,
                 chunk_type=ChunkType.AI_MESSAGE,
                 tool_calls=list(final_tool_calls.values())
             )
-            self.save_dialog_chunk(dialog_chunk)
-            yield dialog_chunk.model_dump()
+            self.save_dialogue_chunk(dialogue_chunk)
+            yield dialogue_chunk.model_dump()
     
     async def _process_extracted_memories(
         self, 
         extracted_memories: List[MemoryQA], 
         user_id: str=None, 
-        thread_id: str=None
+        thread_id: str=None,
+        dialogue_id: str=None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """处理提取的记忆"""
         if not extracted_memories:
@@ -265,17 +429,21 @@ class ChatAgent():
             return
         
         logger.info(f"处理提取的记忆: {len(extracted_memories)} 条")
+        sequence = 0
             
         for memory in extracted_memories:
-            memory_chunk = DialougeChunk(
+            memory_chunk = DialogueChunk(
                 user_id=user_id,
                 thread_id=thread_id,
+                dialogue_id=dialogue_id,
                 chunk_type=ChunkType.MEMORY_EXTRACT,
                 role="assistant",
-                memory=memory
+                sequence=sequence,
+                memory=memory,
+                is_final=True
             )
             # 保存到数据库
-            self.save_dialog_chunk(memory_chunk)
+            self.save_dialogue_chunk(memory_chunk)
             
             # 使用统一的model_dump方法获取格式化的消息
             formatted_message = memory_chunk.model_dump()
@@ -283,6 +451,7 @@ class ChatAgent():
             
             # 将格式化的消息发送到前端
             yield formatted_message
+            sequence += 1
     
     async def _generate_title(
         self, 
@@ -290,7 +459,8 @@ class ChatAgent():
         final_text: str, 
         model: str, 
         user_id: str=None, 
-        thread_id: str=None
+        thread_id: str=None,
+        dialogue_id: str=None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """为首轮对话生成标题"""
         # 构建生成标题的提示
@@ -335,15 +505,17 @@ class ChatAgent():
                 if updated_thread:
                     logger.info(f"线程标题更新成功: {updated_thread}")
                     # 创建标题更新通知
-                    title_chunk = DialougeChunk(
+                    title_chunk = DialogueChunk(
                         user_id=user_id,
                         thread_id=thread_id,
+                        dialogue_id=dialogue_id,
                         chunk_type=ChunkType.TITLE_UPDATE,
                         role="system",
-                        output_text=title
+                        output_text=title,
+                        is_final=True
                     )
                     # 保存到数据库
-                    self.save_dialog_chunk(title_chunk)
+                    self.save_dialogue_chunk(title_chunk)
                     logger.info(f"已保存标题更新通知到数据库")
                     
                     # 使用统一的model_dump方法获取格式化的消息
@@ -362,75 +534,125 @@ class ChatAgent():
             logger.error(traceback.format_exc())
             # 标题生成失败不影响正常对话流程，可以静默失败
 
-    def save_dialog_chunk(self, chunk: DialougeChunk):
+    def save_dialogue_chunk(self, chunk: DialogueChunk):
         """保存对话片段
 
         仅当用户ID和线程ID存在时，才保存对话片段
         """
         if chunk.user_id and chunk.thread_id:
-            key = DialougeChunk.get_key(chunk.user_id, chunk.thread_id, chunk.dialouge_id)
-            logger.info(f"\nsave_dialog_chunk >>> key: {key}, chunk: {chunk}")
+            key = DialogueChunk.get_key(chunk.user_id, chunk.thread_id, chunk.dialogue_id, chunk.chunk_id)
+            logger.info(f"\nsave_dialogue_chunk >>> key: {key}, chunk: {chunk}")
             self.db.update_with_indexes(
-                model_name=DialougeChunk.__name__,
+                model_name=DialogueChunk.__name__,
                 key=key,
                 value=chunk
             )
 
-    def load_history(self, user_id: str, thread_id: str, limit: int = 100):
-        """加载历史对话，并确保消息格式与前端预期一致"""
-        prefix = DialougeChunk.get_prefix(user_id, thread_id)
-        logger.info(f"加载历史对话 - 用户ID: {user_id}, 线程ID: {thread_id}, 前缀: {prefix}, 限制: {limit}")
+    def load_history(self, user_id: str, thread_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """加载历史对话，并确保消息格式与前端预期一致
         
-        try:
-            resp = sorted(
-                self.db.values(
-                    prefix=prefix,
-                    limit=limit,
-                    reverse=True
-                ),
-                key=lambda x: x.created_at
-            )
-            messages = []
-            logger.info(f"找到 {len(resp)} 条历史对话记录 ...")
+        流程：
+        1. 获取最近的对话轮次
+        2. 对于每个对话轮次，加载其用户输入和AI回复
+        3. 按时间排序返回处理后的消息
+        """
+        if not user_id or not thread_id:
+            return []
             
-            for m in resp:
-                logger.info(f"\nload_history >>> {m}")
+        try:
+            # 加载最近的对话轮次
+            recent_dialogues = self._load_recent_dialogues(user_id, thread_id)
+            if not recent_dialogues:
+                logger.info("没有找到历史对话轮次")
+                return []
+                
+            logger.info(f"找到 {len(recent_dialogues)} 轮历史对话")
+            
+            # 收集所有需要处理的对话轮次和块
+            messages = []
+            
+            # 对每个对话轮次，加载并处理其对话块
+            for dialogue in recent_dialogues:
                 try:
-                    # 直接使用model_dump获取标准化的消息格式
-                    message = m.model_dump()
+                    dialogue_chunks = self._load_dialogue_chunks(
+                        user_id,
+                        thread_id,
+                        dialogue.dialogue_id
+                    )
                     
-                    # 确保消息有必要的字段
-                    if "content" not in message or "role" not in message:
-                        logger.warning(f"消息缺少必要字段content或role: {m}")
+                    if not dialogue_chunks:
+                        logger.warning(f"对话轮次 {dialogue.dialogue_id} 没有对话块")
                         continue
                     
-                    # 根据chunk_type过滤掉不需要在历史记录中显示的消息类型
-                    if m.chunk_type == ChunkType.AI_DELTA:
-                        # 增量消息不需要显示在历史记录中
-                        continue
+                    # 过滤并处理对话块，只保留最终版本和非增量块
+                    processed_chunks = []
+                    for chunk in dialogue_chunks:
+                        # 跳过AI增量块
+                        if chunk.chunk_type == ChunkType.AI_DELTA:
+                            continue
+                            
+                        # 其他类型块直接使用model_dump
+                        processed_chunks.append(chunk.model_dump())
                     
-                    messages.append(message)
-                        
+                    # 将处理后的块添加到消息列表
+                    messages.extend(processed_chunks)
+                    
                 except Exception as e:
-                    logger.error(f"处理历史消息错误: {e}, 消息: {m}")
+                    logger.error(f"处理对话轮次 {dialogue.dialogue_id} 时出错: {e}")
                     continue
             
-            # 按时间顺序排序消息
+            # 按时间排序
             messages.sort(key=lambda x: x.get("created_at", 0))
-            logger.info(f"返回 {len(messages)} 条格式化消息")
+            
+            logger.info(f"返回 {len(messages)} 条格式化历史消息")
             return messages
             
         except Exception as e:
             logger.error(f"加载历史对话失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
 
-    def _load_recent_messages(self, user_id: str=None, thread_id: str=None) -> List[Dict[str, Any]]:
-        """加载最近的消息"""
+    def _load_recent_dialogues(self, user_id: str, thread_id: str) -> List[Dialogue]:
+        """加载最近的对话轮次"""
         if not user_id or not thread_id:
-            logger.info("用户ID或线程ID为空，返回空历史消息")
             return []
-        return self.load_history(user_id, thread_id, limit=self.recent_messages_count)
-    
+        
+        prefix = Dialogue.get_prefix(user_id, thread_id)
+        dialogues = sorted(
+            self.db.values(
+                prefix=prefix,
+                limit=100,  # 先获取足够多，然后按时间排序后截取
+                reverse=True
+            ),
+            key=lambda x: x.created_at
+        )
+        
+        # 按时间倒序，取最近的几轮
+        if dialogues:
+            dialogues.reverse()
+            dialogues = dialogues[:self.recent_dialogues_count]
+            dialogues.reverse()  # 恢复时间正序
+        
+        return dialogues
+        
+    def _load_dialogue_chunks(self, user_id: str, thread_id: str, dialogue_id: str) -> List[DialogueChunk]:
+        """加载对话轮次的所有对话块"""
+        if not user_id or not thread_id or not dialogue_id:
+            return []
+        
+        prefix = DialogueChunk.get_prefix(user_id, thread_id, dialogue_id)
+        chunks = sorted(
+            self.db.values(
+                prefix=prefix,
+                limit=100,
+                reverse=True
+            ),
+            key=lambda x: (x.created_at, x.sequence)
+        )
+        
+        return chunks
+
 class LLMResponseProcessor:
     """LLM响应处理器，将LLM响应处理为增量块和工具调用"""
     def __init__(
@@ -439,12 +661,14 @@ class LLMResponseProcessor:
         model: str,
         user_id: str=None,
         thread_id: str=None,
+        dialogue_id: str=None,
         save_chunk_callback=None
     ):
         self.llm = llm
         self.model = model
         self.user_id = user_id 
         self.thread_id = thread_id
+        self.dialogue_id = dialogue_id
         self.save_chunk_callback = save_chunk_callback
     
     async def process_response(
@@ -468,6 +692,8 @@ class LLMResponseProcessor:
         if stream:
             text_buffer = ""
             tool_calls = {}  # 使用字典存储工具调用，以工具ID为键
+            sequence = 0  # 增量消息序列号
+            chunk_id = None  # 用于存储第一个增量消息的chunk_id
             
             # 先获取协程
             response_coroutine = self.llm.acompletion(
@@ -522,13 +748,31 @@ class LLMResponseProcessor:
                     if content:
                         text_buffer += content
                     
+                    # 创建增量块，重用相同的chunk_id
+                    is_first_chunk = chunk_id is None
+                    
+                    # 创建对话块参数
+                    chunk_params = {
+                        "user_id": self.user_id,
+                        "thread_id": self.thread_id,
+                        "dialogue_id": self.dialogue_id,
+                        "chunk_type": ChunkType.AI_DELTA,
+                        "role": "assistant",
+                        "output_text": content,
+                        "sequence": sequence,
+                        "is_final": False
+                    }
+                    
+                    # 如果不是第一个块，添加chunk_id参数
+                    if not is_first_chunk:
+                        chunk_params["chunk_id"] = chunk_id
+                    
                     # 创建增量块
-                    delta_chunk = DialougeChunk(
-                        user_id=self.user_id,
-                        thread_id=self.thread_id,
-                        chunk_type=ChunkType.AI_DELTA,
-                        output_text=content
-                    )
+                    delta_chunk = DialogueChunk(**chunk_params)
+                    
+                    # 保存第一个增量块的chunk_id，后续复用
+                    if is_first_chunk:
+                        chunk_id = delta_chunk.chunk_id
                     
                     # 保存增量块
                     if self.save_chunk_callback:
@@ -539,6 +783,7 @@ class LLMResponseProcessor:
                     
                     # 只有在实际有内容或工具调用时才yield结果
                     yield chunk_data, text_buffer, tool_calls
+                    sequence += 1
         
         # 对于非流式响应
         else:
@@ -573,11 +818,15 @@ class LLMResponseProcessor:
                         )
             
             # 创建消息块
-            chunk = DialougeChunk(
+            chunk = DialogueChunk(
                 user_id=self.user_id,
                 thread_id=self.thread_id,
+                dialogue_id=self.dialogue_id,
                 chunk_type=ChunkType.AI_MESSAGE,
-                output_text=content
+                role="assistant",
+                output_text=content,
+                is_final=True,
+                sequence=0
             )
             
             # 保存消息块
@@ -597,6 +846,7 @@ class ConversationProcessor:
         model: str,
         user_id: str=None,
         thread_id: str=None,
+        dialogue_id: str=None,
         tool_map: Dict[str, Type[BaseTool]]=None,
         save_chunk_callback=None
     ):
@@ -604,6 +854,7 @@ class ConversationProcessor:
         self.model = model
         self.user_id = user_id
         self.thread_id = thread_id
+        self.dialogue_id = dialogue_id
         self.tool_map = tool_map or {}
         self.save_chunk_callback = save_chunk_callback
         self.max_tool_calls = 10  # 防止无限循环
@@ -622,27 +873,47 @@ class ConversationProcessor:
             llm=self.llm,
             model=self.model,
             user_id=self.user_id,
-            thread_id=self.thread_id
+            thread_id=self.thread_id,
+            dialogue_id=self.dialogue_id,
+            save_chunk_callback=self.save_chunk_callback
         )
         
         while True:
             # 获取LLM响应
             final_text = ""
             final_tool_calls = {}
+            first_chunk_id = None  # 用于存储第一个增量消息的chunk_id
             
             async for chunk, text, tool_calls in response_processor.process_response(messages, **kwargs):
                 final_text = text
                 final_tool_calls = tool_calls
+                
+                # 记录第一个增量消息的chunk_id
+                if first_chunk_id is None and chunk.get("chunk_type") == ChunkType.AI_DELTA.value:
+                    first_chunk_id = chunk.get("chunk_id")
+                    
                 yield chunk
             
-            # 保存AI消息
+            # 保存AI消息，使用与增量消息相同的chunk_id
             if final_text:
-                ai_message = DialougeChunk(
-                    user_id=self.user_id,
-                    thread_id=self.thread_id,
-                    chunk_type=ChunkType.AI_MESSAGE,
-                    output_text=final_text
-                )
+                # 创建对话块参数
+                ai_message_params = {
+                    "user_id": self.user_id,
+                    "thread_id": self.thread_id,
+                    "dialogue_id": self.dialogue_id,
+                    "chunk_type": ChunkType.AI_MESSAGE,
+                    "role": "assistant",
+                    "output_text": final_text,
+                    "is_final": True
+                }
+                
+                # 如果有first_chunk_id，添加到参数中
+                if first_chunk_id:
+                    ai_message_params["chunk_id"] = first_chunk_id
+                
+                # 创建AI消息块
+                ai_message = DialogueChunk(**ai_message_params)
+                
                 if self.save_chunk_callback:
                     self.save_chunk_callback(ai_message)
                 
@@ -654,13 +925,24 @@ class ConversationProcessor:
             if final_tool_calls and len(final_tool_calls) > 0:
                 tool_calls_data = list(final_tool_calls.values())
                 
-                # 保存工具调用消息
-                tool_calls_message = DialougeChunk(
-                    user_id=self.user_id,
-                    thread_id=self.thread_id,
-                    chunk_type=ChunkType.AI_MESSAGE,
-                    tool_calls=tool_calls_data
-                )
+                # 创建对话块参数
+                tool_calls_params = {
+                    "user_id": self.user_id,
+                    "thread_id": self.thread_id,
+                    "dialogue_id": self.dialogue_id,
+                    "chunk_type": ChunkType.AI_MESSAGE,
+                    "role": "assistant",
+                    "tool_calls": tool_calls_data,
+                    "is_final": True
+                }
+                
+                # 如果有first_chunk_id，添加到参数中
+                if first_chunk_id:
+                    tool_calls_params["chunk_id"] = first_chunk_id
+                
+                # 创建工具调用消息块
+                tool_calls_message = DialogueChunk(**tool_calls_params)
+                
                 if self.save_chunk_callback:
                     self.save_chunk_callback(tool_calls_message)
                 
@@ -670,6 +952,8 @@ class ConversationProcessor:
                 
                 # 执行工具调用
                 has_tool_results = False
+                tool_sequence = 0
+                
                 for tool_call in tool_calls_data:
                     tool_name = tool_call.name
                     tool_arguments = tool_call.arguments
@@ -680,13 +964,16 @@ class ConversationProcessor:
                         async for result_chunk in self._execute_tool(
                             tool_id=tool_call.tool_id,
                             tool_class=self.tool_map[tool_name],
-                            arguments_json=tool_arguments
+                            arguments_json=tool_arguments,
+                            sequence=tool_sequence
                         ):
                             # 如果每个结果块都需要传给前端展示，则yield
                             yield result_chunk
                             # 累积结果文本
                             if 'output_text' in result_chunk:
                                 tool_result_text += result_chunk['output_text']
+                            
+                            tool_sequence += 1
                         
                         # 将工具结果添加到消息中
                         messages.append({
@@ -727,7 +1014,8 @@ class ConversationProcessor:
         self, 
         tool_id: str, 
         tool_class: Type[BaseTool], 
-        arguments_json: str
+        arguments_json: str,
+        sequence: int = 0
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """执行工具调用并生成结果块
         
@@ -738,16 +1026,39 @@ class ConversationProcessor:
             arguments = json.loads(arguments_json)
             
             # 执行工具调用
+            tool_chunk_id = None  # 用于存储第一个工具结果块的ID
+            local_sequence = sequence  # 局部序列号
+            
             async for result_chunk in tool_class.call(**arguments):
-                # 保存工具执行过程的每个结果块
-                tool_result_chunk = DialougeChunk(
-                    user_id=self.user_id,
-                    thread_id=self.thread_id,
-                    chunk_type=ChunkType.TOOL_RESULT,
-                    tool_id=tool_id,
-                    tool_name=tool_class.name,
-                    output_text=result_chunk
-                )
+                # 创建工具结果块
+                is_first_chunk = tool_chunk_id is None
+                
+                # 创建对话块参数
+                chunk_params = {
+                    "user_id": self.user_id,
+                    "thread_id": self.thread_id,
+                    "dialogue_id": self.dialogue_id,
+                    "chunk_type": ChunkType.TOOL_RESULT,
+                    "role": "tool",
+                    "tool_id": tool_id,
+                    "tool_name": tool_class.name,
+                    "output_text": result_chunk,
+                    "sequence": local_sequence,
+                    "is_final": True
+                }
+                
+                # 如果不是第一个块，添加chunk_id参数
+                if not is_first_chunk:
+                    chunk_params["chunk_id"] = tool_chunk_id
+                
+                # 创建增量块
+                tool_result_chunk = DialogueChunk(**chunk_params)
+                
+                # 保存第一个工具结果块的ID
+                if is_first_chunk:
+                    tool_chunk_id = tool_result_chunk.chunk_id
+                
+                # 保存工具结果块
                 if self.save_chunk_callback:
                     self.save_chunk_callback(tool_result_chunk)
                 
@@ -756,20 +1067,26 @@ class ConversationProcessor:
                 
                 # 生成并返回工具结果块
                 yield chunk_data
+                local_sequence += 1
             
         except Exception as e:
             error_message = f"执行工具 '{tool_class.name}' 失败: {str(e)}"
             logger.error(error_message)
             
             # 创建错误结果块
-            error_chunk = DialougeChunk(
+            error_chunk = DialogueChunk(
                 user_id=self.user_id,
                 thread_id=self.thread_id,
+                dialogue_id=self.dialogue_id,
                 chunk_type=ChunkType.TOOL_RESULT,
+                role="tool",
                 tool_id=tool_id,
                 tool_name=tool_class.name,
-                output_text=error_message
+                output_text=error_message,
+                sequence=sequence,
+                is_final=True
             )
+            
             if self.save_chunk_callback:
                 self.save_chunk_callback(error_chunk)
             

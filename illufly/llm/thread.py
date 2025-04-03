@@ -6,7 +6,7 @@ from datetime import datetime
 import uuid
 import logging
 from ..rocksdb import default_rocksdb, IndexedRocksDB
-from .models import Thread, ChunkType, DialougeChunk
+from .models import Thread
 
 class ThreadManager():
     """Base Agent"""
@@ -19,7 +19,6 @@ class ThreadManager():
         self.db = db or default_rocksdb
 
         Thread.register_indexes(self.db)
-        DialougeChunk.register_indexes(self.db)
 
     def all_threads(self, user_id: str):
         """获取所有对话"""

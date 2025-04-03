@@ -100,7 +100,7 @@ async def create_app(
 
     # 初始化数据库
     db_path = Path(db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path.mkdir(parents=True, exist_ok=True)  # 创建db目录本身，而不仅是父目录
     db = IndexedRocksDB(str(db_path))
 
     # 初始化 ThreadManager
