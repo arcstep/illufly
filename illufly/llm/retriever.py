@@ -163,11 +163,20 @@ class ChromaRetriever():
         collection_name = collection_name or "default"
         collection = self.client.get_or_create_collection(collection_name)
 
+        logger.info(f"\nchroma query >>> 开始查询")
+        logger.info(f"集合名称: {collection_name}")
+        logger.info(f"查询文本: {texts}")
+        logger.info(f"阈值: {threshold}")
+        logger.info(f"用户ID: {user_id}")
+        logger.info(f"查询配置: {query_config}")
+
         # 对查询文本去重
         texts = self._deduplicate_texts(texts)
+        logger.info(f"去重后的查询文本: {texts}")
 
         # 确保查询配置包含必要的返回字段
         query_config.update({"include": ["documents", "distances", "metadatas"]})
+        logger.info(f"更新后的查询配置: {query_config}")
 
         # 如果指定了用户ID, 则通过元数据过滤
         if user_id:
@@ -175,20 +184,29 @@ class ChromaRetriever():
                 query_config["where"] = {"user_id": user_id}
             else:
                 query_config["where"]["user_id"] = user_id
+            logger.info(f"添加用户过滤条件: {query_config['where']}")
 
         # 获取嵌入向量并查询
+        logger.info("获取查询文本的嵌入向量...")
         resp = await self.llm.aembedding(texts, **embedding_config)
         query_embeddings = [e['embedding'] for e in resp.data]
+        logger.info(f"嵌入向量维度: {len(query_embeddings[0]) if query_embeddings else 0}")
+        
+        logger.info("执行向量检索...")
         results = collection.query(query_embeddings=query_embeddings, **query_config)
+        logger.info(f"原始检索结果数量: {len(results['ids'][0]) if results and 'ids' in results else 0}")
 
         # 处理每个查询的结果
         final_results = []
         for i in range(len(texts)):
+            logger.info(f"\nchroma query >>> 处理第 {i+1} 个查询结果")
             # 使用阈值过滤结果
             filtered_indices = [
                 j for j, distance in enumerate(results['distances'][i])
                 if distance < threshold
             ]
+            logger.info(f"距离值: {results['distances'][i]}")
+            logger.info(f"过滤后的索引: {filtered_indices}")
             
             # 构建过滤后的结果
             filtered_result = {
@@ -198,6 +216,7 @@ class ChromaRetriever():
                 "documents": [results['documents'][i][j] for j in filtered_indices],
                 "distances": [results['distances'][i][j] for j in filtered_indices]
             }
+            logger.info(f"过滤后的结果数量: {len(filtered_result['ids'])}")
             final_results.append(filtered_result)
 
         return final_results

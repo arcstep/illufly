@@ -60,21 +60,28 @@ class Memory():
 
     async def init_retriever(self):
         """初始化记忆"""
+        logger.info("开始初始化记忆检索器...")
         
         # 将所有记忆加载到向量库
         for qa in self.memory_db.values(prefix=ROCKSDB_PREFIX):
             try:
                 qa_data = qa.to_retrieve()
+                # 为问题和答案分别生成唯一的ID
+                question_id = f"{qa.memory_id}_q"
+                answer_id = f"{qa.memory_id}_a"
                 await self.retriver.add(
                     texts=qa_data["texts"],
                     user_id=qa.user_id,
                     collection_name=CHROMA_COLLECTION,
                     metadatas=qa_data["metadatas"],
-                    ids=qa_data.get("ids", [])
+                    ids=[question_id, answer_id]  # 使用唯一的ID
                 )
+                logger.info(f"成功加载记忆到向量库: {qa.memory_id}")
             except Exception as e:
                 logger.error(f"初始化记忆时出错: {e}, 记忆: {qa}")
                 continue
+        
+        logger.info("记忆检索器初始化完成")
 
     def all_memory(self, user_id: str=None, limit: int=100) -> List[MemoryQA]:
         """获取所有记忆"""
@@ -290,12 +297,15 @@ class Memory():
                     # 更新到向量数据库
                     logger.info(f"更新记忆到向量数据库")
                     qa_data = qa.to_retrieve()
+                    # 为问题和答案分别生成唯一的ID
+                    question_id = f"{qa.memory_id}_q"
+                    answer_id = f"{qa.memory_id}_a"
                     await self.retriver.add(
                         texts=qa_data["texts"],
                         user_id=qa.user_id, 
                         collection_name="memory", 
                         metadatas=qa_data["metadatas"],
-                        ids=qa_data["ids"]
+                        ids=[question_id, answer_id]  # 使用唯一的ID
                     )
                     
                     # 添加到返回结果
@@ -334,6 +344,12 @@ class Memory():
             # 否则按照消息列表处理
             query_text = from_messages_to_text(input_messages)
 
+        logger.info(f"\nmemory.retrieve >>> 开始检索记忆")
+        logger.info(f"查询文本: {query_text}")
+        logger.info(f"用户ID: {user_id}")
+        logger.info(f"阈值: {threshold}")
+        logger.info(f"top_k: {top_k}")
+
         results = await self.retriver.query(
             texts=[query_text],
             user_id=user_id,
@@ -342,8 +358,23 @@ class Memory():
             query_config={"n_results": top_k}
         )
         
+        logger.info(f"\nmemory.retrieve >>> 向量检索结果:")
+        logger.info(f"结果数量: {len(results)}")
+        if results and results[0]:
+            logger.info(f"第一个结果包含:")
+            logger.info(f"- 元数据数量: {len(results[0].get('metadatas', []))}")
+            logger.info(f"- 距离数量: {len(results[0].get('distances', []))}")
+            logger.info(f"- 文档数量: {len(results[0].get('documents', []))}")
+            logger.info(f"- ID数量: {len(results[0].get('ids', []))}")
+            
+            if results[0].get('distances'):
+                logger.info(f"距离值: {results[0]['distances']}")
+            if results[0].get('metadatas'):
+                logger.info(f"元数据: {results[0]['metadatas']}")
+        
         # 如果没有结果，返回空列表
         if not results or not results[0] or not results[0]["metadatas"]:
+            logger.info("\nmemory.retrieve >>> 未找到相关记忆")
             return []
             
         metadatas = results[0]["metadatas"]
@@ -368,12 +399,20 @@ class Memory():
                 
                 memory_objects.append(memory)
                 seen_keys.add(key)
+                logger.info(f"\nmemory.retrieve >>> 创建记忆对象:")
+                logger.info(f"- 主题: {memory.topic}")
+                logger.info(f"- 问题: {memory.question}")
+                logger.info(f"- 距离: {memory.distance}")
+                logger.info(f"- 记忆ID: {memory.memory_id}")
         
         # 按距离排序，最相似的排前面
         if distances:
             memory_objects.sort(key=lambda x: getattr(x, "distance", float('inf')))
+            logger.info("\nmemory.retrieve >>> 排序后的距离值:")
+            for m in memory_objects:
+                logger.info(f"- {m.topic}: {m.distance}")
         
-        logger.info(f"\nmemory.retrieve >>> {len(memory_objects)} 个记忆片段")
+        logger.info(f"\nmemory.retrieve >>> 最终返回 {len(memory_objects)} 个记忆片段")
         return memory_objects
     
     def inject(self, messages: List[Dict[str, Any]], memory_table: str) -> List[Dict[str, Any]]:
