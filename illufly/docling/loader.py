@@ -14,16 +14,19 @@ from pathlib import Path
 import urllib.parse
 import requests
 
+logger = logging.getLogger(__name__)
+
 try:
-    from docling.datamodel.document import InputDocument
+    from docling.datamodel.document import InputDocument, InputFormat, DocumentLimits
     from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
+    from docling.backend.abstract_backend import AbstractDocumentBackend
     DOCLING_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    logger.error(f"Failed to import docling: {e}")
     DOCLING_AVAILABLE = False
 
-from .base import DocumentProcessStage, DocumentProcessStatus
-
-logger = logging.getLogger(__name__)
+from .models import DocumentProcessStage, DocumentProcessStatus
 
 class DocumentLoader:
     """文档加载器"""
@@ -32,117 +35,144 @@ class DocumentLoader:
         """初始化文档加载器
         
         Args:
-            status_tracker: 处理状态追踪器
+            status_tracker: 状态追踪器
         """
         self.status_tracker = status_tracker
+        self._intermediate_results = {}
+        
+        # 支持的格式映射
         self._supported_formats = {
             # 文档格式
-            'pdf': ['application/pdf'],
-            'docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-            'xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
-            'pptx': ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
-            'doc': ['application/msword'],
-            'xls': ['application/vnd.ms-excel'],
-            'ppt': ['application/vnd.ms-powerpoint'],
+            'pdf': 'application/pdf',
+            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'doc': 'application/msword',
+            'xls': 'application/vnd.ms-excel',
+            'ppt': 'application/vnd.ms-powerpoint',
             
             # 标记语言
-            'md': ['text/markdown', 'text/x-markdown'],
-            'markdown': ['text/markdown', 'text/x-markdown'],
-            'adoc': ['text/asciidoc'],
-            'asciidoc': ['text/asciidoc'],
-            'html': ['text/html'],
-            'htm': ['text/html'],
-            'xhtml': ['application/xhtml+xml'],
+            'markdown': 'text/markdown',
+            'asciidoc': 'text/asciidoc',
+            'html': 'text/html',
+            'xhtml': 'application/xhtml+xml',
             
             # 数据格式
-            'csv': ['text/csv', 'application/csv'],
-            'json': ['application/json'],
+            'csv': 'text/csv',
+            'json': 'application/json',
             
             # 图片格式
-            'png': ['image/png'],
-            'jpg': ['image/jpeg'],
-            'jpeg': ['image/jpeg'],
-            'tiff': ['image/tiff'],
-            'bmp': ['image/bmp'],
+            'png': 'image/png',
+            'jpeg': 'image/jpeg',
+            'tiff': 'image/tiff',
+            'bmp': 'image/bmp',
             
             # XML格式
-            'xml': ['application/xml', 'text/xml'],
-            'uspto': ['application/xml'],  # USPTO专利XML
-            'jats': ['application/xml'],   # JATS文章XML
+            'xml': 'application/xml',
+            'uspto': 'application/xml',
+            'jats': 'application/xml',
             
             # 其他
-            'txt': ['text/plain'],
-            'url': ['text/html']  # URL特殊处理
+            'txt': 'text/plain'
         }
         
         # 扩展名映射
         self._extension_map = {
-            'md': 'markdown',
-            'adoc': 'asciidoc',
-            'htm': 'html',
-            'jpg': 'jpeg',
-            'uspto': 'xml',
-            'jats': 'xml'
+            '.md': 'markdown',
+            '.adoc': 'asciidoc',
+            '.htm': 'html',
+            '.jpg': 'jpeg',
+            '.jpeg': 'jpeg',
+            '.uspto': 'xml',
+            '.jats': 'xml'
+        }
+        
+        # 格式到InputFormat的映射
+        self._format_to_input_format = {
+            'pdf': InputFormat.PDF,
+            'docx': InputFormat.DOCX,
+            'xlsx': InputFormat.XLSX,
+            'pptx': InputFormat.PPTX,
+            'html': InputFormat.HTML,
+            'asciidoc': InputFormat.ASCIIDOC,
+            'md': InputFormat.MD,
+            'csv': InputFormat.CSV,
+            'xml_uspto': InputFormat.XML_USPTO,
+            'xml_jats': InputFormat.XML_JATS
         }
     
     def _detect_file_format(self, source: str) -> Tuple[str, str]:
-        """检测文件格式
+        """检测文档格式
         
         Args:
-            source: 文件路径或URL
+            source: 文档源（文件路径或URL）
             
         Returns:
             (格式类型, MIME类型)
         """
-        # 检查是否为URL
-        parsed = urllib.parse.urlparse(source)
-        if parsed.scheme in ('http', 'https'):
-            # 从URL路径中提取文件扩展名
-            path = parsed.path.lower()
-            for ext, format_type in self._extension_map.items():
-                if path.endswith(f'.{ext}'):
-                    return format_type, self._supported_formats[format_type][0]
+        # 检查是否是URL
+        try:
+            result = urllib.parse.urlparse(source)
+            is_url = all([result.scheme, result.netloc])
+        except:
+            is_url = False
             
-            # 检查直接支持的扩展名
-            for ext, mimes in self._supported_formats.items():
-                if path.endswith(f'.{ext}'):
-                    return ext, mimes[0]
-            
+        if is_url:
+            # 特殊处理arxiv PDF URL
+            if 'arxiv.org/pdf' in source:
+                return 'pdf', 'application/pdf'
+                
+            # 尝试从URL路径中获取扩展名
+            ext = os.path.splitext(result.path)[1].lower()
+            if ext:
+                # 检查扩展名映射
+                if ext in self._extension_map:
+                    format_type = self._extension_map[ext]
+                    return format_type, self._supported_formats[format_type]
+                    
+                # 去掉点号
+                ext = ext[1:]
+                if ext in self._supported_formats:
+                    return ext, self._supported_formats[ext]
+                    
             # 尝试通过HEAD请求获取Content-Type
             try:
-                response = requests.head(source, allow_redirects=True)
+                response = requests.head(source)
                 content_type = response.headers.get('Content-Type', '').lower()
                 
-                # 检查Content-Type
-                for fmt, mimes in self._supported_formats.items():
-                    if any(mime in content_type for mime in mimes):
-                        return fmt, content_type
-            except Exception as e:
-                logger.warning(f"无法获取URL的Content-Type: {str(e)}")
-            
-            # 默认返回URL类型
-            return 'url', 'text/html'
-        
-        # 检查文件扩展名
-        ext = os.path.splitext(source)[1].lower().lstrip('.')
-        
-        # 检查扩展名映射
-        if ext in self._extension_map:
-            format_type = self._extension_map[ext]
-            return format_type, self._supported_formats[format_type][0]
-        
-        # 检查直接支持的扩展名
-        if ext in self._supported_formats:
-            return ext, self._supported_formats[ext][0]
-        
-        # 使用mimetypes猜测
-        mime_type, _ = mimetypes.guess_type(source)
-        if mime_type:
-            for fmt, mimes in self._supported_formats.items():
-                if mime_type in mimes:
-                    return fmt, mime_type
-        
-        return 'unknown', mime_type or 'application/octet-stream'
+                # 检查Content-Type映射
+                for format_type, mime_type in self._supported_formats.items():
+                    if content_type.startswith(mime_type):
+                        return format_type, mime_type
+            except:
+                pass
+                
+            # 默认返回HTML
+            return 'html', 'text/html'
+        else:
+            # 本地文件
+            ext = os.path.splitext(source)[1].lower()
+            if not ext:
+                return 'unknown', 'application/octet-stream'
+                
+            # 检查扩展名映射
+            if ext in self._extension_map:
+                format_type = self._extension_map[ext]
+                return format_type, self._supported_formats[format_type]
+                
+            # 去掉点号
+            ext = ext[1:]
+            if ext in self._supported_formats:
+                return ext, self._supported_formats[ext]
+                
+            # 尝试使用mimetypes
+            mime_type, _ = mimetypes.guess_type(source)
+            if mime_type:
+                for format_type, supported_mime in self._supported_formats.items():
+                    if mime_type.startswith(supported_mime):
+                        return format_type, supported_mime
+                        
+            return 'unknown', 'application/octet-stream'
     
     def load_document(self, source: str, metadata: Optional[Dict[str, Any]] = None) -> Tuple[InputDocument, str]:
         """加载文档
@@ -168,12 +198,23 @@ class DocumentLoader:
             f"检测到文档格式: {format_type}"
         )
         
+        # 获取InputFormat
+        input_format = self._format_to_input_format.get(format_type, InputFormat.PDF)
+        
         # 创建输入文档
-        in_doc = InputDocument(
-            file=Path(source),
-            mime_type=mime_type,
-            metadata=metadata or {}
-        )
+        kwargs = {
+            'path_or_stream': Path(source),
+            'format': input_format,
+            'backend': PyPdfiumDocumentBackend if format_type == 'pdf' else AbstractDocumentBackend,
+            'filename': os.path.basename(source),
+            'limits': DocumentLimits()
+        }
+        
+        # 添加元数据
+        if metadata:
+            kwargs['metadata'] = metadata
+            
+        in_doc = InputDocument(**kwargs)
         
         return in_doc, format_type
     

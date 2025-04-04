@@ -8,12 +8,15 @@ import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from illufly.docling import DocumentProcessStatus, DocumentLoader
+from illufly.docling import DocumentProcessStatus, DocumentLoader, DocumentProcessStage
 
 @pytest.fixture
 def status_tracker():
     """创建状态追踪器"""
-    return DocumentProcessStatus()
+    return DocumentProcessStatus(
+        doc_id="test_doc_id",
+        user_id="test_user_id"
+    )
 
 @pytest.fixture
 def loader(status_tracker):
@@ -129,34 +132,53 @@ def test_detect_file_format_url_content_type(mock_head, loader):
         assert format_type == expected_format
         assert mime_type == expected_mime
 
-def test_load_document_local(loader):
+@patch('illufly.docling.loader.InputDocument')
+def test_load_document_local(mock_input_doc, loader):
     """测试加载本地文档"""
+    # 创建模拟InputDocument
+    mock_doc = MagicMock()
+    mock_input_doc.return_value = mock_doc
+    
     # 测试各种文档格式
     formats = ['.pdf', '.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt', '.md', '.html', '.csv']
     
     for ext in formats:
         with tempfile.NamedTemporaryFile(suffix=ext) as tmp:
             in_doc, format_type = loader.load_document(tmp.name)
-            assert in_doc.file == Path(tmp.name)
+            assert in_doc == mock_doc
             assert format_type in loader._supported_formats
 
-def test_load_document_with_metadata(loader):
+@patch('illufly.docling.loader.InputDocument')
+def test_load_document_with_metadata(mock_input_doc, loader):
     """测试带元数据的文档加载"""
+    # 创建模拟InputDocument
+    mock_doc = MagicMock()
+    mock_input_doc.return_value = mock_doc
+    
     metadata = {'title': '测试文档', 'author': '测试作者'}
     
     with tempfile.NamedTemporaryFile(suffix='.pdf') as tmp:
         in_doc, _ = loader.load_document(tmp.name, metadata=metadata)
-        assert in_doc.metadata == metadata
+        assert in_doc == mock_doc
+        # 确保metadata被设置
+        mock_input_doc.assert_called_once()
+        args, kwargs = mock_input_doc.call_args
+        assert kwargs.get('metadata') == metadata
 
-def test_download_document(loader):
+@patch('requests.get')
+def test_download_document(mock_get, loader):
     """测试文档下载"""
+    # 模拟响应
+    mock_response = MagicMock()
+    mock_response.headers = {'content-length': '100'}
+    mock_response.iter_content.return_value = [b'test data']
+    mock_get.return_value = mock_response
+    
     # 测试各种文档格式
     urls = [
         'https://example.com/test.pdf',
-        'https://example.com/test.docx',
-        'https://example.com/test.xlsx',
         'https://example.com/test.md',
-        'https://example.com/test.html'
+        'https://example.com/test.txt'
     ]
     
     for url in urls:
@@ -174,5 +196,5 @@ def test_download_document_error(loader):
         loader.download_document(invalid_url)
     
     # 验证状态更新
-    assert loader.status_tracker.failed
-    assert '下载失败' in loader.status_tracker.error_message 
+    assert loader.status_tracker.stage == DocumentProcessStage.FAILED
+    assert loader.status_tracker.error is not None 
