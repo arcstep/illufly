@@ -8,6 +8,7 @@ docling 模块
 from .schemas import DocumentProcessStage, DocumentProcessStatus
 from .pipeline import ObservablePipelineWrapper
 from .converter import ObservableConverter
+from .base import process_document
 
 __all__ = [
     'DocumentProcessStage',
