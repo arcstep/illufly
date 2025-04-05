@@ -19,6 +19,7 @@ from .openai import create_openai_endpoints
 from .chat import create_chat_endpoints
 from .static_files import StaticFilesManager
 from .tts.endpoints import create_tts_endpoints
+from .docs import create_docs_endpoints
 
 setup_logging()
 logger = logging.getLogger("illufly")
@@ -254,3 +255,21 @@ def mount_agent_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager:
             summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
             description=getattr(handler, "__doc__", None),
             tags=["Illufly Backend - TTS"])
+    
+    # Docs 路由
+    docs_handlers = create_docs_endpoints(
+        app=app,
+        tokens_manager=tokens_manager,
+        db=agent.db,
+        file_storage_dir="./uploads",
+        prefix=prefix
+    )
+    for (method, path, handler) in docs_handlers:
+        app.add_api_route(
+            path=path,
+            endpoint=handler,
+            methods=[method],
+            response_model=getattr(handler, "__annotations__", {}).get("return"),
+            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
+            description=getattr(handler, "__doc__", None),
+            tags=["Illufly Backend - Docs"])

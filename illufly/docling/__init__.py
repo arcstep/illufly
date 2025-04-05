@@ -1,40 +1,21 @@
-"""Illufly's document processing and chunking module based on docling.
+"""
+docling 模块
 
-This module provides:
-1. Document loading, recognition and processing capabilities
-2. Chunking strategies for document splitting
-3. Observable pipelines for monitoring document processing
+提供了文档处理、转换和分块的核心功能。
 """
 
-from .base import (
-    DocumentProcessStage,
-    DocumentProcessStatus,
-    DocumentProcessor
-)
-
-from .observable import (
-    ObservablePipeline,
-    ObservablePdfPipeline
-)
-
-from .chunker import (
-    ChunkingStrategy,
-    DocumentChunker,
-    SimpleTextChunker
-)
-
-from .loader import (
-    DocumentLoader
-)
+# 直接导入所有组件以保持向后兼容性
+from .schemas import DocumentProcessStage, DocumentProcessStatus
+from .pipeline import ObservablePipelineWrapper
+from .converter import ObservableConverter
+from .chunker import ObservableChunker
+from .processor import DocumentProcessor, create_async_observable_converter
 
 __all__ = [
     'DocumentProcessStage',
     'DocumentProcessStatus',
-    'DocumentProcessor',
-    'ObservablePipeline',
-    'ObservablePdfPipeline',
-    'ChunkingStrategy',
-    'DocumentChunker',
-    'SimpleTextChunker',
-    'DocumentLoader'
+    'create_async_observable_converter',
+    'ObservablePipelineWrapper',
+    'ObservableConverter',
+    'DocumentProcessor'
 ]
