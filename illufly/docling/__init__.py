@@ -8,14 +8,10 @@ docling 模块
 from .schemas import DocumentProcessStage, DocumentProcessStatus
 from .pipeline import ObservablePipelineWrapper
 from .converter import ObservableConverter
-from .chunker import ObservableChunker
-from .processor import DocumentProcessor, create_async_observable_converter
 
 __all__ = [
     'DocumentProcessStage',
     'DocumentProcessStatus',
-    'create_async_observable_converter',
     'ObservablePipelineWrapper',
     'ObservableConverter',
-    'DocumentProcessor'
 ]
