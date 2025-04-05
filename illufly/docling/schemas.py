@@ -17,6 +17,7 @@ class DocumentProcessStage(str, Enum):
     ASSEMBLE = "ASSEMBLE"  # 组装中
     ENRICH = "ENRICH"  # 丰富内容中
     CHUNKING = "CHUNKING"  # 文档分块中
+    EMBEDDING = "EMBEDDING"  # 生成嵌入向量
     COMPLETE = "COMPLETE"  # 完成
     ERROR = "ERROR"  # 错误
 

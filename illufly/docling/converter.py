@@ -214,10 +214,12 @@ class ObservableConverter:
             转换结果
         """
         # 创建临时DocumentConverter实例，确保线程安全
-        converter = DocumentConverter(
-            allowed_formats=self.allowed_formats,
-            format_options=self.format_to_options
-        )
+        kwargs = {}
+        if self.format_to_options:
+            kwargs["format_options"] = self.format_to_options
+        if self.allowed_formats:
+            kwargs["allowed_formats"] = self.allowed_formats
+        converter = DocumentConverter(**kwargs)
         
         # 调用其convert方法
         return converter.convert(
@@ -283,7 +285,8 @@ class ObservableConverter:
                     raises_on_error=raises_on_error,
                     max_num_pages=max_num_pages,
                     max_file_size=max_file_size,
-                    page_range=page_range
+                    page_range=page_range,
+                    status_tracker=status_tracker
                 )
             )
             
@@ -346,6 +349,7 @@ class ObservableConverter:
         max_num_pages: int = sys.maxsize,
         max_file_size: int = sys.maxsize,
         page_range: PageRange = DEFAULT_PAGE_RANGE,
+        status_tracker: Optional[DocumentProcessStatus] = None
     ) -> Optional[InputDocument]:
         """准备输入文档
         
@@ -356,6 +360,7 @@ class ObservableConverter:
             max_num_pages: 最大页数限制
             max_file_size: 最大文件大小限制
             page_range: 页面范围
+            status_tracker: 状态跟踪器(可选)
             
         Returns:
             准备好的InputDocument实例
@@ -392,6 +397,13 @@ class ObservableConverter:
             
         except Exception as e:
             logger.error(f"准备输入文档时出错: {str(e)}", exc_info=True)
+            if status_tracker:
+                status_tracker.update(
+                    stage=DocumentProcessStage.ERROR,
+                    progress=0.0,
+                    message=f"准备文档失败: {str(e)}",
+                    error=str(e)
+                )
             if raises_on_error:
                 raise
             return None 
