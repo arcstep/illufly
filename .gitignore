@@ -198,3 +198,8 @@ scripts/hf_model/
 /docs/npm-debug.log*
 /docs/yarn-debug.log*
 /docs/yarn-error.log*
+
+# 本地工作目录
+/illufly/scripts/
+/notes/
+/scripts/
