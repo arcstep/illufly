@@ -5,7 +5,7 @@ from datetime import datetime
 
 import uuid
 import logging
-from ..rocksdb import default_rocksdb, IndexedRocksDB
+from voidring import default_rocksdb, IndexedRocksDB
 from .models import Thread
 
 class ThreadManager():

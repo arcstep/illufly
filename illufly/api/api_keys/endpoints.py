@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from enum import Enum
 
-from ...rocksdb import IndexedRocksDB
+from voidring import IndexedRocksDB
 from ..models import Result, HttpMethod
 from ..auth import require_user, TokensManager, TokenClaims
 from .api_keys import ApiKeysManager

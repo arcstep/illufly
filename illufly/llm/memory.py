@@ -4,9 +4,10 @@ import html
 from datetime import datetime
 from typing import List, Dict, Any, Union
 import uuid
+import copy
 
 from ..prompt import PromptTemplate
-from ..rocksdb import default_rocksdb, IndexedRocksDB
+from voidring import default_rocksdb, IndexedRocksDB
 from .base import LiteLLM
 from .retriever import ChromaRetriever
 from .models import MemoryQA
@@ -63,25 +64,34 @@ class Memory():
         logger.info("开始初始化记忆检索器...")
         
         # 将所有记忆加载到向量库
-        for qa in self.memory_db.values(prefix=ROCKSDB_PREFIX):
-            try:
-                qa_data = qa.to_retrieve()
-                # 为问题和答案分别生成唯一的ID
-                question_id = f"{qa.memory_id}_q"
-                answer_id = f"{qa.memory_id}_a"
-                await self.retriver.add(
-                    texts=qa_data["texts"],
-                    user_id=qa.user_id,
-                    collection_name=CHROMA_COLLECTION,
-                    metadatas=qa_data["metadatas"],
-                    ids=[question_id, answer_id]  # 使用唯一的ID
-                )
-                logger.info(f"成功加载记忆到向量库: {qa.memory_id}")
-            except Exception as e:
-                logger.error(f"初始化记忆时出错: {e}, 记忆: {qa}")
-                continue
+        success_count = 0
+        fail_count = 0
         
-        logger.info("记忆检索器初始化完成")
+        try:
+            for qa in self.memory_db.values(prefix=ROCKSDB_PREFIX):
+                try:
+                    qa_data = qa.to_retrieve()
+                    # 为问题和答案分别生成唯一的ID
+                    question_id = f"{qa.memory_id}_q"
+                    answer_id = f"{qa.memory_id}_a"
+                    await self.retriver.add(
+                        texts=qa_data["texts"],
+                        user_id=qa.user_id,
+                        collection_name=CHROMA_COLLECTION,
+                        metadatas=qa_data["metadatas"],
+                        ids=[question_id, answer_id]  # 使用唯一的ID
+                    )
+                    logger.info(f"成功加载记忆到向量库: {qa.memory_id}")
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"加载记忆到向量库失败: {e}, 记忆: {qa.memory_id}")
+                    fail_count += 1
+                    continue
+            
+            logger.info(f"记忆检索器初始化完成: 成功 {success_count} 条，失败 {fail_count} 条")
+        except Exception as e:
+            logger.error(f"初始化记忆检索器失败: {e}")
+            logger.warning("记忆检索器初始化失败，系统将使用降级模式提供服务")
 
     def all_memory(self, user_id: str=None, limit: int=100) -> List[MemoryQA]:
         """获取所有记忆"""
@@ -350,71 +360,131 @@ class Memory():
         logger.info(f"阈值: {threshold}")
         logger.info(f"top_k: {top_k}")
 
-        results = await self.retriver.query(
-            texts=[query_text],
-            user_id=user_id,
-            collection_name=CHROMA_COLLECTION,
-            threshold=threshold,
-            query_config={"n_results": top_k}
-        )
-        
-        logger.info(f"\nmemory.retrieve >>> 向量检索结果:")
-        logger.info(f"结果数量: {len(results)}")
-        if results and results[0]:
-            logger.info(f"第一个结果包含:")
-            logger.info(f"- 元数据数量: {len(results[0].get('metadatas', []))}")
-            logger.info(f"- 距离数量: {len(results[0].get('distances', []))}")
-            logger.info(f"- 文档数量: {len(results[0].get('documents', []))}")
-            logger.info(f"- ID数量: {len(results[0].get('ids', []))}")
+        try:
+            results = await self.retriver.query(
+                texts=[query_text],
+                user_id=user_id,
+                collection_name=CHROMA_COLLECTION,
+                threshold=threshold,
+                query_config={"n_results": top_k}
+            )
             
-            if results[0].get('distances'):
-                logger.info(f"距离值: {results[0]['distances']}")
-            if results[0].get('metadatas'):
-                logger.info(f"元数据: {results[0]['metadatas']}")
-        
-        # 如果没有结果，返回空列表
-        if not results or not results[0] or not results[0]["metadatas"]:
-            logger.info("\nmemory.retrieve >>> 未找到相关记忆")
-            return []
-            
-        metadatas = results[0]["metadatas"]
-        distances = results[0].get("distances", [])
-        
-        # 创建MemoryQA对象并去重
-        memory_objects = []
-        seen_keys = set()
-        
-        for i, meta in enumerate(metadatas):
-            key = f"{meta['topic']}:{meta['question']}"
-            if key not in seen_keys:
-                memory = MemoryQA(
-                    user_id=user_id,
-                    topic=meta["topic"],
-                    question=meta["question"],
-                    answer=meta["answer"],
-                    created_at=meta.get("created_at", datetime.now().timestamp()),
-                    distance=distances[i] if distances and i < len(distances) else None,
-                    memory_id=meta.get("memory_id", results[0]["ids"][i] if results[0].get("ids") and i < len(results[0]["ids"]) else uuid.uuid4().hex)
-                )
+            logger.info(f"\nmemory.retrieve >>> 向量检索结果:")
+            logger.info(f"结果数量: {len(results)}")
+            if results and results[0]:
+                logger.info(f"第一个结果包含:")
+                logger.info(f"- 元数据数量: {len(results[0].get('metadatas', []))}")
+                logger.info(f"- 距离数量: {len(results[0].get('distances', []))}")
+                logger.info(f"- 文档数量: {len(results[0].get('documents', []))}")
+                logger.info(f"- ID数量: {len(results[0].get('ids', []))}")
                 
-                memory_objects.append(memory)
-                seen_keys.add(key)
-                logger.info(f"\nmemory.retrieve >>> 创建记忆对象:")
-                logger.info(f"- 主题: {memory.topic}")
-                logger.info(f"- 问题: {memory.question}")
-                logger.info(f"- 距离: {memory.distance}")
-                logger.info(f"- 记忆ID: {memory.memory_id}")
-        
-        # 按距离排序，最相似的排前面
-        if distances:
-            memory_objects.sort(key=lambda x: getattr(x, "distance", float('inf')))
-            logger.info("\nmemory.retrieve >>> 排序后的距离值:")
-            for m in memory_objects:
-                logger.info(f"- {m.topic}: {m.distance}")
-        
-        logger.info(f"\nmemory.retrieve >>> 最终返回 {len(memory_objects)} 个记忆片段")
-        return memory_objects
+                if results[0].get('distances'):
+                    logger.info(f"距离值: {results[0]['distances']}")
+                if results[0].get('metadatas'):
+                    logger.info(f"元数据: {results[0]['metadatas']}")
+            
+            # 如果没有结果，返回空列表
+            if not results or not results[0] or not results[0]["metadatas"]:
+                logger.info("\nmemory.retrieve >>> 未找到相关记忆")
+                return []
+                
+            metadatas = results[0]["metadatas"]
+            distances = results[0].get("distances", [])
+            
+            # 创建MemoryQA对象并去重
+            memory_objects = []
+            seen_keys = set()
+            
+            for i, meta in enumerate(metadatas):
+                key = f"{meta['topic']}:{meta['question']}"
+                if key not in seen_keys:
+                    memory = MemoryQA(
+                        user_id=user_id,
+                        topic=meta["topic"],
+                        question=meta["question"],
+                        answer=meta["answer"],
+                        created_at=meta.get("created_at", datetime.now().timestamp()),
+                        distance=distances[i] if distances and i < len(distances) else None,
+                        memory_id=meta.get("memory_id", results[0]["ids"][i] if results[0].get("ids") and i < len(results[0]["ids"]) else uuid.uuid4().hex)
+                    )
+                    
+                    memory_objects.append(memory)
+                    seen_keys.add(key)
+                    logger.info(f"\nmemory.retrieve >>> 创建记忆对象:")
+                    logger.info(f"- 主题: {memory.topic}")
+                    logger.info(f"- 问题: {memory.question}")
+                    logger.info(f"- 距离: {memory.distance}")
+                    logger.info(f"- 记忆ID: {memory.memory_id}")
+            
+            # 按距离排序，最相似的排前面
+            if distances:
+                memory_objects.sort(key=lambda x: getattr(x, "distance", float('inf')))
+                logger.info("\nmemory.retrieve >>> 排序后的距离值:")
+                for m in memory_objects:
+                    logger.info(f"- {m.topic}: {m.distance}")
+            
+            logger.info(f"\nmemory.retrieve >>> 最终返回 {len(memory_objects)} 个记忆片段")
+            return memory_objects
+            
+        except Exception as e:
+            # 向量检索失败时的优雅降级
+            logger.error(f"向量记忆检索失败: {str(e)}")
+            logger.warning("向量记忆检索启用降级模式：返回基于关键词的匹配结果")
+            
+            # 降级为基于关键词的搜索
+            return self._fallback_keyword_search(query_text, user_id, top_k)
     
+    def _fallback_keyword_search(self, query_text: str, user_id: str, limit: int=15) -> List[MemoryQA]:
+        """当向量搜索失败时的回退关键词搜索
+        
+        实现简单的关键词匹配，从现有记忆中查找与查询文本包含相同关键词的记忆
+        
+        Args:
+            query_text: 查询文本
+            user_id: 用户ID
+            limit: 返回结果数量限制
+            
+        Returns:
+            List[MemoryQA]: 匹配的记忆列表
+        """
+        logger.info(f"\nmemory.retrieve >>> 执行降级关键词搜索")
+        
+        # 获取所有用户的记忆
+        all_memories = self.all_memory(user_id=user_id, limit=100)
+        logger.info(f"获取到 {len(all_memories)} 条记忆")
+        
+        # 提取查询中的关键词 (简单分词)
+        query_keywords = set([w.lower() for w in query_text.split() if len(w) > 1])
+        logger.info(f"查询关键词: {query_keywords}")
+        
+        # 对每个记忆计算关键词匹配度
+        scored_memories = []
+        for memory in all_memories:
+            # 提取记忆中的关键词
+            topic_keywords = set([w.lower() for w in memory.topic.split() if len(w) > 1])
+            question_keywords = set([w.lower() for w in memory.question.split() if len(w) > 1])
+            answer_keywords = set([w.lower() for w in memory.answer.split() if len(w) > 1])
+            
+            # 计算关键词匹配度
+            topic_score = len(query_keywords.intersection(topic_keywords)) * 3  # 主题匹配权重高
+            question_score = len(query_keywords.intersection(question_keywords)) * 2  # 问题匹配权重中
+            answer_score = len(query_keywords.intersection(answer_keywords))  # 答案匹配权重低
+            
+            total_score = topic_score + question_score + answer_score
+            if total_score > 0:  # 只保留有匹配的结果
+                # 添加匹配得分作为距离 (越高越好，与向量距离相反)
+                scored_memory = copy.deepcopy(memory)
+                scored_memory.distance = 2.0 - min(total_score / 10, 1.9)  # 转换为类似向量距离的值 (0-2范围)
+                scored_memories.append(scored_memory)
+        
+        # 按得分排序
+        scored_memories.sort(key=lambda x: x.distance)
+        
+        # 返回前limit个结果
+        result = scored_memories[:limit]
+        logger.info(f"\nmemory.retrieve >>> 降级搜索返回 {len(result)} 个记忆片段")
+        return result
+
     def inject(self, messages: List[Dict[str, Any]], memory_table: str) -> List[Dict[str, Any]]:
         """注入记忆
 

@@ -11,7 +11,7 @@ from hashlib import md5
 
 from ..utils import extract_segments
 from ..community import BaseVectorDB, BaseChat
-from ..rocksdb import IndexedRocksDB, default_rocksdb
+from voidring import IndexedRocksDB, default_rocksdb
 from ..prompt import PromptTemplate
 from ..mq.enum import BlockType
 from .sparqls import (

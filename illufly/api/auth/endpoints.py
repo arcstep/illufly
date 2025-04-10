@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from enum import Enum
 
-from ...rocksdb import IndexedRocksDB
+from voidring import IndexedRocksDB
 from ..models import Result, HttpMethod
 from ..http import handle_errors
 from .models import User, UserRole

@@ -7,7 +7,7 @@ import logging
 from ....mq import BlockType
 from ....async_utils import AsyncUtils
 from ....envir import get_env
-from ....rocksdb import IndexedRocksDB
+from voidring import IndexedRocksDB
 from ...system_template import PromptTemplate
 from ...memory.L0_qa import QA, HistoryMessage
 from ...chat_openai import ChatOpenAI

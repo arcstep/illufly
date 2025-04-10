@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Union, Optional, AsyncGenerator, Tuple, Type
 from pydantic import BaseModel, Field
 
-from ..rocksdb import default_rocksdb, IndexedRocksDB
+from voidring import default_rocksdb, IndexedRocksDB
 from .base import LiteLLM
 from .models import ChunkType, DialogueChunk, Dialogue, Thread, ToolCall, MemoryQA
 from .memory import Memory, from_messages_to_text

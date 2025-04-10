@@ -8,7 +8,7 @@ import time
 import hashlib
 import json
 
-from ..rocksdb import IndexedRocksDB
+from voidring import IndexedRocksDB
 
 class MemoryQA(BaseModel):
     """

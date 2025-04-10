@@ -4,7 +4,7 @@ from typing import List
 
 import uuid
 
-from ...rocksdb import IndexedRocksDB
+from voidring import IndexedRocksDB
 from ..memory.models import HistoryMessage
 
 class Favorite(BaseModel):

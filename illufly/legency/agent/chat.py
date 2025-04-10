@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Union, Tuple
 import hashlib
 import asyncio
 
-from ..rocksdb import default_rocksdb, IndexedRocksDB
+from voidring import default_rocksdb, IndexedRocksDB
 from ..community import BaseVectorDB, BaseChat, normalize_messages
 from ..mq import ServiceDealer, service_method
 from ..mq.models import BlockType

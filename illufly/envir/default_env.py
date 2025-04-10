@@ -11,9 +11,20 @@ def get_temp_dir(subdir: str=None):
     else:  # Linux and other Unix-like systems
         return os.path.join('/tmp', subdir)
 
-def get_env(key: str=None):
+def get_env(key: str=None, default: str=None):
     """
-    获取环境变量，如果没有设置就根据默认值清单返回默认值。
+    获取环境变量，按照以下优先级:
+    1. 环境变量有设置
+    2. 入参默认值有设置
+    3. 模块get_env中的默认设置
+    4. 都没有则返回None
+    
+    Args:
+        key: 要获取的环境变量名称
+        default: 默认值，如果环境变量未设置则使用此值
+        
+    Returns:
+        str: 获取到的值，如果都没有设置则返回None
     """
     # 根据操作系统设置固定的临时目录
     FIXED_TEMP_DIR = get_temp_dir("__ILLUFLY__")
@@ -27,6 +38,10 @@ def get_env(key: str=None):
         # 任务配置
         "ILLUFLY_L0_TASK_IMITATOR": "OPENAI",
         "ILLUFLY_L0_TASK_MODEL": "gpt-4o-mini",
+
+        # TTS 服务配置
+        "TTS_HOST": "localhost",
+        "TTS_PORT": 31572,
 
         # 提示语
         "ILLUFLY_PROMPT_TEMPLATE_LOCAL_FOLDER": "__PROMPTS__",
@@ -76,10 +91,24 @@ def get_env(key: str=None):
         "LOG_ENCODING": "utf-8",
         "LOG_MIN_FREE_SPACE": 100 * 1024 * 1024,
     }
-    if key:
-        if key not in default_values:
-            raise ValueError(f"Environ Value [{key}] Not Exist !!!")
-        else:
-            return os.getenv(key) or default_values[key]
-    else:
+    
+    # 如果没有指定key，返回默认值字典
+    if key is None:
         return default_values
+    
+    # 按优先级获取值:
+    # 1. 环境变量
+    env_value = os.getenv(key)
+    if env_value is not None:
+        return env_value
+        
+    # 2. 入参默认值
+    if default is not None:
+        return default
+        
+    # 3. 模块默认值
+    if key in default_values:
+        return default_values[key]
+        
+    # 4. 都没有则返回None
+    return None

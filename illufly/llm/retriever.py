@@ -186,37 +186,56 @@ class ChromaRetriever():
                 query_config["where"]["user_id"] = user_id
             logger.info(f"添加用户过滤条件: {query_config['where']}")
 
-        # 获取嵌入向量并查询
-        logger.info("获取查询文本的嵌入向量...")
-        resp = await self.llm.aembedding(texts, **embedding_config)
-        query_embeddings = [e['embedding'] for e in resp.data]
-        logger.info(f"嵌入向量维度: {len(query_embeddings[0]) if query_embeddings else 0}")
-        
-        logger.info("执行向量检索...")
-        results = collection.query(query_embeddings=query_embeddings, **query_config)
-        logger.info(f"原始检索结果数量: {len(results['ids'][0]) if results and 'ids' in results else 0}")
-
-        # 处理每个查询的结果
-        final_results = []
-        for i in range(len(texts)):
-            logger.info(f"\nchroma query >>> 处理第 {i+1} 个查询结果")
-            # 使用阈值过滤结果
-            filtered_indices = [
-                j for j, distance in enumerate(results['distances'][i])
-                if distance < threshold
-            ]
-            logger.info(f"距离值: {results['distances'][i]}")
-            logger.info(f"过滤后的索引: {filtered_indices}")
+        try:
+            # 获取嵌入向量并查询
+            logger.info("获取查询文本的嵌入向量...")
+            resp = await self.llm.aembedding(texts, **embedding_config)
+            query_embeddings = [e['embedding'] for e in resp.data]
+            logger.info(f"嵌入向量维度: {len(query_embeddings[0]) if query_embeddings else 0}")
             
-            # 构建过滤后的结果
-            filtered_result = {
-                "text": texts[i],
-                "ids": [results['ids'][i][j] for j in filtered_indices],
-                "metadatas": [results['metadatas'][i][j] for j in filtered_indices],
-                "documents": [results['documents'][i][j] for j in filtered_indices],
-                "distances": [results['distances'][i][j] for j in filtered_indices]
-            }
-            logger.info(f"过滤后的结果数量: {len(filtered_result['ids'])}")
-            final_results.append(filtered_result)
+            logger.info("执行向量检索...")
+            results = collection.query(query_embeddings=query_embeddings, **query_config)
+            logger.info(f"原始检索结果数量: {len(results['ids'][0]) if results and 'ids' in results else 0}")
 
-        return final_results
+            # 处理每个查询的结果
+            final_results = []
+            for i in range(len(texts)):
+                logger.info(f"\nchroma query >>> 处理第 {i+1} 个查询结果")
+                # 使用阈值过滤结果
+                filtered_indices = [
+                    j for j, distance in enumerate(results['distances'][i])
+                    if distance < threshold
+                ]
+                logger.info(f"距离值: {results['distances'][i]}")
+                logger.info(f"过滤后的索引: {filtered_indices}")
+                
+                # 构建过滤后的结果
+                filtered_result = {
+                    "text": texts[i],
+                    "ids": [results['ids'][i][j] for j in filtered_indices],
+                    "metadatas": [results['metadatas'][i][j] for j in filtered_indices],
+                    "documents": [results['documents'][i][j] for j in filtered_indices],
+                    "distances": [results['distances'][i][j] for j in filtered_indices]
+                }
+                logger.info(f"过滤后的结果数量: {len(filtered_result['ids'])}")
+                final_results.append(filtered_result)
+
+            return final_results
+        except Exception as e:
+            # 向量嵌入或检索失败时的优雅降级
+            logger.error(f"向量检索失败: {str(e)}")
+            logger.warning("启用降级模式：返回空结果而不是抛出异常")
+            
+            # 为每个查询创建空结果
+            empty_results = []
+            for i in range(len(texts)):
+                empty_result = {
+                    "text": texts[i],
+                    "ids": [],
+                    "metadatas": [],
+                    "documents": [],
+                    "distances": []
+                }
+                empty_results.append(empty_result)
+            
+            return empty_results

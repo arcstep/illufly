@@ -8,9 +8,9 @@ from enum import Enum
 
 import jwt
 import logging
+from voidring import IndexedRocksDB, CachedRocksDB
 
 from ...envir import get_env
-from ...rocksdb import IndexedRocksDB, CachedRocksDB
 from ..models import Result
 
 __JWT_SECRET_KEY__ = get_env("FASTAPI_SECRET_KEY")

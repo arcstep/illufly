@@ -6,7 +6,7 @@ from typing import List
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel, Field
 
-from ...rocksdb import IndexedRocksDB
+from voidring import IndexedRocksDB
 from ..models import Result
 
 __API_KEY_MODEL_NAME__ = "api_key"

@@ -1,25 +1,27 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 
 from pathlib import Path
 from typing import Optional, List, Set
 
 import logging
+from voidring import IndexedRocksDB
+import httpx
+import asyncio
 
 from ..__version__ import __version__
 from ..envir.logging import setup_logging
-from ..rocksdb import IndexedRocksDB
 from ..llm import ChatAgent
 from ..llm import ThreadManager
-from .auth import TokensManager, UsersManager, create_auth_endpoints
+from .auth import TokensManager, UsersManager, create_auth_endpoints, require_user
 from .api_keys import ApiKeysManager, create_api_keys_endpoints
 from .openai import create_openai_endpoints
 from .chat import create_chat_endpoints
 from .static_files import StaticFilesManager
-from .tts.endpoints import create_tts_endpoints
-from .docs import create_docs_endpoints
+from ..envir import get_env
+from .tts_proxy import setup_tts_proxy
 
 setup_logging()
 logger = logging.getLogger("illufly")
@@ -241,35 +243,25 @@ def mount_agent_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager:
             description=getattr(handler, "__doc__", None),
             tags=["Illufly Backend - Memory"])
             
-    # TTS 路由
-    tts_handlers = create_tts_endpoints(
-        app=app,
-        prefix=prefix
-    )
-    for (method, path, handler) in tts_handlers:
-        app.add_api_route(
-            path=path,
-            endpoint=handler,
-            methods=[method],
-            response_model=getattr(handler, "__annotations__", {}).get("return"),
-            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
-            description=getattr(handler, "__doc__", None),
-            tags=["Illufly Backend - TTS"])
-    
-    # Docs 路由
-    docs_handlers = create_docs_endpoints(
-        app=app,
-        tokens_manager=tokens_manager,
-        db=agent.db,
-        file_storage_dir="./uploads",
-        prefix=prefix
-    )
-    for (method, path, handler) in docs_handlers:
-        app.add_api_route(
-            path=path,
-            endpoint=handler,
-            methods=[method],
-            response_model=getattr(handler, "__annotations__", {}).get("return"),
-            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
-            description=getattr(handler, "__doc__", None),
-            tags=["Illufly Backend - Docs"])
+    # 设置TTS服务代理
+    try:
+        # 获取TTS配置
+        tts_host = get_env("TTS_HOST", None)
+        tts_port = get_env("TTS_PORT", None)
+        
+        if tts_port:
+            try:
+                tts_port = int(tts_port)
+            except ValueError:
+                logger.warning(f"TTS_PORT值无效: {tts_port}")
+                tts_port = None
+        
+        # 设置TTS代理
+        tts_enabled = setup_tts_proxy(app, tts_host, tts_port)
+        
+        if tts_enabled:
+            logger.info(f"已注册TTS代理: {tts_host}:{tts_port}")
+        else:
+            logger.info("TTS服务未配置，将返回错误响应")
+    except Exception as e:
+        logger.error(f"设置TTS代理失败: {e}")

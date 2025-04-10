@@ -2,7 +2,7 @@ from typing import Any, List
 from http import HTTPStatus
 
 import os
-from ...rocksdb import IndexedRocksDB
+from voidring import IndexedRocksDB
 from ..base_embeddings import BaseEmbeddings
 
 class OpenAIEmbeddings(BaseEmbeddings):

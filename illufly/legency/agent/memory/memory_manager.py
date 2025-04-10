@@ -5,7 +5,7 @@ from enum import Enum
 
 import logging
 
-from ...rocksdb import IndexedRocksDB, default_rocksdb
+from voidring import IndexedRocksDB, default_rocksdb
 from ...thread.models import HistoryMessage
 from .types import MemoryType
 

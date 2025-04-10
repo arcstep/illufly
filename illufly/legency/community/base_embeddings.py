@@ -3,7 +3,7 @@ from typing import List, Union
 from pydantic import BaseModel, Field
 
 from ..utils import hash_text, clean_filename, raise_invalid_params
-from ..rocksdb import IndexedRocksDB, default_rocksdb
+from voidring import IndexedRocksDB, default_rocksdb
 
 from .models import EmbeddingText
 
