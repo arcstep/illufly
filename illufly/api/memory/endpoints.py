@@ -5,9 +5,9 @@ from pydantic import BaseModel, Field
 import logging
 import json
 
+from soulseal import TokenSDK
 from ..models import Result, HttpMethod
 from ..http import handle_errors
-from ..auth import require_user, TokensManager, TokenClaims
 from ...llm import ChatAgent
 from ...llm.models import MemoryQA
 from ...envir import get_env
@@ -24,7 +24,7 @@ class MemorySearchRequest(BaseModel):
 
 def create_memory_endpoints(
     app: FastAPI,
-    tokens_manager: TokensManager,
+    token_sdk: TokenSDK,
     agent: ChatAgent,
     prefix: str="/api",
     logger: logging.Logger = None
@@ -37,10 +37,11 @@ def create_memory_endpoints(
     """
 
     logger = logging.getLogger(__name__)
+    require_user = token_sdk.get_auth_dependency(logger=logger)
 
     @handle_errors()
     async def all_memory(
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: Dict[str, Any] = Depends(require_user)
     ):
         """获取所有记忆"""
         return agent.memory.all_memory(token_claims['user_id'])
@@ -49,7 +50,7 @@ def create_memory_endpoints(
     async def update_memory(
         memory_id: str,
         memory_data: MemoryUpdateRequest,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: Dict[str, Any] = Depends(require_user)
     ):
         """更新指定记忆"""
         try:
@@ -84,7 +85,7 @@ def create_memory_endpoints(
     @handle_errors()
     async def delete_memory(
         memory_id: str,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: Dict[str, Any] = Depends(require_user)
     ):
         """删除指定记忆"""
         try:
@@ -103,7 +104,7 @@ def create_memory_endpoints(
     @handle_errors()
     async def search_memory(
         search_request: MemorySearchRequest,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: Dict[str, Any] = Depends(require_user)
     ):
         """搜索记忆"""
         try:

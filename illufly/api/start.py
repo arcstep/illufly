@@ -6,8 +6,14 @@ from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pathlib import Path
 from typing import Optional, List, Set
 
-import logging
 from voidring import IndexedRocksDB
+from soulseal import (
+    create_auth_endpoints,
+    UsersManager, User,
+    TokensManager, TokenBlacklist, TokenSDK
+)
+
+import logging
 import httpx
 import asyncio
 
@@ -15,7 +21,6 @@ from ..__version__ import __version__
 from ..envir.logging import setup_logging
 from ..llm import ChatAgent
 from ..llm import ThreadManager
-from .auth import TokensManager, UsersManager, create_auth_endpoints, require_user
 from .api_keys import ApiKeysManager, create_api_keys_endpoints
 from .openai import create_openai_endpoints
 from .chat import create_chat_endpoints
@@ -125,13 +130,25 @@ async def create_app(
         await agent.memory.init_retriever()
 
     # 初始化管理器实例
-    tokens_manager = TokensManager(db)
-    users_manager = UsersManager(db)
     api_keys_manager = ApiKeysManager(db)
 
-    mount_auth_api(app, prefix, tokens_manager, users_manager)
-    mount_api_keys_api(app, prefix, base_url, tokens_manager, api_keys_manager)
-    mount_agent_api(app, prefix, agent, thread_manager, tokens_manager)
+    # 初始化令牌黑名单
+    token_blacklist = TokenBlacklist()
+    
+    # 初始化令牌管理器
+    tokens_manager = TokensManager(db, token_blacklist, token_storage_method="cookie")
+    
+    # 创建令牌SDK
+    token_sdk = TokenSDK(tokens_manager=tokens_manager, token_storage_method="cookie")
+    
+    # 将令牌SDK添加到应用状态中，便于在应用的其他部分访问
+    app.state.token_sdk = token_sdk
+    
+    # 初始化用户管理器
+    users_manager = UsersManager(db)
+    
+    mount_auth_api(app, prefix, tokens_manager, token_blacklist, users_manager)
+    mount_agent_api(app, prefix, agent, thread_manager, token_sdk)
     
     static_manager = mount_static_files(app, prefix, static_dir)
 
@@ -148,11 +165,12 @@ async def create_app(
     logger.info(f"Illufly API 启动完成: {prefix}/docs")
     return app
 
-def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, users_manager: UsersManager):
+def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, token_blacklist: TokenBlacklist, users_manager: UsersManager):
     # 用户管理和认证路由
     auth_handlers = create_auth_endpoints(
         app=app,
         tokens_manager=tokens_manager,
+        token_blacklist=token_blacklist,
         users_manager=users_manager,
         prefix=prefix
     )
@@ -165,25 +183,6 @@ def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, use
             summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
             description=getattr(handler, "__doc__", None),
             tags=["Illufly Backend - Auth"])
-
-def mount_api_keys_api(app: FastAPI, prefix: str, base_url: str, tokens_manager: TokensManager, api_keys_manager: ApiKeysManager):
-    # APIKEY 路由
-    api_keys_handlers = create_api_keys_endpoints(
-        app=app,
-        tokens_manager=tokens_manager,
-        api_keys_manager=api_keys_manager,
-        prefix=prefix,
-        base_url=base_url
-    )
-    for (method, path, handler) in api_keys_handlers:
-        app.add_api_route(
-            path=path,
-            endpoint=handler,
-            methods=[method],
-            response_model=getattr(handler, "__annotations__", {}).get("return"),
-            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
-            description=getattr(handler, "__doc__", None),
-            tags=["Illufly Backend - API Keys"])
 
 def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
     # 加载静态资源环境
@@ -206,13 +205,13 @@ def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
     
     return static_manager
 
-def mount_agent_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager: ThreadManager, tokens_manager: TokensManager):
+def mount_agent_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager: ThreadManager, token_sdk: TokenSDK):
     # Chat 路由
     chat_handlers = create_chat_endpoints(
         app=app,
         agent=agent,
         thread_manager=thread_manager,
-        tokens_manager=tokens_manager,
+        token_sdk=token_sdk,  # 使用TokenSDK替代TokensManager
         prefix=prefix
     )
     for (method, path, handler) in chat_handlers:
@@ -230,7 +229,7 @@ def mount_agent_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager:
     memory_handlers = create_memory_endpoints(
         app=app,
         agent=agent,
-        tokens_manager=tokens_manager,
+        token_sdk=token_sdk,  # 使用TokenSDK替代TokensManager
         prefix=prefix
     )
     for (method, path, handler) in memory_handlers:

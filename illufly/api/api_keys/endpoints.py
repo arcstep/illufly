@@ -6,9 +6,8 @@ import logging
 from datetime import datetime
 from enum import Enum
 
-from voidring import IndexedRocksDB
+from soulseal import TokensManager, TokenClaims
 from ..models import Result, HttpMethod
-from ..auth import require_user, TokensManager, TokenClaims
 from .api_keys import ApiKeysManager
 
 def create_api_keys_endpoints(
@@ -28,6 +27,7 @@ def create_api_keys_endpoints(
     """
 
     logger = logging.getLogger(__name__)
+    require_user = tokens_manager.get_auth_dependency(logger=logger)
 
     class CreateApiKeyRequest(BaseModel):
         """创建API密钥请求"""
@@ -37,7 +37,7 @@ def create_api_keys_endpoints(
     async def create_api_key(
         api_key_form: CreateApiKeyRequest,
         response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: TokenClaims = Depends(require_user)
     ):
         """创建API密钥"""
         if not api_keys_manager:
@@ -68,7 +68,7 @@ def create_api_keys_endpoints(
             )
         
     async def list_api_keys(
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: TokenClaims = Depends(require_user)
     ):
         """列出API密钥"""
         if not api_keys_manager:
@@ -96,7 +96,7 @@ def create_api_keys_endpoints(
     async def revoke_api_key(
         api_key: str,
         response: Response,
-        token_claims: TokenClaims = Depends(require_user(tokens_manager, logger=logger))
+        token_claims: TokenClaims = Depends(require_user)
     ):
         """撤销API密钥"""
         if not api_keys_manager:

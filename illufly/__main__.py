@@ -83,6 +83,9 @@ async def main():
     # 启动服务器
     await server.serve()
 
+def run_main():
+    """入口点函数，用于poetry脚本执行"""
+    return asyncio.run(main())
 
 if __name__ == "__main__":
     """

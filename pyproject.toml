@@ -18,12 +18,7 @@ async-timeout = "^5.0.1"
 chevron = "^0.14.0"
 uvicorn = "^0.34.0"
 fastapi = "^0.115.8"
-pyjwt = "^2.10.1"
-email-validator = "^2.2.0"
-argon2-cffi = "^23.1.0"
-rocksdict = "^0.3.25"
 chromadb = "^0.6.3"
-speedict = "^0.3.12"
 numpy = "^1.24.3"
 ujson = "^5.10.0"
 anyio = "^4.9.0"
@@ -51,6 +46,7 @@ tiktoken = "^0.9.0"
 pypdf2 = "^3.0.1"
 fpdf = "^1.7.2"
 voidring = "^0.1.1"
+soulseal = "^0.1.8"
 
 [tool.poetry.group.dev.dependencies]
 openai = "^1.59.6"
@@ -90,4 +86,7 @@ include = "illufly/**/*"
 
 [tool.anyio]
 backend = "asyncio"
+
+[tool.poetry.scripts]
+illufly = "illufly.__main__:run_main"
 
