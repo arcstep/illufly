@@ -23,13 +23,20 @@ def create_chat_endpoints(
     thread_manager: ThreadManager,
     prefix: str="/api",
     logger: logging.Logger = None
-) -> Dict[str, Tuple[HttpMethod, str, Callable]]:
-    """创建认证相关的API端点
+) -> List[Tuple[HttpMethod, str, Callable]]:
+    """创建聊天相关的API端点
+    
+    Args:
+        app: FastAPI应用实例
+        token_sdk: 令牌SDK
+        agent: 聊天代理
+        thread_manager: 线程管理器
+        prefix: API前缀
+        logger: 日志记录器
     
     Returns:
-        Dict[str, Tuple[HttpMethod, str, Callable]]: 
-            键为路由名称，
-            值为元组 (HTTP方法, 路由路径, 处理函数)
+        List[Tuple[HttpMethod, str, Callable]]: 
+            元组列表 (HTTP方法, 路由路径, 处理函数)
     """
 
     logger = logging.getLogger(__name__)
@@ -58,7 +65,11 @@ def create_chat_endpoints(
         return agent.load_history(token_claims['user_id'], thread_id)
 
     def _get_models():
-        return [m.strip() for m in get_env("ILLUFLY_VALID_MODELS").split(",")]
+        """获取可用模型列表"""
+        models_env = get_env("ILLUFLY_VALID_MODELS", "")
+        if not models_env:
+            return ["gpt-3.5-turbo"]  # 默认模型
+        return [m.strip() for m in models_env.split(",")]
 
     @handle_errors()
     async def models(

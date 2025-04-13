@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 
 from pathlib import Path
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Dict, Any, Callable, Tuple, Union
 
 from voidring import IndexedRocksDB
 from soulseal import (
@@ -18,18 +18,43 @@ import httpx
 import asyncio
 
 from ..__version__ import __version__
-from ..envir.logging import setup_logging
+from ..envir import get_env, setup_logging
 from ..llm import ChatAgent
 from ..llm import ThreadManager
-from .api_keys import ApiKeysManager, create_api_keys_endpoints
-from .openai import create_openai_endpoints
+from .models import HttpMethod
 from .chat import create_chat_endpoints
 from .static_files import StaticFilesManager
-from ..envir import get_env
-from .tts_proxy import setup_tts_proxy
+from .memory import create_memory_endpoints
+from .files import FilesService, create_files_endpoints
+from .proxy_middleware import mount_service_proxy
 
 setup_logging()
 logger = logging.getLogger("illufly")
+
+# 封装通用的路由挂载函数
+def mount_routes(
+    app: FastAPI, 
+    handlers: List[Tuple[HttpMethod, str, Callable]], 
+    tag: str
+):
+    """将路由处理程序挂载到应用
+    
+    Args:
+        app: FastAPI应用实例
+        handlers: 处理程序列表，每项为(HTTP方法, 路径, 处理函数)的元组
+        tag: API标签，用于文档分类
+    """
+    for method, path, handler in handlers:
+        app.add_api_route(
+            path=path,
+            endpoint=handler,
+            methods=[method],
+            response_model=getattr(handler, "__annotations__", {}).get("return"),
+            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
+            description=getattr(handler, "__doc__", None),
+            tags=[tag]
+        )
+    logger.debug(f"已挂载 {len(handlers)} 个 {tag} 路由")
 
 def setup_spa_middleware(app: FastAPI, static_dir: Path, exclude_paths: List[str] = []):
     """设置 SPA 中间件，处理客户端路由"""
@@ -80,6 +105,10 @@ async def create_app(
     base_url: str = "/api",
     static_dir: Optional[str] = None,
     cors_origins: Optional[List[str]] = None,
+    files_dir: Optional[str] = None,
+    proxy_services: Optional[Dict[str, str]] = None,
+    tts_host: Optional[str] = None,
+    tts_port: Optional[int] = None,
 ) -> FastAPI:
     """创建 FastAPI 应用"""
 
@@ -129,43 +158,94 @@ async def create_app(
         """
         await agent.memory.init_retriever()
 
-    # 初始化管理器实例
-    api_keys_manager = ApiKeysManager(db)
-
-    # 初始化令牌黑名单
+    #=============================
+    # 初始化各种服务实例
+    #=============================
+    
+    # 令牌与认证服务
     token_blacklist = TokenBlacklist()
-    
-    # 初始化令牌管理器
     tokens_manager = TokensManager(db, token_blacklist, token_storage_method="cookie")
-    
-    # 创建令牌SDK
     token_sdk = TokenSDK(tokens_manager=tokens_manager, token_storage_method="cookie")
-    
-    # 将令牌SDK添加到应用状态中，便于在应用的其他部分访问
-    app.state.token_sdk = token_sdk
-    
-    # 初始化用户管理器
     users_manager = UsersManager(db)
     
-    mount_auth_api(app, prefix, tokens_manager, token_blacklist, users_manager)
-    mount_agent_api(app, prefix, agent, thread_manager, token_sdk)
+    # 文件管理服务
+    files_service = FilesService(
+        base_dir=files_dir or str(Path(db_path) / "files"),
+        max_file_size=50 * 1024 * 1024,  # 50MB
+        max_total_size_per_user=200 * 1024 * 1024  # 200MB
+    )
     
-    static_manager = mount_static_files(app, prefix, static_dir)
-
+    #=============================
+    # 按顺序挂载所有API路由
+    # 注意：静态文件应该最后挂载，以避免覆盖API路由
+    #=============================
+    
+    # 1. 挂载认证API
+    mount_auth_api(app, prefix, tokens_manager, token_blacklist, users_manager)
+    
+    # 2. 挂载聊天API
+    mount_chat_api(app, prefix, agent, thread_manager, token_sdk)
+    
+    # 3. 挂载记忆API
+    mount_memory_api(app, prefix, agent, token_sdk)
+    
+    # 4. 挂载文件管理API
+    mount_files_api(app, prefix, token_sdk, files_service)
+    
+    # 5. 挂载TTS API
+    # 整合所有代理服务配置
+    tts_url = None
+    
+    # 尝试从环境变量获取TTS配置
+    if not tts_host:
+        tts_host = get_env("TTS_HOST", None)
+    if not tts_port:
+        tts_port_str = get_env("TTS_PORT", None)
+        if tts_port_str:
+            try:
+                tts_port = int(tts_port_str)
+            except ValueError:
+                logger.warning(f"TTS_PORT值无效: {tts_port_str}")
+                tts_port = None
+    
+    # 添加TTS服务配置
+    if tts_host and tts_port:
+        tts_url = f"http://{tts_host}:{tts_port}"
+        logger.info(f"已配置TTS服务: {tts_url}")
+        
+        # 挂载TTS服务，使用通用代理方法
+        mount_service_proxy(
+            app=app,
+            service_url=tts_url,
+            prefix=prefix,
+            service_path="tts",
+            tag="TTS"
+        )
+    else:
+        logger.warning("未找到TTS服务配置，TTS功能不可用")
+    
+    # 6. 最后挂载静态文件服务
+    static_manager = None
+    
+    # 处理静态文件
+    if static_dir or Path(__file__).parent.joinpath("static").exists():
+        static_manager = mount_static_files(app, prefix, static_dir)
+    
     @app.on_event("shutdown")
     async def cleanup():
-        """
-        应用关闭时清理资源
-        """
+        """应用关闭时清理资源"""
         if static_manager:
             static_manager.cleanup()
         
-        logger.warning(f"Illufly API 关闭完成")
+        logger.warning("Illufly API 关闭完成")
 
     logger.info(f"Illufly API 启动完成: {prefix}/docs")
     return app
 
 def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, token_blacklist: TokenBlacklist, users_manager: UsersManager):
+    """挂载用户认证API"""
+    logger.info("正在挂载用户认证API...")
+    
     # 用户管理和认证路由
     auth_handlers = create_auth_endpoints(
         app=app,
@@ -174,17 +254,55 @@ def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, tok
         users_manager=users_manager,
         prefix=prefix
     )
-    for (method, path, handler) in auth_handlers:
-        app.add_api_route(
-            path=path,
-            endpoint=handler,
-            methods=[method],
-            response_model=getattr(handler, "__annotations__", {}).get("return"),
-            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
-            description=getattr(handler, "__doc__", None),
-            tags=["Illufly Backend - Auth"])
+    
+    mount_routes(app, auth_handlers, "Illufly Backend - Auth")
+
+def mount_chat_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager: ThreadManager, token_sdk: TokenSDK):
+    """挂载聊天API"""
+    logger.info("正在挂载聊天API...")
+    
+    # 聊天路由
+    chat_handlers = create_chat_endpoints(
+        app=app,
+        agent=agent,
+        thread_manager=thread_manager,
+        token_sdk=token_sdk,
+        prefix=prefix
+    )
+    
+    mount_routes(app, chat_handlers, "Illufly Backend - Chat")
+
+def mount_memory_api(app: FastAPI, prefix: str, agent: ChatAgent, token_sdk: TokenSDK):
+    """挂载记忆API"""
+    logger.info("正在挂载记忆API...")
+    
+    # 记忆路由
+    memory_handlers = create_memory_endpoints(
+        app=app,
+        agent=agent,
+        token_sdk=token_sdk,
+        prefix=prefix
+    )
+    
+    mount_routes(app, memory_handlers, "Illufly Backend - Memory")
+
+def mount_files_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, files_service: FilesService):
+    """挂载文件管理API"""
+    logger.info("正在挂载文件管理API...")
+    
+    # 文件管理路由（注意：create_files_endpoints已自行挂载路由）
+    create_files_endpoints(
+        app=app,
+        token_sdk=token_sdk,
+        files_service=files_service,
+        prefix=prefix
+    )
+
 
 def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
+    """挂载静态文件服务"""
+    logger.info("正在挂载静态文件服务...")
+    
     # 加载静态资源环境
     static_manager = None
     if Path(__file__).parent.joinpath("static").exists() and static_dir is None:
@@ -194,73 +312,20 @@ def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
         static_path = static_manager.setup()
 
     if static_path:
-        # 设置 SPA 中间件
-        setup_spa_middleware(app, static_path, exclude_paths=[f"{prefix}/", "/docs", "/openapi.json"])
+        # 设置 SPA 中间件，但排除API路径
+        api_paths = [prefix, f"{prefix}/", "/docs", "/openapi.json"]
+        setup_spa_middleware(app, static_path, exclude_paths=api_paths)
         
         # 挂载静态文件（作为后备）
+        # 注意：确保静态文件服务不会捕获API请求
         app.mount("/", StaticFiles(
             directory=str(static_path), 
             html=True
         ), name="static")
+        
+        logger.info(f"静态文件已挂载: {static_path}")
+        logger.info(f"API路径已排除: {api_paths}")
+    else:
+        logger.warning("未挂载静态文件服务（无有效的静态文件目录）")
     
     return static_manager
-
-def mount_agent_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager: ThreadManager, token_sdk: TokenSDK):
-    # Chat 路由
-    chat_handlers = create_chat_endpoints(
-        app=app,
-        agent=agent,
-        thread_manager=thread_manager,
-        token_sdk=token_sdk,  # 使用TokenSDK替代TokensManager
-        prefix=prefix
-    )
-    for (method, path, handler) in chat_handlers:
-        app.add_api_route(
-            path=path,
-            endpoint=handler,
-            methods=[method],
-            response_model=getattr(handler, "__annotations__", {}).get("return"),
-            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
-            description=getattr(handler, "__doc__", None),
-            tags=["Illufly Backend - Chat"])
-            
-    # Memory 路由
-    from .memory import create_memory_endpoints
-    memory_handlers = create_memory_endpoints(
-        app=app,
-        agent=agent,
-        token_sdk=token_sdk,  # 使用TokenSDK替代TokensManager
-        prefix=prefix
-    )
-    for (method, path, handler) in memory_handlers:
-        app.add_api_route(
-            path=path,
-            endpoint=handler,
-            methods=[method],
-            response_model=getattr(handler, "__annotations__", {}).get("return"),
-            summary=getattr(handler, "__doc__", "").split("\n")[0] if handler.__doc__ else None,
-            description=getattr(handler, "__doc__", None),
-            tags=["Illufly Backend - Memory"])
-            
-    # 设置TTS服务代理
-    try:
-        # 获取TTS配置
-        tts_host = get_env("TTS_HOST", None)
-        tts_port = get_env("TTS_PORT", None)
-        
-        if tts_port:
-            try:
-                tts_port = int(tts_port)
-            except ValueError:
-                logger.warning(f"TTS_PORT值无效: {tts_port}")
-                tts_port = None
-        
-        # 设置TTS代理
-        tts_enabled = setup_tts_proxy(app, tts_host, tts_port)
-        
-        if tts_enabled:
-            logger.info(f"已注册TTS代理: {tts_host}:{tts_port}")
-        else:
-            logger.info("TTS服务未配置，将返回错误响应")
-    except Exception as e:
-        logger.error(f"设置TTS代理失败: {e}")

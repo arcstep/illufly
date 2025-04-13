@@ -46,7 +46,7 @@ tiktoken = "^0.9.0"
 pypdf2 = "^3.0.1"
 fpdf = "^1.7.2"
 voidring = "^0.1.1"
-soulseal = "^0.1.8"
+soulseal = {path = "../soulseal/backend", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 openai = "^1.59.6"
