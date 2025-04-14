@@ -25,7 +25,7 @@ from .models import HttpMethod
 from .chat import create_chat_endpoints
 from .static_files import StaticFilesManager
 from .memory import create_memory_endpoints
-from .files import FilesService, create_files_endpoints
+from .docs import FilesService, create_docs_endpoints
 from .proxy_middleware import mount_service_proxy
 
 setup_logging()
@@ -180,51 +180,22 @@ async def create_app(
     # 注意：静态文件应该最后挂载，以避免覆盖API路由
     #=============================
     
-    # 1. 挂载认证API
+    # 挂载认证API
     mount_auth_api(app, prefix, tokens_manager, token_blacklist, users_manager)
     
-    # 2. 挂载聊天API
+    # 挂载聊天API
     mount_chat_api(app, prefix, agent, thread_manager, token_sdk)
     
-    # 3. 挂载记忆API
+    # 挂载记忆API
     mount_memory_api(app, prefix, agent, token_sdk)
     
-    # 4. 挂载文件管理API
-    mount_files_api(app, prefix, token_sdk, files_service)
+    # 挂载文件管理API
+    mount_docs_api(app, prefix, token_sdk, files_service)
     
-    # 5. 挂载TTS API
-    # 整合所有代理服务配置
-    tts_url = None
+    # 挂载TTS API
+    mount_tts_api(app, prefix, tts_host, tts_port)
     
-    # 尝试从环境变量获取TTS配置
-    if not tts_host:
-        tts_host = get_env("TTS_HOST", None)
-    if not tts_port:
-        tts_port_str = get_env("TTS_PORT", None)
-        if tts_port_str:
-            try:
-                tts_port = int(tts_port_str)
-            except ValueError:
-                logger.warning(f"TTS_PORT值无效: {tts_port_str}")
-                tts_port = None
-    
-    # 添加TTS服务配置
-    if tts_host and tts_port:
-        tts_url = f"http://{tts_host}:{tts_port}"
-        logger.info(f"已配置TTS服务: {tts_url}")
-        
-        # 挂载TTS服务，使用通用代理方法
-        mount_service_proxy(
-            app=app,
-            service_url=tts_url,
-            prefix=prefix,
-            service_path="tts",
-            tag="TTS"
-        )
-    else:
-        logger.warning("未找到TTS服务配置，TTS功能不可用")
-    
-    # 6. 最后挂载静态文件服务
+    # 最后挂载静态文件服务
     static_manager = None
     
     # 处理静态文件
@@ -286,18 +257,52 @@ def mount_memory_api(app: FastAPI, prefix: str, agent: ChatAgent, token_sdk: Tok
     
     mount_routes(app, memory_handlers, "Illufly Backend - Memory")
 
-def mount_files_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, files_service: FilesService):
+
+def mount_docs_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, files_service: FilesService):
     """挂载文件管理API"""
     logger.info("正在挂载文件管理API...")
     
     # 文件管理路由（注意：create_files_endpoints已自行挂载路由）
-    create_files_endpoints(
+    create_docs_endpoints(
         app=app,
         token_sdk=token_sdk,
         files_service=files_service,
         prefix=prefix
     )
 
+def mount_tts_api(app: FastAPI, prefix: str, tts_host: Optional[str], tts_port: Optional[int]):
+    """挂载TTS API"""
+    # 整合所有代理服务配置
+    tts_url = None
+    
+    # 尝试从环境变量获取TTS配置
+    if not tts_host:
+        tts_host = get_env("TTS_HOST", None)
+    if not tts_port:
+        tts_port_str = get_env("TTS_PORT", None)
+        if tts_port_str:
+            try:
+                tts_port = int(tts_port_str)
+            except ValueError:
+                logger.warning(f"TTS_PORT值无效: {tts_port_str}")
+                tts_port = None
+    
+    # 添加TTS服务配置
+    if tts_host and tts_port:
+        tts_url = f"http://{tts_host}:{tts_port}"
+        logger.info(f"已配置TTS服务: {tts_url}")
+        
+        # 挂载TTS服务，使用通用代理方法
+        mount_service_proxy(
+            app=app,
+            service_url=tts_url,
+            prefix=prefix,
+            service_path="tts",
+            tag="TTS"
+        )
+    else:
+        logger.warning("未找到TTS服务配置，TTS功能不可用")
+    
 
 def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
     """挂载静态文件服务"""

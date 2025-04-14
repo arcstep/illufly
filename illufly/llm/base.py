@@ -2,6 +2,10 @@ from typing import Union, List, Optional, Dict, Any
 from litellm.caching.caching import Cache
 import litellm
 import os
+import requests
+import asyncio
+import aiohttp
+import logging
 
 class LiteLLM():
     """LiteLLM基于OpenAI的API接口，支持多种模型，支持异步请求"""
@@ -29,6 +33,10 @@ class LiteLLM():
 
         model = f"{self.provider}/{kwargs.pop('model', None)}"
         self.kwargs = {**kwargs, "model": model}
+
+        # 看看有哪些模型可用
+        self.logger = logging.getLogger("illufly.llm")
+        self.logger.info(f"模型列表: {self.list_models()}")
 
     def get_kwargs(self, **kwargs):
         """重构 litellm 输入参数"""
@@ -96,3 +104,84 @@ class LiteLLM():
         model = request_kwargs.pop("model", None)
         request_kwargs["input"] = input
         return litellm.aembedding(model, **request_kwargs)
+
+    def list_models(self) -> List[Dict[str, Any]]:
+        """列出所有可用模型（基于OpenAI接口标准）"""
+        # 获取API配置
+        config = self.get_kwargs()
+        base_url = config.get("api_base")
+        api_key = config.get("api_key")
+        
+        # 添加调试日志
+        self.logger.info(f"请求模型列表, base_url: {base_url}")
+        self.logger.info(f"API密钥有效: {bool(api_key)}")
+        
+        # 确保base_url有效
+        if not base_url:
+            self.logger.warning("base_url为空，无法获取模型列表")
+            return []
+        
+        # 确保base_url结尾没有斜杠
+        if base_url.endswith("/"):
+            base_url = base_url[:-1]
+        
+        # 构建完整URL，避免重复的/v1路径
+        if base_url.endswith("/v1"):
+            models_url = f"{base_url}/models"
+        else:
+            models_url = f"{base_url}/v1/models"
+        
+        self.logger.info(f"请求模型URL: {models_url}")
+        
+        # 设置请求头
+        headers = {
+            "Authorization": f"Bearer {api_key}"
+        }
+        
+        try:
+            self.logger.info("正在发送模型列表请求...")
+            response = requests.get(models_url, headers=headers, timeout=10)
+            self.logger.info(f"模型列表请求响应码: {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                models = data.get("data", [])
+                self.logger.info(f"获取到 {len(models)} 个模型")
+                return models
+            else:
+                self.logger.error(f"获取模型列表失败: {response.status_code} - {response.text}")
+                return []
+        except Exception as e:
+            self.logger.exception(f"请求模型列表异常: {str(e)}")
+            return []
+
+    async def alist_models(self) -> List[Dict[str, Any]]:
+        """列出所有可用模型（异步版本，基于OpenAI接口标准）"""
+        # 获取API配置
+        config = self.get_kwargs()
+        base_url = config.get("api_base")
+        api_key = config.get("api_key")
+        
+        # 确保base_url有效
+        if not base_url:
+            return []
+        
+        # 确保base_url结尾没有斜杠
+        if base_url.endswith("/"):
+            base_url = base_url[:-1]
+        
+        # 构建完整URL
+        models_url = f"{base_url}/v1/models"
+        
+        # 设置请求头
+        headers = {
+            "Authorization": f"Bearer {api_key}"
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(models_url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get("data", [])
+                else:
+                    return []

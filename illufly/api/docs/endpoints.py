@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from soulseal import TokenSDK
-from .service import FilesService, FileStatus
+from .file_service import FilesService, FileStatus
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class FileProcessRequest(BaseModel):
     process_type: str = Field(..., description="处理类型")
     options: Optional[Dict[str, Any]] = Field(default={}, description="处理选项")
 
-def create_files_endpoints(
+def create_docs_endpoints(
     app, 
     token_sdk: TokenSDK,
     files_service: FilesService,
@@ -42,7 +42,7 @@ def create_files_endpoints(
     Returns:
         路由处理器列表
     """
-    router = APIRouter(prefix=f"{prefix}", tags=["Illufly Backend - Files"])
+    router = APIRouter(prefix=f"{prefix}", tags=["Illufly Backend - Documents"])
     
     # 获取依赖函数
     require_user = token_sdk.get_auth_dependency(logger=logger)

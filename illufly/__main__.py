@@ -13,7 +13,7 @@ def _parse_args():
     arguments = [
         ("--db-path", "./db", "数据库路径 (默认: ./db)"),
         ("--provider", None, "兼容 LiteLLM 的服务提供者 (默认: OPENAI)"),
-        ("--openai", None, "OpenAI模仿者列表 (默认: OPENAI)"),
+        ("--openai", None, "OpenAI模仿者列表 (默认: QWEN)"),
         ("--router-address", None, "ZMQ 路由地址 (默认: inproc://router-bus)"),
         ("--title", "Illufly API", "API 标题 (默认: Illufly API)"),
         ("--description", "Illufly 后端 API 服务", "API 描述"),
