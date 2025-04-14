@@ -60,7 +60,6 @@ class FilesService:
             '.pdf', '.doc', '.docx', '.txt',
             '.jpg', '.jpeg', '.png', '.gif', '.webp',
             '.csv', '.xlsx', '.xls',
-            '.zip', '.rar', '.7z',
             '.mp3', '.wav', '.mp4', '.avi', '.mov'
         ]
         
@@ -218,7 +217,7 @@ class FilesService:
         return mime_type or 'application/octet-stream'
     
     async def calculate_user_storage_usage(self, user_id: str) -> int:
-        """计算用户已使用的存储空间
+        """计算用户已使用的存储空间（只计算物理存在的文件）
         
         Args:
             user_id: 用户ID
@@ -227,11 +226,12 @@ class FilesService:
             已使用的字节数
         """
         total_size = 0
-        files = await self.list_files(user_id)
+        user_files_dir = self.get_user_files_dir(user_id)
         
-        for file_info in files:
-            if file_info.get("status") == FileStatus.ACTIVE:
-                total_size += file_info.get("size", 0)
+        # 直接遍历用户文件目录，计算所有文件大小
+        for file_path in user_files_dir.glob("*"):
+            if file_path.is_file():
+                total_size += file_path.stat().st_size
         
         return total_size
     
@@ -368,7 +368,7 @@ class FilesService:
         return True
     
     async def delete_file(self, user_id: str, file_id: str) -> bool:
-        """删除文件
+        """完全删除文件和元数据
         
         Args:
             user_id: 用户ID
@@ -378,7 +378,7 @@ class FilesService:
             是否删除成功
         """
         file_info = await self.get_file(user_id, file_id)
-        if not file_info or file_info.get("status") != FileStatus.ACTIVE:
+        if not file_info:
             return False
         
         file_path = Path(file_info["path"])
@@ -386,30 +386,31 @@ class FilesService:
         
         success = True
         
-        # 删除文件
+        # 物理删除文件
         if file_path.exists():
             try:
                 os.remove(file_path)
+                logger.info(f"已物理删除文件: {file_path}")
             except Exception as e:
                 logger.error(f"删除文件失败: {file_path}, 错误: {e}")
                 success = False
         
-        # 更新元数据状态
-        file_info["status"] = FileStatus.DELETED
-        file_info["updated_at"] = time.time()
-        
-        # 保存元数据（保留记录）
-        async with aiofiles.open(meta_path, 'w') as meta_file:
-            await meta_file.write(json.dumps(file_info, ensure_ascii=False))
+        # 物理删除元数据
+        if meta_path.exists():
+            try:
+                os.remove(meta_path)
+                logger.info(f"已物理删除元数据: {meta_path}")
+            except Exception as e:
+                logger.error(f"删除元数据失败: {meta_path}, 错误: {e}")
+                success = False
         
         return success
     
-    async def list_files(self, user_id: str, include_deleted: bool = False) -> List[Dict[str, Any]]:
-        """列出用户所有文件
+    async def list_files(self, user_id: str) -> List[Dict[str, Any]]:
+        """列出用户所有文件（只返回物理存在的文件）
         
         Args:
             user_id: 用户ID
-            include_deleted: 是否包含已删除文件
             
         Returns:
             文件信息列表
@@ -424,18 +425,17 @@ class FilesService:
                     meta_content = await meta_file.read()
                     file_info = json.loads(meta_content)
                     
-                    # 处理删除状态
-                    if file_info.get("status") == FileStatus.ACTIVE:
-                        # 检查文件是否存在
-                        file_path = Path(file_info["path"])
-                        if not file_path.exists():
-                            file_info["status"] = FileStatus.DELETED
-                            async with aiofiles.open(meta_path, 'w') as update_file:
-                                await update_file.write(json.dumps(file_info, ensure_ascii=False))
-                    
-                    # 根据筛选条件添加
-                    if include_deleted or file_info.get("status") == FileStatus.ACTIVE:
+                    # 检查文件是否物理存在
+                    file_path = Path(file_info["path"])
+                    if file_path.exists():
                         files.append(file_info)
+                    else:
+                        # 文件不存在，直接删除元数据
+                        try:
+                            os.remove(meta_path)
+                            logger.info(f"删除失效元数据: {meta_path}")
+                        except Exception as e:
+                            logger.error(f"删除失效元数据失败: {meta_path}, 错误: {e}")
             except Exception as e:
                 logger.error(f"读取文件元数据失败: {meta_path}, 错误: {e}")
         
@@ -535,4 +535,31 @@ class FilesService:
             await meta_file.write(json.dumps(file_info, ensure_ascii=False))
         
         return file_info
+
+    async def cleanup_deleted_metadata(self, days_threshold: int = 30):
+        """清理标记为删除且超过指定天数的元数据
+        
+        Args:
+            days_threshold: 删除后保留元数据的天数
+        """
+        current_time = time.time()
+        threshold = current_time - (days_threshold * 24 * 60 * 60)  # 转换为秒
+        
+        for user_dir in self.meta_dir.iterdir():
+            if user_dir.is_dir():
+                user_id = user_dir.name
+                for meta_path in user_dir.glob("*.json"):
+                    try:
+                        async with aiofiles.open(meta_path, 'r') as meta_file:
+                            meta_content = await meta_file.read()
+                            file_info = json.loads(meta_content)
+                            
+                            # 检查文件是否标记为已删除且超过阈值时间
+                            if (file_info.get("status") == FileStatus.DELETED and 
+                                file_info.get("updated_at", 0) < threshold):
+                                # 物理删除元数据文件
+                                os.remove(meta_path)
+                                logger.info(f"已清理过期元数据: {meta_path}")
+                    except Exception as e:
+                        logger.error(f"清理元数据失败: {meta_path}, 错误: {e}")
 

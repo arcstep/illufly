@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 import json
 import logging
 from pathlib import Path
+import time
 
 from soulseal import TokenSDK
 from .file_service import FilesService, FileStatus
@@ -247,33 +248,6 @@ def create_docs_endpoints(
             logger.error(f"下载文件失败: {str(e)}")
             raise HTTPException(status_code=500, detail="下载文件失败")
     
-    @router.get("/files/{file_id}/stream")
-    async def stream_file(
-        file_id: str,
-        token_claims: Dict[str, Any] = Depends(require_user)
-    ):
-        """流式下载文件"""
-        user_id = token_claims.get('user_id')
-        
-        try:
-            file_info = await files_service.get_file(user_id, file_id)
-            if not file_info or file_info.get("status") != FileStatus.ACTIVE:
-                raise HTTPException(status_code=404, detail="文件不存在")
-            
-            # 使用StreamingResponse来流式传输文件
-            return StreamingResponse(
-                content=files_service.get_file_stream(user_id, file_id),
-                media_type=files_service.get_file_mimetype(file_info["original_name"]),
-                headers={
-                    "Content-Disposition": f'attachment; filename="{file_info["original_name"]}"'
-                }
-            )
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="文件不存在")
-        except Exception as e:
-            logger.error(f"流式下载文件失败: {str(e)}")
-            raise HTTPException(status_code=500, detail="流式下载文件失败")
-    
     @router.post("/files/{file_id}/process")
     async def process_file(
         file_id: str,
@@ -306,11 +280,15 @@ def create_docs_endpoints(
         
         try:
             usage = await files_service.calculate_user_storage_usage(user_id)
+            files = await files_service.list_files(user_id)
+            
             return {
                 "used": usage,
                 "limit": files_service.max_total_size_per_user,
                 "available": files_service.max_total_size_per_user - usage,
-                "usage_percentage": round(usage * 100 / files_service.max_total_size_per_user, 2)
+                "usage_percentage": round(usage * 100 / files_service.max_total_size_per_user, 2),
+                "file_count": len(files),
+                "last_updated": time.time()
             }
         except Exception as e:
             logger.error(f"获取存储状态失败: {str(e)}")
@@ -326,7 +304,6 @@ def create_docs_endpoints(
         ("PATCH", f"{prefix}/files/{{file_id}}", update_file_metadata),
         ("DELETE", f"{prefix}/files/{{file_id}}", delete_file),
         ("GET", f"{prefix}/files/{{file_id}}/download", download_file),
-        ("GET", f"{prefix}/files/{{file_id}}/stream", stream_file),
         ("POST", f"{prefix}/files/{{file_id}}/process", process_file),
         ("GET", f"{prefix}/files/storage/status", get_storage_status),
     ]
