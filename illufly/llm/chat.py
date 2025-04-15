@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Union, Optional, AsyncGenerator, Tuple, Type
 from pydantic import BaseModel, Field
 
 from voidring import default_rocksdb, IndexedRocksDB
-from .base import LiteLLM
+from .litellm import LiteLLM
 from .models import ChunkType, DialogueChunk, Dialogue, Thread, ToolCall, MemoryQA
 from .memory import Memory, from_messages_to_text
 from .retriever import ChromaRetriever
@@ -482,7 +482,7 @@ class ChatAgent():
             logger.info(f"调用LLM生成标题，模型: {model}")
             title_resp = await self.llm.acompletion(
                 messages=title_prompt, 
-                model=model, 
+                # model=model, 
                 stream=False
             )
             
@@ -702,7 +702,7 @@ class LLMResponseProcessor:
             # 先获取协程
             response_coroutine = self.llm.acompletion(
                 messages=messages,
-                model=self.model,
+                # model=self.model,
                 stream=True,
                 **kwargs
             )
@@ -793,7 +793,7 @@ class LLMResponseProcessor:
         else:
             response = await self.llm.acompletion(
                 messages=messages,
-                model=self.model,
+                # model=self.model,
                 stream=False,
                 **kwargs
             )

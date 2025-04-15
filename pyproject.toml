@@ -47,6 +47,7 @@ pypdf2 = "^3.0.1"
 fpdf = "^1.7.2"
 voidring = "^0.1.1"
 soulseal = {path = "../soulseal/backend", develop = true}
+diskcache = "^5.6.3"
 
 [tool.poetry.group.dev.dependencies]
 openai = "^1.59.6"
@@ -63,7 +64,6 @@ pandas = "^2.2.3"
 pyyaml = "^6.0.2"
 seaborn = "^0.13.2"
 jupyter = "^1.1.1"
-uv = "^0.6.10"
 
 [tool.poetry.group.test]
 optional = true

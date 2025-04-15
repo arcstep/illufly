@@ -4,7 +4,7 @@ import asyncio
 import logging
 import hashlib
 
-from .base import LiteLLM
+from .litellm import LiteLLM
 
 import logging
 logger = logging.getLogger(__name__)
@@ -15,13 +15,13 @@ class ChromaRetriever():
     """
 
     def __init__(self, client=None, embedding_config: Dict[str, Any] = {}, chroma_config: Dict[str, Any] = {}):
-        model = embedding_config.pop("model", "text-embedding-3-small")
-        self.llm = LiteLLM(model=model, **embedding_config)
+        self.model = LiteLLM(model_type="embedding", **embedding_config)
         self.client = client
         if client is None:
             try:
                 import chromadb
-                self.client = chromadb.Client(**chroma_config)
+                from chromadb.config import Settings
+                self.client = chromadb.Client(Settings(anonymized_telemetry=False), **chroma_config)
             except ImportError:
                 raise ImportError(
                     "Could not import chromadb package. "
@@ -111,7 +111,7 @@ class ChromaRetriever():
         collection = self.client.get_or_create_collection(collection_name, metadata=collection_config)
 
         # 获取文本索引
-        resp = await self.llm.aembedding(texts, **embedding_config)
+        resp = await self.model.aembedding(texts, **embedding_config)
         embeddings = [e['embedding'] for e in resp.data]
         
         # 如果没有提供ids，则使用文本哈希值作为ids
@@ -189,7 +189,7 @@ class ChromaRetriever():
         try:
             # 获取嵌入向量并查询
             logger.info("获取查询文本的嵌入向量...")
-            resp = await self.llm.aembedding(texts, **embedding_config)
+            resp = await self.model.aembedding(texts, **embedding_config)
             query_embeddings = [e['embedding'] for e in resp.data]
             logger.info(f"嵌入向量维度: {len(query_embeddings[0]) if query_embeddings else 0}")
             

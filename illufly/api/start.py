@@ -16,11 +16,11 @@ from soulseal import (
 import logging
 import httpx
 import asyncio
+import os
 
 from ..__version__ import __version__
 from ..envir import get_env, setup_logging
-from ..llm import ChatAgent
-from ..llm import ThreadManager
+from ..llm import ThreadManager, ChatAgent, init_litellm
 from .models import HttpMethod
 from .chat import create_chat_endpoints
 from .static_files import StaticFilesManager
@@ -96,19 +96,18 @@ def setup_spa_middleware(app: FastAPI, static_dir: Path, exclude_paths: List[str
         return FileResponse(static_dir / "index.html")
 
 async def create_app(
-    db_path: str = "./db",
-    openai_imitator: str = None,
-    provider: str = None,
+    data_dir: str = "./.data",
     title: str = "Illufly API",
     description: str = "Illufly 后端 API 服务",
     prefix: str = "/api",
     base_url: str = "/api",
     static_dir: Optional[str] = None,
     cors_origins: Optional[List[str]] = None,
-    files_dir: Optional[str] = None,
     proxy_services: Optional[Dict[str, str]] = None,
     tts_host: Optional[str] = None,
     tts_port: Optional[int] = None,
+    oculith_host: Optional[str] = None,
+    oculith_port: Optional[int] = None,
 ) -> FastAPI:
     """创建 FastAPI 应用"""
 
@@ -136,8 +135,11 @@ async def create_app(
         expose_headers=["Set-Cookie"]  # 暴露 Set-Cookie 头
     )
 
+    # 初始化litellm
+    init_litellm(os.path.join(data_dir, "litellm_cache"))
+
     # 初始化数据库
-    db_path = Path(db_path)
+    db_path = Path(os.path.join(data_dir, "rocksdb"))
     db_path.mkdir(parents=True, exist_ok=True)  # 创建db目录本身，而不仅是父目录
     db = IndexedRocksDB(str(db_path))
 
@@ -145,11 +147,7 @@ async def create_app(
     thread_manager = ThreadManager(db)
 
     # 初始化 Agent
-    agent = ChatAgent(
-        db=db,
-        provider=provider,
-        imitator=openai_imitator
-    )
+    agent = ChatAgent(db=db)
 
     @app.on_event("startup")
     async def startup():
@@ -168,13 +166,6 @@ async def create_app(
     token_sdk = TokenSDK(tokens_manager=tokens_manager, token_storage_method="cookie")
     users_manager = UsersManager(db)
     
-    # 文件管理服务
-    files_service = FilesService(
-        base_dir=files_dir or str(Path(db_path) / "files"),
-        max_file_size=50 * 1024 * 1024,  # 50MB
-        max_total_size_per_user=200 * 1024 * 1024  # 200MB
-    )
-    
     #=============================
     # 按顺序挂载所有API路由
     # 注意：静态文件应该最后挂载，以避免覆盖API路由
@@ -189,12 +180,26 @@ async def create_app(
     # 挂载记忆API
     mount_memory_api(app, prefix, agent, token_sdk)
     
-    # 挂载文件管理API
-    mount_docs_api(app, prefix, token_sdk, files_service)
-    
     # 挂载TTS API
-    mount_tts_api(app, prefix, tts_host, tts_port)
+    mount_service_proxy(
+            app=app,
+            host=tts_host or get_env("TTS_HOST", "http://localhost"),
+            port=tts_port or get_env("TTS_PORT", 31572),
+            service_name="tts",
+            prefix=prefix,
+            tag="TTS"
+    )
     
+    # 挂载Oculith API
+    mount_service_proxy(
+        app=app,
+        host=oculith_host or get_env("OCULITH_HOST", "http://localhost"),
+        port=oculith_port or get_env("OCULITH_PORT", 31573),
+        service_name="oculith",
+        prefix=prefix,
+        tag="Oculith"
+    )
+
     # 最后挂载静态文件服务
     static_manager = None
     
@@ -257,7 +262,6 @@ def mount_memory_api(app: FastAPI, prefix: str, agent: ChatAgent, token_sdk: Tok
     
     mount_routes(app, memory_handlers, "Illufly Backend - Memory")
 
-
 def mount_docs_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, files_service: FilesService):
     """挂载文件管理API"""
     logger.info("正在挂载文件管理API...")
@@ -269,40 +273,6 @@ def mount_docs_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, files_service
         files_service=files_service,
         prefix=prefix
     )
-
-def mount_tts_api(app: FastAPI, prefix: str, tts_host: Optional[str], tts_port: Optional[int]):
-    """挂载TTS API"""
-    # 整合所有代理服务配置
-    tts_url = None
-    
-    # 尝试从环境变量获取TTS配置
-    if not tts_host:
-        tts_host = get_env("TTS_HOST", None)
-    if not tts_port:
-        tts_port_str = get_env("TTS_PORT", None)
-        if tts_port_str:
-            try:
-                tts_port = int(tts_port_str)
-            except ValueError:
-                logger.warning(f"TTS_PORT值无效: {tts_port_str}")
-                tts_port = None
-    
-    # 添加TTS服务配置
-    if tts_host and tts_port:
-        tts_url = f"http://{tts_host}:{tts_port}"
-        logger.info(f"已配置TTS服务: {tts_url}")
-        
-        # 挂载TTS服务，使用通用代理方法
-        mount_service_proxy(
-            app=app,
-            service_url=tts_url,
-            prefix=prefix,
-            service_path="tts",
-            tag="TTS"
-        )
-    else:
-        logger.warning("未找到TTS服务配置，TTS功能不可用")
-    
 
 def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
     """挂载静态文件服务"""

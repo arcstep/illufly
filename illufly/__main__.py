@@ -11,7 +11,7 @@ def _parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="Illufly API 服务")
     arguments = [
-        ("--db-path", "./db", "数据库路径 (默认: ./db)"),
+        ("--data-dir", "./.data", "数据目录 (默认: ./data)"),
         ("--provider", None, "兼容 LiteLLM 的服务提供者 (默认: OPENAI)"),
         ("--openai", None, "OpenAI模仿者列表 (默认: QWEN)"),
         ("--router-address", None, "ZMQ 路由地址 (默认: inproc://router-bus)"),
@@ -51,9 +51,7 @@ async def main():
     os.environ['LOG_LEVEL'] = str(args.log_level)
     
     app = await create_app(
-        db_path=args.db_path,
-        openai_imitator=args.openai,
-        provider=args.provider,
+        data_dir=args.data_dir,
         title=args.title,
         description=args.description,
         prefix=args.prefix,

@@ -8,7 +8,7 @@ import copy
 
 from ..prompt import PromptTemplate
 from voidring import default_rocksdb, IndexedRocksDB
-from .base import LiteLLM
+from .litellm import LiteLLM
 from .retriever import ChromaRetriever
 from .models import MemoryQA
 
