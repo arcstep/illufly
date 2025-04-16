@@ -32,22 +32,32 @@ def create_proxy_handler(target_url: str, path_template: str = "", timeout: floa
         request_path = request.url.path
         
         # 从原始路径模板中提取目标路径
-        # 首先保留目标服务的路径部分
         target_path = path_template
         
-        # 对于包含路径参数的URL（如 /oculith/files/{file_id}）
+        # 对于包含路径参数的URL
         if '{' in path_template:
-            # 解析请求URL，正确提取文件ID
-            # 例如 /api/oculith/files/123456 -> /oculith/files/123456
+            # 更智能的路径参数处理
+            template_parts = path_template.split('/')
+            request_parts = request_path.split('/')
             
-            # 从请求中提取实际ID
-            path_parts = request_path.split('/')
+            # 创建映射字典
+            param_values = {}
             
-            # 查找最后一个部分，它通常是ID
-            actual_id = path_parts[-1]  # 例如 "123456.pdf"
+            # 遍历模板部分，查找参数并从请求中提取值
+            for i, part in enumerate(template_parts):
+                if '{' in part and '}' in part:
+                    # 这是一个参数
+                    param_name = part.strip('{}')
+                    
+                    # 计算请求部分的对应索引
+                    # 注意：API前缀会导致索引偏移
+                    offset = len(request_parts) - len(template_parts)
+                    if i + offset >= 0 and i + offset < len(request_parts):
+                        param_values[param_name] = request_parts[i + offset]
             
-            # 简单替换路径模板中的参数部分
-            target_path = path_template.replace("{file_id}", actual_id)
+            # 应用参数替换
+            for param_name, param_value in param_values.items():
+                target_path = target_path.replace(f"{{{param_name}}}", param_value)
         
         # 构建最终服务URL
         service_url = f"{target_url}/{target_path.lstrip('/')}" if target_path else target_url
