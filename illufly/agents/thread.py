@@ -22,9 +22,7 @@ class ThreadManager():
 
     def all_threads(self, user_id: str):
         """获取所有对话，如果没有线程则自动创建一个"""
-        threads = [Thread.model_validate(t) for t in self.db.values(
-            prefix=Thread.get_prefix(user_id)
-        )]
+        threads = Thread.all_threads(self.db, user_id)
         
         # 如果用户没有任何对话线程，自动创建一个
         if not threads:

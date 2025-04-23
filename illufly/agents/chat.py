@@ -40,8 +40,6 @@ class ChatAgent():
         Dialogue.register_indexes(self.db)
         Thread.register_indexes(self.db)
 
-        logger.info(f'数据库中有 {len(self.db.values())} 条记录 ...')
-
     def register_tool(self, tool_class: Type[BaseTool]) -> None:
         """注册工具到对话智能体"""
         if tool_class.name in self.tool_map:
@@ -149,17 +147,8 @@ class ChatAgent():
         """加载最近的对话轮次"""
         if not user_id or not thread_id:
             return []
-        
-        prefix = Dialogue.get_prefix(user_id, thread_id)
-        dialogues = sorted(
-            self.db.values(
-                prefix=prefix,
-                limit=100,  # 先获取足够多，然后按时间排序后截取
-                reverse=True
-            ),
-            key=lambda x: x.created_at
-        )
-        
+
+        dialogues = Dialogue.all_dialogues(self.db, user_id, thread_id, limit=100)
         # 按时间倒序，取最近的几轮
         if dialogues:
             dialogues.reverse()
@@ -173,17 +162,7 @@ class ChatAgent():
         if not user_id or not thread_id or not dialogue_id:
             return []
         
-        prefix = DialogueChunk.get_prefix(user_id, thread_id, dialogue_id)
-        chunks = sorted(
-            self.db.values(
-                prefix=prefix,
-                limit=100,
-                reverse=True
-            ),
-            key=lambda x: (x.created_at, x.sequence)
-        )
-        
-        return chunks
+        return DialogueChunk.all_chunks(self.db, user_id, thread_id, dialogue_id, limit=100)
 
     async def chat(self, messages: List[Dict[str, Any]], model: str, user_id: str=None, thread_id: str=None, **kwargs):
         """对话主流程
@@ -616,46 +595,6 @@ class ChatAgent():
             import traceback
             logger.error(traceback.format_exc())
             return []
-
-    def _load_recent_dialogues(self, user_id: str, thread_id: str) -> List[Dialogue]:
-        """加载最近的对话轮次"""
-        if not user_id or not thread_id:
-            return []
-        
-        prefix = Dialogue.get_prefix(user_id, thread_id)
-        dialogues = sorted(
-            self.db.values(
-                prefix=prefix,
-                limit=100,  # 先获取足够多，然后按时间排序后截取
-                reverse=True
-            ),
-            key=lambda x: x.created_at
-        )
-        
-        # 按时间倒序，取最近的几轮
-        if dialogues:
-            dialogues.reverse()
-            dialogues = dialogues[:self.recent_dialogues_count]
-            dialogues.reverse()  # 恢复时间正序
-        
-        return dialogues
-        
-    def _load_dialogue_chunks(self, user_id: str, thread_id: str, dialogue_id: str) -> List[DialogueChunk]:
-        """加载对话轮次的所有对话块"""
-        if not user_id or not thread_id or not dialogue_id:
-            return []
-        
-        prefix = DialogueChunk.get_prefix(user_id, thread_id, dialogue_id)
-        chunks = sorted(
-            self.db.values(
-                prefix=prefix,
-                limit=100,
-                reverse=True
-            ),
-            key=lambda x: (x.created_at, x.sequence)
-        )
-        
-        return chunks
 
 class LLMResponseProcessor:
     """LLM响应处理器，将LLM响应处理为增量块和工具调用"""

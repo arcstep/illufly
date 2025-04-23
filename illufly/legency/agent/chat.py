@@ -122,12 +122,7 @@ class ChatAgent(ServiceDealer):
             return ""
 
         messages = []
-        history_messages = sorted(
-            self.db.values(
-                prefix=HistoryMessage.get_thread_prefix(user_id, thread_id)
-            ),
-            key=lambda x: x.completed_at
-        )
+        history_messages = HistoryMessage.all_messages(self.db, user_id, thread_id)
         for m in history_messages[-10:]:
             if m.role in ["user", "assistant", "tool"]:
                 messages.append(m.to_message())

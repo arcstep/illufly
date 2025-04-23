@@ -34,6 +34,11 @@ class HistoryMessage(BaseModel):
     def get_key(cls, user_id: str, thread_id: str, request_id: str, message_id: str):
         return f"{cls.get_thread_prefix(user_id, thread_id)}-{request_id}-{message_id}"
 
+    @classmethod
+    def all_messages(cls, db: IndexedRocksDB, user_id: str, thread_id: str, limit: int = 100):
+        values = [cls.model_validate(m) for m in db.values(prefix=cls.get_thread_prefix(user_id, thread_id), limit=limit)]
+        return sorted(values, key=lambda x: x.completed_at, reverse=True)
+
     user_id: str = Field(default="default", description="用户ID")
     thread_id: str = Field(default="default", description="每次连续对话一个对话线程ID")
     request_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="每次请求一个唯一请求ID")

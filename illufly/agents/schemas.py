@@ -74,6 +74,11 @@ class Thread(BaseModel):
     def get_key(cls, user_id: str, thread_id: str):
         return f"{cls.get_prefix(user_id)}-{thread_id}"
 
+    @classmethod
+    def all_threads(cls, db: IndexedRocksDB, user_id: str, limit: int = 100):
+        values = [cls.model_validate(t) for t in db.values(prefix=cls.get_prefix(user_id), limit=limit)]
+        return sorted(values, key=lambda x: x.created_at, reverse=True)
+
     user_id: Union[str, None] = Field(default=None, description="用户ID")
     thread_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], description="对话线程ID")
     title: str = Field(default="", description="连续对话标题")
@@ -110,6 +115,11 @@ class Dialogue(BaseModel):
     def get_key(cls, user_id: str, thread_id: str, dialogue_id: str):
         return f"{cls.get_prefix(user_id, thread_id)}-{dialogue_id}"
     
+    @classmethod
+    def all_dialogues(cls, db: IndexedRocksDB, user_id: str, thread_id: str, limit: int = 100):
+        values = [cls.model_validate(d) for d in db.values(prefix=cls.get_prefix(user_id, thread_id), limit=limit)]
+        return sorted(values, key=lambda x: x.created_at, reverse=True)
+    
     # 主键字段
     user_id: Union[str, None] = Field(default=None, description="用户ID")
     thread_id: Union[str, None] = Field(default=None, description="对话线程ID")
@@ -144,6 +154,11 @@ class DialogueChunk(BaseModel):
     def get_key(cls, user_id: str, thread_id: str, dialogue_id: str, chunk_id: str):
         return f"{cls.get_prefix(user_id, thread_id, dialogue_id)}-{chunk_id}"
     
+    @classmethod
+    def all_chunks(cls, db: IndexedRocksDB, user_id: str, thread_id: str, dialogue_id: str, limit: int = 100):
+        values = [cls.model_validate(d) for d in db.values(prefix=cls.get_prefix(user_id, thread_id, dialogue_id), limit=limit)]
+        return sorted(values, key=lambda x: (x.created_at, x.sequence), reverse=True)
+
     # 主键字段
     user_id: Union[str, None] = Field(default=None, description="用户ID")
     thread_id: Union[str, None] = Field(default=None, description="对话线程ID")
