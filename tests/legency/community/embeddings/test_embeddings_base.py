@@ -30,7 +30,7 @@ class MockRocksDB:
         self.db = {}
         self.models = {}
     
-    def register_model(self, model_name, model_class):
+    def register_collection(self, model_name, model_class):
         self.models[model_name] = model_class
     
     def key_exist(self, key):
@@ -40,7 +40,7 @@ class MockRocksDB:
         self.db[key] = value
         
     def get_by_key(self, model_name, key):
-        return self.db.get(key)
+        return self.db.get_as_model(model_name, key)
 
 # 测试
 class TestBaseEmbeddings:

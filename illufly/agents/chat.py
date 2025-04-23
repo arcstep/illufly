@@ -2,12 +2,12 @@ from typing import List, Dict, Any, Union, Optional, AsyncGenerator, Tuple, Type
 from pydantic import BaseModel, Field
 
 from voidring import default_rocksdb, IndexedRocksDB
-from .litellm import LiteLLM
-from .models import ChunkType, DialogueChunk, Dialogue, Thread, ToolCall, MemoryQA
+from ..llm.litellm import LiteLLM
+from ..llm.retriever import ChromaRetriever
+from ..llm.base_tool import BaseTool
 from .memory import Memory, from_messages_to_text
-from .retriever import ChromaRetriever
 from .thread import ThreadManager
-from .base_tool import BaseTool
+from .schemas import ChunkType, DialogueChunk, Dialogue, Thread, ToolCall, MemoryQA
 
 from datetime import datetime
 import asyncio
@@ -55,7 +55,7 @@ class ChatAgent():
         """创建新的对话轮次"""
         # 获取当前线程
         thread_key = Thread.get_key(user_id, thread_id)
-        thread = self.db.get(thread_key)
+        thread = self.db.get_as_model(Thread.__name__, thread_key)
         
         if not thread:
             # 如果线程不存在，创建新线程
@@ -65,7 +65,7 @@ class ChatAgent():
                 dialogue_count=0
             )
             self.db.update_with_indexes(
-                model_name=Thread.__name__,
+                collection_name=Thread.__name__,
                 key=thread_key,
                 value=thread
             )
@@ -73,7 +73,7 @@ class ChatAgent():
         # 增加对话轮次计数
         thread.dialogue_count += 1
         self.db.update_with_indexes(
-            model_name=Thread.__name__,
+            collection_name=Thread.__name__,
             key=thread_key,
             value=thread
         )
@@ -88,7 +88,7 @@ class ChatAgent():
         
         dialogue_key = Dialogue.get_key(user_id, thread_id, dialogue.dialogue_id)
         self.db.update_with_indexes(
-            model_name=Dialogue.__name__,
+            collection_name=Dialogue.__name__,
             key=dialogue_key,
             value=dialogue
         )
@@ -103,7 +103,7 @@ class ChatAgent():
         
         dialogue_key = Dialogue.get_key(dialogue.user_id, dialogue.thread_id, dialogue.dialogue_id)
         self.db.update_with_indexes(
-            model_name=Dialogue.__name__,
+            collection_name=Dialogue.__name__,
             key=dialogue_key,
             value=dialogue
         )
@@ -127,18 +127,18 @@ class ChatAgent():
             chunk.chunk_id
         )
         self.db.update_with_indexes(
-            model_name=DialogueChunk.__name__,
+            collection_name=DialogueChunk.__name__,
             key=chunk_key,
             value=chunk
         )
         
         # 更新对话轮次的chunk_count
         dialogue_key = Dialogue.get_key(chunk.user_id, chunk.thread_id, chunk.dialogue_id)
-        dialogue = self.db.get(dialogue_key)
+        dialogue = self.db.get_as_model(Dialogue.__name__, dialogue_key)
         if dialogue:
             dialogue.chunk_count += 1
             self.db.update_with_indexes(
-                model_name=Dialogue.__name__,
+                collection_name=Dialogue.__name__,
                 key=dialogue_key,
                 value=dialogue
             )
@@ -547,7 +547,7 @@ class ChatAgent():
             key = DialogueChunk.get_key(chunk.user_id, chunk.thread_id, chunk.dialogue_id, chunk.chunk_id)
             logger.info(f"\nsave_dialogue_chunk >>> key: {key}, chunk: {chunk}")
             self.db.update_with_indexes(
-                model_name=DialogueChunk.__name__,
+                collection_name=DialogueChunk.__name__,
                 key=key,
                 value=chunk
             )

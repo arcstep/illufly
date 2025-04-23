@@ -9,7 +9,7 @@ import logging
 
 class LiteLLM():
     """LiteLLM基于OpenAI的API接口，支持多种模型，支持异步请求"""
-    def __init__(self, provider: str=None, imitator: str=None, model_type: str="completion", **kwargs):
+    def __init__(self, imitator: str=None, provider: str=None, model_type: str="completion", **kwargs):
         """
         provider: 提供者名称，始终使用 OpenAI
         imitator: 如果模型是 OpenAI 兼容接口，可以使用该参数指定使用哪个 imitator
@@ -25,7 +25,7 @@ class LiteLLM():
                         self.all_imitators[0] if self.all_imitators else "OPENAI"
         
         # 始终使用 openai 作为 provider
-        self.provider = "openai"
+        self.provider = provider or "openai"
         
         # 设置模型类型
         self.model_type = model_type
@@ -44,7 +44,7 @@ class LiteLLM():
         
         # 如果有模型名称，构建完整模型字符串，使用 openai/model_name 格式
         if model_name:
-            model = f"openai/{model_name}"
+            model = f"{self.provider}/{model_name}"
         else:
             model = None
         

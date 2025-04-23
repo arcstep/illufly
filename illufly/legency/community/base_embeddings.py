@@ -27,7 +27,7 @@ class BaseEmbeddings(ABC):
         self.output_type = output_type or "dense"
         self.max_lines = max_lines or 5
         self.db = db or default_rocksdb
-        self.db.register_model(EmbeddingText.__name__, EmbeddingText)
+        self.db.register_collection(EmbeddingText.__name__, EmbeddingText)
         self._logger = logging.getLogger(self.__class__.__name__)
 
     async def _sync_embed_texts(self, texts: List[str]) -> List[List[float]]:
@@ -59,7 +59,7 @@ class BaseEmbeddings(ABC):
             # 检查哪些文本已经嵌入
             to_embedding = []
             for text in batch_texts:
-                found_embedding = self.db.get(EmbeddingText.get_key(self.model, self.dim, self.output_type, text))
+                found_embedding = self.db.get_as_model(EmbeddingText.__name__, EmbeddingText.get_key(self.model, self.dim, self.output_type, text))
                 if found_embedding:
                     embedding_texts.append(found_embedding)
                 else:
@@ -116,7 +116,7 @@ class BaseEmbeddings(ABC):
             # 检查哪些文本已经嵌入
             to_embedding = []
             for text in batch_texts:
-                found_embedding = self.db.get(EmbeddingText.get_key(self.model, self.dim, self.output_type, text))
+                found_embedding = self.db.get_as_model(EmbeddingText.__name__, EmbeddingText.get_key(self.model, self.dim, self.output_type, text))
                 if found_embedding:
                     embedding_texts.append(found_embedding)
                 else:

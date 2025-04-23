@@ -6,10 +6,9 @@ import logging
 import json
 
 from soulseal import TokenSDK
-from ..models import Result, HttpMethod
+from ..schemas import Result, HttpMethod
 from ..http import handle_errors
-from ...llm import ChatAgent
-from ...llm.models import MemoryQA
+from ...agents import ChatAgent, MemoryQA
 from ...envir import get_env
 
 class MemoryUpdateRequest(BaseModel):
@@ -57,7 +56,7 @@ def create_memory_endpoints(
             # 尝试获取原始记忆
             user_id = token_claims['user_id']
             memory_key = MemoryQA.get_key(user_id, memory_id)
-            original_memory = agent.memory.memory_db.get(memory_key)
+            original_memory = agent.memory.memory_db.get_as_model(MemoryQA.__name__, memory_key)
                     
             if not original_memory:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"未找到记忆: {memory_id}")

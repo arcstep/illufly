@@ -14,7 +14,7 @@ class QAManager():
         self.user_id = user_id or "default"
         self.db = db
 
-        self.db.register_model(MemoryType.QA, QA)
+        self.db.register_collection(MemoryType.QA, QA)
         self.db.register_index(MemoryType.QA, QA, "task_summarize")
         self.db.register_index(MemoryType.QA, QA, "task_extract_facts")
 

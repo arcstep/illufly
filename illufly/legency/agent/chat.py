@@ -46,10 +46,10 @@ class ChatAgent(ServiceDealer):
 
         self.db = db or default_rocksdb
 
-        self.db.register_model(DOMAIN_MODEL, MemoryDomain)
-        self.db.register_model(TOPIC_MODEL, MemoryTopic)
-        self.db.register_model(CHUNK_MODEL, MemoryChunk)
-        self.db.register_model(MESSAGE_MODEL, HistoryMessage)
+        self.db.register_collection(DOMAIN_MODEL, MemoryDomain)
+        self.db.register_collection(TOPIC_MODEL, MemoryTopic)
+        self.db.register_collection(CHUNK_MODEL, MemoryChunk)
+        self.db.register_collection(MESSAGE_MODEL, HistoryMessage)
         self.db.register_index(MESSAGE_MODEL, HistoryMessage, "created_with_thread")
 
         self.memory = KnowledgeGraph(
@@ -104,7 +104,7 @@ class ChatAgent(ServiceDealer):
 
                 # 保存完整 CHUNK 到数据库
                 self.db.update_with_indexes(
-                    model_name=MESSAGE_MODEL,
+                    collection_name=MESSAGE_MODEL,
                     key=HistoryMessage.get_key(b.user_id, b.thread_id, b.request_id, b.message_id),
                     value=b
                 )
@@ -180,7 +180,7 @@ class ChatAgent(ServiceDealer):
         if not thread.title:
             thread.title = title
             self.db.update_with_indexes(
-                model_name=THREAD_MODEL,
+                collection_name=THREAD_MODEL,
                 key=Thread.get_key(user_id, thread_id),
                 value=thread
             )

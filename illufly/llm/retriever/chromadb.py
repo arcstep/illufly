@@ -4,12 +4,12 @@ import asyncio
 import logging
 import hashlib
 
-from .litellm import LiteLLM
+from .base import BaseRetriever
+from ..litellm import LiteLLM
 
-import logging
 logger = logging.getLogger(__name__)
 
-class ChromaRetriever():
+class ChromaRetriever(BaseRetriever):
     """
     基于 Chroma 向量数据库的检索器
     """
@@ -69,13 +69,14 @@ class ChromaRetriever():
         texts: Union[str, List[str]],
         collection_name: str = None,
         user_id: str = None,
-        metadatas: Union[str, List[Dict[str, Any]]] = None,
+        metadatas: Union[Dict[str, Any], List[Dict[str, Any]]] = None,
         embedding_config: Dict[str, Any] = {},
         collection_config: Dict[str, Any] = {},
-        ids: List[str] = None
-    ) -> None:
+        ids: List[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
-        添加文本，如果存在就更新。
+        添加文本到向量库，如果存在就更新。
 
         Args:
             collection_name: 用来区分不同的内容集合，默认为 default
@@ -85,6 +86,9 @@ class ChromaRetriever():
             embedding_config: 嵌入向量配置
             collection_config: 集合配置
             ids: 文档的唯一标识符，如果不提供则使用文本的哈希值
+            
+        Returns:
+            添加结果统计
         """
         collection_name = collection_name or "default"
         collection_config = {**self._default_collection_metadata(), **collection_config}
@@ -94,7 +98,7 @@ class ChromaRetriever():
 
         user_id = user_id or "default"
 
-        # 元数据
+        # 标准化元数据
         if metadatas is not None:
             if isinstance(metadatas, dict):
                 metadatas = [metadatas]
@@ -121,36 +125,80 @@ class ChromaRetriever():
             raise ValueError("ids 的长度必须与 texts 的长度相同")
 
         logger.info(f"\nchroma add >>> {ids}, {texts}, {metadatas}")
-        return collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
+        
+        # 进行upsert操作
+        collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
+        
+        return {
+            "success": True,
+            "added": len(texts),
+            "skipped": 0,
+            "original_count": len(texts)
+        }
 
-    def delete(
+    async def delete(
         self,
+        collection_name: str = None,
+        user_id: str = None,
         texts: List[str] = None,
         ids: List[str] = None,
-        collection_name: str = None,
         where: Dict[str, Any] = None,
-    ) -> None:
-        """删除文本"""
-        texts = self._deduplicate_texts(texts)
-        collection_name = collection_name or "default"
-        collection = self.client.get_collection(collection_name)
-        if texts is not None:
-            ids = self.get_ids(texts)
-        return collection.delete(ids=ids, where=where)
+        **kwargs
+    ) -> Dict[str, Any]:
+        """删除文本
+        
+        Args:
+            collection_name: 集合名称
+            user_id: 按用户ID删除
+            texts: 要删除的文本列表
+            ids: 要删除的文档ID列表
+            where: 元数据过滤条件
+        
+        Returns:
+            删除结果统计
+        """
+        try:
+            collection_name = collection_name or "default"
+            
+            # 构建where条件
+            if where is None:
+                where = {}
+            
+            if user_id:
+                where["user_id"] = user_id
+            
+            if texts is not None:
+                texts = self._deduplicate_texts(texts)
+                ids = self.get_ids(texts)
+            
+            # 确保集合存在
+            try:
+                collection = self.client.get_collection(collection_name)
+            except Exception as e:
+                return {"success": True, "deleted": 0, "message": f"集合不存在: {str(e)}"}
+            
+            # 执行删除
+            collection.delete(ids=ids, where=where if where else None)
+            
+            return {"success": True, "deleted": 1, "message": "删除成功"}
+        except Exception as e:
+            logger.error(f"删除失败: {str(e)}")
+            return {"success": False, "deleted": 0, "error": str(e)}
 
     async def query(
         self,
-        texts: Union[str, List[str]],
+        query_texts: Union[str, List[str]],
         threshold: float = 0.5,
         collection_name: str = None,
         user_id: str = None,
         embedding_config: Dict[str, Any] = {},
         query_config: Dict[str, Any] = {},
-    ) -> List[Dict[str, List]]:
+        **kwargs
+    ) -> List[Dict[str, Any]]:
         """查询并按阈值过滤结果
         
         Args:
-            texts: 查询文本，可以是单个字符串或字符串列表
+            query_texts: 查询文本，可以是单个字符串或字符串列表
             threshold: 相似度阈值，距离小于此值的结果会被保留
             collection_name: 集合名称
             user_id: 按用户ID过滤
@@ -158,20 +206,28 @@ class ChromaRetriever():
             query_config: ChromaDB查询配置，例如 {"n_results": 3} 表示返回3个结果
             
         Returns:
-            List[Dict[str, List]]: 每个查询的过滤后结果，包含ids、documents和distances
+            List[Dict[str, Any]]: 包含查询结果的列表
         """
         collection_name = collection_name or "default"
-        collection = self.client.get_or_create_collection(collection_name)
+        
+        try:
+            collection = self.client.get_or_create_collection(collection_name)
+        except Exception as e:
+            logger.error(f"获取集合失败: {str(e)}")
+            # 返回格式化的空结果
+            if isinstance(query_texts, str):
+                query_texts = [query_texts]
+            return [{"query": text, "results": []} for text in query_texts]
 
         logger.info(f"\nchroma query >>> 开始查询")
         logger.info(f"集合名称: {collection_name}")
-        logger.info(f"查询文本: {texts}")
+        logger.info(f"查询文本: {query_texts}")
         logger.info(f"阈值: {threshold}")
         logger.info(f"用户ID: {user_id}")
         logger.info(f"查询配置: {query_config}")
 
         # 对查询文本去重
-        texts = self._deduplicate_texts(texts)
+        texts = self._deduplicate_texts(query_texts)
         logger.info(f"去重后的查询文本: {texts}")
 
         # 确保查询配置包含必要的返回字段
@@ -197,7 +253,7 @@ class ChromaRetriever():
             results = collection.query(query_embeddings=query_embeddings, **query_config)
             logger.info(f"原始检索结果数量: {len(results['ids'][0]) if results and 'ids' in results else 0}")
 
-            # 处理每个查询的结果
+            # 处理每个查询的结果 - 格式化为新的返回结构
             final_results = []
             for i in range(len(texts)):
                 logger.info(f"\nchroma query >>> 处理第 {i+1} 个查询结果")
@@ -209,16 +265,21 @@ class ChromaRetriever():
                 logger.info(f"距离值: {results['distances'][i]}")
                 logger.info(f"过滤后的索引: {filtered_indices}")
                 
-                # 构建过滤后的结果
-                filtered_result = {
-                    "text": texts[i],
-                    "ids": [results['ids'][i][j] for j in filtered_indices],
-                    "metadatas": [results['metadatas'][i][j] for j in filtered_indices],
-                    "documents": [results['documents'][i][j] for j in filtered_indices],
-                    "distances": [results['distances'][i][j] for j in filtered_indices]
-                }
-                logger.info(f"过滤后的结果数量: {len(filtered_result['ids'])}")
-                final_results.append(filtered_result)
+                # 构建匹配项列表
+                matches = []
+                for j in filtered_indices:
+                    matches.append({
+                        "text": results['documents'][i][j],
+                        "score": results['distances'][i][j],
+                        "metadata": results['metadatas'][i][j]
+                    })
+                
+                # 添加到结果
+                final_results.append({
+                    "query": texts[i],
+                    "results": matches
+                })
+                logger.info(f"过滤后的结果数量: {len(matches)}")
 
             return final_results
         except Exception as e:
@@ -228,14 +289,76 @@ class ChromaRetriever():
             
             # 为每个查询创建空结果
             empty_results = []
-            for i in range(len(texts)):
+            for text in texts:
                 empty_result = {
-                    "text": texts[i],
-                    "ids": [],
-                    "metadatas": [],
-                    "documents": [],
-                    "distances": []
+                    "query": text,
+                    "results": []
                 }
                 empty_results.append(empty_result)
             
             return empty_results
+    
+    async def list_collections(self) -> List[str]:
+        """列出所有集合名称
+        
+        Returns:
+            集合名称列表
+        """
+        try:
+            collections = self.client.list_collections()
+            return [collection.name for collection in collections]
+        except Exception as e:
+            logger.error(f"列出集合失败: {str(e)}")
+            return []
+    
+    async def get_stats(self, collection_name: str = None) -> Dict[str, Any]:
+        """获取集合统计信息
+        
+        Args:
+            collection_name: 集合名称，为None时返回所有集合的统计信息
+            
+        Returns:
+            统计信息字典
+        """
+        stats = {}
+        
+        try:
+            if collection_name:
+                # 统计单个集合
+                try:
+                    collection = self.client.get_collection(collection_name)
+                    count = collection.count()
+                    stats[collection_name] = {"total_vectors": count}
+                except Exception as e:
+                    stats[collection_name] = {"error": str(e)}
+            else:
+                # 统计所有集合
+                collections = await self.list_collections()
+                for coll in collections:
+                    coll_stats = await self.get_stats(coll)
+                    stats.update(coll_stats)
+            
+            return stats
+        except Exception as e:
+            logger.error(f"获取统计信息失败: {str(e)}")
+            return {"error": str(e)}
+    
+    async def close(self) -> bool:
+        """关闭检索器，释放资源
+        
+        Returns:
+            操作是否成功
+        """
+        try:
+            # 关闭嵌入模型资源
+            if hasattr(self.model, 'close'):
+                await self.model.close()
+            
+            # 关闭ChroamDB客户端
+            if hasattr(self.client, 'close'):
+                self.client.close()
+            
+            return True
+        except Exception as e:
+            logger.error(f"关闭检索器失败: {str(e)}")
+            return False

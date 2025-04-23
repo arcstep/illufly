@@ -25,7 +25,7 @@ ADMIN_PASSWORD = "admin"
 def mock_db():
     """模拟 IndexedRocksDB 实例"""
     db = MagicMock(spec=IndexedRocksDB)
-    db.register_model = MagicMock(return_value=db)
+    db.register_collection = MagicMock(return_value=db)
     db.register_index = MagicMock(return_value=db)
     return db
 

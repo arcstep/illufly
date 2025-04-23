@@ -64,7 +64,7 @@ class ApiKeysManager:
     def __init__(self, db: IndexedRocksDB):
         self._db = db
         self._logger = logging.getLogger(__name__)
-        self._db.register_model(__API_KEY_MODEL_NAME__, ApiKey)
+        self._db.register_collection(__API_KEY_MODEL_NAME__, ApiKey)
         self._db.register_index(__API_KEY_MODEL_NAME__, ApiKey, "api_key")
 
     def create_api_key(self, user_id: str, imitator: str, description: str = None) -> Result[ApiKey]:

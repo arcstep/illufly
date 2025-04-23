@@ -1,1 +1,0 @@
-from .endpoints import create_memory_endpoints 

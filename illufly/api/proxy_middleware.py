@@ -3,6 +3,9 @@ from fastapi.responses import StreamingResponse, JSONResponse
 import httpx
 import logging
 from typing import Dict, Optional, List, Any, Callable
+import time
+import re
+import json
 
 logger = logging.getLogger("illufly.proxy")
 
@@ -18,54 +21,46 @@ def normalize_url(url: str) -> str:
     else:
         return f"http://{url}"
 
-def create_proxy_handler(target_url: str, path_template: str = "", timeout: float = 30.0):
-    """创建代理处理函数
-    
-    Args:
-        target_url: 目标服务的URL
-        path_template: 原始路径模板，可能包含{param}占位符
-        timeout: 请求超时时间
-    """
+def create_proxy_handler(target_url: str, path_template: str = "", timeout: float = 300.0):
+    """创建代理处理函数"""
     async def proxy_handler(request: Request):
         """代理请求到后端服务"""
-        # 获取原始请求路径
-        request_path = request.url.path
-        
-        # 从原始路径模板中提取目标路径
+        # 路径处理
         target_path = path_template
         
-        # 对于包含路径参数的URL
         if '{' in path_template:
-            # 更智能的路径参数处理
             template_parts = path_template.split('/')
-            request_parts = request_path.split('/')
+            request_parts = request.url.path.split('/')
             
-            # 创建映射字典
             param_values = {}
-            
-            # 遍历模板部分，查找参数并从请求中提取值
             for i, part in enumerate(template_parts):
                 if '{' in part and '}' in part:
-                    # 这是一个参数
                     param_name = part.strip('{}')
-                    
-                    # 计算请求部分的对应索引
-                    # 注意：API前缀会导致索引偏移
                     offset = len(request_parts) - len(template_parts)
                     if i + offset >= 0 and i + offset < len(request_parts):
                         param_values[param_name] = request_parts[i + offset]
             
-            # 应用参数替换
             for param_name, param_value in param_values.items():
                 target_path = target_path.replace(f"{{{param_name}}}", param_value)
         
-        # 构建最终服务URL
         service_url = f"{target_url}/{target_path.lstrip('/')}" if target_path else target_url
         logger.info(f"代理请求: {request.method} {request.url.path} -> {service_url}")
         
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        # 检查是否为SSE请求
+        is_event_stream = "text/event-stream" in request.headers.get("accept", "")
+        if is_event_stream:
+            logger.info(f"检测到SSE请求: {service_url}")
+        
+        client_timeout = httpx.Timeout(
+            connect=10.0,
+            read=None if is_event_stream else timeout,
+            write=60.0,
+            pool=5.0
+        )
+        
+        async with httpx.AsyncClient(timeout=client_timeout) as client:
             try:
-                # 准备请求参数
+                # 准备标准HTTP请求参数
                 headers = {k: v for k, v in request.headers.items() 
                           if k.lower() not in ["host", "content-length"]}
                 
@@ -74,7 +69,6 @@ def create_proxy_handler(target_url: str, path_template: str = "", timeout: floa
                 if auth_token and "authorization" not in [k.lower() for k in headers]:
                     headers["Authorization"] = f"Bearer {auth_token}"
                 
-                # 基础请求配置
                 request_kwargs = {
                     "method": request.method,
                     "url": service_url,
@@ -104,14 +98,93 @@ def create_proxy_handler(target_url: str, path_template: str = "", timeout: floa
                     body = await request.body()
                     if body: request_kwargs["content"] = body
                 
-                # 发送请求并返回响应
+                # 发送请求
                 response = await client.request(**request_kwargs)
-                return StreamingResponse(
-                    content=response.aiter_bytes(),
-                    status_code=response.status_code,
-                    headers=dict(response.headers),
-                    media_type=response.headers.get("content-type", "application/json")
-                )
+                
+                # 记录响应信息
+                logger.info(f"收到后端响应: {service_url}, 状态码: {response.status_code}, " 
+                           f"内容类型: {response.headers.get('content-type', '未知')}")
+                
+                # 如果是SSE响应，添加特殊处理
+                if is_event_stream or "text/event-stream" in response.headers.get("content-type", ""):
+                    logger.info(f"开始处理SSE响应: {service_url}")
+                    
+                    # 创建一个包装的生成器来记录SSE事件
+                    async def log_sse_events():
+                        event_count = 0
+                        buffer = b""
+                        event_type = ""
+                        event_data = ""
+                        
+                        # SSE事件解析正则
+                        event_pattern = re.compile(b"event: (.*?)(?:\r\n|\n)")
+                        data_pattern = re.compile(b"data: (.*?)(?:\r\n|\n)")
+                        
+                        try:
+                            async for chunk in response.aiter_bytes():
+                                # 增加到缓冲区
+                                buffer += chunk
+                                
+                                # 查找完整的事件 (以空行分隔)
+                                events = buffer.split(b"\n\n")
+                                
+                                # 最后一个可能不完整，保留到下一次
+                                if not buffer.endswith(b"\n\n"):
+                                    buffer = events.pop()
+                                else:
+                                    buffer = b""
+                                    
+                                # 处理完整的事件
+                                for event_chunk in events:
+                                    if not event_chunk.strip():
+                                        continue
+                                        
+                                    event_count += 1
+                                    
+                                    # 提取事件类型和数据
+                                    event_match = event_pattern.search(event_chunk)
+                                    event_type = event_match.group(1).decode("utf-8") if event_match else "message"
+                                    
+                                    data_match = data_pattern.search(event_chunk)
+                                    if data_match:
+                                        event_data = data_match.group(1).decode("utf-8")
+                                        try:
+                                            # 尝试解析JSON数据以便更好地记录
+                                            event_json = json.loads(event_data)
+                                            logger.info(f"SSE事件 #{event_count}: 类型={event_type}, 数据={json.dumps(event_json, ensure_ascii=False)}")
+                                        except:
+                                            # 非JSON数据
+                                            logger.info(f"SSE事件 #{event_count}: 类型={event_type}, 数据={event_data}")
+                                    else:
+                                        logger.info(f"SSE事件 #{event_count}: 类型={event_type}, 无数据")
+                                
+                                # 将原始块传给客户端
+                                yield chunk
+                            
+                            logger.info(f"SSE响应完成: {service_url}, 总事件数: {event_count}")
+                            
+                            # 处理最后可能的不完整事件
+                            if buffer:
+                                logger.info(f"剩余未完成事件缓冲区: {buffer}")
+                                
+                        except Exception as e:
+                            logger.error(f"SSE传输出错: {service_url}, {str(e)}")
+                            raise
+                    
+                    return StreamingResponse(
+                        content=log_sse_events(),
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                        media_type=response.headers.get("content-type", "application/json")
+                    )
+                else:
+                    # 非SSE响应
+                    return StreamingResponse(
+                        content=response.aiter_bytes(),
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                        media_type=response.headers.get("content-type", "application/json")
+                    )
             except Exception as e:
                 logger.error(f"代理请求错误: {service_url}, {str(e)}")
                 return JSONResponse(status_code=503, content={"error": str(e)})

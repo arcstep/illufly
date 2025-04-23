@@ -22,10 +22,10 @@ class ThreadManagerDealer(ServiceDealer):
         super().__init__(**kwargs)
         self.db = db or default_rocksdb
 
-        self.db.register_model(THREAD_MODEL, Thread)
+        self.db.register_collection(THREAD_MODEL, Thread)
         self.db.register_index(THREAD_MODEL, Thread, "user_id")
 
-        self.db.register_model(MESSAGE_MODEL, HistoryMessage)
+        self.db.register_collection(MESSAGE_MODEL, HistoryMessage)
         self.db.register_index(MESSAGE_MODEL, HistoryMessage, "created_at")
 
     @service_method(name="all_threads", description="获取所有对话")
@@ -41,7 +41,7 @@ class ThreadManagerDealer(ServiceDealer):
         """创建新对话"""
         new_thread = Thread(user_id=user_id)
         self.db.update_with_indexes(
-            model_name=THREAD_MODEL,
+            collection_name=THREAD_MODEL,
             key=Thread.get_key(user_id, new_thread.thread_id),
             value=new_thread
         )

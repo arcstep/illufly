@@ -24,7 +24,7 @@ class MemoryQA(BaseModel):
 
     @classmethod
     def register_indexes(cls, db: IndexedRocksDB):
-        db.register_model(cls.__name__, cls)
+        db.register_collection(cls.__name__, cls)
         db.register_index(cls.__name__, cls, "topic")
         db.register_index(cls.__name__, cls, "created_at")
 
@@ -63,7 +63,7 @@ class Thread(BaseModel):
     """连续对话跟踪，包含多个对话轮次"""
     @classmethod
     def register_indexes(cls, db: IndexedRocksDB):
-        db.register_model(cls.__name__, cls)
+        db.register_collection(cls.__name__, cls)
         db.register_index(cls.__name__, cls, "created_at")
 
     @classmethod
@@ -99,7 +99,7 @@ class Dialogue(BaseModel):
     """对话轮次，一轮完整的交互，包含多个对话块"""
     @classmethod
     def register_indexes(cls, db: IndexedRocksDB):
-        db.register_model(cls.__name__, cls)
+        db.register_collection(cls.__name__, cls)
         db.register_index(cls.__name__, cls, "created_at")
     
     @classmethod
@@ -133,7 +133,7 @@ class DialogueChunk(BaseModel):
     """对话块，一次完整的输入或输出，可能包含多个增量片段"""
     @classmethod
     def register_indexes(cls, db: IndexedRocksDB):
-        db.register_model(cls.__name__, cls)
+        db.register_collection(cls.__name__, cls)
         db.register_index(cls.__name__, cls, "created_at")
     
     @classmethod

@@ -6,11 +6,12 @@ from typing import List, Dict, Any, Union
 import uuid
 import copy
 
-from ..prompt import PromptTemplate
 from voidring import default_rocksdb, IndexedRocksDB
-from .litellm import LiteLLM
-from .retriever import ChromaRetriever
-from .models import MemoryQA
+
+from ..prompt import PromptTemplate
+from ..llm.litellm import LiteLLM
+from ..llm.retriever import ChromaRetriever
+from .schemas import MemoryQA
 
 import logging
 logger = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ class Memory():
             
         # 首先尝试获取原始记忆
         memory_key = MemoryQA.get_key(user_id, memory_id)
-        original_memory = self.memory_db.get(memory_key)
+        original_memory = self.memory_db.get_as_model(MemoryQA.__name__, memory_key)
                 
         if not original_memory:
             logger.error(f"未找到要更新的记忆: user_id={user_id}, memory_id={memory_id}")
@@ -193,7 +194,7 @@ class Memory():
         memory_key = MemoryQA.get_key(user_id, memory_id)
             
         # 获取记忆对象
-        memory_to_delete = self.memory_db.get(memory_key)
+        memory_to_delete = self.memory_db.get_as_model(MemoryQA.__name__, memory_key)
         if not memory_to_delete:
             logger.warning(f"未找到要删除的记忆: key={memory_key}")
             return False

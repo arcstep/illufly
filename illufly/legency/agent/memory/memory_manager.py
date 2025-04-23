@@ -26,7 +26,7 @@ class MemoryManager:
         self._logger = logging.getLogger(__name__)
 
         self.db = db or default_rocksdb
-        self.db.register_model(MESSAGE_MODEL, HistoryMessage)
+        self.db.register_collection(MESSAGE_MODEL, HistoryMessage)
         self.db.register_index(MESSAGE_MODEL, HistoryMessage, "created_with_thread")
 
     def _load_recent_messages(self, user_id: str, thread_id: str) -> str:

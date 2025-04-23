@@ -20,13 +20,13 @@ import os
 
 from ..__version__ import __version__
 from ..envir import get_env, setup_logging
-from ..llm import ThreadManager, ChatAgent, init_litellm
-from .models import HttpMethod
-from .chat import create_chat_endpoints
+from ..llm import init_litellm
+from ..agents import ChatAgent, ThreadManager
+from ..documents import DocumentService
+from .schemas import HttpMethod
 from .static_files import StaticFilesManager
-from .memory import create_memory_endpoints
-from .docs import FilesService, create_docs_endpoints
 from .proxy_middleware import mount_service_proxy
+from .endpoints import create_chat_endpoints, create_memory_endpoints, create_documents_endpoints
 
 setup_logging()
 logger = logging.getLogger("illufly")
@@ -100,14 +100,8 @@ async def create_app(
     title: str = "Illufly API",
     description: str = "Illufly 后端 API 服务",
     prefix: str = "/api",
-    base_url: str = "/api",
     static_dir: Optional[str] = None,
-    cors_origins: Optional[List[str]] = None,
-    proxy_services: Optional[Dict[str, str]] = None,
-    tts_host: Optional[str] = None,
-    tts_port: Optional[int] = None,
-    oculith_host: Optional[str] = None,
-    oculith_port: Optional[int] = None,
+    cors_origins: Optional[List[str]] = None
 ) -> FastAPI:
     """创建 FastAPI 应用"""
 
@@ -135,72 +129,42 @@ async def create_app(
         expose_headers=["Set-Cookie"]  # 暴露 Set-Cookie 头
     )
 
-    # 初始化litellm
-    init_litellm(os.path.join(data_dir, "litellm_cache"))
-
     # 初始化数据库
     db_path = Path(os.path.join(data_dir, "rocksdb"))
     db_path.mkdir(parents=True, exist_ok=True)  # 创建db目录本身，而不仅是父目录
     db = IndexedRocksDB(str(db_path))
-
-    # 初始化 ThreadManager
-    thread_manager = ThreadManager(db)
-
-    # 初始化 Agent
-    agent = ChatAgent(db=db)
 
     @app.on_event("startup")
     async def startup():
         """
         应用启动时初始化资源
         """
+        # 初始化litellm
+        init_litellm(os.path.join(data_dir, "litellm_cache"))
+
         await agent.memory.init_retriever()
 
-    #=============================
-    # 初始化各种服务实例
-    #=============================
-    
     # 令牌与认证服务
     token_blacklist = TokenBlacklist()
     tokens_manager = TokensManager(db, token_blacklist, token_storage_method="cookie")
     token_sdk = TokenSDK(tokens_manager=tokens_manager, token_storage_method="cookie")
     users_manager = UsersManager(db)
     
-    #=============================
-    # 按顺序挂载所有API路由
-    # 注意：静态文件应该最后挂载，以避免覆盖API路由
-    #=============================
-    
     # 挂载认证API
     mount_auth_api(app, prefix, tokens_manager, token_blacklist, users_manager)
     
-    # 挂载聊天API
+    # 挂载对话和记忆API
+    thread_manager = ThreadManager(db)
+    agent = ChatAgent(db=db)
     mount_chat_api(app, prefix, agent, thread_manager, token_sdk)
-    
-    # 挂载记忆API
     mount_memory_api(app, prefix, agent, token_sdk)
-    
-    # 挂载TTS API
-    mount_service_proxy(
-            app=app,
-            host=tts_host or get_env("TTS_HOST", "http://localhost"),
-            port=tts_port or get_env("TTS_PORT", 31572),
-            service_name="tts",
-            prefix=prefix,
-            tag="TTS"
-    )
-    
-    # 挂载Oculith API
-    mount_service_proxy(
-        app=app,
-        host=oculith_host or get_env("OCULITH_HOST", "http://localhost"),
-        port=oculith_port or get_env("OCULITH_PORT", 31573),
-        service_name="oculith",
-        prefix=prefix,
-        tag="Oculith"
-    )
 
-    # 最后挂载静态文件服务
+    # 挂载文件管理API
+    document_service = DocumentService(os.path.join(data_dir, "documents"))
+    mount_docs_api(app, prefix, token_sdk, document_service)
+    
+
+    # 注意：静态文件应该最后挂载，以避免覆盖API路由
     static_manager = None
     
     # 处理静态文件
@@ -223,7 +187,7 @@ def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, tok
     logger.info("正在挂载用户认证API...")
     
     # 用户管理和认证路由
-    auth_handlers = create_auth_endpoints(
+    handlers = create_auth_endpoints(
         app=app,
         tokens_manager=tokens_manager,
         token_blacklist=token_blacklist,
@@ -231,14 +195,14 @@ def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, tok
         prefix=prefix
     )
     
-    mount_routes(app, auth_handlers, "Illufly Backend - Auth")
+    mount_routes(app, handlers, "Illufly Backend - Auth")
 
 def mount_chat_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager: ThreadManager, token_sdk: TokenSDK):
     """挂载聊天API"""
     logger.info("正在挂载聊天API...")
     
     # 聊天路由
-    chat_handlers = create_chat_endpoints(
+    handlers = create_chat_endpoints(
         app=app,
         agent=agent,
         thread_manager=thread_manager,
@@ -246,33 +210,34 @@ def mount_chat_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager: 
         prefix=prefix
     )
     
-    mount_routes(app, chat_handlers, "Illufly Backend - Chat")
+    mount_routes(app, handlers, "Illufly Backend - Chat")
 
 def mount_memory_api(app: FastAPI, prefix: str, agent: ChatAgent, token_sdk: TokenSDK):
     """挂载记忆API"""
     logger.info("正在挂载记忆API...")
     
     # 记忆路由
-    memory_handlers = create_memory_endpoints(
+    handlers = create_memory_endpoints(
         app=app,
         agent=agent,
         token_sdk=token_sdk,
         prefix=prefix
     )
     
-    mount_routes(app, memory_handlers, "Illufly Backend - Memory")
+    mount_routes(app, handlers, "Illufly Backend - Memory")
 
-def mount_docs_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, files_service: FilesService):
+def mount_docs_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, document_service: DocumentService):
     """挂载文件管理API"""
     logger.info("正在挂载文件管理API...")
     
     # 文件管理路由（注意：create_files_endpoints已自行挂载路由）
-    create_docs_endpoints(
+    handlers = create_documents_endpoints(
         app=app,
         token_sdk=token_sdk,
-        files_service=files_service,
+        documents_service=document_service,
         prefix=prefix
     )
+    mount_routes(app, handlers, "Illufly Backend - Documents")
 
 def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
     """挂载静态文件服务"""

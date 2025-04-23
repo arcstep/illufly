@@ -62,7 +62,7 @@ class TestApiKeysManager:
     def test_init(self, mock_db):
         """测试初始化"""
         manager = ApiKeysManager(mock_db)
-        mock_db.register_model.assert_called_once()
+        mock_db.register_collection.assert_called_once()
         mock_db.register_index.assert_called_once()
 
     def test_create_api_key(self, api_keys_manager, mock_db):

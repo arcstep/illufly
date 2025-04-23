@@ -6,7 +6,7 @@ from datetime import datetime
 import uuid
 import logging
 from voidring import default_rocksdb, IndexedRocksDB
-from .models import Thread
+from .schemas import Thread
 
 class ThreadManager():
     """Base Agent"""
@@ -22,9 +22,9 @@ class ThreadManager():
 
     def all_threads(self, user_id: str):
         """获取所有对话，如果没有线程则自动创建一个"""
-        threads = self.db.values(
+        threads = [Thread.model_validate(t) for t in self.db.values(
             prefix=Thread.get_prefix(user_id)
-        )
+        )]
         
         # 如果用户没有任何对话线程，自动创建一个
         if not threads:
@@ -38,7 +38,7 @@ class ThreadManager():
         """创建新对话"""
         new_thread = Thread(user_id=user_id)
         self.db.update_with_indexes(
-            model_name=Thread.__name__,
+            collection_name=Thread.__name__,
             key=Thread.get_key(user_id, new_thread.thread_id),
             value=new_thread
         )
@@ -50,13 +50,13 @@ class ThreadManager():
         logging.info(f"开始更新对话标题, key: {key}, title: '{title}'")
         
         try:
-            thread = self.db.get(key)
+            thread = self.db.get_as_model(Thread.__name__, key)
             if thread:
                 logging.info(f"找到线程: {thread}")
                 old_title = thread.title
                 thread.title = title
                 self.db.update_with_indexes(
-                    model_name=Thread.__name__,
+                    collection_name=Thread.__name__,
                     key=key,
                     value=thread
                 )

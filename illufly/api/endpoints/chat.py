@@ -10,10 +10,9 @@ import logging
 import json
 
 from soulseal import TokenSDK
-from ..models import Result, HttpMethod
+from ..schemas import Result, HttpMethod, OpenaiRequest
 from ..http import handle_errors
-from ..models import Result, OpenaiRequest
-from ...llm import ChatAgent, ThreadManager
+from ...agents import ChatAgent, ThreadManager, ChunkType, Dialogue, DialogueChunk, MemoryQA, Thread, ToolCall
 from ...envir import get_env
 
 def create_chat_endpoints(
