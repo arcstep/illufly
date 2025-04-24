@@ -10,6 +10,7 @@ import mimetypes
 import asyncio
 import json
 from fastapi import UploadFile
+from voidrail import ClientDealer
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,8 @@ class DocumentService:
         base_dir: str, 
         max_file_size: int = 50 * 1024 * 1024,  # 默认50MB 
         max_total_size_per_user: int = 200 * 1024 * 1024,  # 默认200MB
-        allowed_extensions: List[str] = None
+        allowed_extensions: List[str] = None,
+        voidrail_client: ClientDealer = None
     ):
         """初始化文档管理服务"""
         self.base_dir = Path(base_dir)
@@ -78,6 +80,8 @@ class DocumentService:
             '.gif': 'image/gif',
             '.webp': 'image/webp'
         }
+
+        self.voidrail_client = voidrail_client or ClientDealer(router_address="tcp://127.0.0.1:31571")
     
     # 目录管理函数
     def get_user_dir(self, user_id: str, subdir: str) -> Path:
@@ -286,7 +290,7 @@ class DocumentService:
         self, 
         user_id: str, 
         document_id: str, 
-        markdown_content: str
+        markdown_content: str = None
     ) -> Dict[str, Any]:
         """保存文档的Markdown版本"""
         try:
@@ -295,14 +299,30 @@ class DocumentService:
                 raise FileNotFoundError(f"文档不存在: {document_id}")
             
             # 获取markdown文件路径
+            raw_path = self.get_raw_path(user_id, document_id)
             md_path = self.get_md_path(user_id, document_id)
             
-            # 开始处理并更新状态
             await self.update_process_stage(
                 user_id, document_id, "conversion", 
                 {"stage": ProcessStage.CONVERTING, "started_at": time.time()}
             )
-            
+
+            # 转换markdown内容
+            if markdown_content is None:
+                markdown_content = ""  # 初始化为空字符串
+                resp = self.voidrail_client.stream(
+                    method="SimpleDocling.local_convert",
+                    timeout=600,
+                    from_path=str(os.path.abspath(raw_path))  # 将Path对象转为字符串
+                )
+                async for chunk in resp:
+                    markdown_content += chunk
+
+                # 更新当前阶段
+                await self.update_metadata(user_id, document_id, {
+                    "process": {"current_stage": ProcessStage.CONVERTED}
+                })
+
             # 保存markdown文件
             async with aiofiles.open(md_path, 'w', encoding='utf-8') as f:
                 await f.write(markdown_content)
@@ -320,18 +340,9 @@ class DocumentService:
                     }
                 }
             )
-            
-            # 更新当前阶段
-            await self.update_metadata(user_id, document_id, {
-                "process": {"current_stage": ProcessStage.CONVERTED}
-            })
-            
-            return await self.get_document_meta(user_id, document_id)
-        
+
         except Exception as e:
-            logger.error(f"保存Markdown失败: {str(e)}")
-            
-            # 更新状态为失败
+            logger.error(f"转换markdown内容失败: {e}")
             await self.update_process_stage(
                 user_id, document_id, "conversion", 
                 {
@@ -341,8 +352,10 @@ class DocumentService:
                     "finished_at": time.time()
                 }
             )
-            raise
-    
+
+        finally:
+            return await self.get_document_meta(user_id, document_id)
+
     async def save_chunks(
         self, 
         user_id: str, 

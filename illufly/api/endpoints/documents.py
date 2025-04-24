@@ -345,6 +345,65 @@ def create_documents_endpoints(
         except Exception as e:
             logger.error(f"收藏远程文档失败: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
+    
+    @handle_errors()
+    async def convert_to_markdown(
+        document_id: str,
+        token_claims: Dict[str, Any] = Depends(require_user)
+    ):
+        """将文档转换为Markdown格式"""
+        user_id = token_claims["user_id"]
+        logger.info(f"文档转换为Markdown请求: 用户ID={user_id}, 文档ID={document_id}")
+        
+        try:
+            # 检查文档是否存在
+            doc_info = await documents_service.get_document_meta(user_id, document_id)
+            if not doc_info or doc_info.get("status") != DocumentStatus.ACTIVE:
+                raise HTTPException(status_code=404, detail="文档不存在")
+            
+            # 启动转换过程 - 不提供markdown_content参数，让服务自动转换
+            updated_meta = await documents_service.save_markdown(user_id, document_id)
+            
+            # 返回结果
+            return {
+                "success": True,
+                "document_id": document_id,
+                "message": "文档转换已启动",
+                "current_stage": updated_meta.get("process", {}).get("current_stage"),
+                "conversion_status": updated_meta.get("process", {}).get("stages", {}).get("conversion", {}).get("stage")
+            }
+        except FileNotFoundError as e:
+            logger.error(f"文档转换失败: {str(e)}")
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            logger.error(f"文档转换失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @handle_errors()
+    async def get_document_markdown(
+        document_id: str,
+        token_claims: Dict[str, Any] = Depends(require_user)
+    ):
+        """获取文档的Markdown内容"""
+        user_id = token_claims["user_id"]
+        logger.info(f"获取Markdown内容请求: 用户ID={user_id}, 文档ID={document_id}")
+        
+        try:
+            # 使用服务中的get_markdown方法获取内容
+            markdown_content = await documents_service.get_markdown(user_id, document_id)
+            
+            return {
+                "success": True,
+                "document_id": document_id,
+                "content": markdown_content,
+                "length": len(markdown_content)
+            }
+        except FileNotFoundError as e:
+            logger.error(f"获取Markdown内容失败: {str(e)}")
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            logger.error(f"获取Markdown内容失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
             
     # 返回路由列表，格式为(HTTP方法, 路径, 处理函数)
     return [
@@ -356,4 +415,6 @@ def create_documents_endpoints(
         (HttpMethod.GET,  f"{prefix}/documents/storage/status", get_storage_status),
         (HttpMethod.POST, f"{prefix}/documents/upload", upload_document),
         (HttpMethod.POST, f"{prefix}/documents/bookmark", bookmark_remote_document),
+        (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/convert", convert_to_markdown),
+        (HttpMethod.GET,  f"{prefix}/documents/{{document_id}}/markdown", get_document_markdown),
     ]

@@ -53,7 +53,7 @@ def validate_base_url(ctx, param, value):
 @click.option('--title', default='Illufly API', help='API标题 (默认: Illufly API)')
 @click.option('--description', default='Illufly 后端 API 服务', help='API描述')
 @click.option('--prefix', default='/api', help='API路由前缀 (默认: /api)')
-@click.option('--router-address', default='inproc://router-bus', help='ZMQ路由地址')
+@click.option('--router-address', default='tcp://127.0.0.1:31571', help='ZMQ路由地址')
 @click.option('--ssl-keyfile', help='SSL密钥文件路径')
 @click.option('--ssl-certfile', help='SSL证书文件路径')
 @click.option('--static-dir', help='静态文件目录')
@@ -98,7 +98,7 @@ async def start_server(
     """启动服务的异步逻辑"""
     try:
         logger.info("正在创建应用实例...")
-        router = ServiceRouter(router_address or "tcp://127.0.0.1:5555")
+        router = ServiceRouter(router_address)
         await router.start()
 
         app = await create_app(
