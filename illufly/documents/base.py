@@ -298,8 +298,11 @@ class DocumentService:
             if not await self.document_exists(user_id, document_id):
                 raise FileNotFoundError(f"文档不存在: {document_id}")
             
+            # 获取文档元数据
+            doc_meta = await self.get_document_meta(user_id, document_id)
+            source_type = doc_meta.get("source_type", "local")
+            
             # 获取markdown文件路径
-            raw_path = self.get_raw_path(user_id, document_id)
             md_path = self.get_md_path(user_id, document_id)
             
             await self.update_process_stage(
@@ -310,11 +313,41 @@ class DocumentService:
             # 转换markdown内容
             if markdown_content is None:
                 markdown_content = ""  # 初始化为空字符串
-                resp = self.voidrail_client.stream(
-                    method="SimpleDocling.local_convert",
-                    timeout=600,
-                    from_path=str(os.path.abspath(raw_path))  # 将Path对象转为字符串
-                )
+                
+                # 根据文档源类型处理
+                if source_type == "remote":
+                    # 远程文档：直接使用URL
+                    source_url = doc_meta.get("source_url")
+                    if not source_url:
+                        raise ValueError("远程文档缺少URL")
+                    
+                    # 调用服务处理网页内容
+                    resp = self.voidrail_client.stream(
+                        method="SimpleDocling.convert",
+                        timeout=600,
+                        content=source_url,
+                        content_type="url"
+                    )
+                else:
+                    # 本地文档：读取文件并base64编码
+                    raw_path = self.get_raw_path(user_id, document_id)
+                    
+                    # 读取文件内容并转为base64编码
+                    import base64
+                    async with aiofiles.open(raw_path, "rb") as f:
+                        file_content = await f.read()
+                        encoded_content = base64.b64encode(file_content).decode("utf-8")
+                    
+                    # 调用服务
+                    resp = self.voidrail_client.stream(
+                        method="SimpleDocling.convert",
+                        timeout=600,
+                        content=encoded_content,
+                        content_type="base64",
+                        file_type=doc_meta.get("extension", "").lstrip('.')  # 从元数据获取文件类型
+                    )
+                
+                # 收集转换结果
                 async for chunk in resp:
                     markdown_content += chunk
 

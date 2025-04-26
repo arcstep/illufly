@@ -6928,22 +6928,24 @@ tests = ["Werkzeug (==2.0.3)", "aiohttp", "boto3", "httplib2", "httpx", "pytest"
 
 [[package]]
 name = "voidrail"
-version = "0.1.7"
+version = "0.1.8"
 description = ""
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
-files = [
-    {file = "voidrail-0.1.7-py3-none-any.whl", hash = "sha256:896eebc19b6bb51c47cc54f33b3f1e8533e56243118126c22a304f3e34be6a37"},
-    {file = "voidrail-0.1.7.tar.gz", hash = "sha256:d6bda9770aa503890df841ae3fa5179f2c7b68e6e756aa666b4b70452432df86"},
-]
+files = []
+develop = true
 
 [package.dependencies]
 async-timeout = ">=5.0.1,<6.0.0"
 click = ">=8.1.8,<9.0.0"
 pydantic = ">=2.11.3,<3.0.0"
 pyzmq = ">=26.4.0,<27.0.0"
+
+[package.source]
+type = "directory"
+url = "../voidrail"
 
 [[package]]
 name = "voidring"
@@ -6953,14 +6955,16 @@ optional = false
 python-versions = ">=3.11"
 groups = ["main"]
 markers = "python_version == \"3.11\" or python_version >= \"3.12\""
-files = [
-    {file = "voidring-0.1.3-py3-none-any.whl", hash = "sha256:9d52f206a9a211d205c28385242bd248c84845cb88bd1eb53173de014526ff62"},
-    {file = "voidring-0.1.3.tar.gz", hash = "sha256:186c7de8d7d6ecf96bfaddbb256db675a1c72527ba13761a557de5697f5e3bfe"},
-]
+files = []
+develop = true
 
 [package.dependencies]
 pydantic = ">=2.11.2,<3.0.0"
 rocksdict = ">=0.3.25,<0.4.0"
+
+[package.source]
+type = "directory"
+url = "../voidring"
 
 [[package]]
 name = "watchfiles"
@@ -7402,4 +7406,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "31b7ec45d7bef4764e3ac9bf6de6ae6510cca3ff652475acd515b2bd659edf52"
+content-hash = "66938337d8ff9190a19c5523a635347f198cc954c1f3f95296f1731445a8b131"
