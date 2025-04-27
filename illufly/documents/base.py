@@ -11,6 +11,7 @@ import asyncio
 import json
 from fastapi import UploadFile
 from voidrail import ClientDealer
+from ..llm.retriever.lancedb import LanceRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,9 @@ class DocumentService:
         max_file_size: int = 50 * 1024 * 1024,  # 默认50MB 
         max_total_size_per_user: int = 200 * 1024 * 1024,  # 默认200MB
         allowed_extensions: List[str] = None,
-        voidrail_client: ClientDealer = None
+        voidrail_client: ClientDealer = None,
+        retriever: LanceRetriever = None,
+        max_versions: int = 5
     ):
         """初始化文档管理服务"""
         self.base_dir = Path(base_dir)
@@ -82,6 +85,16 @@ class DocumentService:
         }
 
         self.voidrail_client = voidrail_client or ClientDealer(router_address="tcp://127.0.0.1:31571")
+        # 向量检索器实例（用于索引和搜索）
+        self.retriever = retriever or LanceRetriever(
+            output_dir=os.path.join(str(self.base_dir), "vector_db")
+        )
+        # 文件版本管理：覆盖前最多保留 max_versions 个旧版本
+        self.max_versions = max_versions
+
+    def default_indexing_collection(self, user_id: str) -> str:
+        """获取默认集合名称"""
+        return f"user_{user_id}"
     
     # 目录管理函数
     def get_user_dir(self, user_id: str, subdir: str) -> Path:
@@ -109,6 +122,25 @@ class DocumentService:
         """获取元数据文件路径"""
         return self.get_user_dir(user_id, "meta") / f"{document_id}.json"
     
+    def get_backup_dir(self, user_id: str, subdir: str, document_id: str) -> Path:
+        """获取用于该文档版本备份的目录"""
+        bd = self.base_dir / user_id / "backups" / subdir / document_id
+        bd.mkdir(parents=True, exist_ok=True)
+        return bd
+
+    def _rotate_backup(self, user_id: str, subdir: str, document_id: str, file_path: Path):
+        """备份旧文件并只保留最新 self.max_versions 个"""
+        if not file_path.exists():
+            return
+        bkdir = self.get_backup_dir(user_id, subdir, document_id)
+        ts = int(time.time())
+        bkp = bkdir / f"{file_path.name}.{ts}"
+        shutil.copy2(file_path, bkp)
+        # 清理多余历史版本
+        versions = sorted(bkdir.glob(f"{file_path.name}.*"), key=lambda p: p.name)
+        while len(versions) > self.max_versions:
+            versions.pop(0).unlink()
+
     def generate_document_id(self, original_filename: str = None) -> str:
         """生成文档ID"""
         if original_filename:
@@ -155,6 +187,9 @@ class DocumentService:
         document_id = self.generate_document_id(file.filename)
         file_path = self.get_raw_path(user_id, document_id)
         meta_path = self.get_meta_path(user_id, document_id)
+        
+        # 覆盖前备份 raw 文件
+        self._rotate_backup(user_id, "raw", document_id, file_path)
         
         # 保存文件
         file_size = 0
@@ -217,7 +252,8 @@ class DocumentService:
                     del metadata[key]
             doc_meta.update(metadata)
         
-        # 保存元数据
+        # 覆盖前备份 meta 文件
+        self._rotate_backup(user_id, "meta", document_id, meta_path)
         async with aiofiles.open(meta_path, 'w') as meta_file:
             await meta_file.write(json.dumps(doc_meta, ensure_ascii=False))
         
@@ -351,7 +387,8 @@ class DocumentService:
                 async for chunk in resp:
                     markdown_content += chunk
 
-            # 保存markdown文件
+            # 保存前备份 md 文件
+            self._rotate_backup(user_id, "md", document_id, md_path)
             async with aiofiles.open(md_path, 'w', encoding='utf-8') as f:
                 await f.write(markdown_content)
             
@@ -376,7 +413,8 @@ class DocumentService:
                 }
             )
             
-            # 更新元数据中保存更多关于Markdown文件的信息
+            # 覆盖元数据前先备份
+            self._rotate_backup(user_id, "meta", document_id, self.get_meta_path(user_id, document_id))
             await self.update_metadata(user_id, document_id, {
                 "markdown": {
                     "path": str(md_path),
@@ -426,7 +464,10 @@ class DocumentService:
             if not await self.document_exists(user_id, document_id):
                 raise FileNotFoundError(f"文档不存在: {document_id}")
             
-            # 创建切片目录
+            # 先删除旧的 chunks 目录，避免残留
+            dir0 = self.base_dir / user_id / "chunks" / document_id
+            if dir0.exists():
+                shutil.rmtree(dir0)
             chunks_dir = self.get_chunks_dir(user_id, document_id)
             
             # 开始处理并更新状态
@@ -659,9 +700,18 @@ class DocumentService:
         if not doc_meta:
             logger.warning(f"尝试删除不存在的文档: {document_id}")
             return False
-        
+        # 先从向量索引中删除，保证一致性
+        try:
+            coll = self.default_indexing_collection(user_id)
+            await self.retriever.delete(
+                collection_name=coll,
+                user_id=user_id,
+                document_id=document_id
+            )
+        except Exception as e:
+            logger.error(f"删除向量索引失败: {e}")
+
         success = True
-        
         # 1. 删除原始文件
         raw_path = self.get_raw_path(user_id, document_id)
         if raw_path.exists():
@@ -820,15 +870,13 @@ class DocumentService:
     async def create_document_index(
         self,
         user_id: str,
-        document_id: str,
-        retriever = None
+        document_id: str
     ) -> bool:
         """将文档切片添加到向量索引
         
         Args:
             user_id: 用户ID
             document_id: 文档ID
-            retriever: 可选，向量检索器实例。如果不提供，将使用默认设置
             
         Returns:
             bool: 索引成功返回True，失败返回False
@@ -852,13 +900,8 @@ class DocumentService:
                 {"stage": ProcessStage.INDEXING, "started_at": time.time()}
             )
             
-            # 导入向量检索器
-            if retriever is None:
-                from ..llm.retriever.lancedb import LanceRetriever
-                retriever = LanceRetriever(
-                    output_dir=os.path.join(str(self.base_dir), "vector_db"),
-                    vector_dim=384
-                )
+            # 使用实例属性中的检索器
+            retr = self.retriever
             
             # 获取所有切片
             chunks_data = []
@@ -883,9 +926,13 @@ class DocumentService:
             if not chunks_texts:
                 raise ValueError(f"文档没有可索引的切片: {document_id}")
             
+            # 先移除该 document_id 的旧向量，避免冗余
+            coll = self.default_indexing_collection(user_id)
+            await self.retriever.delete(collection_name=coll, user_id=user_id, document_id=document_id)
+            
             # 添加到向量索引
-            collection_name = f"user_{user_id}"
-            result = await retriever.add(
+            collection_name = self.default_indexing_collection(user_id)
+            result = await retr.add(
                 texts=chunks_texts,
                 collection_name=collection_name,
                 user_id=user_id,
@@ -893,7 +940,7 @@ class DocumentService:
             )
             
             # 确保创建索引
-            await retriever.ensure_index(collection_name)
+            await retr.ensure_index(collection_name)
             
             # 更新状态为索引完成
             now = time.time()
@@ -941,8 +988,7 @@ class DocumentService:
         user_id: str,
         query: str,
         document_id: str = None,
-        limit: int = 10,
-        retriever = None
+        limit: int = 10
     ) -> List[Dict[str, Any]]:
         """搜索文档切片
         
@@ -951,19 +997,13 @@ class DocumentService:
             query: 搜索查询文本
             document_id: 可选，限定在特定文档中搜索
             limit: 结果数量限制
-            retriever: 可选，向量检索器实例
             
         Returns:
             List[Dict[str, Any]]: 搜索结果列表
         """
         try:
-            # 导入向量检索器
-            if retriever is None:
-                from ..llm.retriever.lancedb import LanceRetriever
-                retriever = LanceRetriever(
-                    output_dir=os.path.join(str(self.base_dir), "vector_db"),
-                    vector_dim=384
-                )
+            # 使用实例属性中的检索器
+            retr = self.retriever
             
             # 构建搜索过滤条件
             filter_str = None
@@ -971,8 +1011,8 @@ class DocumentService:
                 filter_str = f"document_id = '{document_id}'"
             
             # 执行向量搜索
-            collection_name = f"user_{user_id}"
-            results = await retriever.query(
+            collection_name = self.default_indexing_collection(user_id)
+            results = await retr.query(
                 query_texts=query,
                 collection_name=collection_name,
                 user_id=user_id,
