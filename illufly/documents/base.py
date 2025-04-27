@@ -351,14 +351,14 @@ class DocumentService:
                 async for chunk in resp:
                     markdown_content += chunk
 
-                # 更新当前阶段
-                await self.update_metadata(user_id, document_id, {
-                    "process": {"current_stage": ProcessStage.CONVERTED}
-                })
-
             # 保存markdown文件
             async with aiofiles.open(md_path, 'w', encoding='utf-8') as f:
                 await f.write(markdown_content)
+            
+            # 计算标题数量以评估文档结构
+            import re
+            headers_count = len(re.findall(r'^#{1,6}\s+.+$', markdown_content, re.MULTILINE))
+            paragraphs_count = len(re.split(r'\n\s*\n', markdown_content))
             
             # 完成处理并更新状态
             now = time.time()
@@ -369,10 +369,26 @@ class DocumentService:
                     "success": True,
                     "finished_at": now,
                     "details": {
-                        "content_length": len(markdown_content)
+                        "content_length": len(markdown_content),
+                        "headers_count": headers_count,
+                        "paragraphs_count": paragraphs_count
                     }
                 }
             )
+            
+            # 更新元数据中保存更多关于Markdown文件的信息
+            await self.update_metadata(user_id, document_id, {
+                "markdown": {
+                    "path": str(md_path),
+                    "length": len(markdown_content),
+                    "structure": {
+                        "headers": headers_count,
+                        "paragraphs": paragraphs_count
+                    },
+                    "updated_at": now
+                },
+                "process": {"current_stage": ProcessStage.CONVERTED}
+            })
 
         except Exception as e:
             logger.error(f"转换markdown内容失败: {e}")
@@ -393,9 +409,18 @@ class DocumentService:
         self, 
         user_id: str, 
         document_id: str, 
-        chunks: List[Dict[str, Any]]
+        chunks: List[Dict[str, Any]] = None
     ) -> bool:
-        """保存文档的切片"""
+        """保存文档的切片
+        
+        Args:
+            user_id: 用户ID
+            document_id: 文档ID
+            chunks: 可选，文档切片列表。如果不提供，将使用默认切片方法生成
+            
+        Returns:
+            bool: 保存成功返回True，失败返回False
+        """
         try:
             # 检查文档是否存在
             if not await self.document_exists(user_id, document_id):
@@ -409,6 +434,39 @@ class DocumentService:
                 user_id, document_id, "chunking", 
                 {"stage": ProcessStage.CHUNKING, "started_at": time.time()}
             )
+            
+            # 如果未提供切片，则使用默认切片方法生成
+            if chunks is None:
+                # 获取文档元数据
+                doc_meta = await self.get_document_meta(user_id, document_id)
+                
+                # 确保文档已转换为Markdown
+                conversion_stage = doc_meta.get("process", {}).get("stages", {}).get("conversion", {})
+                if conversion_stage.get("stage") != ProcessStage.CONVERTED:
+                    raise ValueError(f"文档必须先转换为Markdown才能切片: {document_id}")
+                
+                # 读取Markdown内容
+                markdown_content = await self.get_markdown(user_id, document_id)
+                
+                # 导入切片器
+                from .chunker import get_chunker
+                
+                # 创建文档类型对应的切片器
+                chunker = get_chunker(
+                    doc_type=doc_meta.get("type", "markdown"),
+                    max_chunk_size=4000,  # 默认最大切片大小
+                    overlap=200  # 默认重叠大小
+                )
+                
+                # 生成切片
+                chunks = await chunker.chunk_document(
+                    content=markdown_content,
+                    metadata={
+                        "document_id": document_id,
+                        "title": doc_meta.get("title", ""),
+                        "document_type": doc_meta.get("type", "")
+                    }
+                )
             
             # 保存每个切片
             chunks_meta = []
@@ -439,13 +497,26 @@ class DocumentService:
                 if "metadata" in chunk:
                     chunk_meta["metadata"] = chunk["metadata"]
                     
+                # 添加标题信息（如果有）
+                if "title" in chunk:
+                    chunk_meta["title"] = chunk["title"]
+                    
                 chunks_meta.append(chunk_meta)
             
             # 完成处理并更新状态
             now = time.time()
+            
+            # 准备切片统计信息
+            chunks_stats = {
+                "count": len(chunks),
+                "avg_length": sum(len(chunk.get("text") or chunk.get("content", "")) for chunk in chunks) // len(chunks) if chunks else 0,
+                "titles": [chunk.get("title", "") for chunk in chunks if "title" in chunk]
+            }
+            
             await self.update_metadata(user_id, document_id, {
                 "chunks": chunks_meta,
                 "chunks_count": len(chunks),
+                "chunks_stats": chunks_stats,
                 "process": {
                     "current_stage": ProcessStage.CHUNKED,
                     "stages": {
@@ -454,7 +525,8 @@ class DocumentService:
                             "success": True,
                             "finished_at": now,
                             "details": {
-                                "chunks_count": len(chunks)
+                                "chunks_count": len(chunks),
+                                "avg_chunk_length": chunks_stats["avg_length"]
                             }
                         }
                     }
@@ -521,6 +593,16 @@ class DocumentService:
             if chunking_stage.get("stage") != ProcessStage.CHUNKED:
                 return
             
+            # 准备文档基本元数据
+            doc_info = {
+                "document_id": doc_meta["document_id"],
+                "title": doc_meta.get("title", ""),
+                "original_name": doc_meta.get("original_name", ""),
+                "type": doc_meta.get("type", ""),
+                "created_at": doc_meta.get("created_at"),
+                "extension": doc_meta.get("extension", "")
+            }
+            
             # 读取切片
             for chunk_meta in doc_meta.get("chunks", []):
                 try:
@@ -531,12 +613,24 @@ class DocumentService:
                     async with aiofiles.open(chunk_path, 'r', encoding='utf-8') as f:
                         content = await f.read()
                         
-                        yield {
+                        chunk_data = {
                             "document_id": document_id,
                             "chunk_index": chunk_meta["index"],
                             "content": content,
-                            "metadata": chunk_meta.get("metadata", {})
+                            "document": doc_info
                         }
+                        
+                        # 添加切片元数据
+                        if "metadata" in chunk_meta:
+                            chunk_data["metadata"] = chunk_meta["metadata"]
+                        else:
+                            chunk_data["metadata"] = {}
+                            
+                        # 添加标题信息（如果有）
+                        if "title" in chunk_meta:
+                            chunk_data["title"] = chunk_meta["title"]
+                            
+                        yield chunk_data
                 except Exception as e:
                     logger.error(f"读取切片内容失败: {chunk_path}, 错误: {e}")
         else:
@@ -722,4 +816,194 @@ class DocumentService:
             # 使用系统mimetypes库猜测
             mime_type = mimetypes.guess_type(file_name)[0]
         return mime_type or 'application/octet-stream'
+
+    async def create_document_index(
+        self,
+        user_id: str,
+        document_id: str,
+        retriever = None
+    ) -> bool:
+        """将文档切片添加到向量索引
+        
+        Args:
+            user_id: 用户ID
+            document_id: 文档ID
+            retriever: 可选，向量检索器实例。如果不提供，将使用默认设置
+            
+        Returns:
+            bool: 索引成功返回True，失败返回False
+        """
+        try:
+            # 检查文档是否存在
+            if not await self.document_exists(user_id, document_id):
+                raise FileNotFoundError(f"文档不存在: {document_id}")
+            
+            # 获取文档元数据
+            doc_meta = await self.get_document_meta(user_id, document_id)
+            
+            # 检查是否已切片
+            chunking_stage = doc_meta.get("process", {}).get("stages", {}).get("chunking", {})
+            if chunking_stage.get("stage") != ProcessStage.CHUNKED:
+                raise ValueError(f"文档必须先切片才能创建索引: {document_id}")
+            
+            # 更新状态为索引中
+            await self.update_process_stage(
+                user_id, document_id, "indexing", 
+                {"stage": ProcessStage.INDEXING, "started_at": time.time()}
+            )
+            
+            # 导入向量检索器
+            if retriever is None:
+                from ..llm.retriever.lancedb import LanceRetriever
+                retriever = LanceRetriever(
+                    output_dir=os.path.join(str(self.base_dir), "vector_db"),
+                    vector_dim=384
+                )
+            
+            # 获取所有切片
+            chunks_data = []
+            chunks_texts = []
+            
+            async for chunk in self.iter_chunks(user_id, document_id):
+                chunks_texts.append(chunk["content"])
+                chunks_data.append({
+                    "document_id": doc_meta["document_id"],
+                    "chunk_index": chunk.get("chunk_index"),
+                    "file_id": doc_meta["document_id"],
+                    "user_id": user_id,
+                    "original_name": doc_meta.get("original_name", ""),
+                    "title": doc_meta.get("title", ""),
+                    "source_type": doc_meta.get("source_type", ""),
+                    "source_url": doc_meta.get("source_url", ""),
+                    "type": doc_meta.get("type", ""),
+                    "extension": doc_meta.get("extension", ""),
+                    "created_at": doc_meta.get("created_at")
+                })
+            
+            if not chunks_texts:
+                raise ValueError(f"文档没有可索引的切片: {document_id}")
+            
+            # 添加到向量索引
+            collection_name = f"user_{user_id}"
+            result = await retriever.add(
+                texts=chunks_texts,
+                collection_name=collection_name,
+                user_id=user_id,
+                metadatas=chunks_data
+            )
+            
+            # 确保创建索引
+            await retriever.ensure_index(collection_name)
+            
+            # 更新状态为索引完成
+            now = time.time()
+            await self.update_process_stage(
+                user_id, document_id, "indexing", 
+                {
+                    "stage": ProcessStage.INDEXED,
+                    "success": True,
+                    "finished_at": now,
+                    "details": {
+                        "indexed_chunks": result.get("added", 0),
+                        "total_chunks": len(chunks_texts)
+                    }
+                }
+            )
+            
+            # 更新文档元数据
+            await self.update_metadata(user_id, document_id, {
+                "vector_index": {
+                    "collection_name": collection_name,
+                    "indexed_at": now,
+                    "indexed_chunks": result.get("added", 0)
+                },
+                "process": {"current_stage": ProcessStage.INDEXED}
+            })
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"创建文档索引失败: {str(e)}")
+            # 更新状态为失败
+            await self.update_process_stage(
+                user_id, document_id, "indexing", 
+                {
+                    "stage": ProcessStage.FAILED,
+                    "success": False,
+                    "error": str(e),
+                    "finished_at": time.time()
+                }
+            )
+            return False
+    
+    async def search_documents(
+        self,
+        user_id: str,
+        query: str,
+        document_id: str = None,
+        limit: int = 10,
+        retriever = None
+    ) -> List[Dict[str, Any]]:
+        """搜索文档切片
+        
+        Args:
+            user_id: 用户ID
+            query: 搜索查询文本
+            document_id: 可选，限定在特定文档中搜索
+            limit: 结果数量限制
+            retriever: 可选，向量检索器实例
+            
+        Returns:
+            List[Dict[str, Any]]: 搜索结果列表
+        """
+        try:
+            # 导入向量检索器
+            if retriever is None:
+                from ..llm.retriever.lancedb import LanceRetriever
+                retriever = LanceRetriever(
+                    output_dir=os.path.join(str(self.base_dir), "vector_db"),
+                    vector_dim=384
+                )
+            
+            # 构建搜索过滤条件
+            filter_str = None
+            if document_id:
+                filter_str = f"document_id = '{document_id}'"
+            
+            # 执行向量搜索
+            collection_name = f"user_{user_id}"
+            results = await retriever.query(
+                query_texts=query,
+                collection_name=collection_name,
+                user_id=user_id,
+                limit=limit,
+                filter=filter_str
+            )
+            
+            # 处理搜索结果
+            if results and len(results) > 0:
+                # 获取第一个查询的结果（如果只有一个查询文本）
+                search_results = results[0].get("results", [])
+                
+                # 格式化返回结果
+                formatted_results = []
+                for result in search_results:
+                    metadata = result.get("metadata", {})
+                    formatted_result = {
+                        "content": result.get("text", ""),
+                        "score": result.get("score", 1.0),
+                        "document_id": metadata.get("document_id", ""),
+                        "chunk_index": metadata.get("chunk_index", 0),
+                        "title": metadata.get("title", ""),
+                        "original_name": metadata.get("original_name", "")
+                    }
+                    formatted_results.append(formatted_result)
+                
+                return formatted_results
+            
+            return []
+            
+        except Exception as e:
+            logger.error(f"搜索文档失败: {str(e)}")
+            return []
 

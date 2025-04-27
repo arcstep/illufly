@@ -9,8 +9,9 @@ import io
 from pathlib import Path
 from fastapi import UploadFile
 import aiofiles
+from unittest.mock import MagicMock, AsyncMock, patch
 
-from illufly.documents.base import DocumentsService, DocumentStatus, ProcessStage
+from illufly.documents.base import DocumentService, DocumentStatus, ProcessStage
 
 # --------- 辅助函数和夹具 ---------
 
@@ -23,7 +24,7 @@ def temp_base_dir():
 @pytest.fixture
 def docs_service(temp_base_dir):
     """创建文档服务实例"""
-    return DocumentsService(
+    return DocumentService(
         base_dir=temp_base_dir,
         max_file_size=5 * 1024 * 1024,  # 5MB
         max_total_size_per_user=10 * 1024 * 1024  # 10MB
@@ -548,3 +549,230 @@ async def test_real_file_io(docs_service, user_id, temp_base_dir):
         with open(saved_path, "rb") as f:
             saved_content = f.read()
             assert saved_content == test_content
+
+# ------------------- 向量索引和搜索测试 -------------------
+
+class MockRetriever:
+    """模拟向量检索器，用于测试"""
+    
+    async def add(self, texts, collection_name, user_id, metadatas):
+        """模拟添加文档到向量索引"""
+        return {
+            "success": True,
+            "added": len(texts),
+            "skipped": 0,
+            "original_count": len(texts)
+        }
+    
+    async def ensure_index(self, collection_name):
+        """模拟创建索引"""
+        return True
+    
+    async def query(self, query_texts, collection_name, user_id, limit, filter=None):
+        """模拟查询"""
+        # 返回一个模拟的搜索结果
+        return [{
+            "query": query_texts,
+            "results": [
+                {
+                    "text": "模拟搜索结果内容1",
+                    "score": 0.85,
+                    "metadata": {
+                        "document_id": "doc_123",
+                        "chunk_index": 0,
+                        "title": "测试文档",
+                        "original_name": "test_doc.pdf"
+                    }
+                },
+                {
+                    "text": "模拟搜索结果内容2",
+                    "score": 0.75,
+                    "metadata": {
+                        "document_id": "doc_123",
+                        "chunk_index": 1,
+                        "title": "测试文档",
+                        "original_name": "test_doc.pdf"
+                    }
+                }
+            ]
+        }]
+
+
+@pytest.mark.asyncio
+async def test_create_document_index(docs_service, user_id, create_upload_file):
+    """测试创建文档向量索引"""
+    # 创建一个文档
+    file = create_upload_file(filename="test_doc.pdf", content=b"test_content")
+    doc_meta = await docs_service.save_document(user_id, file)
+    document_id = doc_meta["document_id"]
+    
+    # 保存Markdown内容
+    markdown_content = "# test document\nthis is test content"
+    await docs_service.save_markdown(user_id, document_id, markdown_content)
+    
+    # 创建切片
+    chunks = [
+        {"content": "test chunk content 1", "metadata": {"page": 1}},
+        {"content": "test chunk content 2", "metadata": {"page": 2}}
+    ]
+    success = await docs_service.save_chunks(user_id, document_id, chunks)
+    assert success is True
+    
+    # 创建一个模拟的向量检索器
+    mock_retriever = MockRetriever()
+    
+    # 创建索引
+    success = await docs_service.create_document_index(user_id, document_id, retriever=mock_retriever)
+    assert success is True
+    
+    # 检查处理状态
+    doc_meta = await docs_service.get_document_meta(user_id, document_id)
+    assert doc_meta["process"]["current_stage"] == ProcessStage.INDEXED
+    assert doc_meta["process"]["stages"]["indexing"]["stage"] == ProcessStage.INDEXED
+    assert doc_meta["process"]["stages"]["indexing"]["success"] is True
+    
+    # 检查索引元数据
+    assert "vector_index" in doc_meta
+    assert doc_meta["vector_index"]["collection_name"] == f"user_{user_id}"
+    assert doc_meta["vector_index"]["indexed_chunks"] == 2
+
+
+@pytest.mark.asyncio
+async def test_create_index_without_chunks(docs_service, user_id, create_upload_file):
+    """测试在没有切片的情况下创建索引"""
+    # 创建一个文档
+    file = create_upload_file(filename="test_doc.pdf", content=b"test_content")
+    doc_meta = await docs_service.save_document(user_id, file)
+    document_id = doc_meta["document_id"]
+    
+    # 保存Markdown内容
+    markdown_content = "# test document\nthis is test content"
+    await docs_service.save_markdown(user_id, document_id, markdown_content)
+    
+    # 不保存切片
+    
+    # 创建一个模拟的向量检索器
+    mock_retriever = MockRetriever()
+    
+    # 尝试创建索引，应该失败
+    success = await docs_service.create_document_index(user_id, document_id, retriever=mock_retriever)
+    assert success is False
+    
+    # 检查处理状态
+    doc_meta = await docs_service.get_document_meta(user_id, document_id)
+    assert doc_meta["process"]["stages"]["indexing"]["stage"] == ProcessStage.FAILED
+    assert doc_meta["process"]["stages"]["indexing"]["success"] is False
+    assert "error" in doc_meta["process"]["stages"]["indexing"]
+
+
+@pytest.mark.asyncio
+async def test_search_documents(docs_service, user_id, create_upload_file):
+    """测试搜索文档"""
+    # 创建一个文档
+    file = create_upload_file(filename="test_doc.pdf", content=b"test_content")
+    doc_meta = await docs_service.save_document(user_id, file)
+    document_id = doc_meta["document_id"]
+    
+    # 保存Markdown内容
+    markdown_content = "# test document\nthis is test content"
+    await docs_service.save_markdown(user_id, document_id, markdown_content)
+    
+    # 创建切片
+    chunks = [
+        {"content": "test chunk content 1", "metadata": {"page": 1}},
+        {"content": "test chunk content 2", "metadata": {"page": 2}}
+    ]
+    success = await docs_service.save_chunks(user_id, document_id, chunks)
+    
+    # 创建一个模拟的向量检索器
+    mock_retriever = MockRetriever()
+    
+    # 创建索引
+    success = await docs_service.create_document_index(user_id, document_id, retriever=mock_retriever)
+    
+    # 搜索文档
+    results = await docs_service.search_documents(
+        user_id=user_id,
+        query="测试搜索查询",
+        document_id=document_id,
+        retriever=mock_retriever
+    )
+    
+    # 验证搜索结果
+    assert len(results) == 2
+    assert results[0]["document_id"] == "doc_123"
+    assert results[0]["content"] == "模拟搜索结果内容1"
+    assert results[0]["score"] == 0.85
+    
+    # 测试没有指定文档ID的搜索
+    results = await docs_service.search_documents(
+        user_id=user_id,
+        query="测试搜索查询",
+        retriever=mock_retriever
+    )
+    
+    # 验证搜索结果
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_search_nonexistent_collection(docs_service, user_id):
+    """测试搜索不存在的集合"""
+    # 创建一个模拟的向量检索器，模拟集合不存在
+    class EmptyMockRetriever:
+        async def query(self, query_texts, collection_name, user_id, limit, filter=None):
+            return [{"query": query_texts, "results": []}]
+    
+    mock_retriever = EmptyMockRetriever()
+    
+    # 搜索不存在的集合
+    results = await docs_service.search_documents(
+        user_id=user_id,
+        query="测试搜索查询",
+        retriever=mock_retriever
+    )
+    
+    # 验证结果为空
+    assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_document_lifecycle(docs_service, user_id, create_upload_file):
+    """测试文档完整生命周期：上传、转换、切片、索引、搜索、删除"""
+    # 1. 上传文档
+    file = create_upload_file(filename="lifecycle.pdf", content=b"lifecycle test content")
+    doc_meta = await docs_service.save_document(user_id, file)
+    document_id = doc_meta["document_id"]
+    
+    # 2. 转换为Markdown
+    markdown_content = "# lifecycle test document\nthis is lifecycle test content"
+    await docs_service.save_markdown(user_id, document_id, markdown_content)
+    
+    # 3. 创建切片
+    chunks = [
+        {"content": "lifecycle test chunk content 1", "metadata": {"page": 1}},
+        {"content": "lifecycle test chunk content 2", "metadata": {"page": 2}}
+    ]
+    await docs_service.save_chunks(user_id, document_id, chunks)
+    
+    # 4. 创建索引
+    mock_retriever = MockRetriever()
+    await docs_service.create_document_index(user_id, document_id, retriever=mock_retriever)
+    
+    # 5. 搜索文档
+    results = await docs_service.search_documents(
+        user_id=user_id,
+        query="lifecycle test",
+        document_id=document_id,
+        retriever=mock_retriever
+    )
+    assert len(results) > 0
+    
+    # 6. 删除文档
+    success = await docs_service.delete_document(user_id, document_id)
+    assert success is True
+    
+    # 7. 验证删除后无法搜索
+    # 这需要修改 MockRetriever 的行为，让它在文档被删除后返回空结果
+    # 但对于测试目的，我们可以简单验证文档不再存在
+    assert not await docs_service.document_exists(user_id, document_id)

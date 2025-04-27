@@ -404,7 +404,165 @@ def create_documents_endpoints(
         except Exception as e:
             logger.error(f"获取Markdown内容失败: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
+    
+    @handle_errors()
+    async def chunk_document(
+        document_id: str,
+        token_claims: Dict[str, Any] = Depends(require_user)
+    ):
+        """将文档切片处理"""
+        user_id = token_claims["user_id"]
+        logger.info(f"文档切片请求: 用户ID={user_id}, 文档ID={document_id}")
+        
+        try:
+            # 检查文档是否存在
+            doc_info = await documents_service.get_document_meta(user_id, document_id)
+            if not doc_info or doc_info.get("status") != DocumentStatus.ACTIVE:
+                raise HTTPException(status_code=404, detail="文档不存在")
             
+            # 检查文档是否已转换为Markdown
+            conversion_stage = doc_info.get("process", {}).get("stages", {}).get("conversion", {})
+            if conversion_stage.get("stage") != ProcessStage.CONVERTED:
+                raise HTTPException(status_code=400, detail="文档必须先转换为Markdown才能进行切片")
+            
+            # 启动切片过程 - 不提供chunks参数，让服务自动切片
+            success = await documents_service.save_chunks(user_id, document_id)
+            
+            if not success:
+                raise HTTPException(status_code=500, detail="文档切片失败")
+            
+            # 获取更新后的元数据
+            updated_meta = await documents_service.get_document_meta(user_id, document_id)
+            
+            # 返回结果
+            return {
+                "success": True,
+                "document_id": document_id,
+                "message": "文档切片处理完成",
+                "current_stage": updated_meta.get("process", {}).get("current_stage"),
+                "chunks_count": updated_meta.get("chunks_count", 0)
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"文档切片失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @handle_errors()
+    async def get_document_chunks(
+        document_id: str,
+        token_claims: Dict[str, Any] = Depends(require_user)
+    ):
+        """获取文档的所有切片
+        
+        返回指定文档的切片
+        """
+        user_id = token_claims["user_id"]
+        logger.info(f"获取文档切片请求: 用户ID={user_id}, 文档ID={document_id}")
+        
+        try:
+            # 存储所有切片
+            chunks = []
+            
+            # 获取切片内容
+            async for chunk in documents_service.iter_chunks(user_id, document_id):
+                chunks.append(chunk)
+            
+            if document_id and not chunks:
+                # 检查文档是否存在
+                doc_info = await documents_service.get_document_meta(user_id, document_id)
+                if not doc_info:
+                    raise HTTPException(status_code=404, detail="文档不存在")
+                    
+                # 检查文档是否已切片
+                chunking_stage = doc_info.get("process", {}).get("stages", {}).get("chunking", {})
+                if chunking_stage.get("stage") != ProcessStage.CHUNKED:
+                    raise HTTPException(status_code=400, detail="文档尚未切片或切片处理失败")
+            
+            return {
+                "success": True,
+                "chunks_count": len(chunks),
+                "chunks": chunks
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"获取文档切片失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @handle_errors()
+    async def index_document(
+        document_id: str,
+        token_claims: Dict[str, Any] = Depends(require_user)
+    ):
+        """将文档添加到向量索引"""
+        user_id = token_claims["user_id"]
+        logger.info(f"文档索引请求: 用户ID={user_id}, 文档ID={document_id}")
+        
+        try:
+            # 检查文档是否存在
+            doc_info = await documents_service.get_document_meta(user_id, document_id)
+            if not doc_info or doc_info.get("status") != DocumentStatus.ACTIVE:
+                raise HTTPException(status_code=404, detail="文档不存在")
+            
+            # 检查文档是否已切片
+            chunking_stage = doc_info.get("process", {}).get("stages", {}).get("chunking", {})
+            if chunking_stage.get("stage") != ProcessStage.CHUNKED:
+                raise HTTPException(status_code=400, detail="文档必须先切片才能创建索引")
+            
+            # 创建索引
+            success = await documents_service.create_document_index(user_id, document_id)
+            
+            if not success:
+                raise HTTPException(status_code=500, detail="创建文档索引失败")
+            
+            # 获取更新后的元数据
+            updated_meta = await documents_service.get_document_meta(user_id, document_id)
+            
+            # 返回结果
+            return {
+                "success": True,
+                "document_id": document_id,
+                "message": "文档索引创建完成",
+                "current_stage": updated_meta.get("process", {}).get("current_stage"),
+                "indexed_chunks": updated_meta.get("vector_index", {}).get("indexed_chunks", 0)
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"创建文档索引失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @handle_errors()
+    async def search_documents(
+        query: str,
+        document_id: Optional[str] = None,
+        limit: Optional[int] = 10,
+        token_claims: Dict[str, Any] = Depends(require_user)
+    ):
+        """搜索文档内容"""
+        user_id = token_claims["user_id"]
+        logger.info(f"文档搜索请求: 用户ID={user_id}, 查询={query}, 文档ID={document_id}")
+        
+        try:
+            # 执行搜索
+            results = await documents_service.search_documents(
+                user_id=user_id,
+                query=query,
+                document_id=document_id,
+                limit=limit
+            )
+            
+            return {
+                "success": True,
+                "query": query,
+                "results_count": len(results),
+                "results": results
+            }
+        except Exception as e:
+            logger.error(f"搜索文档失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
     # 返回路由列表，格式为(HTTP方法, 路径, 处理函数)
     return [
         (HttpMethod.GET,  f"{prefix}/documents", list_documents),
@@ -417,4 +575,8 @@ def create_documents_endpoints(
         (HttpMethod.POST, f"{prefix}/documents/bookmark", bookmark_remote_document),
         (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/convert", convert_to_markdown),
         (HttpMethod.GET,  f"{prefix}/documents/{{document_id}}/markdown", get_document_markdown),
+        (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/chunks", chunk_document),
+        (HttpMethod.GET,  f"{prefix}/documents/{{document_id}}/chunks", get_document_chunks),
+        (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/index", index_document),
+        (HttpMethod.GET,  f"{prefix}/documents/search", search_documents),
     ]
