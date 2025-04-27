@@ -46,16 +46,15 @@ class LanceRetriever(BaseRetriever):
     
     def _get_or_create_table(self, table_name: str) -> Any:
         """获取或创建表，延迟创建索引"""
-        # 检查表是否存在
         if table_name in self.db.table_names():
             return self.db.open_table(table_name)
         
-        # 创建表结构
+        # 创建空表，vector 由实际数据决定长度，schema 会推断 list<float>
         data = [{
-            "vector": np.zeros(self.vector_dim, dtype=np.float32),
+            "vector": [],               # 空列表，Arrow 会推断为 list<float>
             "text": "",
             "user_id": "",
-            "file_id": "",
+            "document_id": "",
             "chunk_index": 0,
             "original_name": "",
             "source_type": "",
@@ -63,11 +62,9 @@ class LanceRetriever(BaseRetriever):
             "created_at": 0,
             "metadata_json": "{}"
         }]
-        
-        # 创建表，但不立即创建索引
         table = self.db.create_table(table_name, data=data)
         
-        # 删除示例数据
+        # 删除示例行，留空表
         table.delete("text = ''")
         
         self._logger.info(f"创建新表: {table_name}")
@@ -190,13 +187,6 @@ class LanceRetriever(BaseRetriever):
                         self._logger.warning(f"[文本{i+1}] 无法生成嵌入")
                         embedding = [0.0] * self.vector_dim
                 
-                # 确保维度正确
-                if len(embedding) != self.vector_dim:
-                    if len(embedding) < self.vector_dim:
-                        embedding = embedding + [0.0] * (self.vector_dim - len(embedding))
-                    else:
-                        embedding = embedding[:self.vector_dim]
-                
                 all_embeddings.append(embedding)
             except Exception as e:
                 # 最外层异常捕获
@@ -297,23 +287,23 @@ class LanceRetriever(BaseRetriever):
                 continue  # 跳过此记录
             
             # 提取常用元数据
-            file_id = metadata.get("file_id", "")
+            document_id = metadata.get("document_id", "")
             chunk_index = metadata.get("chunk_index", 0)
             original_name = metadata.get("original_name", "")
             source_type = metadata.get("source_type", "")
             source_url = metadata.get("source_url", "")
             
-            # 其他元数据序列化为JSON
-            extra_metadata = {k: v for k, v in metadata.items() 
-                             if k not in ["file_id", "chunk_index", "original_name", 
-                                         "source_type", "source_url"]}
-            
-            # 创建记录
+            # 其余元数据 JSON 化
+            extra_metadata = {
+                k: v for k, v in metadata.items()
+                if k not in ["document_id", "chunk_index", "original_name", "source_type", "source_url"]
+            }
+            # 直接使用模型返回的可变长度列表
             record = {
-                "vector": np.array(embedding, dtype=np.float32),
+                "vector": embedding,
                 "text": text,
                 "user_id": user_id,
-                "file_id": file_id,
+                "document_id": document_id,
                 "chunk_index": chunk_index,
                 "original_name": original_name,
                 "source_type": source_type,
@@ -340,8 +330,8 @@ class LanceRetriever(BaseRetriever):
     async def delete(
         self,
         collection_name: str = None,
-        user_id: str = None,
-        file_id: str = None,
+        user_id: Union[str, List[str]] = None,
+        document_id: Union[str, List[str]] = None,
         filter: str = None
     ) -> Dict[str, Any]:
         """删除向量数据
@@ -349,7 +339,7 @@ class LanceRetriever(BaseRetriever):
         Args:
             collection_name: 集合名称，默认为"documents"
             user_id: 按用户ID删除
-            file_id: 按文件ID删除
+            document_id: 按文档ID删除
             filter: 自定义过滤条件(SQL WHERE语句)
             
         Returns:
@@ -363,12 +353,20 @@ class LanceRetriever(BaseRetriever):
         
         table = self.db.open_table(table_name)
         
-        # 构建过滤条件
+        # 构建过滤条件，支持多值
         conditions = []
         if user_id:
-            conditions.append(f"user_id = '{user_id}'")
-        if file_id:
-            conditions.append(f"file_id = '{file_id}'")
+            if isinstance(user_id, (list, tuple, set)):
+                vals = "', '".join(user_id)
+                conditions.append(f"user_id IN ('{vals}')")
+            else:
+                conditions.append(f"user_id = '{user_id}'")
+        if document_id:
+            if isinstance(document_id, (list, tuple, set)):
+                vals = "', '".join(document_id)
+                conditions.append(f"document_id IN ('{vals}')")
+            else:
+                conditions.append(f"document_id = '{document_id}'")
         if filter:
             conditions.append(f"({filter})")
         
@@ -389,8 +387,8 @@ class LanceRetriever(BaseRetriever):
         self,
         query_texts: Union[str, List[str]],
         collection_name: str = None,
-        user_id: str = None,
-        file_id: str = None,
+        user_id: Union[str, List[str]] = None,
+        document_id: Union[str, List[str]] = None,
         limit: int = 10,
         threshold: float = 0.7,
         filter: str = None,
@@ -402,7 +400,7 @@ class LanceRetriever(BaseRetriever):
             query_texts: 查询文本，字符串或字符串列表
             collection_name: 集合名称，默认为"documents"
             user_id: 按用户ID过滤
-            file_id: 按文件ID过滤
+            document_id: 按文档ID过滤
             limit: 返回结果数量限制
             threshold: 相似度阈值(越低表示越相似)
             filter: 自定义过滤条件(SQL WHERE语句)
@@ -425,12 +423,20 @@ class LanceRetriever(BaseRetriever):
         
         table = self.db.open_table(table_name)
         
-        # 构建过滤条件
+        # 构建过滤条件，支持多值
         conditions = []
         if user_id:
-            conditions.append(f"user_id = '{user_id}'")
-        if file_id:
-            conditions.append(f"file_id = '{file_id}'")
+            if isinstance(user_id, (list, tuple, set)):
+                vals = "', '".join(user_id)
+                conditions.append(f"user_id IN ('{vals}')")
+            else:
+                conditions.append(f"user_id = '{user_id}'")
+        if document_id:
+            if isinstance(document_id, (list, tuple, set)):
+                vals = "', '".join(document_id)
+                conditions.append(f"document_id IN ('{vals}')")
+            else:
+                conditions.append(f"document_id = '{document_id}'")
         if filter:
             conditions.append(f"({filter})")
         
@@ -474,7 +480,7 @@ class LanceRetriever(BaseRetriever):
                     # 构建基本元数据
                     metadata = {
                         "user_id": row.get('user_id', ''),
-                        "file_id": row.get('file_id', ''),
+                        "document_id": row.get('document_id', ''),
                         "chunk_index": row.get('chunk_index', 0),
                         "original_name": row.get('original_name', ''),
                         "source_type": row.get('source_type', ''),
@@ -534,7 +540,7 @@ class LanceRetriever(BaseRetriever):
                 stats[collection_name] = {
                     "total_vectors": len(df),
                     "unique_users": df['user_id'].nunique(),
-                    "unique_files": df['file_id'].nunique(),
+                    "unique_documents": df['document_id'].nunique(),
                 }
             except Exception as e:
                 self._logger.error(f"获取集合统计信息失败: {str(e)}")
