@@ -545,6 +545,9 @@ def create_documents_endpoints(
         logger.info(f"文档搜索请求: 用户ID={user_id}, 查询={query}, 文档ID={document_id}")
         
         try:
+            # 检查 documents_service.retriever 是否存在
+            logger.info(f"检查 retriever 是否存在: {documents_service.retriever is not None}")
+            
             # 执行搜索
             results = await documents_service.search_documents(
                 user_id=user_id,
@@ -552,6 +555,8 @@ def create_documents_endpoints(
                 document_id=document_id,
                 limit=limit
             )
+            
+            logger.info(f"搜索返回结果数量: {len(results)}")
             
             return {
                 "success": True,
@@ -561,6 +566,7 @@ def create_documents_endpoints(
             }
         except Exception as e:
             logger.error(f"搜索文档失败: {str(e)}")
+            logger.exception("搜索异常详情")
             raise HTTPException(status_code=500, detail=str(e))
     
     # 返回路由列表，格式为(HTTP方法, 路径, 处理函数)
@@ -578,5 +584,5 @@ def create_documents_endpoints(
         (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/chunks", chunk_document),
         (HttpMethod.GET,  f"{prefix}/documents/{{document_id}}/chunks", get_document_chunks),
         (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/index", index_document),
-        (HttpMethod.GET,  f"{prefix}/documents/search", search_documents),
+        (HttpMethod.POST, f"{prefix}/documents/search", search_documents),
     ]

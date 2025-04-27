@@ -990,17 +990,21 @@ class DocumentService:
         document_id: str = None,
         limit: int = 10
     ) -> List[Dict[str, Any]]:
-        """搜索文档切片
+        """搜索文档内容"""
         
-        Args:
-            user_id: 用户ID
-            query: 搜索查询文本
-            document_id: 可选，限定在特定文档中搜索
-            limit: 结果数量限制
-            
-        Returns:
-            List[Dict[str, Any]]: 搜索结果列表
-        """
+        # 调试日志：记录搜索参数
+        logger.info(f"DocumentService.search_documents 被调用: 用户={user_id}, 文档ID={document_id}, 查询='{query[:50]}...'")
+        logger.info(f"retriever存在: {self.retriever is not None}")
+        
+        # 确定集合名称
+        collection_name = self.default_indexing_collection(user_id)
+        logger.info(f"使用集合: {collection_name}")
+        
+        # 如果没有retriever，直接返回空结果
+        if not self.retriever:
+            logger.error("没有配置 retriever，无法执行搜索")
+            return []
+        
         try:
             # 使用实例属性中的检索器
             retr = self.retriever
@@ -1011,7 +1015,6 @@ class DocumentService:
                 filter_str = f"document_id = '{document_id}'"
             
             # 执行向量搜索
-            collection_name = self.default_indexing_collection(user_id)
             results = await retr.query(
                 query_texts=query,
                 collection_name=collection_name,

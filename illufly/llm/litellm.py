@@ -7,6 +7,9 @@ import litellm
 import requests
 import logging
 
+# 设置LiteLLM日志级别为WARNING，这样就不会显示INFO级别的消息
+logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+
 class LiteLLM():
     """LiteLLM基于OpenAI的API接口，支持多种模型，支持异步请求"""
     def __init__(self, imitator: str=None, provider: str=None, model_type: str="completion", **kwargs):

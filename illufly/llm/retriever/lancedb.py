@@ -204,42 +204,63 @@ class LanceRetriever(BaseRetriever):
         
         
         # 获取嵌入向量
-        self._logger.info(f"处理后的文本数量: {len(final_texts)}，原始文本数量: {len(texts)}")
+        self._logger.info(f"文档处理：处理后的文本数量: {len(final_texts)}，原始文本数量: {len(texts)}")
         embeddings = await self._get_embeddings(final_texts, **kwargs)
         
+        # 统计并打印全零向量情况，并使用全零检测过滤
+        zero_indices = [i for i, emb in enumerate(embeddings) if all(v == 0.0 for v in emb)]
+        self._logger.info(f"全零向量数量: {len(zero_indices)}/{len(embeddings)}，索引位置: {zero_indices}")
+        valid_embeddings = [e for i, e in enumerate(embeddings) if i not in zero_indices]
+        self._logger.info(f"非零向量数量: {len(valid_embeddings)}/{len(embeddings)}")
+        
+        if valid_embeddings:
+            dimensions = [len(e) for e in valid_embeddings]
+            self._logger.info(f"嵌入向量：维度统计 - 最小: {min(dimensions)}, 最大: {max(dimensions)}, 平均: {sum(dimensions)/len(dimensions):.1f}")
+        else:
+            self._logger.error("嵌入向量：没有获取到有效向量，无法继续")
+            return {"success": False, "added": 0, "skipped": len(final_texts), "error": "没有获取到有效向量"}
+        
         # 确定向量维度并获取表
-        dimension = len(embeddings[0]) if embeddings else 3
+        dimension = len(valid_embeddings[0]) if valid_embeddings else 3
         table = self._get_or_create_table(table_name, dimension=dimension)
+        self._logger.info(f"向量表：表名 {table_name}, 向量维度 {dimension}")
 
         # 准备数据 - 只保留成功获取到非零向量的记录
         records = []
         skipped_count = 0
         timestamp = int(time.time())
         
-        for text, embedding, metadata in zip(final_texts, embeddings, final_metadatas):
+        for idx, (text, embedding, metadata) in enumerate(zip(final_texts, embeddings, final_metadatas)):
             # 检查是否为零向量（嵌入失败的情况）
-            if all(v == 0.0 for v in embedding[:10]):  # 检查前10个元素是否都为0
+            if all(v == 0.0 for v in embedding):  # 全零检测
                 skipped_count += 1
-                self._logger.info(f"跳过零向量文本，不入库: {text[:50]}...")
+                self._logger.info(f"[{idx}] 跳过全零向量文本，不入库: {text[:50]}...")
                 continue  # 跳过此记录
             
-            # 提取常用元数据
-            document_id = metadata.get("document_id", "")
-            chunk_index = metadata.get("chunk_index", 0)
-            original_name = metadata.get("original_name", "")
-            source_type = metadata.get("source_type", "")
-            source_url = metadata.get("source_url", "")
+            # 提取常用元数据，确保所有字段都有默认值
+            document_id = metadata.get("document_id", "") or ""
+            chunk_index = metadata.get("chunk_index", 0) or 0  # 确保非None
+            original_name = metadata.get("original_name", "") or ""
+            source_type = metadata.get("source_type", "") or ""
+            source_url = metadata.get("source_url", "") or ""
+            
+            # 确保chunk_index是整数
+            try:
+                chunk_index = int(chunk_index)
+            except (TypeError, ValueError):
+                chunk_index = 0
             
             # 其余元数据 JSON 化
             extra_metadata = {
                 k: v for k, v in metadata.items()
                 if k not in ["document_id", "chunk_index", "original_name", "source_type", "source_url"]
             }
-            # 直接使用模型返回的可变长度列表
+            
+            # 确保所有字段有正确类型，不为None
             record = {
                 "vector": embedding,
-                "text": text,
-                "user_id": user_id,
+                "text": text or "",  # 确保非None
+                "user_id": user_id or "default",
                 "document_id": document_id,
                 "chunk_index": chunk_index,
                 "original_name": original_name,
@@ -250,10 +271,41 @@ class LanceRetriever(BaseRetriever):
             }
             records.append(record)
         
+        # 记录最终准备添加的records信息
+        self._logger.info(f"数据准备：成功准备 {len(records)} 条记录，跳过 {skipped_count} 条记录")
+        if len(records) > 0:
+            sample_record = records[0]
+            self._logger.info(f"数据示例：文档ID: {sample_record['document_id']}, 用户ID: {sample_record['user_id']}, 文本长度: {len(sample_record['text'])}, 向量维度: {len(sample_record['vector'])}")
+        
         # 添加到数据库
         try:
             if records:  # 只有在有成功记录时才添加
+                # 转换和检查记录，确保所有字段都有合适的类型
+                for record in records:
+                    # 确保所有浮点数字段正确处理，不允许None值
+                    for field in ["chunk_index", "created_at"]:
+                        if record[field] is None:
+                            record[field] = 0  # 使用默认值代替None
+                    
+                    # 确保所有字符串字段非None
+                    for field in ["text", "user_id", "document_id", "original_name", "source_type", "source_url", "metadata_json"]:
+                        if record[field] is None:
+                            record[field] = ""  # 空字符串代替None
+                
+                # 记录转换后的数据类型
+                sample_record = records[0]
+                self._logger.info(f"数据类型检查: {', '.join([f'{k}:{type(v).__name__}' for k,v in sample_record.items()])}")
+                
                 table.add(records)
+                self._logger.info(f"数据存储：成功添加 {len(records)} 条记录到表 {collection_name}")
+                
+                # 验证添加是否成功
+                try:
+                    count_df = table.to_pandas()
+                    self._logger.info(f"数据验证：表 {collection_name} 当前共有 {len(count_df)} 条记录")
+                except Exception as e:
+                    self._logger.warning(f"数据验证：无法验证表大小: {str(e)}")
+                
             return {
                 "success": True, 
                 "added": len(records), 
@@ -351,14 +403,36 @@ class LanceRetriever(BaseRetriever):
             
         table_name = collection_name or "documents"
         
+        # 记录查询参数
+        self._logger.info(f"查询开始: 集合={table_name}, 用户ID={user_id}, 文档ID={document_id}, 阈值={threshold}")
+        self._logger.info(f"查询文本示例: '{query_texts[0][:100]}...'({'单条' if len(query_texts) == 1 else f'{len(query_texts)}条'})")
+        
         # 检查表是否存在
         if table_name not in self.db.table_names():
+            self._logger.error(f"查询失败: 表'{table_name}'不存在")
             return [{
                 "query": text,
                 "results": []
             } for text in query_texts]
         
         table = self.db.open_table(table_name)
+        self._logger.info(f"成功打开表: {table_name}")
+        
+        try:
+            # 获取表结构和向量维度
+            schema = table.schema
+            vector_field = schema.field("vector")
+            vector_dim = len(vector_field.type.value_type) if hasattr(vector_field.type, "value_type") else "未知"
+            self._logger.info(f"表信息: 向量维度={vector_dim}")
+            
+            # 尝试获取表大小
+            try:
+                count_df = table.to_pandas()
+                self._logger.info(f"表'{table_name}'总记录数: {len(count_df)}")
+            except Exception as e:
+                self._logger.warning(f"无法获取表大小: {str(e)}")
+        except Exception as e:
+            self._logger.warning(f"获取表信息失败: {str(e)}")
         
         # 构建过滤条件，支持多值
         conditions = []
@@ -378,40 +452,72 @@ class LanceRetriever(BaseRetriever):
             conditions.append(f"({filter})")
         
         where_clause = " AND ".join(conditions) if conditions else None
+        self._logger.info(f"过滤条件: {where_clause or '无'}")
         
         # 获取查询向量
+        self._logger.info(f"开始获取查询向量 (文本数量: {len(query_texts)})")
         query_embeddings = await self._get_embeddings(query_texts, **kwargs)
+        
+        # 检查向量维度
+        embeddings_dims = [len(emb) for emb in query_embeddings if not all(v == 0.0 for v in emb)]
+        if embeddings_dims:
+            self._logger.info(f"查询向量维度: {embeddings_dims[0]}")
+        else:
+            self._logger.error(f"查询向量获取失败: 全为零向量")
+        
+        # 检查是否有零向量
+        zero_vectors = sum(1 for emb in query_embeddings if all(v == 0.0 for v in emb))
+        if zero_vectors > 0:
+            self._logger.warning(f"零向量数量: {zero_vectors}/{len(query_embeddings)}")
         
         # 执行查询
         results = []
         
         for i, (query_text, query_embedding) in enumerate(zip(query_texts, query_embeddings)):
             try:
+                # 检查是否为零向量
+                if all(v == 0.0 for v in query_embedding):
+                    self._logger.warning(f"查询[{i}]使用零向量，可能返回无效结果")
+                
                 # 创建查询构建器
                 search = table.search(query_embedding)
+                self._logger.info(f"查询[{i}]: 文本='{query_text[:50]}...'")
                 
                 # 添加过滤条件
                 if where_clause:
                     search = search.where(where_clause)
+                    self._logger.info(f"查询[{i}]: 已应用过滤条件 '{where_clause}'")
                 
                 # 设置返回数量限制
                 search = search.limit(limit)
                 
                 # 执行查询
+                self._logger.info(f"查询[{i}]: 执行向量搜索，限制={limit}条结果")
                 df = search.to_pandas()
+                self._logger.info(f"查询[{i}]: 原始结果数量={len(df)}")
+                
+                # 查看结果的距离分布
+                if len(df) > 0 and '_distance' in df.columns:
+                    min_dist = df['_distance'].min()
+                    max_dist = df['_distance'].max()
+                    avg_dist = df['_distance'].mean()
+                    self._logger.info(f"查询[{i}]: 距离统计 - 最小={min_dist:.4f}, 最大={max_dist:.4f}, 平均={avg_dist:.4f}")
                 
                 # 过滤相似度
+                pre_filter_count = len(df)
                 if len(df) > 0:
                     df = df[df['_distance'] < threshold]
+                    self._logger.info(f"查询[{i}]: 阈值筛选后结果数量={len(df)} (阈值={threshold}, 筛掉{pre_filter_count-len(df)}条)")
                 
                 # 格式化结果
                 matches = []
                 
-                for _, row in df.iterrows():
+                for j, (_, row) in enumerate(df.iterrows()):
                     # 解析额外元数据
                     try:
                         extra_metadata = json.loads(row.get('metadata_json', '{}'))
-                    except:
+                    except Exception as e:
+                        self._logger.warning(f"查询[{i}]-结果[{j}]: 解析metadata_json失败: {str(e)}")
                         extra_metadata = {}
                     
                     # 构建基本元数据
@@ -435,6 +541,15 @@ class LanceRetriever(BaseRetriever):
                         "metadata": metadata
                     })
                 
+                # 记录结果摘要
+                if matches:
+                    top_score = matches[0]["score"]
+                    self._logger.info(f"查询[{i}]: 返回{len(matches)}条结果，最佳分数={top_score:.4f}")
+                    doc_ids = set(m["metadata"]["document_id"] for m in matches if m["metadata"]["document_id"])
+                    self._logger.info(f"查询[{i}]: 涉及文档={len(doc_ids)}个, IDs={list(doc_ids)[:3]}{'...' if len(doc_ids)>3 else ''}")
+                else:
+                    self._logger.warning(f"查询[{i}]: 无匹配结果")
+                
                 # 添加到结果
                 results.append({
                     "query": query_text,
@@ -442,13 +557,16 @@ class LanceRetriever(BaseRetriever):
                 })
                 
             except Exception as e:
-                self._logger.error(f"查询失败: {str(e)}")
+                self._logger.error(f"查询[{i}]失败: {type(e).__name__} - {str(e)}")
+                import traceback
+                self._logger.error(f"详细错误: {traceback.format_exc()}")
                 results.append({
                     "query": query_text,
                     "results": [],
                     "error": str(e)
                 })
         
+        self._logger.info(f"查询完成: 处理了{len(query_texts)}个查询, 成功={len([r for r in results if 'error' not in r])}个")
         return results
     
     async def list_collections(self) -> List[str]:
