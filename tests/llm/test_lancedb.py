@@ -106,8 +106,8 @@ async def test_query_results_filtering(retriever):
     assert isinstance(results, list) and len(results) == 1
     item = results[0]["results"][0]
     assert item["text"] == "t1"
-    # 检查 score 是否合理范围内的浮点数
-    assert isinstance(item["score"], float)
+    # 检查 distance 是否合理范围内的浮点数
+    assert isinstance(item["distance"], float)
     assert item["metadata"]["user_id"] == "u1"
     assert item["metadata"]["document_id"] == "d1"
 

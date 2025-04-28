@@ -12,8 +12,7 @@ from pathlib import Path
 from soulseal import TokenSDK
 from ..schemas import Result, HttpMethod
 from ..http import handle_errors
-from ...documents.base import DocumentService
-from ...documents.status import DocumentStatus, ProcessStage
+from ...documents.base import DocumentService, DocumentStatus
 
 # 文档元数据更新请求模型
 class DocumentMetadataUpdate(BaseModel):
@@ -73,9 +72,8 @@ def create_documents_endpoints(
         # 基础结果
         result = {k: doc_info.get(k) for k in DOCUMENT_FIELDS if k in doc_info}
         
-        # 处理计算型字段
-        process_info = doc_info.get("process", {})
-        current_stage = process_info.get("current_stage", ProcessStage.READY)
+        # 获取状态 - 使用新字段
+        current_state = doc_info.get("state", "ready")
         
         # 下载URL - 仅本地文件可下载
         if doc_info.get("source_type") == "local":
@@ -84,19 +82,19 @@ def create_documents_endpoints(
             result["download_url"] = None
             
         # 处理状态相关字段
-        result["process_stage"] = current_stage
-        result["is_processing"] = current_stage in ProcessStage.get_processing_stages()
+        result["process_stage"] = current_state  # 直接使用状态机状态
+        result["is_processing"] = current_state in ["markdowning", "chunking", "embedding"]
         
         # 兼容性字段
-        result["converted"] = process_info.get("stages", {}).get("conversion", {}).get("success", False)
+        result["converted"] = doc_info.get("has_markdown", False)
         
         # 包含详细阶段信息
         if include_details:
-            stages = process_info.get("stages", {})
+            process_details = doc_info.get("process_details", {})
             result["stages_detail"] = {
-                "conversion": stages.get("conversion", {}),
-                "chunking": stages.get("chunking", {}),
-                "embedding": stages.get("embedding", {})
+                "markdowning": process_details.get("markdowning", {}),
+                "chunking": process_details.get("chunking", {}),
+                "embedding": process_details.get("embedding", {})
             }
             
         return result
@@ -352,13 +350,14 @@ def create_documents_endpoints(
                 raise HTTPException(status_code=404, detail="文档不存在")
             
             # 检查是否正在处理中
-            current_stage = doc_info.get("process", {}).get("current_stage")
-            if current_stage in ProcessStage.get_processing_stages():
+            current_state = doc_info.get("state", "ready")
+            processing_states = ["markdowning", "chunking", "embedding"]
+            if current_state in processing_states:
                 return {
                     "success": False,
                     "document_id": document_id,
-                    "message": f"文档处理已在进行中: {current_stage}",
-                    "current_stage": current_stage
+                    "message": f"文档处理已在进行中: {current_state}",
+                    "current_state": current_state
                 }
             
             # 启动转换过程 - 不提供markdown_content参数，让服务自动转换
@@ -369,7 +368,7 @@ def create_documents_endpoints(
                 "success": True,
                 "document_id": document_id,
                 "message": "文档转换已启动",
-                "current_stage": updated_meta.get("process", {}).get("current_stage"),
+                "current_state": updated_meta.get("state", "ready"),
                 "is_processing": True
             }
         except FileNotFoundError as e:
@@ -421,21 +420,20 @@ def create_documents_endpoints(
                 raise HTTPException(status_code=404, detail="文档不存在")
             
             # 检查文档是否已转换为Markdown
-            process_info = doc_info.get("process", {})
-            current_stage = process_info.get("current_stage")
+            current_state = doc_info.get("state", "ready")
             
-            if current_stage != ProcessStage.CONVERTED:
-                if current_stage in ProcessStage.get_processing_stages():
-                    raise HTTPException(status_code=400, detail=f"文档处理进行中: {current_stage}")
-                elif current_stage == ProcessStage.READY:
+            if current_state != "markdowned":
+                if current_state in ["markdowning", "chunking", "embedding"]:
+                    raise HTTPException(status_code=400, detail=f"文档处理进行中: {current_state}")
+                elif current_state == "ready":
                     raise HTTPException(status_code=400, detail="文档必须先转换为Markdown才能进行切片")
-                elif current_stage == ProcessStage.CHUNKED or current_stage == ProcessStage.EMBEDDED:
+                elif current_state == "chunked" or current_state == "embedded":
                     # 已经完成切片或更高阶段
                     return {
                         "success": True,
                         "document_id": document_id,
                         "message": "文档已完成切片",
-                        "current_stage": current_stage,
+                        "current_state": current_state,
                         "chunks_count": doc_info.get("chunks_count", 0)
                     }
             
@@ -453,7 +451,7 @@ def create_documents_endpoints(
                 "success": True,
                 "document_id": document_id,
                 "message": "文档切片处理完成",
-                "current_stage": updated_meta.get("process", {}).get("current_stage"),
+                "current_state": updated_meta.get("state", "ready"),
                 "chunks_count": updated_meta.get("chunks_count", 0)
             }
         except HTTPException:
@@ -489,8 +487,8 @@ def create_documents_endpoints(
                     raise HTTPException(status_code=404, detail="文档不存在")
                     
                 # 检查文档是否已切片
-                chunking_stage = doc_info.get("process", {}).get("stages", {}).get("chunking", {})
-                if chunking_stage.get("stage") != ProcessStage.CHUNKED:
+                chunking_state = doc_info.get("state", "ready")
+                if chunking_state != "chunked":
                     raise HTTPException(status_code=400, detail="文档尚未切片或切片处理失败")
             
             return {
@@ -520,21 +518,20 @@ def create_documents_endpoints(
                 raise HTTPException(status_code=404, detail="文档不存在")
             
             # 检查文档是否已切片
-            process_info = doc_info.get("process", {})
-            current_stage = process_info.get("current_stage")
+            current_state = doc_info.get("state", "ready")
             
-            if current_stage != ProcessStage.CHUNKED:
-                if current_stage in ProcessStage.get_processing_stages():
-                    raise HTTPException(status_code=400, detail=f"文档处理进行中: {current_stage}")
-                elif current_stage == ProcessStage.READY or current_stage == ProcessStage.CONVERTED:
+            if current_state != "chunked":
+                if current_state in ["markdowning", "chunking", "embedding"]:
+                    raise HTTPException(status_code=400, detail=f"文档处理进行中: {current_state}")
+                elif current_state == "ready" or current_state == "markdowned":
                     raise HTTPException(status_code=400, detail="文档必须先完成切片才能创建索引")
-                elif current_stage == ProcessStage.EMBEDDED:
+                elif current_state == "embedded":
                     # 已经完成嵌入
                     return {
                         "success": True,
                         "document_id": document_id,
                         "message": "文档已完成索引",
-                        "current_stage": current_stage,
+                        "current_state": current_state,
                         "indexed_chunks": doc_info.get("vector_index", {}).get("indexed_chunks", 0)
                     }
             
@@ -552,7 +549,7 @@ def create_documents_endpoints(
                 "success": True,
                 "document_id": document_id,
                 "message": "文档索引创建完成",
-                "current_stage": updated_meta.get("process", {}).get("current_stage"),
+                "current_state": updated_meta.get("state", "ready"),
                 "indexed_chunks": updated_meta.get("vector_index", {}).get("indexed_chunks", 0)
             }
         except HTTPException:
@@ -623,20 +620,14 @@ def create_documents_endpoints(
                     continue
                     
                 # 获取处理信息
-                process_info = doc_meta.get("process", {})
-                current_stage = process_info.get("current_stage", ProcessStage.READY)
+                current_state = doc_meta.get("state", "ready")
+                process_details = doc_meta.get("process_details", {})
                 
-                # 从元数据直接获取，而不是计算
+                # 从元数据直接获取
                 has_markdown = doc_meta.get("has_markdown", False)
                 has_chunks = doc_meta.get("has_chunks", False)
                 has_embeddings = doc_meta.get("has_embeddings", False)
-                is_processing = current_stage in ProcessStage.get_processing_stages()
-                
-                # 获取详细的阶段信息
-                stages = process_info.get("stages", {})
-                conversion_info = stages.get("conversion", {})
-                chunking_info = stages.get("chunking", {})
-                embedding_info = stages.get("embedding", {})
+                is_processing = current_state in ["markdowning", "chunking", "embedding"]
                 
                 # 构建响应
                 results[document_id] = {
@@ -644,33 +635,15 @@ def create_documents_endpoints(
                     "document_id": document_id,
                     "title": doc_meta.get("title", ""),
                     "original_name": doc_meta.get("original_name", ""),
-                    "process_stage": current_stage,
+                    "process_state": current_state,
                     "is_processing": is_processing,
                     "has_markdown": has_markdown,
-                    "has_chunks": has_chunks, 
+                    "has_chunks": has_chunks,
                     "has_embeddings": has_embeddings,
                     "stages_detail": {
-                        "conversion": {
-                            "stage": conversion_info.get("stage", ProcessStage.READY),
-                            "success": conversion_info.get("success", False),
-                            "started_at": conversion_info.get("started_at"),
-                            "finished_at": conversion_info.get("finished_at"),
-                            "error": conversion_info.get("error")
-                        },
-                        "chunking": {
-                            "stage": chunking_info.get("stage", ProcessStage.READY),
-                            "success": chunking_info.get("success", False),
-                            "started_at": chunking_info.get("started_at"),
-                            "finished_at": chunking_info.get("finished_at"),
-                            "error": chunking_info.get("error")
-                        },
-                        "embedding": {
-                            "stage": embedding_info.get("stage", ProcessStage.READY),
-                            "success": embedding_info.get("success", False),
-                            "started_at": embedding_info.get("started_at"),
-                            "finished_at": embedding_info.get("finished_at"),
-                            "error": embedding_info.get("error")
-                        }
+                        "markdowning": process_details.get("markdowning", {}),
+                        "chunking": process_details.get("chunking", {}),
+                        "embedding": process_details.get("embedding", {})
                     }
                 }
             except Exception as e:

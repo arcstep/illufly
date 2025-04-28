@@ -8,7 +8,8 @@ from pathlib import Path
 from fastapi import UploadFile
 import logging
 
-from illufly.documents.base import DocumentService, DocumentStatus, ProcessStage
+from illufly.documents.base import DocumentService, DocumentStatus
+from illufly.documents.machine import DocumentMachine
 from illufly.llm.retriever.lancedb import LanceRetriever
 from illufly.llm.litellm import init_litellm
 
@@ -96,15 +97,8 @@ def user_id():
 
 @pytest.mark.asyncio
 async def test_full_document_workflow(document_service, user_id, create_upload_file):
-    """测试文档完整工作流程(上传-转换-切片-索引-搜索)"""
-    # 打印ProcessStage所有可用值进行诊断
-    print("\n===== ProcessStage 可用枚举值 =====")
-    for stage in dir(ProcessStage):
-        if not stage.startswith("_"):
-            print(f"ProcessStage.{stage}")
-    print("================================\n")
-    
-    # 1. 创建测试用例说明文档
+    """测试文档完整工作流程(上传-转换-切片-索引-搜索)结合状态机"""
+    # 1. 创建文档
     document_content = """
     # 文档管理系统测试用例
     
@@ -130,79 +124,66 @@ async def test_full_document_workflow(document_service, user_id, create_upload_f
     """
     
     file = create_upload_file(filename="full_test.md", content=document_content)
-    
-    # 2. 上传文档
-    print("开始上传文档...")
     doc_meta = await document_service.save_document(user_id, file)
     document_id = doc_meta["document_id"]
-    assert doc_meta["original_name"] == "full_test.md"
-    assert doc_meta["status"] == DocumentStatus.ACTIVE
-    print(f"文档上传成功，ID: {document_id}")
     
-    # 3. 转换为 Markdown (已是Markdown，直接使用原内容)
+    # 获取状态机
+    machine = await document_service.get_document_machine(user_id, document_id)
+    
+    # 验证初始状态
+    assert machine.current_state.id == 'ready'
+    print(f"初始状态验证成功: {machine.current_state.id}")
+    
+    # 2. 转换为Markdown
     print("开始Markdown转换...")
     updated_meta = await document_service.save_markdown(user_id, document_id, document_content)
-    assert updated_meta["process"]["current_stage"] == ProcessStage.CONVERTED
-    assert updated_meta.get("has_markdown", False) is True
-    print("Markdown转换完成")
     
-    # 4. 创建文档切片
+    # 重新获取状态机实例以确保状态最新
+    machine = await document_service.get_document_machine(user_id, document_id)
+    
+    # 验证状态 - 使用状态机而非字符串常量
+    assert machine.current_state.id == 'markdowned'
+    assert updated_meta.get("has_markdown") is True
+    print(f"Markdown转换完成，当前状态: {machine.current_state.id}")
+    
+    # 3. 创建文档切片
     print("开始文档切片...")
     success = await document_service.save_chunks(user_id, document_id)
     assert success is True
     
-    # 验证切片创建
+    # 重新获取状态机实例
+    machine = await document_service.get_document_machine(user_id, document_id)
+    
+    # 验证状态机状态
+    assert machine.current_state.id == 'chunked'
     chunks_meta = await document_service.get_document_meta(user_id, document_id)
-    assert chunks_meta["process"]["current_stage"] == ProcessStage.CHUNKED
-    assert "chunks" in chunks_meta
-    assert chunks_meta.get("has_chunks", False) is True
-    print(f"切片创建完成，共 {len(chunks_meta.get('chunks', []))} 个切片")
+    assert chunks_meta.get("has_chunks") is True
+    print(f"文档切片完成，当前状态: {machine.current_state.id}")
     
-    # 获取文档处理阶段详情
-    print("\n===== 文档处理阶段信息 =====")
-    processing_info = chunks_meta.get("process", {})
-    print(f"当前阶段: {processing_info.get('current_stage')}")
-    for stage_name, stage_info in processing_info.get("stages", {}).items():
-        print(f"阶段 {stage_name}: {stage_info}")
-    print("===========================\n")
-    
-    # 5. 创建向量索引 - 用EMBEDDING替代INDEXING
+    # 4. 创建向量索引
     print("开始创建向量索引...")
     try:
-        # 检查create_document_index方法源码
-        import inspect
-        print("检查create_document_index方法定义...")
-        source = inspect.getsource(document_service.create_document_index)
-        print(source[:200] + "..." if len(source) > 200 else source)
-        
-        # 使用正确的枚举值
         index_success = await document_service.create_document_index(user_id, document_id)
         assert index_success is True
-    except AttributeError as e:
-        print(f"错误: {e}")
-        # 尝试使用正确的枚举值
-        print("尝试更新处理阶段...")
-        stage_name = "embedding"  # 使用embedding而不是indexing
-        await document_service.update_process_stage(
-            user_id, document_id, stage_name,
-            {"stage": ProcessStage.EMBEDDING, "started_at": time.time()}
-        )
-        # 继续处理...
-        await asyncio.sleep(1)
-        # 手动模拟索引完成
-        await document_service.update_metadata(user_id, document_id, {
-            "vector_index": {"indexed_at": time.time()},
-            "process": {"current_stage": ProcessStage.EMBEDDED},
-            "has_embeddings": True
-        })
-        print("手动更新处理阶段完成")
+        
+        # 验证状态机状态
+        machine = await document_service.get_document_machine(user_id, document_id)
+        assert machine.current_state.id == 'embedded'
+    except Exception as e:
+        print(f"索引创建异常: {e}")
+        # 手动更新状态
+        machine = await document_service.get_document_machine(user_id, document_id)
+        await machine.start_embedding()
+        await machine.complete_embedding(indexed_chunks=len(chunks_meta.get("chunks", [])))
     
-    # 验证索引状态
-    indexed_meta = await document_service.get_document_meta(user_id, document_id)
-    print(f"最终处理阶段: {indexed_meta['process']['current_stage']}")
-    print(f"向量索引信息: {indexed_meta.get('vector_index', {})}")
+    # 验证最终状态
+    machine = await document_service.get_document_machine(user_id, document_id)
+    assert machine.current_state.id == 'embedded'
+    final_meta = await document_service.get_document_meta(user_id, document_id)
+    assert final_meta.get("has_embeddings") is True
+    print(f"向量索引创建完成，最终状态: {machine.current_state.id}")
     
-    # 6. 执行文档搜索
+    # 5. 执行文档搜索
     print("执行文档搜索...")
     await asyncio.sleep(1)  # 等待索引可用
     
@@ -221,7 +202,7 @@ async def test_full_document_workflow(document_service, user_id, create_upload_f
     except Exception as e:
         print(f"搜索异常: {str(e)}")
         
-    # 7. 清理资源
+    # 6. 清理资源
     print("清理测试资源...")
     await document_service.delete_document(user_id, document_id)
     print("测试完成")

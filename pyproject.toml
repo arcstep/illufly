@@ -50,6 +50,7 @@ voidrail = {path = "../voidrail", develop = true}
 diskcache = "^5.6.3"
 click = "^8.1.8"
 lancedb = "^0.21.2"
+python-statemachine = "^2.5.0"
 
 [tool.poetry.group.dev.dependencies]
 openai = "^1.59.6"

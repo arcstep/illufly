@@ -21,14 +21,21 @@ class LanceRetriever(BaseRetriever):
     def __init__(
         self, 
         output_dir: str = None, 
-        embedding_config: Dict[str, Any] = {}
+        embedding_config: Dict[str, Any] = {},
+        metric: str = "cosine"  # 添加度量方法参数
     ):
         """初始化LanceRetriever
         
         Args:
             output_dir: 数据库存储路径，默认为./lance_db
             embedding_config: 嵌入模型配置
-            vector_dim: 向量维度，默认384
+            metric: 距离度量方法，默认为"cosine"
+
+        距离值含义取决于度量方法:
+        - cosine: 值越小表示越相似(范围0-2)
+        - l2: 欧氏距离，值越小表示越相似
+        - dot: 点积，值越大表示越相似(需特别处理
+
         """
         self.model = LiteLLM(model_type="embedding", **embedding_config)
         
@@ -39,6 +46,7 @@ class LanceRetriever(BaseRetriever):
         # 初始化数据库连接
         self.db = lancedb.connect(self.db_path)
         self._logger = logging.getLogger(__name__)
+        self.metric = metric
     
     def _get_or_create_table(self, table_name: str, dimension: int = 3) -> Any:
         """获取或创建表，延迟创建索引"""
@@ -394,7 +402,7 @@ class LanceRetriever(BaseRetriever):
             threshold: 相似度阈值(越低表示越相似)
             filter: 自定义过滤条件(SQL WHERE语句)
             **kwargs: 传递给嵌入模型的额外参数
-            
+
         Returns:
             检索结果列表
         """
@@ -537,13 +545,13 @@ class LanceRetriever(BaseRetriever):
                     matches.append({
                         "text": row['text'],
                         "vector": row['vector'].tolist() if hasattr(row['vector'], 'tolist') else row['vector'],
-                        "score": float(row['_distance']),
+                        "distance": float(row['_distance']),
                         "metadata": metadata
                     })
                 
                 # 记录结果摘要
                 if matches:
-                    top_score = matches[0]["score"]
+                    top_score = matches[0]["distance"]
                     self._logger.info(f"查询[{i}]: 返回{len(matches)}条结果，最佳分数={top_score:.4f}")
                     doc_ids = set(m["metadata"]["document_id"] for m in matches if m["metadata"]["document_id"])
                     self._logger.info(f"查询[{i}]: 涉及文档={len(doc_ids)}个, IDs={list(doc_ids)[:3]}{'...' if len(doc_ids)>3 else ''}")
@@ -627,7 +635,7 @@ class LanceRetriever(BaseRetriever):
             try:
                 # 尝试创建索引
                 self._logger.info(f"为表 {table_name} 创建向量索引，当前数据量: {row_count}")
-                await table.create_index(vector_column_name="vector", metric="cosine")
+                await table.create_index(vector_column_name="vector", metric=self.metric)
                 return True
             except Exception as e:
                 self._logger.warning(f"创建索引失败: {str(e)}")
