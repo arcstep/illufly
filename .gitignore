@@ -206,3 +206,6 @@ scripts/hf_model/
 /uploads/
 
 .data/
+
+/tests/documents/litellm_cache/
+/tests/llm/litellm_cache/

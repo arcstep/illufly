@@ -66,6 +66,22 @@ class ProcessStage(str, Enum):
         }
         return stage_map.get(processing_stage)
 
+class ProcessPhase(str, Enum):
+    """处理阶段名称枚举"""
+    CONVERSION = "conversion"
+    CHUNKING = "chunking"  
+    EMBEDDING = "embedding"
+    
+    @classmethod
+    def get_process_stage(cls, phase: 'ProcessPhase', is_processing: bool) -> ProcessStage:
+        """获取指定阶段的处理状态"""
+        mapping = {
+            cls.CONVERSION: ProcessStage.CONVERTING if is_processing else ProcessStage.CONVERTED,
+            cls.CHUNKING: ProcessStage.CHUNKING if is_processing else ProcessStage.CHUNKED,
+            cls.EMBEDDING: ProcessStage.EMBEDDING if is_processing else ProcessStage.EMBEDDED
+        }
+        return mapping.get(phase)
+
 class DocumentProcessInfo:
     """文档处理信息类"""
     def __init__(self, current_stage: str = ProcessStage.READY):

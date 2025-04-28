@@ -15,8 +15,6 @@ from .base import BaseRetriever
 from lancedb.embeddings import EmbeddingFunctionRegistry
 from ..litellm import LiteLLM
 
-logger = logging.getLogger(__name__)
-
 class LanceRetriever(BaseRetriever):
     """基于LanceDB的向量检索器 - 遵循LanceDB最佳实践"""
     
@@ -165,6 +163,8 @@ class LanceRetriever(BaseRetriever):
         
         if len(metadatas) != len(texts):
             raise ValueError(f"元数据长度({len(metadatas)})与文本长度({len(texts)})不匹配")
+
+        self._logger.info(f"[LanceRetriever.add] 开始添加向量，集合: {collection_name}, 用户ID: {user_id}, 文本数量: {len(texts) if isinstance(texts, list) else 1}")
         
         # 处理长文本分段
         max_tokens = 500  # 安全上限，小于模型限制
@@ -305,7 +305,7 @@ class LanceRetriever(BaseRetriever):
                     self._logger.info(f"数据验证：表 {collection_name} 当前共有 {len(count_df)} 条记录")
                 except Exception as e:
                     self._logger.warning(f"数据验证：无法验证表大小: {str(e)}")
-                
+
             return {
                 "success": True, 
                 "added": len(records), 

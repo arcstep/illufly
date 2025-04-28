@@ -7,9 +7,6 @@ import litellm
 import requests
 import logging
 
-# 设置LiteLLM日志级别为WARNING，这样就不会显示INFO级别的消息
-logging.getLogger("LiteLLM").setLevel(logging.WARNING)
-
 class LiteLLM():
     """LiteLLM基于OpenAI的API接口，支持多种模型，支持异步请求"""
     def __init__(self, imitator: str=None, provider: str=None, model_type: str="completion", **kwargs):
@@ -19,6 +16,9 @@ class LiteLLM():
         model_type: 模型类型，"completion" 或 "embedding"
         kwargs: 其他希望填写到 complete 等操作中的参数
         """
+
+        # 设置LiteLLM日志级别为WARNING，这样就不会显示INFO级别的消息
+        logging.getLogger("LiteLLM").setLevel(logging.WARNING)
         
         # 获取所有可用的 imitators
         self.all_imitators = self._get_all_imitators()
