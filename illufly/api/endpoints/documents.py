@@ -60,6 +60,47 @@ def create_documents_endpoints(
     logger = logger or logging.getLogger(__name__)
     require_user = token_sdk.get_auth_dependency(logger=logger)
 
+    # 定义允许直接提取的字段列表
+    DOCUMENT_FIELDS = [
+        "document_id", "original_name", "size", "type", "extension", 
+        "created_at", "updated_at", "status", "title", "description", 
+        "tags", "has_markdown", "has_chunks", "has_embeddings", 
+        "source_type", "source_url", "chunks_count"
+    ]
+    
+    def format_document_info(doc_info, prefix, include_details=False):
+        """将文档元数据转换为标准响应格式"""
+        # 基础结果
+        result = {k: doc_info.get(k) for k in DOCUMENT_FIELDS if k in doc_info}
+        
+        # 处理计算型字段
+        process_info = doc_info.get("process", {})
+        current_stage = process_info.get("current_stage", ProcessStage.READY)
+        
+        # 下载URL - 仅本地文件可下载
+        if doc_info.get("source_type") == "local":
+            result["download_url"] = f"{prefix}/documents/{doc_info['document_id']}/download"
+        else:
+            result["download_url"] = None
+            
+        # 处理状态相关字段
+        result["process_stage"] = current_stage
+        result["is_processing"] = current_stage in ProcessStage.get_processing_stages()
+        
+        # 兼容性字段
+        result["converted"] = process_info.get("stages", {}).get("conversion", {}).get("success", False)
+        
+        # 包含详细阶段信息
+        if include_details:
+            stages = process_info.get("stages", {})
+            result["stages_detail"] = {
+                "conversion": stages.get("conversion", {}),
+                "chunking": stages.get("chunking", {}),
+                "embedding": stages.get("embedding", {})
+            }
+            
+        return result
+    
     @handle_errors()
     async def list_documents(
         request: Request,
@@ -69,49 +110,8 @@ def create_documents_endpoints(
         user_id = token_claims["user_id"]
         documents = await documents_service.list_documents(user_id)
         
-        # 转换为前端格式
-        result = []
-        for doc_info in documents:
-            # 确定下载URL - 仅本地文件可下载原始内容
-            download_url = None
-            if doc_info.get("source_type") == "local":
-                download_url = f"{prefix}/documents/{doc_info['document_id']}/download"
-            
-            # 获取处理信息
-            process_info = doc_info.get("process", {})
-            current_stage = process_info.get("current_stage", ProcessStage.READY)
-            
-            # 计算处理状态
-            has_markdown = current_stage in [ProcessStage.CONVERTED, ProcessStage.CHUNKED, ProcessStage.EMBEDDED]
-            has_chunks = current_stage in [ProcessStage.CHUNKED, ProcessStage.EMBEDDED]
-            has_embeddings = current_stage == ProcessStage.EMBEDDED
-            is_processing = current_stage in ProcessStage.get_processing_stages()
-            
-            result.append({
-                "document_id": doc_info["document_id"],
-                "original_name": doc_info["original_name"],
-                "size": doc_info.get("size", 0),
-                "type": doc_info.get("type", ""),
-                "extension": doc_info.get("extension", ""),
-                "created_at": doc_info["created_at"],
-                "updated_at": doc_info.get("updated_at", doc_info["created_at"]),
-                "status": doc_info.get("status", DocumentStatus.ACTIVE),
-                "download_url": download_url,
-                "title": doc_info.get("title", ""),
-                "description": doc_info.get("description", ""),
-                "tags": doc_info.get("tags", []),
-                "process_stage": current_stage,
-                "is_processing": is_processing,
-                "has_markdown": has_markdown,
-                "has_chunks": has_chunks,
-                "has_embeddings": has_embeddings,
-                **{k: v for k, v in doc_info.items() 
-                  if k not in ["document_id", "original_name", "size", "type", "extension", "path", 
-                              "created_at", "updated_at", "status", "title", "description", 
-                              "tags", "process"]}
-            })
-        
-        return result
+        # 使用通用格式化函数转换为前端格式
+        return [format_document_info(doc, prefix) for doc in documents]
     
     @handle_errors()
     async def get_document_info(
@@ -125,33 +125,8 @@ def create_documents_endpoints(
         if not doc_info or doc_info.get("status") != DocumentStatus.ACTIVE:
             raise HTTPException(status_code=404, detail="文档不存在")
         
-        # 确定下载URL
-        download_url = None
-        if doc_info.get("source_type") == "local":
-            download_url = f"{prefix}/documents/{document_id}/download"
-        
-        return {
-            "document_id": doc_info["document_id"],
-            "original_name": doc_info["original_name"],
-            "size": doc_info.get("size", 0),
-            "type": doc_info.get("type", ""),
-            "extension": doc_info.get("extension", ""),
-            "created_at": doc_info["created_at"],
-            "updated_at": doc_info.get("updated_at", doc_info["created_at"]),
-            "download_url": download_url,
-            "title": doc_info.get("title", ""),
-            "description": doc_info.get("description", ""),
-            "tags": doc_info.get("tags", []),
-            "converted": doc_info.get("process", {}).get("stages", {}).get("conversion", {}).get("success", False),
-            "has_markdown": doc_info.get("process", {}).get("current_stage") == ProcessStage.CONVERTED,
-            "has_chunks": doc_info.get("process", {}).get("current_stage") == ProcessStage.CHUNKED,
-            "source_type": doc_info.get("source_type", "local"),
-            "source_url": doc_info.get("source_url", ""),
-            **{k: v for k, v in doc_info.items() 
-               if k not in ["document_id", "original_name", "size", "type", "extension", "path", 
-                           "created_at", "updated_at", "status", "title", "description", 
-                           "tags", "process", "markdown_content"]}
-        }
+        # 使用通用格式化函数，包含详细信息
+        return format_document_info(doc_info, prefix, include_details=True)
     
     @handle_errors()
     async def update_document_metadata(
@@ -651,10 +626,10 @@ def create_documents_endpoints(
                 process_info = doc_meta.get("process", {})
                 current_stage = process_info.get("current_stage", ProcessStage.READY)
                 
-                # 计算处理状态
-                has_markdown = current_stage in [ProcessStage.CONVERTED, ProcessStage.CHUNKED, ProcessStage.EMBEDDED]
-                has_chunks = current_stage in [ProcessStage.CHUNKED, ProcessStage.EMBEDDED]
-                has_embeddings = current_stage == ProcessStage.EMBEDDED
+                # 从元数据直接获取，而不是计算
+                has_markdown = doc_meta.get("has_markdown", False)
+                has_chunks = doc_meta.get("has_chunks", False)
+                has_embeddings = doc_meta.get("has_embeddings", False)
                 is_processing = current_stage in ProcessStage.get_processing_stages()
                 
                 # 获取详细的阶段信息

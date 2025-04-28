@@ -14,8 +14,6 @@ from voidrail import ClientDealer
 from ..llm.retriever.lancedb import LanceRetriever
 from .status import DocumentStatus, ProcessStage, DocumentProcessInfo
 
-logger = logging.getLogger(__name__)
-
 class DocumentService:
     """文档管理服务
     
@@ -34,7 +32,8 @@ class DocumentService:
         allowed_extensions: List[str] = None,
         voidrail_client: ClientDealer = None,
         retriever: LanceRetriever = None,
-        max_versions: int = 5
+        max_versions: int = 5,
+        logger: logging.Logger = None
     ):
         """初始化文档管理服务"""
         self.base_dir = Path(base_dir)
@@ -74,6 +73,8 @@ class DocumentService:
         )
         # 文件版本管理：覆盖前最多保留 max_versions 个旧版本
         self.max_versions = max_versions
+
+        self.logger = logger or logging.getLogger(__name__)
 
     def default_indexing_collection(self, user_id: str) -> str:
         """获取默认集合名称"""
@@ -149,7 +150,7 @@ class DocumentService:
                     
             return True
         except Exception as e:
-            logger.error(f"检查文档存在性失败: {user_id}/{document_id}, 错误: {e}")
+            self.logger.error(f"检查文档存在性失败: {user_id}/{document_id}, 错误: {e}")
             return False
     
     async def save_document(
@@ -357,20 +358,24 @@ class DocumentService:
                 }
             )
             
-            # 覆盖元数据前先备份
-            self._rotate_backup(user_id, "meta", document_id, self.get_meta_path(user_id, document_id))
-            await self.update_metadata(user_id, document_id, {
-                "markdown": {
-                    "path": str(md_path),
-                    "length": len(markdown_content),
-                    "structure": {
-                        "headers": headers_count,
-                        "paragraphs": paragraphs_count
-                    },
-                    "updated_at": now
+            # 更新元数据
+            meta_updates = {
+                "process": {
+                    "current_stage": ProcessStage.CONVERTED,
+                    "stages": {
+                        "conversion": {
+                            "stage": ProcessStage.CONVERTED,
+                            "success": True,
+                            "finished_at": now
+                        }
+                    }
                 },
-                "process": {"current_stage": ProcessStage.CONVERTED}
-            })
+                "has_markdown": True,  # 明确标记
+                "has_chunks": False,   # 重置后续标记
+                "has_embeddings": False
+            }
+            
+            await self.update_metadata(user_id, document_id, meta_updates)
 
         except Exception as e:
             # 更新为转换失败
@@ -463,7 +468,7 @@ class DocumentService:
                 # 获取内容
                 content = chunk.get("text") or chunk.get("content")
                 if not content:
-                    logger.error(f"切片内容缺失: {chunk}")
+                    self.logger.error(f"切片内容缺失: {chunk}")
                     continue
                     
                 # 保存内容
@@ -498,10 +503,8 @@ class DocumentService:
                 "titles": [chunk.get("title", "") for chunk in chunks if "title" in chunk]
             }
             
-            await self.update_metadata(user_id, document_id, {
-                "chunks": chunks_meta,
-                "chunks_count": len(chunks),
-                "chunks_stats": chunks_stats,
+            # 更新元数据
+            meta_updates = {
                 "process": {
                     "current_stage": ProcessStage.CHUNKED,
                     "stages": {
@@ -515,10 +518,16 @@ class DocumentService:
                             }
                         }
                     }
-                }
-            })
+                },
+                "chunks_count": len(chunks),
+                "has_chunks": True,      # 明确标记 
+                "has_embeddings": False,  # 重置后续标记
+                "chunks": chunks_meta      # 添加切片元数据到文档
+            }
             
-            return True
+            success = await self.update_metadata(user_id, document_id, meta_updates)
+            
+            return success
         
         except Exception as e:
             # 更新为切片失败
@@ -556,7 +565,7 @@ class DocumentService:
             async with aiofiles.open(md_path, 'r', encoding='utf-8') as f:
                 return await f.read()
         except Exception as e:
-            logger.error(f"读取Markdown内容失败: {md_path}, 错误: {e}")
+            self.logger.error(f"读取Markdown内容失败: {md_path}, 错误: {e}")
             raise FileNotFoundError(f"无法读取Markdown内容: {str(e)}")
     
     async def iter_chunks(
@@ -615,7 +624,7 @@ class DocumentService:
                             
                         yield chunk_data
                 except Exception as e:
-                    logger.error(f"读取切片内容失败: {chunk_path}, 错误: {e}")
+                    self.logger.error(f"读取切片内容失败: {chunk_path}, 错误: {e}")
         else:
             # 所有文档的切片
             docs = await self.list_documents(user_id)
@@ -640,7 +649,7 @@ class DocumentService:
         """删除文档及相关资源"""
         doc_meta = await self.get_document_meta(user_id, document_id)
         if not doc_meta:
-            logger.warning(f"尝试删除不存在的文档: {document_id}")
+            self.logger.warning(f"尝试删除不存在的文档: {document_id}")
             return False
         # 先从向量索引中删除，保证一致性
         try:
@@ -651,7 +660,7 @@ class DocumentService:
                 document_id=document_id
             )
         except Exception as e:
-            logger.error(f"删除向量索引失败: {e}")
+            self.logger.error(f"删除向量索引失败: {e}")
 
         success = True
         # 1. 删除原始文件
@@ -660,7 +669,7 @@ class DocumentService:
             try:
                 os.remove(raw_path)
             except Exception as e:
-                logger.error(f"删除原始文件失败: {raw_path}, 错误: {e}")
+                self.logger.error(f"删除原始文件失败: {raw_path}, 错误: {e}")
                 success = False
         
         # 2. 删除Markdown文件
@@ -669,7 +678,7 @@ class DocumentService:
             try:
                 os.remove(md_path)
             except Exception as e:
-                logger.error(f"删除Markdown文件失败: {md_path}, 错误: {e}")
+                self.logger.error(f"删除Markdown文件失败: {md_path}, 错误: {e}")
                 success = False
         
         # 3. 删除切片目录
@@ -678,7 +687,7 @@ class DocumentService:
             try:
                 shutil.rmtree(chunks_dir)
             except Exception as e:
-                logger.error(f"删除切片目录失败: {chunks_dir}, 错误: {e}")
+                self.logger.error(f"删除切片目录失败: {chunks_dir}, 错误: {e}")
                 success = False
         
         # 4. 最后才删除元数据
@@ -687,7 +696,7 @@ class DocumentService:
             try:
                 os.remove(meta_path)
             except Exception as e:
-                logger.error(f"删除元数据失败: {meta_path}, 错误: {e}")
+                self.logger.error(f"删除元数据失败: {meta_path}, 错误: {e}")
                 success = False
         
         return success
@@ -707,7 +716,7 @@ class DocumentService:
                     if doc_meta.get("status") == DocumentStatus.ACTIVE:
                         docs.append(doc_meta)
             except Exception as e:
-                logger.error(f"读取文档元数据失败: {meta_path}, 错误: {e}")
+                self.logger.error(f"读取文档元数据失败: {meta_path}, 错误: {e}")
         
         # 按创建时间降序排序
         docs.sort(key=lambda x: x.get("created_at", 0), reverse=True)
@@ -725,7 +734,7 @@ class DocumentService:
                 content = await f.read()
                 return json.loads(content)
         except Exception as e:
-            logger.error(f"读取文档元数据失败: {meta_path}, 错误: {e}")
+            self.logger.error(f"读取文档元数据失败: {meta_path}, 错误: {e}")
             return None
     
     async def update_metadata(self, user_id: str, document_id: str, metadata: Dict[str, Any]) -> bool:
@@ -761,7 +770,7 @@ class DocumentService:
             
             return True
         except Exception as e:
-            logger.error(f"更新元数据失败: {str(e)}")
+            self.logger.error(f"更新元数据失败: {str(e)}")
             return False
     
     async def update_process_stage(
@@ -791,7 +800,7 @@ class DocumentService:
             
             return True
         except Exception as e:
-            logger.error(f"更新处理阶段失败: {e}")
+            self.logger.error(f"更新处理阶段失败: {e}")
             return False
     
     def is_valid_file_type(self, file_name: str) -> bool:
@@ -822,7 +831,7 @@ class DocumentService:
         """将文档切片添加到向量索引"""
         # 检查文档是否存在
         if not await self.document_exists(user_id, document_id):
-            logger.error(f"文档不存在: {document_id}")
+            self.logger.error(f"文档不存在: {document_id}")
             return False
         
         # 获取文档元数据
@@ -832,7 +841,7 @@ class DocumentService:
         chunking_stage = doc_meta.get("process", {}).get("stages", {}).get("chunking", {})
         if chunking_stage.get("stage") != ProcessStage.CHUNKED:
             error_msg = f"文档必须先切片才能创建索引: {document_id}"
-            logger.error(error_msg)
+            self.logger.error(error_msg)
             await self.update_process_stage(
                 user_id, document_id, "indexing", 
                 {
@@ -873,7 +882,7 @@ class DocumentService:
             
             if not chunks_texts:
                 error_msg = f"文档没有可索引的切片: {document_id}"
-                logger.error(error_msg)
+                self.logger.error(error_msg)
                 await self.update_process_stage(
                     user_id, document_id, "indexing", 
                     {
@@ -888,7 +897,7 @@ class DocumentService:
             # 确保检索器存在
             if not self.retriever:
                 error_msg = "没有配置检索器"
-                logger.error(error_msg)
+                self.logger.error(error_msg)
                 await self.update_process_stage(
                     user_id, document_id, "indexing", 
                     {
@@ -906,7 +915,7 @@ class DocumentService:
                 coll = self.default_indexing_collection(user_id)
                 await self.retriever.delete(collection_name=coll, user_id=user_id, document_id=document_id)
             except Exception as e:
-                logger.warning(f"删除旧索引失败，继续添加新索引: {str(e)}")
+                self.logger.warning(f"删除旧索引失败，继续添加新索引: {str(e)}")
             
             try:
                 # 添加到向量索引
@@ -919,7 +928,7 @@ class DocumentService:
                 )
             except Exception as e:
                 error_msg = f"添加向量索引失败: {str(e)}"
-                logger.error(error_msg)
+                self.logger.error(error_msg)
                 await self.update_process_stage(
                     user_id, document_id, "indexing", 
                     {
@@ -935,7 +944,7 @@ class DocumentService:
                 # 确保创建索引
                 await self.retriever.ensure_index(collection_name)
             except Exception as e:
-                logger.warning(f"确保索引操作失败，但数据已添加: {str(e)}")
+                self.logger.warning(f"确保索引操作失败，但数据已添加: {str(e)}")
             
             # 更新状态为索引完成
             now = time.time()
@@ -954,19 +963,20 @@ class DocumentService:
             
             # 更新文档元数据
             await self.update_metadata(user_id, document_id, {
+                "process": {"current_stage": ProcessStage.INDEXED},
+                "has_embeddings": True,  # 明确标记
                 "vector_index": {
                     "collection_name": collection_name,
                     "indexed_at": now,
                     "indexed_chunks": result.get("added", 0)
-                },
-                "process": {"current_stage": ProcessStage.INDEXED}
+                }
             })
             
             return True
             
         except Exception as e:
             error_msg = f"创建文档索引失败: {str(e)}"
-            logger.error(error_msg)
+            self.logger.error(error_msg)
             # 更新状态为失败
             await self.update_process_stage(
                 user_id, document_id, "indexing", 
@@ -989,16 +999,16 @@ class DocumentService:
         """搜索文档内容"""
         
         # 调试日志：记录搜索参数
-        logger.info(f"DocumentService.search_documents 被调用: 用户={user_id}, 文档ID={document_id}, 查询='{query[:50]}...'")
-        logger.info(f"retriever存在: {self.retriever is not None}")
+        self.logger.info(f"DocumentService.search_documents 被调用: 用户={user_id}, 文档ID={document_id}, 查询='{query[:50]}...'")
+        self.logger.info(f"retriever存在: {self.retriever is not None}")
         
         # 确定集合名称
         collection_name = self.default_indexing_collection(user_id)
-        logger.info(f"使用集合: {collection_name}")
+        self.logger.info(f"使用集合: {collection_name}")
         
         # 如果没有retriever，直接返回空结果
         if not self.retriever:
-            logger.error("没有配置 retriever，无法执行搜索")
+            self.logger.error("没有配置 retriever，无法执行搜索")
             return []
         
         try:
@@ -1043,6 +1053,6 @@ class DocumentService:
             return []
             
         except Exception as e:
-            logger.error(f"搜索文档失败: {str(e)}")
+            self.logger.error(f"搜索文档失败: {str(e)}")
             return []
 
