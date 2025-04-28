@@ -379,7 +379,7 @@ class LanceRetriever(BaseRetriever):
         user_id: Union[str, List[str]] = None,
         document_id: Union[str, List[str]] = None,
         limit: int = 10,
-        threshold: float = 0.7,
+        threshold: float = 1.0,
         filter: str = None,
         **kwargs
     ) -> List[Dict[str, Any]]:

@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional, AsyncGenerator
+from typing import List, Dict, Any, Optional, AsyncGenerator, Literal
 from pathlib import Path
 import os
 import shutil
@@ -12,26 +12,9 @@ import json
 from fastapi import UploadFile
 from voidrail import ClientDealer
 from ..llm.retriever.lancedb import LanceRetriever
+from .status import DocumentStatus, ProcessStage, DocumentProcessInfo
 
 logger = logging.getLogger(__name__)
-
-class DocumentStatus:
-    """文档状态枚举"""
-    ACTIVE = "active"              # 活跃状态
-    DELETED = "deleted"            # 已删除
-    PROCESSING = "processing"      # 处理中
-
-class ProcessStage:
-    """处理阶段枚举"""
-    NONE = "none"                  # 未处理
-    QUEUED = "queued"              # 队列中
-    CONVERTING = "converting"      # 转换中
-    CONVERTED = "converted"        # 已转换
-    CHUNKING = "chunking"          # 切片中
-    CHUNKED = "chunked"            # 已切片
-    INDEXING = "indexing"          # 索引中
-    INDEXED = "indexed"            # 已索引
-    FAILED = "failed"              # 处理失败
 
 class DocumentService:
     """文档管理服务
@@ -207,8 +190,10 @@ class DocumentService:
             os.remove(file_path)
             raise ValueError(f"用户存储空间不足，已使用 {current_usage} bytes，限制 {self.max_total_size_per_user} bytes")
         
-        # 创建元数据
+        # 创建元数据 - 使用新的处理信息类
         now = time.time()
+        process_info = DocumentProcessInfo(current_stage=ProcessStage.READY)
+        
         doc_meta = {
             "document_id": document_id,
             "original_name": file.filename,
@@ -219,29 +204,7 @@ class DocumentService:
             "created_at": now,
             "updated_at": now,
             "status": DocumentStatus.ACTIVE,
-            "process": {
-                "current_stage": ProcessStage.NONE,
-                "stages": {
-                    "conversion": {
-                        "stage": ProcessStage.NONE,
-                        "success": False,
-                        "started_at": None,
-                        "finished_at": None
-                    },
-                    "chunking": {
-                        "stage": ProcessStage.NONE,
-                        "success": False,
-                        "started_at": None,
-                        "finished_at": None
-                    },
-                    "indexing": {
-                        "stage": ProcessStage.NONE,
-                        "success": False,
-                        "started_at": None,
-                        "finished_at": None
-                    }
-                }
-            }
+            "process": process_info.to_dict()
         }
         
         # 添加额外元数据
@@ -270,8 +233,10 @@ class DocumentService:
         document_id = self.generate_document_id(filename)
         meta_path = self.get_meta_path(user_id, document_id)
         
-        # 创建元数据
+        # 创建元数据 - 使用新的处理信息类
         now = time.time()
+        process_info = DocumentProcessInfo(current_stage=ProcessStage.READY)
+        
         doc_meta = {
             "document_id": document_id,
             "original_name": filename,
@@ -283,29 +248,7 @@ class DocumentService:
             "created_at": now,
             "updated_at": now,
             "status": DocumentStatus.ACTIVE,
-            "process": {
-                "current_stage": ProcessStage.NONE,
-                "stages": {
-                    "conversion": {
-                        "stage": ProcessStage.NONE,
-                        "success": False,
-                        "started_at": None,
-                        "finished_at": None
-                    },
-                    "chunking": {
-                        "stage": ProcessStage.NONE,
-                        "success": False,
-                        "started_at": None,
-                        "finished_at": None
-                    },
-                    "indexing": {
-                        "stage": ProcessStage.NONE,
-                        "success": False,
-                        "started_at": None,
-                        "finished_at": None
-                    }
-                }
-            }
+            "process": process_info.to_dict()
         }
         
         # 添加额外元数据
@@ -341,6 +284,7 @@ class DocumentService:
             # 获取markdown文件路径
             md_path = self.get_md_path(user_id, document_id)
             
+            # 更新处理阶段为转换中
             await self.update_process_stage(
                 user_id, document_id, "conversion", 
                 {"stage": ProcessStage.CONVERTING, "started_at": time.time()}
@@ -397,7 +341,7 @@ class DocumentService:
             headers_count = len(re.findall(r'^#{1,6}\s+.+$', markdown_content, re.MULTILINE))
             paragraphs_count = len(re.split(r'\n\s*\n', markdown_content))
             
-            # 完成处理并更新状态
+            # 更新为已转换
             now = time.time()
             await self.update_process_stage(
                 user_id, document_id, "conversion", 
@@ -429,7 +373,7 @@ class DocumentService:
             })
 
         except Exception as e:
-            logger.error(f"转换markdown内容失败: {e}")
+            # 更新为转换失败
             await self.update_process_stage(
                 user_id, document_id, "conversion", 
                 {
@@ -470,7 +414,7 @@ class DocumentService:
                 shutil.rmtree(dir0)
             chunks_dir = self.get_chunks_dir(user_id, document_id)
             
-            # 开始处理并更新状态
+            # 更新处理阶段为切片中
             await self.update_process_stage(
                 user_id, document_id, "chunking", 
                 {"stage": ProcessStage.CHUNKING, "started_at": time.time()}
@@ -544,7 +488,7 @@ class DocumentService:
                     
                 chunks_meta.append(chunk_meta)
             
-            # 完成处理并更新状态
+            # 更新为已切片
             now = time.time()
             
             # 准备切片统计信息
@@ -577,9 +521,7 @@ class DocumentService:
             return True
         
         except Exception as e:
-            logger.error(f"保存切片失败: {str(e)}")
-            
-            # 更新状态为失败
+            # 更新为切片失败
             await self.update_process_stage(
                 user_id, document_id, "chunking", 
                 {
@@ -826,22 +768,31 @@ class DocumentService:
         self, 
         user_id: str, 
         document_id: str, 
-        stage_name: str,
+        stage_name: Literal["conversion", "chunking", "embedding"],
         stage_data: Dict[str, Any]
     ) -> bool:
         """更新文档处理阶段状态"""
-        metadata = {
-            "process": {
-                "stages": {
-                    stage_name: stage_data
-                }
-            }
-        }
-        
-        if "stage" in stage_data:
-            metadata["process"]["current_stage"] = stage_data["stage"]
+        try:
+            # 获取当前处理信息
+            doc_meta = await self.get_document_meta(user_id, document_id)
+            if not doc_meta:
+                return False
+                
+            process_data = doc_meta.get("process", {})
+            process_info = DocumentProcessInfo.from_dict(process_data)
             
-        return await self.update_metadata(user_id, document_id, metadata)
+            # 更新阶段状态
+            process_info.update_stage(stage_name, stage_data)
+            
+            # 保存更新后的处理信息
+            await self.update_metadata(user_id, document_id, {
+                "process": process_info.to_dict()
+            })
+            
+            return True
+        except Exception as e:
+            logger.error(f"更新处理阶段失败: {e}")
+            return False
     
     def is_valid_file_type(self, file_name: str) -> bool:
         """检查文件类型是否有效"""
@@ -867,42 +818,39 @@ class DocumentService:
             mime_type = mimetypes.guess_type(file_name)[0]
         return mime_type or 'application/octet-stream'
 
-    async def create_document_index(
-        self,
-        user_id: str,
-        document_id: str
-    ) -> bool:
-        """将文档切片添加到向量索引
+    async def create_document_index(self, user_id: str, document_id: str) -> bool:
+        """将文档切片添加到向量索引"""
+        # 检查文档是否存在
+        if not await self.document_exists(user_id, document_id):
+            logger.error(f"文档不存在: {document_id}")
+            return False
         
-        Args:
-            user_id: 用户ID
-            document_id: 文档ID
-            
-        Returns:
-            bool: 索引成功返回True，失败返回False
-        """
-        try:
-            # 检查文档是否存在
-            if not await self.document_exists(user_id, document_id):
-                raise FileNotFoundError(f"文档不存在: {document_id}")
-            
-            # 获取文档元数据
-            doc_meta = await self.get_document_meta(user_id, document_id)
-            
-            # 检查是否已切片
-            chunking_stage = doc_meta.get("process", {}).get("stages", {}).get("chunking", {})
-            if chunking_stage.get("stage") != ProcessStage.CHUNKED:
-                raise ValueError(f"文档必须先切片才能创建索引: {document_id}")
-            
-            # 更新状态为索引中
+        # 获取文档元数据
+        doc_meta = await self.get_document_meta(user_id, document_id)
+        
+        # 检查是否已切片
+        chunking_stage = doc_meta.get("process", {}).get("stages", {}).get("chunking", {})
+        if chunking_stage.get("stage") != ProcessStage.CHUNKED:
+            error_msg = f"文档必须先切片才能创建索引: {document_id}"
+            logger.error(error_msg)
             await self.update_process_stage(
                 user_id, document_id, "indexing", 
-                {"stage": ProcessStage.INDEXING, "started_at": time.time()}
+                {
+                    "stage": ProcessStage.FAILED,
+                    "success": False,
+                    "error": error_msg,
+                    "finished_at": time.time()
+                }
             )
-            
-            # 使用实例属性中的检索器
-            retr = self.retriever
-            
+            return False
+        
+        # 更新状态为索引中
+        await self.update_process_stage(
+            user_id, document_id, "indexing", 
+            {"stage": ProcessStage.INDEXING, "started_at": time.time()}
+        )
+        
+        try:
             # 获取所有切片
             chunks_data = []
             chunks_texts = []
@@ -924,23 +872,70 @@ class DocumentService:
                 })
             
             if not chunks_texts:
-                raise ValueError(f"文档没有可索引的切片: {document_id}")
+                error_msg = f"文档没有可索引的切片: {document_id}"
+                logger.error(error_msg)
+                await self.update_process_stage(
+                    user_id, document_id, "indexing", 
+                    {
+                        "stage": ProcessStage.FAILED,
+                        "success": False,
+                        "error": error_msg,
+                        "finished_at": time.time()
+                    }
+                )
+                return False
             
-            # 先移除该 document_id 的旧向量，避免冗余
-            coll = self.default_indexing_collection(user_id)
-            await self.retriever.delete(collection_name=coll, user_id=user_id, document_id=document_id)
+            # 确保检索器存在
+            if not self.retriever:
+                error_msg = "没有配置检索器"
+                logger.error(error_msg)
+                await self.update_process_stage(
+                    user_id, document_id, "indexing", 
+                    {
+                        "stage": ProcessStage.FAILED,
+                        "success": False,
+                        "error": error_msg,
+                        "finished_at": time.time()
+                    }
+                )
+                return False
             
-            # 添加到向量索引
-            collection_name = self.default_indexing_collection(user_id)
-            result = await retr.add(
-                texts=chunks_texts,
-                collection_name=collection_name,
-                user_id=user_id,
-                metadatas=chunks_data
-            )
+            # 每个步骤单独try-except，确保更精确的错误处理
+            try:
+                # 先移除该 document_id 的旧向量，避免冗余
+                coll = self.default_indexing_collection(user_id)
+                await self.retriever.delete(collection_name=coll, user_id=user_id, document_id=document_id)
+            except Exception as e:
+                logger.warning(f"删除旧索引失败，继续添加新索引: {str(e)}")
             
-            # 确保创建索引
-            await retr.ensure_index(collection_name)
+            try:
+                # 添加到向量索引
+                collection_name = self.default_indexing_collection(user_id)
+                result = await self.retriever.add(
+                    texts=chunks_texts,
+                    collection_name=collection_name,
+                    user_id=user_id,
+                    metadatas=chunks_data
+                )
+            except Exception as e:
+                error_msg = f"添加向量索引失败: {str(e)}"
+                logger.error(error_msg)
+                await self.update_process_stage(
+                    user_id, document_id, "indexing", 
+                    {
+                        "stage": ProcessStage.FAILED,
+                        "success": False,
+                        "error": error_msg,
+                        "finished_at": time.time()
+                    }
+                )
+                return False
+            
+            try:
+                # 确保创建索引
+                await self.retriever.ensure_index(collection_name)
+            except Exception as e:
+                logger.warning(f"确保索引操作失败，但数据已添加: {str(e)}")
             
             # 更新状态为索引完成
             now = time.time()
@@ -970,14 +965,15 @@ class DocumentService:
             return True
             
         except Exception as e:
-            logger.error(f"创建文档索引失败: {str(e)}")
+            error_msg = f"创建文档索引失败: {str(e)}"
+            logger.error(error_msg)
             # 更新状态为失败
             await self.update_process_stage(
                 user_id, document_id, "indexing", 
                 {
                     "stage": ProcessStage.FAILED,
                     "success": False,
-                    "error": str(e),
+                    "error": error_msg,
                     "finished_at": time.time()
                 }
             )

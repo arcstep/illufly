@@ -12,7 +12,8 @@ from pathlib import Path
 from soulseal import TokenSDK
 from ..schemas import Result, HttpMethod
 from ..http import handle_errors
-from ...documents.base import DocumentService, DocumentStatus, ProcessStage
+from ...documents.base import DocumentService
+from ...documents.status import DocumentStatus, ProcessStage
 
 # 文档元数据更新请求模型
 class DocumentMetadataUpdate(BaseModel):
@@ -30,6 +31,11 @@ class BookmarkUrlRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[List[str]] = None
+
+# 文档状态查询请求模型
+class DocumentStatusRequest(BaseModel):
+    """文档状态查询请求"""
+    document_ids: List[str]
 
 def create_documents_endpoints(
     app: FastAPI,
@@ -71,7 +77,16 @@ def create_documents_endpoints(
             if doc_info.get("source_type") == "local":
                 download_url = f"{prefix}/documents/{doc_info['document_id']}/download"
             
-            # 使用扁平化结构
+            # 获取处理信息
+            process_info = doc_info.get("process", {})
+            current_stage = process_info.get("current_stage", ProcessStage.READY)
+            
+            # 计算处理状态
+            has_markdown = current_stage in [ProcessStage.CONVERTED, ProcessStage.CHUNKED, ProcessStage.EMBEDDED]
+            has_chunks = current_stage in [ProcessStage.CHUNKED, ProcessStage.EMBEDDED]
+            has_embeddings = current_stage == ProcessStage.EMBEDDED
+            is_processing = current_stage in ProcessStage.get_processing_stages()
+            
             result.append({
                 "document_id": doc_info["document_id"],
                 "original_name": doc_info["original_name"],
@@ -85,15 +100,15 @@ def create_documents_endpoints(
                 "title": doc_info.get("title", ""),
                 "description": doc_info.get("description", ""),
                 "tags": doc_info.get("tags", []),
-                "converted": doc_info.get("process", {}).get("stages", {}).get("conversion", {}).get("success", False),
-                "has_markdown": doc_info.get("process", {}).get("current_stage") == ProcessStage.CONVERTED,
-                "has_chunks": doc_info.get("process", {}).get("current_stage") == ProcessStage.CHUNKED,
-                "source_type": doc_info.get("source_type", "local"),
-                "source_url": doc_info.get("source_url", ""),
+                "process_stage": current_stage,
+                "is_processing": is_processing,
+                "has_markdown": has_markdown,
+                "has_chunks": has_chunks,
+                "has_embeddings": has_embeddings,
                 **{k: v for k, v in doc_info.items() 
                   if k not in ["document_id", "original_name", "size", "type", "extension", "path", 
                               "created_at", "updated_at", "status", "title", "description", 
-                              "tags", "process", "source_type", "source_url"]}
+                              "tags", "process"]}
             })
         
         return result
@@ -361,6 +376,16 @@ def create_documents_endpoints(
             if not doc_info or doc_info.get("status") != DocumentStatus.ACTIVE:
                 raise HTTPException(status_code=404, detail="文档不存在")
             
+            # 检查是否正在处理中
+            current_stage = doc_info.get("process", {}).get("current_stage")
+            if current_stage in ProcessStage.get_processing_stages():
+                return {
+                    "success": False,
+                    "document_id": document_id,
+                    "message": f"文档处理已在进行中: {current_stage}",
+                    "current_stage": current_stage
+                }
+            
             # 启动转换过程 - 不提供markdown_content参数，让服务自动转换
             updated_meta = await documents_service.save_markdown(user_id, document_id)
             
@@ -370,7 +395,7 @@ def create_documents_endpoints(
                 "document_id": document_id,
                 "message": "文档转换已启动",
                 "current_stage": updated_meta.get("process", {}).get("current_stage"),
-                "conversion_status": updated_meta.get("process", {}).get("stages", {}).get("conversion", {}).get("stage")
+                "is_processing": True
             }
         except FileNotFoundError as e:
             logger.error(f"文档转换失败: {str(e)}")
@@ -421,9 +446,23 @@ def create_documents_endpoints(
                 raise HTTPException(status_code=404, detail="文档不存在")
             
             # 检查文档是否已转换为Markdown
-            conversion_stage = doc_info.get("process", {}).get("stages", {}).get("conversion", {})
-            if conversion_stage.get("stage") != ProcessStage.CONVERTED:
-                raise HTTPException(status_code=400, detail="文档必须先转换为Markdown才能进行切片")
+            process_info = doc_info.get("process", {})
+            current_stage = process_info.get("current_stage")
+            
+            if current_stage != ProcessStage.CONVERTED:
+                if current_stage in ProcessStage.get_processing_stages():
+                    raise HTTPException(status_code=400, detail=f"文档处理进行中: {current_stage}")
+                elif current_stage == ProcessStage.READY:
+                    raise HTTPException(status_code=400, detail="文档必须先转换为Markdown才能进行切片")
+                elif current_stage == ProcessStage.CHUNKED or current_stage == ProcessStage.EMBEDDED:
+                    # 已经完成切片或更高阶段
+                    return {
+                        "success": True,
+                        "document_id": document_id,
+                        "message": "文档已完成切片",
+                        "current_stage": current_stage,
+                        "chunks_count": doc_info.get("chunks_count", 0)
+                    }
             
             # 启动切片过程 - 不提供chunks参数，让服务自动切片
             success = await documents_service.save_chunks(user_id, document_id)
@@ -506,9 +545,23 @@ def create_documents_endpoints(
                 raise HTTPException(status_code=404, detail="文档不存在")
             
             # 检查文档是否已切片
-            chunking_stage = doc_info.get("process", {}).get("stages", {}).get("chunking", {})
-            if chunking_stage.get("stage") != ProcessStage.CHUNKED:
-                raise HTTPException(status_code=400, detail="文档必须先切片才能创建索引")
+            process_info = doc_info.get("process", {})
+            current_stage = process_info.get("current_stage")
+            
+            if current_stage != ProcessStage.CHUNKED:
+                if current_stage in ProcessStage.get_processing_stages():
+                    raise HTTPException(status_code=400, detail=f"文档处理进行中: {current_stage}")
+                elif current_stage == ProcessStage.READY or current_stage == ProcessStage.CONVERTED:
+                    raise HTTPException(status_code=400, detail="文档必须先完成切片才能创建索引")
+                elif current_stage == ProcessStage.EMBEDDED:
+                    # 已经完成嵌入
+                    return {
+                        "success": True,
+                        "document_id": document_id,
+                        "message": "文档已完成索引",
+                        "current_stage": current_stage,
+                        "indexed_chunks": doc_info.get("vector_index", {}).get("indexed_chunks", 0)
+                    }
             
             # 创建索引
             success = await documents_service.create_document_index(user_id, document_id)
@@ -569,6 +622,97 @@ def create_documents_endpoints(
             logger.exception("搜索异常详情")
             raise HTTPException(status_code=500, detail=str(e))
     
+    @handle_errors()
+    async def get_documents_status(
+        request: DocumentStatusRequest,
+        token_claims: Dict[str, Any] = Depends(require_user)
+    ):
+        """获取多个文档的处理状态
+        
+        允许客户端同时跟踪多个文档的处理进度变化，如从'正在转换'到'转换完成'
+        """
+        user_id = token_claims["user_id"]
+        document_ids = request.document_ids
+        logger.info(f"批量获取文档状态请求: 用户ID={user_id}, 文档IDs数量={len(document_ids)}")
+        
+        results = {}
+        for document_id in document_ids:
+            try:
+                doc_meta = await documents_service.get_document_meta(user_id, document_id)
+                if not doc_meta or doc_meta.get("status") != DocumentStatus.ACTIVE:
+                    # 文档不存在或不活跃
+                    results[document_id] = {
+                        "found": False,
+                        "message": "文档不存在或已删除"
+                    }
+                    continue
+                    
+                # 获取处理信息
+                process_info = doc_meta.get("process", {})
+                current_stage = process_info.get("current_stage", ProcessStage.READY)
+                
+                # 计算处理状态
+                has_markdown = current_stage in [ProcessStage.CONVERTED, ProcessStage.CHUNKED, ProcessStage.EMBEDDED]
+                has_chunks = current_stage in [ProcessStage.CHUNKED, ProcessStage.EMBEDDED]
+                has_embeddings = current_stage == ProcessStage.EMBEDDED
+                is_processing = current_stage in ProcessStage.get_processing_stages()
+                
+                # 获取详细的阶段信息
+                stages = process_info.get("stages", {})
+                conversion_info = stages.get("conversion", {})
+                chunking_info = stages.get("chunking", {})
+                embedding_info = stages.get("embedding", {})
+                
+                # 构建响应
+                results[document_id] = {
+                    "found": True,
+                    "document_id": document_id,
+                    "title": doc_meta.get("title", ""),
+                    "original_name": doc_meta.get("original_name", ""),
+                    "process_stage": current_stage,
+                    "is_processing": is_processing,
+                    "has_markdown": has_markdown,
+                    "has_chunks": has_chunks, 
+                    "has_embeddings": has_embeddings,
+                    "stages_detail": {
+                        "conversion": {
+                            "stage": conversion_info.get("stage", ProcessStage.READY),
+                            "success": conversion_info.get("success", False),
+                            "started_at": conversion_info.get("started_at"),
+                            "finished_at": conversion_info.get("finished_at"),
+                            "error": conversion_info.get("error")
+                        },
+                        "chunking": {
+                            "stage": chunking_info.get("stage", ProcessStage.READY),
+                            "success": chunking_info.get("success", False),
+                            "started_at": chunking_info.get("started_at"),
+                            "finished_at": chunking_info.get("finished_at"),
+                            "error": chunking_info.get("error")
+                        },
+                        "embedding": {
+                            "stage": embedding_info.get("stage", ProcessStage.READY),
+                            "success": embedding_info.get("success", False),
+                            "started_at": embedding_info.get("started_at"),
+                            "finished_at": embedding_info.get("finished_at"),
+                            "error": embedding_info.get("error")
+                        }
+                    }
+                }
+            except Exception as e:
+                logger.error(f"获取文档状态失败: {document_id}, 错误: {e}")
+                results[document_id] = {
+                    "found": False,
+                    "error": str(e),
+                    "message": "获取文档状态失败"
+                }
+        
+        return {
+            "success": True,
+            "count": len(document_ids),
+            "found_count": sum(1 for doc in results.values() if doc.get("found", False)),
+            "results": results
+        }
+    
     # 返回路由列表，格式为(HTTP方法, 路径, 处理函数)
     return [
         (HttpMethod.GET,  f"{prefix}/documents", list_documents),
@@ -585,4 +729,5 @@ def create_documents_endpoints(
         (HttpMethod.GET,  f"{prefix}/documents/{{document_id}}/chunks", get_document_chunks),
         (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/index", index_document),
         (HttpMethod.POST, f"{prefix}/documents/search", search_documents),
+        (HttpMethod.POST, f"{prefix}/documents/status", get_documents_status),
     ]
