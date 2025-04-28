@@ -19,7 +19,8 @@ import asyncio
 import os
 
 from ..__version__ import __version__
-from ..envir import get_env, setup_logging
+from ..envir import get_env
+
 from ..llm import init_litellm
 from ..agents import ChatAgent, ThreadManager
 from ..documents import DocumentService
@@ -28,8 +29,9 @@ from .static_files import StaticFilesManager
 from .proxy_middleware import mount_service_proxy
 from .endpoints import create_chat_endpoints, create_memory_endpoints, create_documents_endpoints
 
-setup_logging()
-logger = logging.getLogger("illufly")
+def get_logger():
+    """获取当前模块logger"""
+    return logging.getLogger("illufly")
 
 # 封装通用的路由挂载函数
 def mount_routes(
@@ -44,6 +46,7 @@ def mount_routes(
         handlers: 处理程序列表，每项为(HTTP方法, 路径, 处理函数)的元组
         tag: API标签，用于文档分类
     """
+    logger = get_logger()
     for method, path, handler in handlers:
         app.add_api_route(
             path=path,
@@ -67,6 +70,7 @@ def setup_spa_middleware(app: FastAPI, static_dir: Path, exclude_paths: List[str
             route = "/"
         html_routes.add(route)
     
+    logger = get_logger()
     logger.debug(f"发现HTML路由: {html_routes}")
     
     @app.middleware("http")
@@ -160,7 +164,7 @@ async def create_app(
     mount_memory_api(app, prefix, agent, token_sdk)
 
     # 挂载文件管理API
-    document_service = DocumentService(os.path.join(data_dir, "documents"))
+    document_service = DocumentService(os.path.join(data_dir, "documents"), logger=get_logger())
     mount_docs_api(app, prefix, token_sdk, document_service)
     
 
@@ -177,13 +181,16 @@ async def create_app(
         if static_manager:
             static_manager.cleanup()
         
+        logger = get_logger()
         logger.warning("Illufly API 关闭完成")
 
+    logger = get_logger()
     logger.info(f"Illufly API 启动完成: {prefix}/docs")
     return app
 
 def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, token_blacklist: TokenBlacklist, users_manager: UsersManager):
     """挂载用户认证API"""
+    logger = get_logger()
     logger.info("正在挂载用户认证API...")
     
     # 用户管理和认证路由
@@ -192,13 +199,15 @@ def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, tok
         tokens_manager=tokens_manager,
         token_blacklist=token_blacklist,
         users_manager=users_manager,
-        prefix=prefix
+        prefix=prefix,
+        logger=logger
     )
     
     mount_routes(app, handlers, "Illufly Backend - Auth")
 
 def mount_chat_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager: ThreadManager, token_sdk: TokenSDK):
     """挂载聊天API"""
+    logger = get_logger()
     logger.info("正在挂载聊天API...")
     
     # 聊天路由
@@ -207,13 +216,15 @@ def mount_chat_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager: 
         agent=agent,
         thread_manager=thread_manager,
         token_sdk=token_sdk,
-        prefix=prefix
+        prefix=prefix,
+        logger=logger
     )
     
     mount_routes(app, handlers, "Illufly Backend - Chat")
 
 def mount_memory_api(app: FastAPI, prefix: str, agent: ChatAgent, token_sdk: TokenSDK):
     """挂载记忆API"""
+    logger = get_logger()
     logger.info("正在挂载记忆API...")
     
     # 记忆路由
@@ -221,13 +232,15 @@ def mount_memory_api(app: FastAPI, prefix: str, agent: ChatAgent, token_sdk: Tok
         app=app,
         agent=agent,
         token_sdk=token_sdk,
-        prefix=prefix
+        prefix=prefix,
+        logger=logger
     )
     
     mount_routes(app, handlers, "Illufly Backend - Memory")
 
 def mount_docs_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, document_service: DocumentService):
     """挂载文件管理API"""
+    logger = get_logger()
     logger.info("正在挂载文件管理API...")
     
     # 文件管理路由（注意：create_files_endpoints已自行挂载路由）
@@ -235,12 +248,14 @@ def mount_docs_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, document_serv
         app=app,
         token_sdk=token_sdk,
         documents_service=document_service,
-        prefix=prefix
+        prefix=prefix,
+        logger=logger
     )
     mount_routes(app, handlers, "Illufly Backend - Documents")
 
 def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
     """挂载静态文件服务"""
+    logger = get_logger()
     logger.info("正在挂载静态文件服务...")
     
     # 加载静态资源环境

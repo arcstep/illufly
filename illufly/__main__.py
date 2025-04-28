@@ -17,26 +17,6 @@ from .api.start import create_app
 # )
 logger = logging.getLogger("illufly")
 
-# def configure_logging(debug_mode, log_level):
-#     """独立配置日志系统"""
-#     level = logging.DEBUG if debug_mode else getattr(logging, log_level.upper())
-#     formatter = logging.Formatter(
-#         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-#         datefmt='%Y-%m-%d %H:%M:%S'
-#     )
-    
-#     # 清除所有现有处理器
-#     for handler in logging.root.handlers[:]:
-#         logging.root.removeHandler(handler)
-    
-#     # 添加新的流处理器
-#     stream_handler = logging.StreamHandler()
-#     stream_handler.setFormatter(formatter)
-#     stream_handler.setLevel(level)
-    
-#     logging.root.addHandler(stream_handler)
-#     logging.root.setLevel(level)
-
 def validate_base_url(ctx, param, value):
     """自动生成base_url的验证逻辑"""
     if not value:
@@ -69,8 +49,11 @@ def main(
 ):
     """启动Illufly API服务"""
     try:
-        # 优先配置日志系统
-        # configure_logging(debug, log_level)
+        # 首先设置日志级别
+        from illufly.envir import setup_logging
+        setup_logging(log_level=log_level)
+        
+        logger = logging.getLogger("illufly")
         logger.info("=== 服务启动初始化 ===")
         
         # 打印测试信息验证日志通道

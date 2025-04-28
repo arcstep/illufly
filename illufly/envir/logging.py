@@ -53,9 +53,17 @@ class DiskSpaceCheckHandler(logging.handlers.RotatingFileHandler):
             # 磁盘空间不足时,记录一条警告
             logging.warning(f"磁盘剩余空间不足 {self.min_free_space} 字节,暂停日志写入")
 
-def setup_logging():
-    """初始化日志系统"""
+def setup_logging(log_level=None):
+    """初始化日志系统
+    
+    Args:
+        log_level: 可选，直接指定日志级别，覆盖环境变量设置
+    """
     config = get_log_config()
+    
+    # 允许外部直接指定日志级别
+    if log_level:
+        config['LOG_LEVEL'] = log_level.upper()
     
     # 验证编码
     try:
@@ -115,5 +123,11 @@ def setup_logging():
             handler.setLevel(logging.ERROR)
         root_logger.addHandler(handler)
 
-# 初始化日志系统并导出默认logger
-setup_logging()
+    # 重置所有已创建的logger级别
+    level = getattr(logging, config['LOG_LEVEL'].upper())
+    for logger_name in logging.root.manager.loggerDict:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(level)
+
+# 不要在模块级别自动调用 setup_logging()
+# 而是在 __init__.py 中提供此功能供导入
