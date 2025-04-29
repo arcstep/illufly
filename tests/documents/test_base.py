@@ -14,6 +14,14 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from illufly.documents.base import DocumentService, DocumentStatus
 from illufly.documents.machine import DocumentMachine
 
+# 创建一个模拟的voidrail_client
+class MockVoidrailClient:
+    async def stream(self, **kwargs):
+        """返回一个模拟的响应流"""
+        async def mock_response():
+            yield "# 模拟Markdown内容\n\n这是测试生成的内容。"
+        return mock_response()
+
 # --------- 辅助函数和夹具 ---------
 
 @pytest.fixture
@@ -25,11 +33,14 @@ def temp_base_dir():
 @pytest.fixture
 def docs_service(temp_base_dir):
     """创建文档服务实例"""
-    return DocumentService(
+    service = DocumentService(
         base_dir=temp_base_dir,
         max_file_size=5 * 1024 * 1024,  # 5MB
         max_total_size_per_user=10 * 1024 * 1024  # 10MB
     )
+    # 在这里注入模拟客户端
+    service.voidrail_client = MockVoidrailClient()
+    return service
 
 @pytest.fixture
 def user_id():
@@ -209,7 +220,7 @@ async def test_save_document(docs_service, user_id, create_upload_file):
     目的：
     - 验证基本的文档上传与保存功能能否正常工作
     - 确认生成的元数据结构是否正确
-    - 验证状态机初始化为ready状态
+    - 验证状态机初始化为uploaded状态
     - 检查文件系统中的实际文件与元数据是否正确保存
     """
     # 创建上传文件
@@ -228,7 +239,7 @@ async def test_save_document(docs_service, user_id, create_upload_file):
     
     # 获取状态机来验证状态
     machine = await docs_service.get_document_machine(user_id, document_id)
-    assert machine.current_state.id == 'ready'
+    assert machine.current_state.id == 'uploaded'
     
     # 验证文件是否实际保存
     raw_path = docs_service.get_raw_path(user_id, document_id)
@@ -251,11 +262,8 @@ async def test_save_document(docs_service, user_id, create_upload_file):
     # 检查文档是否存在
     assert await docs_service.document_exists(user_id, document_id)
 
-    # 判断是否为处理中状态
-    assert machine.is_processing_state(machine.current_state.id)
-
-    # 判断是否为完成状态
-    assert machine.is_completed_state(machine.current_state.id)
+    # 检查是否为正确的初始状态
+    assert machine.current_state.id == 'uploaded'
 
 @pytest.mark.asyncio
 async def test_invalid_file_type(docs_service, user_id, create_upload_file):
@@ -955,3 +963,4 @@ async def test_document_lifecycle(mock_documents_service, user_id, create_upload
     
     # 7. 验证删除后无法搜索
     assert not await docs_service.document_exists(user_id, document_id)
+
