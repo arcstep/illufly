@@ -100,11 +100,10 @@ class DocumentStateMachine(StateMachine):
         FAILED = "failed"          # 失败
         NONE = "none"              # 无子状态
     
-    def __init__(self, meta_manager, user_id, document_id, topic_path=None, logger=None):
+    def __init__(self, meta_manager, user_id, document_id, logger=None):
         self.meta_manager = meta_manager
         self.user_id = user_id
         self.document_id = document_id
-        self.topic_path = topic_path
         self.logger = logger or logging.getLogger(__name__)
         self.previous_state = None
         super().__init__()
@@ -121,9 +120,7 @@ class DocumentStateMachine(StateMachine):
     
     async def get_current_state(self) -> str:
         """从元数据获取当前状态"""
-        meta = await self.meta_manager.get_metadata(
-            self.user_id, self.topic_path, self.document_id
-        )
+        meta = await self.meta_manager.get_metadata(self.user_id, self.document_id)
         if not meta or "state" not in meta:
             return "init"  # 默认状态改为init
         
@@ -164,16 +161,10 @@ class DocumentStateMachine(StateMachine):
         # 执行状态转换
         if target_state:
             self.current_state = target_state
-            # 更新元数据 - 包含子状态
-            meta_update = {
-                "state": new_state,
-                "sub_state": sub_state
-            }
-            if details:
-                meta_update["details"] = details
             
+            # 更新元数据 - 包含子状态
             await self.meta_manager.change_state(
-                self.user_id, self.topic_path, self.document_id, 
+                self.user_id, self.document_id, 
                 new_state, details, sub_state
             )
             
@@ -200,7 +191,7 @@ class DocumentStateMachine(StateMachine):
     async def on_enter_markdowned(self, from_state=None):
         """进入Markdown完成状态"""
         await self.meta_manager.update_metadata(
-            self.user_id, self.topic_path, self.document_id,
+            self.user_id, self.document_id,
             {
                 "has_markdown": True,
                 "has_chunks": False,
@@ -211,13 +202,13 @@ class DocumentStateMachine(StateMachine):
         # 如果是从切片状态回退，需要清理切片资源
         if from_state == "chunked":
             await self.meta_manager.remove_resource(
-                self.user_id, self.topic_path, self.document_id, "chunks"
+                self.user_id, self.document_id, "chunks"
             )
     
     async def on_enter_chunked(self, from_state=None):
         """进入切片完成状态"""
         await self.meta_manager.update_metadata(
-            self.user_id, self.topic_path, self.document_id,
+            self.user_id, self.document_id,
             {
                 "has_chunks": True,
                 "has_embeddings": False
@@ -227,13 +218,13 @@ class DocumentStateMachine(StateMachine):
         # 如果是从嵌入状态回退，需要清理嵌入资源
         if from_state == "embedded":
             await self.meta_manager.remove_resource(
-                self.user_id, self.topic_path, self.document_id, "embeddings"
+                self.user_id, self.document_id, "embeddings"
             )
     
     async def on_enter_qa_extracted(self, from_state=None):
         """进入QA提取完成状态"""
         await self.meta_manager.update_metadata(
-            self.user_id, self.topic_path, self.document_id,
+            self.user_id, self.document_id,
             {
                 "has_qa_pairs": True,
                 "has_embeddings": False
@@ -243,13 +234,13 @@ class DocumentStateMachine(StateMachine):
         # 如果是从嵌入状态回退，需要清理嵌入资源
         if from_state == "embedded":
             await self.meta_manager.remove_resource(
-                self.user_id, self.topic_path, self.document_id, "embeddings"
+                self.user_id, self.document_id, "embeddings"
             )
     
     async def on_enter_embedded(self, from_state=None):
         """进入嵌入完成状态"""
         await self.meta_manager.update_metadata(
-            self.user_id, self.topic_path, self.document_id,
+            self.user_id, self.document_id,
             {
                 "has_embeddings": True
             }
@@ -258,7 +249,7 @@ class DocumentStateMachine(StateMachine):
     async def on_enter_init(self, from_state=None):
         """进入初始状态"""
         await self.meta_manager.update_metadata(
-            self.user_id, self.topic_path, self.document_id,
+            self.user_id, self.document_id,
             {
                 "has_markdown": False,
                 "has_chunks": False,
@@ -363,9 +354,7 @@ class DocumentStateMachine(StateMachine):
 
     async def get_current_state_info(self) -> Dict[str, str]:
         """获取当前完整状态信息，包括主状态和子状态"""
-        meta = await self.meta_manager.get_metadata(
-            self.user_id, self.topic_path, self.document_id
-        )
+        meta = await self.meta_manager.get_metadata(self.user_id, self.document_id)
         if not meta:
             return {
                 "state": "init",
@@ -390,18 +379,8 @@ class DocumentStateMachine(StateMachine):
         }
 
     async def delete_document_state(self) -> bool:
-        """将文档状态设为INIT（表示被删除）"""
-        # 状态转移到INIT表示删除
-        result = await self.set_state("init", 
-                                     details={"deleted_at": int(time.time())},
-                                     force=True)
-        if result:
-            # 更新元数据标记为删除
-            await self.meta_manager.update_metadata(
-                self.user_id, self.topic_path, self.document_id,
-                {"status": "deleted"}
-            )
-        return result
+        """删除文档状态"""
+        return await self.meta_manager.delete_document(self.user_id, self.document_id)
 
     async def start_processing(self, target_state: str) -> bool:
         """开始处理过程，设置子状态为processing"""

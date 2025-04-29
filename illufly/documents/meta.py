@@ -1,126 +1,155 @@
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import aiofiles
 import json
 import logging
 import time
+from pydantic import BaseModel, Field
+
+from voidring import IndexedRocksDB
+
+class DocumentMeta(BaseModel):
+    """文档元数据模型 - 用于RocksDB存储"""
+    document_id: str = Field(..., description="文档ID")
+    user_id: str = Field(..., description="用户ID")
+    topic_path: str = Field(default=None, description="主题路径")
+    original_name: str = Field(default=None, description="原始文件名")
+    size: int = Field(default=0, description="文件大小")
+    type: str = Field(default=None, description="文件类型")
+    extension: str = Field(default=None, description="文件扩展名")
+    source_type: str = Field(default="local", description="来源类型")
+    source_url: str = Field(default=None, description="来源URL")
+    created_at: float = Field(default_factory=time.time, description="创建时间")
+    updated_at: float = Field(default_factory=time.time, description="更新时间")
+    state: str = Field(default="init", description="文档状态")
+    sub_state: str = Field(default="none", description="子状态")
+    has_markdown: bool = Field(default=False, description="是否有Markdown")
+    has_chunks: bool = Field(default=False, description="是否有切片")
+    has_embeddings: bool = Field(default=False, description="是否有嵌入")
+    has_qa_pairs: bool = Field(default=False, description="是否有QA对")
+    resources: Dict[str, Any] = Field(default_factory=dict, description="资源信息")
+    state_details: Dict[str, Any] = Field(default_factory=dict, description="状态详情")
+    state_history: List[Dict[str, Any]] = Field(default_factory=list, description="状态历史")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="用户自定义元数据")
+
+    @classmethod
+    def get_prefix(cls, user_id: str = None) -> str:
+        """获取rocksdb键前缀"""
+        user_id = user_id or "default"
+        return f"doc:{user_id}"
+
+    @classmethod
+    def get_db_key(cls, user_id: str, document_id: str) -> str:
+        """获取rocksdb存储键"""
+        return f"{cls.get_prefix(user_id)}:{document_id}"
 
 class DocumentMetaManager:
-    """文档元数据管理器 - 支持多用户隔离"""
+    """增强版文档元数据管理器 - 使用RocksDB高效管理元数据，文件系统管理实际文件"""
     
-    def __init__(self, base_dir: str):
-        self.base_dir = Path(base_dir)
+    __COLLECTION_NAME__ = "document_meta"
+    
+    def __init__(self, meta_dir: str, docs_dir: str):
+        self.db = IndexedRocksDB(meta_dir)
+        self.logger = logging.getLogger(__name__)
+        
+        # 注册模型和索引
+        self.db.register_collection(self.__COLLECTION_NAME__, DocumentMeta)
+        self.db.register_index(self.__COLLECTION_NAME__, DocumentMeta, "state")
+        self.db.register_index(self.__COLLECTION_NAME__, DocumentMeta, "topic_path")
+        
+        # 确保基础目录存在
+        self.docs_dir = Path(docs_dir)
+        self.docs_dir.mkdir(parents=True, exist_ok=True)
+    
+    # === 文件系统目录管理 ===
     
     def get_user_base(self, user_id: str) -> Path:
         """获取用户根目录"""
-        user_dir = self.base_dir / user_id
+        user_dir = self.docs_dir / user_id
         user_dir.mkdir(parents=True, exist_ok=True)
         return user_dir
     
-    def get_document_path(self, user_id: str, topic_path: str, document_id: str) -> Path:
-        """获取文档目录完整路径"""
-        user_base = self.get_user_base(user_id)
-        if topic_path:
-            return user_base / topic_path / document_id
-        return user_base / document_id
+    async def _get_topic_path(self, user_id: str, document_id: str) -> Optional[str]:
+        """从元数据获取topic_path"""
+        meta = await self.get_metadata(user_id, document_id)
+        return meta.get("topic_path") if meta else None
     
-    def get_meta_path(self, user_id: str, topic_path: str, document_id: str) -> Path:
-        """获取元数据文件路径"""
-        return self.get_document_path(user_id, topic_path, document_id) / "meta.json"
+    def get_document_path(self, user_id: str, topic_path: str, document_id: str) -> Path:
+        """获取文档目录完整路径 - 使用特殊格式标记document_id文件夹"""
+        user_base = self.get_user_base(user_id)
+        doc_folder = f"__id_{document_id}__"
+        
+        if topic_path:
+            doc_path = user_base / topic_path / doc_folder
+        else:
+            doc_path = user_base / doc_folder
+            
+        doc_path.mkdir(parents=True, exist_ok=True)
+        return doc_path
+    
+    # === 元数据管理API ===
     
     async def create_document(
         self,
         user_id: str,
-        topic_path: str,
         document_id: str,
+        topic_path: str = None,
         initial_meta: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """创建文档目录和初始元数据
-        
-        Args:
-            user_id: 用户ID
-            topic_path: 主题路径
-            document_id: 文档ID
-            initial_meta: 初始元数据
-            
-        Returns:
-            Dict: 创建的元数据
-        """
+        """创建文档元数据和目录结构"""
+        # 创建文档目录
         doc_path = self.get_document_path(user_id, topic_path, document_id)
-        meta_path = self.get_meta_path(user_id, topic_path, document_id)
-        
-        # 确保目录存在
-        doc_path.mkdir(parents=True, exist_ok=True)
         
         # 准备基础元数据
         now = time.time()
         metadata = {
-            "user_id": user_id,
             "document_id": document_id,
+            "user_id": user_id,
             "topic_path": topic_path,
             "created_at": now,
             "updated_at": now,
-            "state": "created"  # 初始状态
+            "state": "init"
         }
         
         # 合并传入的元数据
         if initial_meta:
-            metadata.update(initial_meta)
-            
-        # 保存元数据
-        async with aiofiles.open(meta_path, 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
-            
-        return metadata
+            for k, v in initial_meta.items():
+                if k not in ["document_id", "user_id", "created_at", "updated_at"]:
+                    metadata[k] = v
+                
+        # 创建Pydantic模型并保存
+        doc_meta = DocumentMeta(**metadata)
+        db_key = DocumentMeta.get_db_key(user_id, document_id)
+        self.db.update_with_indexes(self.__COLLECTION_NAME__, db_key, doc_meta)
+        
+        return doc_meta.model_dump()
     
-    async def get_metadata(self, user_id: str, topic_path: str, document_id: str) -> Optional[Dict[str, Any]]:
-        """获取文档元数据
-        
-        Args:
-            user_id: 用户ID
-            topic_path: 主题路径
-            document_id: 文档ID
-            
-        Returns:
-            Dict|None: 元数据或None(不存在时)
-        """
-        meta_path = self.get_meta_path(user_id, topic_path, document_id)
-        
-        if not meta_path.exists():
-            return None
-            
-        try:
-            async with aiofiles.open(meta_path, 'r', encoding='utf-8') as f:
-                content = await f.read()
-                return json.loads(content)
-        except Exception as e:
-            logging.error(f"读取元数据失败: {user_id}/{topic_path}/{document_id}, 错误: {e}")
-            return None
+    async def get_metadata(self, user_id: str, document_id: str) -> Optional[Dict[str, Any]]:
+        """获取文档元数据 - 直接通过user_id和document_id获取"""
+        db_key = DocumentMeta.get_db_key(user_id, document_id)
+        meta = self.db.get(self.__COLLECTION_NAME__, db_key)
+        return meta.model_dump() if meta else None
     
     async def update_metadata(
         self,
         user_id: str,
-        topic_path: str,
         document_id: str,
         update_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """更新文档元数据
+        """更新文档元数据 - 直接通过user_id和document_id定位"""
+        db_key = DocumentMeta.get_db_key(user_id, document_id)
+        meta = self.db.get(self.__COLLECTION_NAME__, db_key)
         
-        Args:
-            user_id: 用户ID
-            topic_path: 主题路径
-            document_id: 文档ID
-            update_data: 要更新的元数据字段
-            
-        Returns:
-            Dict|None: 更新后的完整元数据或None(失败时)
-        """
-        # 获取当前元数据
-        current_meta = await self.get_metadata(user_id, topic_path, document_id)
-        if not current_meta:
+        if not meta:
             return None
             
-        # 深度合并更新
+        # 更新时间戳
+        update_data["updated_at"] = time.time()
+        
+        # 更新元数据 - 使用模型字典方式更新
+        meta_dict = meta.model_dump()
+        
+        # 深度合并
         def deep_update(d, u):
             for k, v in u.items():
                 if isinstance(v, dict) and k in d and isinstance(d[k], dict):
@@ -128,252 +157,167 @@ class DocumentMetaManager:
                 else:
                     d[k] = v
         
-        # 更新元数据
-        deep_update(current_meta, update_data)
-        current_meta["updated_at"] = time.time()
+        deep_update(meta_dict, update_data)
         
-        # 保存更新后的元数据
-        meta_path = self.get_meta_path(user_id, topic_path, document_id)
-        try:
-            async with aiofiles.open(meta_path, 'w', encoding='utf-8') as f:
-                await f.write(json.dumps(current_meta, ensure_ascii=False, indent=2))
-            return current_meta
-        except Exception as e:
-            logging.error(f"更新元数据失败: {user_id}/{topic_path}/{document_id}, 错误: {e}")
-            return None
+        # 创建新模型并保存
+        updated_meta = DocumentMeta(**meta_dict)
+        self.db.update_with_indexes(self.__COLLECTION_NAME__, db_key, updated_meta)
+        
+        return updated_meta.model_dump()
     
-    async def delete_document(self, user_id: str, topic_path: str, document_id: str) -> bool:
-        """删除文档目录及其所有内容
+    async def delete_document(self, user_id: str, document_id: str) -> bool:
+        """完全删除文档元数据和文件系统资源"""
+        # 首先获取元数据，以便知道文件位置
+        meta = await self.get_metadata(user_id, document_id)
+        if not meta:
+            return True  # 文档不存在视为删除成功
         
-        Args:
-            user_id: 用户ID
-            topic_path: 主题路径
-            document_id: 文档ID
-            
-        Returns:
-            bool: 删除是否成功
-        """
+        # 获取文档路径用于删除文件
+        topic_path = meta.get("topic_path")
         doc_path = self.get_document_path(user_id, topic_path, document_id)
         
-        if not doc_path.exists():
-            return True  # 不存在视为成功
-            
-        try:
-            import shutil
-            shutil.rmtree(doc_path)
-            return True
-        except Exception as e:
-            logging.error(f"删除文档失败: {user_id}/{topic_path}/{document_id}, 错误: {e}")
-            return False
-    
-    async def copy_document(
-        self,
-        user_id: str,
-        src_topic: str,
-        src_doc_id: str,
-        dst_topic: str,
-        dst_doc_id: str = None
-    ) -> Optional[Dict[str, Any]]:
-        """复制文档到新位置
+        # 删除文件系统资源
+        if doc_path.exists():
+            try:
+                import shutil
+                shutil.rmtree(doc_path)
+                self.logger.info(f"已删除文档文件: {doc_path}")
+            except Exception as e:
+                self.logger.error(f"删除文档文件失败: {e}")
+                return False
         
-        Args:
-            user_id: 用户ID
-            src_topic: 源主题路径
-            src_doc_id: 源文档ID
-            dst_topic: 目标主题路径
-            dst_doc_id: 目标文档ID(不提供则使用原ID)
-            
-        Returns:
-            Dict|None: 新文档的元数据或None(失败时)
-        """
-        src_path = self.get_document_path(user_id, src_topic, src_doc_id)
-        dst_doc_id = dst_doc_id or src_doc_id
-        dst_path = self.get_document_path(user_id, dst_topic, dst_doc_id)
+        # 从RocksDB中删除元数据
+        db_key = DocumentMeta.get_db_key(user_id, document_id)
+        self.db.delete(self.__COLLECTION_NAME__, db_key)
+        self.logger.info(f"已删除文档元数据: {db_key}")
         
-        if not src_path.exists():
-            return None
-            
-        if dst_path.exists():
-            return None  # 目标已存在
-            
-        try:
-            # 创建目标目录
-            dst_path.mkdir(parents=True, exist_ok=True)
-            
-            # 复制所有内容(元数据除外)
-            import shutil
-            for item in src_path.iterdir():
-                if item.name != "meta.json":
-                    if item.is_dir():
-                        shutil.copytree(item, dst_path / item.name)
-                    else:
-                        shutil.copy2(item, dst_path / item.name)
-            
-            # 获取并更新元数据
-            meta = await self.get_metadata(user_id, src_topic, src_doc_id)
-            if meta:
-                meta["user_id"] = user_id
-                meta["document_id"] = dst_doc_id
-                meta["topic_path"] = dst_topic
-                meta["copied_from"] = {"topic": src_topic, "document_id": src_doc_id}
-                meta["updated_at"] = time.time()
-                
-                # 保存新元数据
-                dst_meta_path = dst_path / "meta.json"
-                async with aiofiles.open(dst_meta_path, 'w', encoding='utf-8') as f:
-                    await f.write(json.dumps(meta, ensure_ascii=False, indent=2))
-                    
-                return meta
-            
-            return None
-        except Exception as e:
-            logging.error(f"复制文档失败: {user_id}/{src_topic}/{src_doc_id} -> {user_id}/{dst_topic}/{dst_doc_id}, 错误: {e}")
-            
-            # 清理可能部分创建的目标
-            if dst_path.exists():
-                try:
-                    shutil.rmtree(dst_path)
-                except:
-                    pass
-                    
-            return None
+        return True
     
-    async def move_document(
-        self,
-        user_id: str,
-        src_topic: str,
-        src_doc_id: str,
-        dst_topic: str,
-        dst_doc_id: str = None
-    ) -> Optional[Dict[str, Any]]:
-        """移动文档到新位置
+    async def list_documents(self, user_id: str, topic_path: str = None) -> List[Dict[str, Any]]:
+        """列出指定用户的文档 - 使用前缀查询"""
+        prefix = DocumentMeta.get_prefix(user_id)
+        docs = self.db.values(prefix=prefix)
         
-        Args:
-            user_id: 用户ID
-            src_topic: 源主题路径
-            src_doc_id: 源文档ID
-            dst_topic: 目标主题路径
-            dst_doc_id: 目标文档ID(不提供则使用原ID)
-            
-        Returns:
-            Dict|None: 移动后的元数据或None(失败时)
-        """
-        # 先复制文档
-        result = await self.copy_document(user_id, src_topic, src_doc_id, dst_topic, dst_doc_id)
-        if result:
-            # 复制成功后删除源文档
-            success = await self.delete_document(user_id, src_topic, src_doc_id)
-            if success:
-                # 更新元数据，标记为移动而非复制
-                dst_doc_id = dst_doc_id or src_doc_id
-                result = await self.update_metadata(user_id, dst_topic, dst_doc_id, {
-                    "moved_from": {"topic": src_topic, "document_id": src_doc_id},
-                    "copied_from": None  # 移除复制标记
-                })
-                
-            return result
-        return None
-    
-    async def document_exists(self, user_id: str, topic_path: str, document_id: str) -> bool:
-        """检查文档是否存在
+        # 仅过滤主题
+        results = []
+        for doc in docs:
+            if topic_path is None or doc.topic_path == topic_path:
+                results.append(doc.model_dump())
         
-        Args:
-            user_id: 用户ID
-            topic_path: 主题路径
-            document_id: 文档ID
-            
-        Returns:
-            bool: 文档是否存在
-        """
-        meta_path = self.get_meta_path(user_id, topic_path, document_id)
-        return meta_path.exists()
+        # 按创建时间排序
+        results.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+        return results
     
-    # === 状态机钩子方法 ===
+    async def find_documents_by_state(self, user_id: str, state: str) -> List[Dict[str, Any]]:
+        """查找特定状态的文档"""
+        # 先获取所有指定状态的文档
+        state_docs = self.db.values_with_index(self.__COLLECTION_NAME__, "state", state)
+        
+        # 过滤用户ID
+        return [doc.model_dump() for doc in state_docs if doc.user_id == user_id]
+    
+    # === 状态管理钩子 ===
     
     async def change_state(
         self,
         user_id: str,
-        topic_path: str,
         document_id: str,
         new_state: str,
         details: Dict[str, Any] = None,
         sub_state: str = "none"
     ) -> bool:
-        """更改文档状态 - 支持子状态"""
+        """更改文档状态"""
+        meta = await self.get_metadata(user_id, document_id)
+        if not meta:
+            return False
+            
+        # 构建更新数据
         update_data = {
             "state": new_state,
             "sub_state": sub_state
         }
         
-        if details:
-            # 添加状态变更详情
-            update_data["state_details"] = details
-            update_data["state_history"] = {"timestamp": time.time(), "state": new_state, "sub_state": sub_state, "details": details}
+        # 添加状态历史
+        history_entry = {
+            "timestamp": time.time(),
+            "state": new_state,
+            "sub_state": sub_state
+        }
         
-        result = await self.update_metadata(user_id, topic_path, document_id, update_data)
+        if details:
+            update_data["state_details"] = details
+            history_entry["details"] = details
+            
+        # 获取现有历史记录并添加新条目
+        state_history = meta.get("state_history", [])
+        state_history.append(history_entry)
+        update_data["state_history"] = state_history
+        
+        result = await self.update_metadata(user_id, document_id, update_data)
         return result is not None
     
     async def add_resource(
         self,
         user_id: str,
-        topic_path: str,
         document_id: str,
         resource_type: str,
         resource_info: Dict[str, Any]
     ) -> bool:
-        """添加资源信息到元数据 - 状态机钩子
-        
-        Args:
-            user_id: 用户ID
-            topic_path: 主题路径
-            document_id: 文档ID
-            resource_type: 资源类型(如'markdown', 'chunks'等)
-            resource_info: 资源信息
+        """添加资源信息到元数据"""
+        meta = await self.get_metadata(user_id, document_id)
+        if not meta:
+            return False
             
-        Returns:
-            bool: 添加是否成功
-        """
+        # 获取现有资源
+        resources = meta.get("resources", {})
+        resources[resource_type] = resource_info
+        
+        # 更新元数据
         update_data = {
-            "user_id": user_id,
-            "resources": {
-                resource_type: resource_info
-            },
+            "resources": resources,
             f"has_{resource_type}": True
         }
         
-        result = await self.update_metadata(user_id, topic_path, document_id, update_data)
+        result = await self.update_metadata(user_id, document_id, update_data)
         return result is not None
     
     async def remove_resource(
         self,
         user_id: str,
-        topic_path: str,
         document_id: str,
         resource_type: str
     ) -> bool:
-        """从元数据中移除资源信息 - 状态机钩子
-        
-        Args:
-            user_id: 用户ID
-            topic_path: 主题路径
-            document_id: 文档ID
-            resource_type: 资源类型(如'markdown', 'chunks'等)
-            
-        Returns:
-            bool: 移除是否成功
-        """
-        # 获取当前元数据
-        meta = await self.get_metadata(user_id, topic_path, document_id)
+        """从元数据中移除资源信息"""
+        meta = await self.get_metadata(user_id, document_id)
         if not meta:
             return False
             
-        # 移除资源信息
-        if "resources" in meta and resource_type in meta["resources"]:
-            del meta["resources"][resource_type]
+        # 获取现有资源
+        resources = meta.get("resources", {})
+        if resource_type in resources:
+            del resources[resource_type]
             
-        # 更新标志
-        meta[f"has_{resource_type}"] = False
-        
         # 更新元数据
-        result = await self.update_metadata(user_id, topic_path, document_id, meta)
+        update_data = {
+            "resources": resources,
+            f"has_{resource_type}": False
+        }
+        
+        result = await self.update_metadata(user_id, document_id, update_data)
         return result is not None
+    
+    # === 文件夹识别辅助函数 ===
+    
+    def is_document_folder(self, folder_name: str) -> bool:
+        """检查文件夹名是否符合document_id格式"""
+        return folder_name.startswith("__id_") and folder_name.endswith("__")
+    
+    def extract_document_id(self, folder_name: str) -> str:
+        """从文件夹名提取document_id"""
+        if self.is_document_folder(folder_name):
+            return folder_name[5:-2]  # 去掉 '__id_' 和 '__'
+        return None
+    
+    def get_document_folder_name(self, document_id: str) -> str:
+        """构造document_id文件夹名"""
+        return f"__id_{document_id}__"

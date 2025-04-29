@@ -14,15 +14,16 @@ class DocumentProcessor:
     
     def __init__(
         self, 
-        base_dir: str, 
+        docs_dir: str, 
         meta_manager,
         max_file_size: int = 50 * 1024 * 1024, 
         allowed_extensions: List[str] = None,
         voidrail_client = None,
-        retriever = None,
+        vector_db_path: str = None,
+        embedding_config: Dict[str, Any] = {},
         logger = None
     ):
-        self.base_dir = Path(base_dir)
+        self.docs_dir = Path(docs_dir)
         self.meta_manager = meta_manager
         self.max_file_size = max_file_size
         self.allowed_extensions = allowed_extensions or [
@@ -30,17 +31,26 @@ class DocumentProcessor:
             '.jpg', '.jpeg', '.png', '.gif', '.webp'
         ]
         self.voidrail_client = voidrail_client
-        self.retriever = retriever
         self.logger = logger or logging.getLogger(__name__)
         
+        # 初始化向量检索器
+        if vector_db_path:
+            self.retriever = LanceRetriever(
+                output_dir=vector_db_path,
+                embedding_config=embedding_config,
+                metric="cosine"
+            )
+        else:
+            self.retriever = None
+        
         # 确保基础目录存在
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        self.docs_dir.mkdir(parents=True, exist_ok=True)
     
     # ==== 基础操作方法 ====
     
     def get_user_dir(self, user_id: str, subdir: str) -> Path:
         """获取用户指定子目录"""
-        user_dir = self.base_dir / user_id / subdir
+        user_dir = self.docs_dir / user_id / subdir
         user_dir.mkdir(parents=True, exist_ok=True)
         return user_dir
     
@@ -57,25 +67,6 @@ class DocumentProcessor:
         chunks_dir = self.get_user_dir(user_id, "chunks") / document_id
         chunks_dir.mkdir(exist_ok=True)
         return chunks_dir
-    
-    def get_backup_dir(self, user_id: str, subdir: str, document_id: str) -> Path:
-        """获取用于该文档版本备份的目录"""
-        bd = self.base_dir / user_id / "backups" / subdir / document_id
-        bd.mkdir(parents=True, exist_ok=True)
-        return bd
-    
-    def _rotate_backup(self, user_id: str, subdir: str, document_id: str, file_path: Path, max_versions: int = 5):
-        """备份旧文件并只保留最新的几个版本"""
-        if not file_path.exists():
-            return
-        bkdir = self.get_backup_dir(user_id, subdir, document_id)
-        ts = int(time.time())
-        bkp = bkdir / f"{file_path.name}.{ts}"
-        shutil.copy2(file_path, bkp)
-        # 清理多余历史版本
-        versions = sorted(bkdir.glob(f"{file_path.name}.*"), key=lambda p: p.name)
-        while len(versions) > max_versions:
-            versions.pop(0).unlink()
     
     def generate_document_id(self, original_filename: str = None) -> str:
         """生成文档ID"""
@@ -267,7 +258,7 @@ class DocumentProcessor:
             # 生成嵌入并保存到检索器
             collection_name = f"user_{user_id}"
             # 执行向量化
-            await retriever.add_texts(
+            await retriever.add(
                 collection_name=collection_name,
                 texts=[c["text"] for c in chunks],
                 metadatas=[c["metadata"] for c in chunks],
@@ -342,11 +333,10 @@ class DocumentProcessor:
         return results
     
     async def remove_markdown_file(self, user_id: str, document_id: str) -> bool:
-        """删除Markdown文件但保留文档记录"""
+        """删除Markdown文件"""
         md_path = self.get_md_path(user_id, document_id)
         if md_path.exists():
             try:
-                self._rotate_backup(user_id, "md", document_id, md_path)  # 先备份
                 os.remove(md_path)
                 self.logger.info(f"已删除Markdown文件: {md_path}")
                 return True
@@ -355,26 +345,13 @@ class DocumentProcessor:
         return False
     
     async def remove_chunks_dir(self, user_id: str, document_id: str) -> bool:
-        """删除文档切片目录但保留文档记录"""
+        """删除文档切片目录"""
         chunks_dir = self.get_chunks_dir(user_id, document_id)
         if chunks_dir.exists():
             try:
-                # 备份切片目录
-                backup_dir = self.get_backup_dir(user_id, "chunks", document_id)
-                ts = int(time.time())
-                bk_target = backup_dir / f"chunks_{ts}"
-                if not bk_target.exists():
-                    shutil.copytree(chunks_dir, bk_target)
-                
-                # 删除原目录
+                # 直接删除目录
                 shutil.rmtree(chunks_dir)
                 self.logger.info(f"已删除切片目录: {chunks_dir}")
-                
-                # 清理多余历史版本
-                versions = sorted(backup_dir.glob("chunks_*"), key=lambda p: p.name)
-                while len(versions) > 5:  # 保留5个版本
-                    shutil.rmtree(versions.pop(0))
-                
                 return True
             except Exception as e:
                 self.logger.error(f"删除切片目录失败: {e}")
@@ -457,46 +434,196 @@ class DocumentProcessor:
             raise
     
     async def process_document_embeddings(self, user_id: str, document_id: str) -> Dict[str, Any]:
-        """生成向量嵌入 - 只处理向量操作，不修改元数据"""
+        """生成向量嵌入 - 正确使用LanceRetriever的add方法"""
         if not self.retriever:
             raise ValueError("没有配置向量检索器，无法生成嵌入")
-            
+        
         try:
-            result = await self.generate_embeddings(user_id, document_id, retriever=self.retriever)
-            return result
+            # 获取所有切片文本
+            chunks = []
+            metadatas = []
+            
+            async for chunk in self.iter_chunks(user_id, document_id):
+                chunks.append(chunk["content"])
+                metadatas.append({
+                    "document_id": document_id,
+                    "chunk_index": chunk["chunk_index"],
+                    "user_id": user_id
+                })
+            
+            if not chunks:
+                raise ValueError(f"没有找到文档切片: {document_id}")
+            
+            # 使用retriever的add方法添加向量
+            collection_name = f"user_{user_id}"
+            result = await self.retriever.add(
+                texts=chunks,
+                collection_name=collection_name,
+                user_id=user_id,
+                metadatas=metadatas
+            )
+            
+            if not result.get("success", False):
+                raise ValueError(f"向量添加失败: {result.get('error', '未知错误')}")
+            
+            # 确保创建索引
+            await self.retriever.ensure_index(collection_name)
+            
+            return {
+                "collection": collection_name,
+                "vectors_count": result.get("added", 0),
+                "success": True
+            }
         except Exception as e:
             self.logger.error(f"生成嵌入向量失败: {e}")
             raise
     
     async def remove_vector_embeddings(self, user_id: str, document_id: str) -> bool:
-        """从向量数据库中删除嵌入 - 只处理向量操作，不修改元数据"""
+        """从向量数据库中删除嵌入 - 正确使用LanceRetriever的delete方法"""
         if not self.retriever:
             return False
-            
+        
         try:
-            collection = f"user_{user_id}"
-            await self.retriever.delete(
-                collection_name=collection,
+            collection_name = f"user_{user_id}"
+            result = await self.retriever.delete(
+                collection_name=collection_name,
                 user_id=user_id,
                 document_id=document_id
             )
-            return True
+            return result.get("success", False)
         except Exception as e:
             self.logger.error(f"从向量存储删除失败: {e}")
             return False
     
-    async def add_chunks_metadata(self, user_id: str, document_id: str, topic_path: str, chunks: List[str]) -> bool:
+    async def add_chunks_metadata(self, user_id: str, document_id: str, chunks: List[str]) -> bool:
         """添加切片数据到元数据 - 处理器直接了解切片内容"""
         chunks_data = [{"content": chunk, "metadata": {}} for chunk in chunks]
         result = await self.meta_manager.update_metadata(
-            user_id, topic_path, document_id,
+            user_id, document_id,
             {"chunks": chunks_data}
         )
         return result is not None
     
-    async def update_document_metadata(self, user_id: str, document_id: str, topic_path: str, 
-                                     metadata_updates: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_document_metadata(
+        self,
+        user_id: str,
+        document_id: str,
+        metadata_updates: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """更新文档元数据中与处理相关的字段"""
         return await self.meta_manager.update_metadata(
-            user_id, topic_path, document_id, metadata_updates
+            user_id, document_id, metadata_updates
         )
+
+    async def search_chunks(
+        self, 
+        user_id: str, 
+        query: str, 
+        document_id: str = None, 
+        limit: int = 10,
+        threshold: float = 0.8
+    ) -> Dict[str, Any]:
+        """搜索文档内容 - 使用向量检索进行语义搜索"""
+        if not query or not user_id:
+            raise ValueError("无效的参数: 必须提供user_id和查询内容")
+        
+        if not self.retriever:
+            raise ValueError("没有配置向量检索器，无法执行搜索")
+        
+        collection_name = f"user_{user_id}"
+        
+        # 构建过滤条件
+        filter_condition = None
+        if document_id:
+            filter_condition = f"document_id = '{document_id}'"
+        
+        # 使用retriever的query方法搜索
+        results = await self.retriever.query(
+            query_texts=query,
+            collection_name=collection_name,
+            user_id=user_id,
+            document_id=document_id,
+            limit=limit,
+            threshold=threshold,
+            filter=filter_condition
+        )
+        
+        # 格式化结果
+        if results and len(results) > 0:
+            # 只处理第一个查询结果（因为只传入了一个查询）
+            matches = results[0].get("results", [])
+            
+            # 增强结果 - 添加文档详细信息
+            enhanced_matches = []
+            for match in matches:
+                doc_id = match["metadata"].get("document_id")
+                if doc_id:
+                    # 获取文档元数据
+                    doc_meta = await self.meta_manager.get_metadata(user_id, doc_id)
+                    if doc_meta:
+                        match["document_meta"] = {
+                            "title": doc_meta.get("original_name", ""),
+                            "type": doc_meta.get("type", ""),
+                            "state": doc_meta.get("state", ""),
+                        }
+                enhanced_matches.append(match)
+            
+            return {
+                "query": query,
+                "matches": enhanced_matches,
+                "total": len(enhanced_matches)
+            }
+        else:
+            # 没有结果或查询出错
+            error = results[0].get("error") if results else "无匹配结果"
+            if "error" in (results[0] if results else {}):
+                raise ValueError(f"搜索失败: {error}")
+            
+            return {
+                "query": query,
+                "matches": [],
+                "total": 0
+            }
+
+    async def get_markdown(self, user_id: str, document_id: str) -> Dict[str, Any]:
+        """获取文档的Markdown内容
+        
+        Args:
+            user_id: 用户ID
+            document_id: 文档ID
+            
+        Returns:
+            包含Markdown内容和元数据的字典
+            
+        Raises:
+            FileNotFoundError: 当Markdown文件不存在时
+            ValueError: 当传入的参数无效时
+        """
+        if not user_id or not document_id:
+            raise ValueError("用户ID和文档ID不能为空")
+        
+        # 获取Markdown文件路径
+        md_path = self.get_md_path(user_id, document_id)
+        
+        # 检查文件是否存在
+        if not md_path.exists():
+            raise FileNotFoundError(f"找不到Markdown文件: {document_id}")
+        
+        try:
+            # 读取Markdown内容
+            async with aiofiles.open(md_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+            
+            # 获取文件元数据
+            file_stats = md_path.stat()
+            
+            return {
+                "document_id": document_id,
+                "content": content,
+                "file_size": file_stats.st_size,
+                "last_modified": int(file_stats.st_mtime),
+                "file_path": str(md_path)
+            }
+        except Exception as e:
+            self.logger.error(f"读取Markdown文件失败: {e}")
+            raise
