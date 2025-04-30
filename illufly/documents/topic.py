@@ -23,8 +23,8 @@ class TopicManager:
         return user_base
     
     def is_document_dir(self, dir_path: Path) -> bool:
-        """判断目录是否为文档目录（包含meta.json）"""
-        return (dir_path / "meta.json").exists()
+        """判断目录是否为文档目录（使用__id_{document_id}__命名规则）"""
+        return dir_path.name.startswith("__id_") and dir_path.name.endswith("__")
     
     def get_topic_structure(self, user_id: str, relative_path: str = "") -> Dict[str, Any]:
         """获取主题结构信息
@@ -313,3 +313,14 @@ class TopicManager:
             topic for topic in all_topics 
             if keyword.lower() in topic["path"].lower()
         ]
+
+    def extract_document_id(self, dir_path: Path) -> str:
+        """从文档目录路径提取document_id"""
+        name = dir_path.name
+        if self.is_document_dir(dir_path):
+            return name[5:-2]  # 去掉 '__id_' 和 '__'
+        return None
+
+    def get_document_folder_name(self, document_id: str) -> str:
+        """根据document_id构造标准目录名"""
+        return f"__id_{document_id}__"

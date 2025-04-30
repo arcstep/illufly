@@ -2,7 +2,6 @@ from statemachine import StateMachine, State
 import time
 import logging
 from typing import Optional, List, Dict, Any
-from events import StateChangedEvent, ResourceActionEvent
 
 class DocumentState:
     """文档状态枚举"""
