@@ -161,11 +161,21 @@ class DocumentStateMachine(StateMachine):
         if target_state:
             self.current_state = target_state
             
-            # 更新元数据 - 包含子状态
-            await self.meta_manager.change_state(
+            # 更新元数据 - 确保更新成功且同步
+            success = await self.meta_manager.change_state(
                 self.user_id, self.document_id, 
                 new_state, details, sub_state
             )
+            
+            if not success:
+                self.logger.error(f"文档 {self.document_id} 元数据状态更新失败")
+                return False
+            
+            # 获取更新后的元数据，确认状态已更新
+            updated_meta = await self.meta_manager.get_metadata(self.user_id, self.document_id)
+            if updated_meta.get("state") != new_state:
+                self.logger.error(f"元数据状态验证失败: 期望 {new_state}，实际 {updated_meta.get('state')}")
+                return False
             
             # 调用进入状态的钩子函数
             hook_method = f"on_enter_{new_state}"
@@ -257,6 +267,30 @@ class DocumentStateMachine(StateMachine):
             }
         )
     
+    async def on_enter_uploaded(self, from_state=None):
+        """进入上传状态"""
+        await self.meta_manager.update_metadata(
+            self.user_id, self.document_id,
+            {
+                "has_markdown": False,
+                "has_chunks": False,
+                "has_embeddings": False,
+                "has_qa_pairs": False
+            }
+        )
+
+    async def on_enter_bookmarked(self, from_state=None):
+        """进入书签状态"""
+        await self.meta_manager.update_metadata(
+            self.user_id, self.document_id,
+            {
+                "has_markdown": False,
+                "has_chunks": False,
+                "has_embeddings": False,
+                "has_qa_pairs": False
+            }
+        )
+    
     # 辅助方法
     def get_sequence(self) -> list:
         """获取当前文档的状态序列"""
@@ -317,10 +351,20 @@ class DocumentStateMachine(StateMachine):
         """检查是否可以转换到目标状态"""
         current_id = self.current_state.id
         
-        # 检查是否有直接的状态转换定义
-        for transition in self.current_state.transitions:
-            if transition.target.id == target_state:
-                return True
+        # 明确允许的转换
+        allowed_transitions = {
+            "init": ["uploaded", "bookmarked", "saved_chat"],
+            "uploaded": ["markdowned"],
+            "bookmarked": ["markdowned"],
+            "markdowned": ["chunked", "uploaded", "bookmarked"],
+            "chunked": ["embedded", "markdowned"],
+            "embedded": ["chunked", "qa_extracted"],
+            "saved_chat": ["qa_extracted"]
+        }
+        
+        # 检查明确允许的转换
+        if current_id in allowed_transitions and target_state in allowed_transitions[current_id]:
+            return True
         
         # 检查序列中的下一个/上一个状态
         if target_state == self.get_next_state():
@@ -402,3 +446,18 @@ class DocumentStateMachine(StateMachine):
             sub_state=self.SubState.FAILED,
             details={"error": error}
         )
+
+    async def activate_initial_state(self):
+        """激活初始状态并与元数据同步"""
+        # 首先从元数据读取当前状态
+        meta_state = await self.get_current_state()
+        
+        # 如果元数据已有状态，则使用该状态
+        if meta_state != "init":
+            for state in self.states:
+                if state.id == meta_state:
+                    self.current_state = state
+                    return
+        
+        # 否则使用默认初始状态
+        await super().activate_initial_state()

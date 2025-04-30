@@ -99,7 +99,10 @@ class DocumentService:
         self.max_total_size_per_user = max_total_size_per_user
         
         # 创建核心组件
-        self.meta_manager = DocumentMetaManager(db=self.db, base_dir=str(self.base_dir))
+        self.meta_manager = DocumentMetaManager(
+            meta_dir=str(self.base_dir / "meta"),
+            docs_dir=str(self.base_dir / "docs")
+        )
         
         # 创建处理器，委托其初始化向量检索器
         self.processor = DocumentProcessor(
@@ -117,14 +120,15 @@ class DocumentService:
 
     # ==== 状态机管理 ====
     
-    def create_state_machine(self, user_id: str, document_id: str) -> DocumentStateMachine:
-        """创建文档状态机实例"""
+    async def create_state_machine(self, user_id: str, document_id: str) -> DocumentStateMachine:
+        """创建并激活文档状态机实例"""
         machine = DocumentStateMachine(
             meta_manager=self.meta_manager,
             user_id=user_id,
             document_id=document_id,
             logger=self.logger
         )
+        await machine.activate_initial_state()
         return machine
     
     # ==== 文档管理 - 委托给处理器 ====
@@ -180,7 +184,7 @@ class DocumentService:
             )
             
             # 创建状态机并设置相应初始状态
-            machine = self.create_state_machine(user_id, document_id)
+            machine = await self.create_state_machine(user_id, document_id)
             
             # 根据文档类型设置初始状态
             if doc_info.get("source_type") == "remote":
@@ -190,7 +194,9 @@ class DocumentService:
             else:
                 await machine.set_state("uploaded", sub_state="completed")
                 
-            return Result.ok(doc_meta)
+            # 获取更新后的元数据并返回
+            updated_doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+            return Result.ok(updated_doc_meta)
         except Exception as e:
             error_type, error_message, error_detail = self._classify_exception(e)
             self.logger.error(f"创建文档失败: {error_message}", exc_info=True)
@@ -262,7 +268,7 @@ class DocumentService:
         """转换为Markdown - 协调处理器和状态机"""
         try:
             # 1. 创建状态机
-            machine = self.create_state_machine(user_id, document_id)
+            machine = await self.create_state_machine(user_id, document_id)
             
             # 2. 检查当前状态
             current_state = await machine.get_current_state()
@@ -306,7 +312,7 @@ class DocumentService:
     async def chunk_document(self, user_id: str, document_id: str) -> Dict[str, Any]:
         """将文档切分为片段 - 协调处理器和状态机"""
         # 1. 创建状态机
-        machine = self.create_state_machine(user_id, document_id)
+        machine = await self.create_state_machine(user_id, document_id)
         
         # 2. 检查当前状态
         current_state = await machine.get_current_state()
@@ -340,7 +346,7 @@ class DocumentService:
     async def generate_embeddings(self, user_id: str, document_id: str) -> Dict[str, Any]:
         """为文档切片生成向量嵌入"""
         # 创建状态机
-        machine = self.create_state_machine(user_id, document_id)
+        machine = await self.create_state_machine(user_id, document_id)
         
         # 检查当前状态
         current_state = await machine.get_current_state()
@@ -370,7 +376,7 @@ class DocumentService:
     async def rollback_to_previous_state(self, user_id: str, document_id: str) -> Dict[str, Any]:
         """回滚到上一个状态 - 协调处理器和状态机"""
         # 1. 创建状态机
-        machine = self.create_state_machine(user_id, document_id)
+        machine = await self.create_state_machine(user_id, document_id)
         
         # 2. 获取当前状态和前一个状态
         current_state = await machine.get_current_state()
@@ -473,7 +479,7 @@ class DocumentService:
     
     async def get_document_state(self, user_id: str, document_id: str) -> Dict[str, str]:
         """获取文档当前状态，包括主状态和子状态"""
-        machine = self.create_state_machine(user_id, document_id)
+        machine = await self.create_state_machine(user_id, document_id)
         return await machine.get_current_state_info()
 
     async def get_markdown_content(self, user_id: str, document_id: str) -> Result:
