@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, AsyncGenerator
 from fastapi import UploadFile
 
+from ..llm import LanceRetriever
+
 class DocumentProcessor:
     """处理文档转换的专用类 - 专注于文档处理的具体实现"""
     
@@ -48,25 +50,57 @@ class DocumentProcessor:
     
     # ==== 基础操作方法 ====
     
-    def get_user_dir(self, user_id: str, subdir: str) -> Path:
-        """获取用户指定子目录"""
-        user_dir = self.docs_dir / user_id / subdir
+    def get_path(self, *parts) -> Path:
+        """仅获取路径，不创建目录"""
+        return Path(self.docs_dir).joinpath(*parts)
+
+    def get_user_path(self, user_id: str, subdir: str) -> Path:
+        """仅获取用户子目录路径，不创建目录"""
+        return self.get_path(user_id, subdir)
+    
+    def ensure_user_dir(self, user_id: str, subdir: str) -> Path:
+        """确保用户子目录存在，并返回路径"""
+        user_dir = self.get_user_path(user_id, subdir)
         user_dir.mkdir(parents=True, exist_ok=True)
         return user_dir
-    
+
+    def get_user_dir(self, user_id: str, subdir: str) -> Path:
+        """获取用户指定子目录（兼容旧代码）
+        注意：此方法会创建目录，如果只需要路径请使用get_user_path"""
+        return self.ensure_user_dir(user_id, subdir)
+
     def get_raw_path(self, user_id: str, document_id: str) -> Path:
         """获取原始文件路径"""
-        return self.get_user_dir(user_id, "raw") / document_id
-    
+        return self.get_user_path(user_id, "raw") / document_id
+
+    def ensure_raw_dir(self, user_id: str) -> Path:
+        """确保原始文件目录存在"""
+        return self.ensure_user_dir(user_id, "raw")
+
     def get_md_path(self, user_id: str, document_id: str) -> Path:
         """获取Markdown文件路径"""
-        return self.get_user_dir(user_id, "md") / f"{document_id}.md"
+        # 去除document_id中可能存在的后缀
+        base_id = document_id.rsplit('.', 1)[0] if '.' in document_id else document_id
+        return self.get_user_path(user_id, "md") / f"{base_id}.md"
+
+    def ensure_md_dir(self, user_id: str) -> Path:
+        """确保Markdown文件目录存在"""
+        return self.ensure_user_dir(user_id, "md")
     
-    def get_chunks_dir(self, user_id: str, document_id: str) -> Path:
-        """获取切片目录路径"""
-        chunks_dir = self.get_user_dir(user_id, "chunks") / document_id
+    def get_chunks_dir_path(self, user_id: str, document_id: str) -> Path:
+        """获取切片目录路径，不创建目录"""
+        return self.get_user_dir(user_id, "chunks") / document_id
+    
+    def ensure_chunks_dir_exists(self, user_id: str, document_id: str) -> Path:
+        """确保切片目录存在，并返回路径"""
+        chunks_dir = self.get_chunks_dir_path(user_id, document_id)
         chunks_dir.mkdir(exist_ok=True)
         return chunks_dir
+    
+    def get_chunks_dir(self, user_id: str, document_id: str) -> Path:
+        """获取切片目录路径（兼容旧代码）
+        注意：此方法会创建目录，如果只需要路径请使用get_chunks_dir_path"""
+        return self.ensure_chunks_dir_exists(user_id, document_id)
     
     def generate_document_id(self, original_filename: str = None) -> str:
         """生成文档ID"""
@@ -100,6 +134,8 @@ class DocumentProcessor:
         
         # 生成文档ID和路径
         document_id = self.generate_document_id(file.filename)
+        # 确保目录存在
+        self.ensure_raw_dir(user_id)
         file_path = self.get_raw_path(user_id, document_id)
         
         # 保存文件
@@ -139,6 +175,9 @@ class DocumentProcessor:
     async def convert_to_markdown(self, user_id: str, document_id: str, voidrail_client=None) -> Dict[str, Any]:
         """将文档转换为Markdown格式"""
         doc_path = self.get_raw_path(user_id, document_id)
+        
+        # 确保目录存在
+        self.ensure_md_dir(user_id)
         md_path = self.get_md_path(user_id, document_id)
         
         # 检查原始文档是否存在
