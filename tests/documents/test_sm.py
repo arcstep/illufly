@@ -324,3 +324,91 @@ async def test_delete_document_state(meta_manager, user_id):
     # 验证已删除
     meta = await meta_manager.get_metadata(user_id, doc_id)
     assert meta is None
+
+
+@pytest.mark.asyncio
+async def test_bookmark_flow(meta_manager, user_id):
+    """测试书签流程的状态转换"""
+    doc_id = "bookmark_flow_test"
+    await meta_manager.create_document(user_id, doc_id)
+    
+    machine = DocumentStateMachine(meta_manager, user_id, doc_id)
+    await machine.initialize_from_metadata()
+    
+    # 测试init -> bookmarked
+    await machine.set_state("bookmarked")
+    assert machine.current_state.id == "bookmarked"
+    
+    # 测试bookmarked -> markdowned
+    await machine.set_state("markdowned")
+    assert machine.current_state.id == "markdowned"
+
+
+@pytest.mark.asyncio
+async def test_embedding_transitions(meta_manager, user_id):
+    """测试嵌入相关的状态转换"""
+    doc_id = "embedding_test"
+    await meta_manager.create_document(user_id, doc_id)
+    
+    machine = DocumentStateMachine(meta_manager, user_id, doc_id)
+    await machine.initialize_from_metadata()
+    
+    # 准备chunked状态
+    await machine.set_state("uploaded", force=True)
+    await machine.set_state("markdowned", force=True)
+    await machine.set_state("chunked", force=True)
+    
+    # 测试chunked -> embedded
+    await machine.set_state("embedded")
+    assert machine.current_state.id == "embedded"
+    
+    # 测试embedded -> chunked回退
+    await machine.set_state("chunked")
+    assert machine.current_state.id == "chunked"
+
+
+@pytest.mark.asyncio
+async def test_qa_embedding_flow(meta_manager, user_id):
+    """测试QA提取到嵌入的流程"""
+    doc_id = "qa_embedding_test"
+    await meta_manager.create_document(user_id, doc_id)
+    
+    machine = DocumentStateMachine(meta_manager, user_id, doc_id)
+    await machine.initialize_from_metadata()
+    
+    # 设置为saved_chat
+    await machine.set_state("saved_chat")
+    assert machine.current_state.id == "saved_chat"
+    
+    # qa_extracted -> embedded
+    await machine.set_state("qa_extracted")
+    assert machine.current_state.id == "qa_extracted"
+    
+    await machine.set_state("embedded")
+    assert machine.current_state.id == "embedded"
+    
+    # 测试embedded -> qa_extracted回退
+    await machine.set_state("qa_extracted")
+    assert machine.current_state.id == "qa_extracted"
+
+
+@pytest.mark.asyncio
+async def test_reset_to_init(meta_manager, user_id):
+    """测试重置到初始状态"""
+    # 测试从uploaded重置
+    doc_id = "reset_test_1"
+    await meta_manager.create_document(user_id, doc_id)
+    machine = DocumentStateMachine(meta_manager, user_id, doc_id)
+    await machine.initialize_from_metadata()
+    await machine.set_state("uploaded")
+    await machine.set_state("init")
+    assert machine.current_state.id == "init"
+    
+    # 测试从bookmarked重置
+    doc_id = "reset_test_2"
+    await meta_manager.create_document(user_id, doc_id)
+    machine = DocumentStateMachine(meta_manager, user_id, doc_id)
+    await machine.initialize_from_metadata()
+    await machine.set_state("bookmarked")
+    await machine.set_state("init")
+    assert machine.current_state.id == "init"

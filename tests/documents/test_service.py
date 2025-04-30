@@ -436,6 +436,84 @@ async def test_sequential_document_processing(doc_service, user_id, upload_file)
     assert doc["has_embeddings"] is True
 
 
+@pytest.mark.asyncio
+async def test_search_chunks(doc_service, user_id, upload_file):
+    """测试搜索文档内容"""
+    # 准备有嵌入的文档
+    file = await upload_file()
+    upload_result = await doc_service.upload_document(user_id, file)
+    document_id = upload_result.data["document_id"]
+    await doc_service.convert_to_markdown(user_id, document_id)
+    await doc_service.chunk_document(user_id, document_id)
+    await doc_service.generate_embeddings(user_id, document_id)
+    
+    # 测试搜索
+    search_result = await doc_service.search_chunks(user_id, "测试")
+    assert search_result.success
+    assert "matches" in search_result.data
+
+
+@pytest.mark.asyncio
+async def test_get_markdown_content(doc_service, user_id, upload_file):
+    """测试获取文档Markdown内容"""
+    # 准备Markdown文档
+    file = await upload_file()
+    upload_result = await doc_service.upload_document(user_id, file)
+    document_id = upload_result.data["document_id"]
+    await doc_service.convert_to_markdown(user_id, document_id)
+    
+    # 获取内容
+    content_result = await doc_service.get_markdown(user_id, document_id)
+    assert content_result.success
+    assert "content" in content_result.data
+
+
+@pytest.mark.asyncio
+async def test_get_chunks(doc_service, user_id, upload_file):
+    """测试获取文档切片"""
+    # 准备切片文档
+    file = await upload_file()
+    upload_result = await doc_service.upload_document(user_id, file)
+    document_id = upload_result.data["document_id"]
+    await doc_service.convert_to_markdown(user_id, document_id)
+    await doc_service.chunk_document(user_id, document_id)
+    
+    # 获取切片
+    chunks_result = await doc_service.get_chunks(user_id, document_id)
+    assert chunks_result.success
+
+
+@pytest.mark.asyncio
+async def test_invalid_parameters(doc_service, user_id):
+    """测试无效参数处理"""
+    # 无效文档ID
+    result = await doc_service.get_document(user_id, "non_existent_id")
+    assert result is None
+    
+    # 无效状态转换
+    invalid_id = "test_invalid_id"
+    await doc_service.meta_manager.create_document(user_id, invalid_id)
+    result = await doc_service.convert_to_markdown(user_id, invalid_id)
+    assert not result.success
+    assert result.error_type == ErrorType.STATE_ERROR
+
+
+@pytest.mark.asyncio
+async def test_chat_document_flow(doc_service, user_id):
+    """测试聊天文档处理流程"""
+    # 创建聊天文档
+    doc_info = {
+        "document_id": "chat_test_123",
+        "original_name": "测试对话",
+        "source_type": "chat",
+        "size": 500
+    }
+    
+    result = await doc_service.create_document(user_id, doc_info)
+    assert result.success
+    assert result.data["state"] == "saved_chat"
+
+
 @pytest.fixture(scope="function", autouse=True)
 async def cleanup_async_tasks():
     yield

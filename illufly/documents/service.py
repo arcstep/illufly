@@ -482,7 +482,7 @@ class DocumentService:
         machine = await self.create_state_machine(user_id, document_id)
         return await machine.get_current_state_info()
 
-    async def get_markdown_content(self, user_id: str, document_id: str) -> Result:
+    async def get_markdown(self, user_id: str, document_id: str) -> Result:
         """获取文档的Markdown内容
         
         Args:
@@ -512,7 +512,7 @@ class DocumentService:
                 )
             
             # 3. 获取Markdown内容
-            content_data = await self.processor.get_markdown_content(user_id, document_id)
+            content_data = await self.processor.get_markdown(user_id, document_id)
             
             # 4. 合并元数据和内容数据
             result = {
@@ -576,11 +576,13 @@ class DocumentService:
                 )
             
             # 3. 获取切片数据
-            chunks_data = list(await self.processor.iter_chunks(user_id, document_id))
+            chunks_data = []
+            async for chunk in self.processor.iter_chunks(user_id, document_id):
+                chunks_data.append(chunk)
             
             # 4. 添加文档元数据
             result = {
-                **chunks_data,
+                "chunks": chunks_data,
                 "title": doc_meta.get("original_name", ""),
                 "type": doc_meta.get("type", ""),
                 "state": state
@@ -622,16 +624,3 @@ class DocumentService:
             return ErrorType.STATE_ERROR, str(e), error_detail
         else:
             return ErrorType.UNKNOWN_ERROR, f"发生未知错误: {str(e)}", error_detail
-
-    async def close(self):
-        """关闭服务及其资源"""
-        try:
-            # 委托处理器关闭资源
-            if hasattr(self, 'processor'):
-                await self.processor.close()
-            
-            return True
-        except Exception as e:
-            self.logger.error(f"关闭服务资源时出错: {str(e)}")
-            return False
-
