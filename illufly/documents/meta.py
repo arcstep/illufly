@@ -12,13 +12,13 @@ class DocumentMeta(BaseModel):
     """文档元数据模型 - 用于RocksDB存储"""
     document_id: str = Field(..., description="文档ID")
     user_id: str = Field(..., description="用户ID")
-    topic_path: str = Field(default=None, description="主题路径")
-    original_name: str = Field(default=None, description="原始文件名")
+    topic_path: Optional[str] = Field(default=None, description="主题路径")
+    original_name: Optional[str] = Field(default=None, description="原始文件名")
     size: int = Field(default=0, description="文件大小")
-    type: str = Field(default=None, description="文件类型")
-    extension: str = Field(default=None, description="文件扩展名")
-    source_type: str = Field(default="local", description="来源类型")
-    source_url: str = Field(default=None, description="来源URL")
+    type: Optional[str] = Field(default=None, description="文件类型")
+    extension: Optional[str] = Field(default=None, description="文件扩展名")
+    source_type: Optional[str] = Field(default="local", description="来源类型")
+    source_url: Optional[str] = Field(default=None, description="来源URL")
     created_at: float = Field(default_factory=time.time, description="创建时间")
     updated_at: float = Field(default_factory=time.time, description="更新时间")
     state: str = Field(default="init", description="文档状态")
@@ -49,6 +49,9 @@ class DocumentMetaManager:
     __COLLECTION_NAME__ = "document_meta"
     
     def __init__(self, meta_dir: str, docs_dir: str):
+        # 确保meta_dir目录存在
+        Path(meta_dir).mkdir(parents=True, exist_ok=True)
+        
         self.db = IndexedRocksDB(meta_dir)
         self.logger = logging.getLogger(__name__)
         
@@ -127,8 +130,7 @@ class DocumentMetaManager:
     async def get_metadata(self, user_id: str, document_id: str) -> Optional[Dict[str, Any]]:
         """获取文档元数据 - 直接通过user_id和document_id获取"""
         db_key = DocumentMeta.get_db_key(user_id, document_id)
-        meta = self.db.get(self.__COLLECTION_NAME__, db_key)
-        return meta.model_dump() if meta else None
+        return self.db.get(db_key)
     
     async def update_metadata(
         self,
@@ -138,16 +140,13 @@ class DocumentMetaManager:
     ) -> Optional[Dict[str, Any]]:
         """更新文档元数据 - 直接通过user_id和document_id定位"""
         db_key = DocumentMeta.get_db_key(user_id, document_id)
-        meta = self.db.get(self.__COLLECTION_NAME__, db_key)
+        meta = self.db.get(db_key)
         
         if not meta:
             return None
             
         # 更新时间戳
         update_data["updated_at"] = time.time()
-        
-        # 更新元数据 - 使用模型字典方式更新
-        meta_dict = meta.model_dump()
         
         # 深度合并
         def deep_update(d, u):
@@ -157,10 +156,11 @@ class DocumentMetaManager:
                 else:
                     d[k] = v
         
-        deep_update(meta_dict, update_data)
+        updated_dict = meta.copy()
+        deep_update(updated_dict, update_data)
         
         # 创建新模型并保存
-        updated_meta = DocumentMeta(**meta_dict)
+        updated_meta = DocumentMeta(**updated_dict)
         self.db.update_with_indexes(self.__COLLECTION_NAME__, db_key, updated_meta)
         
         return updated_meta.model_dump()
@@ -188,7 +188,7 @@ class DocumentMetaManager:
         
         # 从RocksDB中删除元数据
         db_key = DocumentMeta.get_db_key(user_id, document_id)
-        self.db.delete(self.__COLLECTION_NAME__, db_key)
+        self.db.delete(db_key)
         self.logger.info(f"已删除文档元数据: {db_key}")
         
         return True
@@ -201,8 +201,8 @@ class DocumentMetaManager:
         # 仅过滤主题
         results = []
         for doc in docs:
-            if topic_path is None or doc.topic_path == topic_path:
-                results.append(doc.model_dump())
+            if topic_path is None or doc.get('topic_path') == topic_path:
+                results.append(doc)
         
         # 按创建时间排序
         results.sort(key=lambda x: x.get("created_at", 0), reverse=True)
@@ -292,19 +292,29 @@ class DocumentMetaManager:
         if not meta:
             return False
             
-        # 获取现有资源
-        resources = meta.get("resources", {})
-        if resource_type in resources:
-            del resources[resource_type]
-            
-        # 更新元数据
-        update_data = {
-            "resources": resources,
-            f"has_{resource_type}": False
-        }
+        # 创建一个全新的resources对象
+        resources = {}
+        old_resources = meta.get("resources", {})
         
-        result = await self.update_metadata(user_id, document_id, update_data)
-        return result is not None
+        # 手动复制除了要删除的资源外的所有资源
+        for key, value in old_resources.items():
+            if key != resource_type:
+                resources[key] = value
+        
+        # 重建整个元数据对象
+        updated_dict = meta.copy()
+        updated_dict["resources"] = resources
+        updated_dict[f"has_{resource_type}"] = False
+        updated_dict["updated_at"] = time.time()
+        
+        # 完全替换元数据对象
+        updated_meta = DocumentMeta(**updated_dict)
+        db_key = DocumentMeta.get_db_key(user_id, document_id)
+        self.db.update_with_indexes(self.__COLLECTION_NAME__, db_key, updated_meta)
+        
+        # 重新获取以验证更新生效
+        result = await self.get_metadata(user_id, document_id)
+        return result is not None and resource_type not in result.get("resources", {})
     
     # === 文件夹识别辅助函数 ===
     
