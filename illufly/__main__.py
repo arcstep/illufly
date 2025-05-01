@@ -90,7 +90,8 @@ async def start_server(
             description=description,
             prefix=prefix,
             static_dir=static_dir,
-            cors_origins=cors_origins
+            cors_origins=cors_origins,
+            router_address=router_address
         )
 
         # 配置uvicorn时禁用所有内部日志处理

@@ -90,7 +90,7 @@ class DocumentService:
         max_file_size: int = 50 * 1024 * 1024,
         max_total_size_per_user: int = 200 * 1024 * 1024,
         allowed_extensions: List[str] = None,
-        voidrail_client = None,
+        voidrail_client: ClientDealer = None,
         embedding_config: Dict[str, Any] = {},
         logger = None
     ):
@@ -110,7 +110,7 @@ class DocumentService:
             meta_manager=self.meta_manager,
             max_file_size=max_file_size,
             allowed_extensions=allowed_extensions,
-            voidrail_client=voidrail_client,
+            voidrail_client=ClientDealer,
             vector_db_path=str(self.base_dir / "vector_db"),
             embedding_config=embedding_config,
             logger=logger
@@ -605,6 +605,127 @@ class DocumentService:
         except Exception as e:
             error_type, error_message, error_detail = self._classify_exception(e)
             self.logger.error(f"获取文档切片失败: {error_message}", exc_info=True)
+            error_detail["user_id"] = user_id
+            error_detail["document_id"] = document_id
+            return Result.fail(error_type, error_message, error_detail)
+
+    async def update_document_metadata(
+        self, 
+        user_id: str, 
+        document_id: str, 
+        metadata: Dict[str, Any]
+    ) -> Result:
+        """更新文档元数据（标题、描述、标签等）
+        
+        Args:
+            user_id: 用户ID
+            document_id: 文档ID
+            metadata: 包含要更新的元数据字段
+            
+        Returns:
+            Result对象，包含更新后的文档元数据或错误信息
+        """
+        try:
+            # 1. 检查文档是否存在
+            doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+            if not doc_meta:
+                return Result.fail(
+                    ErrorType.RESOURCE_ERROR,
+                    f"找不到文档: {document_id}",
+                    {"user_id": user_id, "document_id": document_id}
+                )
+            
+            # 2. 只允许更新特定字段（白名单）
+            allowed_fields = ["title", "description", "tags"]
+            update_data = {}
+            
+            for field in allowed_fields:
+                if field in metadata and metadata[field] is not None:
+                    update_data[field] = metadata[field]
+            
+            # 3. 如果没有需要更新的字段，直接返回当前元数据
+            if not update_data:
+                return Result.ok(doc_meta)
+            
+            # 4. 更新元数据
+            updated_meta = await self.meta_manager.update_metadata(
+                user_id, document_id, update_data
+            )
+            
+            if not updated_meta:
+                return Result.fail(
+                    ErrorType.DATABASE_ERROR,
+                    "更新元数据失败",
+                    {"user_id": user_id, "document_id": document_id}
+                )
+            
+            return Result.ok(updated_meta)
+        except Exception as e:
+            error_type, error_message, error_detail = self._classify_exception(e)
+            self.logger.error(f"更新文档元数据失败: {error_message}", exc_info=True)
+            error_detail["user_id"] = user_id
+            error_detail["document_id"] = document_id
+            return Result.fail(error_type, error_message, error_detail)
+
+    async def move_document_to_topic(
+        self, 
+        user_id: str, 
+        document_id: str, 
+        target_topic_path: str = None
+    ) -> Result:
+        """移动文档到指定主题"""
+        try:
+            # 1. 验证文档存在
+            doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+            if not doc_meta:
+                return Result.fail(
+                    ErrorType.RESOURCE_ERROR,
+                    f"找不到文档: {document_id}",
+                    {"user_id": user_id, "document_id": document_id}
+                )
+            
+            # 2. 获取当前主题路径
+            current_topic_path = doc_meta.get("topic_path")
+            
+            # 3. 文档目录名称
+            doc_folder_name = self.meta_manager.get_document_folder_name(document_id)
+            
+            # 4. 当前和目标物理路径
+            source_dir = self.meta_manager.get_document_path(user_id, current_topic_path, document_id)
+            target_dir = self.meta_manager.get_document_path(user_id, target_topic_path, document_id)
+            
+            # 5. 如果已在目标位置，直接返回
+            if str(source_dir) == str(target_dir):
+                return Result.ok(doc_meta)
+            
+            # 6. 执行物理移动
+            if source_dir.exists():
+                # 如果目标已存在，先删除
+                if target_dir.exists():
+                    shutil.rmtree(target_dir)
+                    
+                # 确保目标父目录存在
+                target_dir.parent.mkdir(parents=True, exist_ok=True)
+                
+                # 移动文档目录
+                shutil.move(str(source_dir), str(target_dir))
+            else:
+                return Result.fail(
+                    ErrorType.FILE_ERROR,
+                    f"文档物理目录不存在",
+                    {"user_id": user_id, "document_id": document_id}
+                )
+            
+            # 7. 更新元数据
+            updated_meta = await self.meta_manager.update_metadata(
+                user_id, document_id, {"topic_path": target_topic_path}
+            )
+            
+            return Result.ok(updated_meta or doc_meta)
+            
+        except Exception as e:
+            error_type, error_message, error_detail = self._classify_exception(e)
+            self.logger.error(f"移动文档失败: {error_message}", exc_info=True)
             error_detail["user_id"] = user_id
             error_detail["document_id"] = document_id
             return Result.fail(error_type, error_message, error_detail)

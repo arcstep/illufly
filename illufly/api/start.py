@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional, List, Set, Dict, Any, Callable, Tuple, Union
 
 from voidring import IndexedRocksDB
+from voidrail import ClientDealer
 from soulseal import (
     create_auth_endpoints,
     UsersManager, User,
@@ -27,7 +28,12 @@ from ..documents import DocumentService
 from .schemas import HttpMethod
 from .static_files import StaticFilesManager
 from .proxy_middleware import mount_service_proxy
-from .endpoints import create_chat_endpoints, create_memory_endpoints, create_documents_endpoints
+from .endpoints import (
+    create_chat_endpoints,
+    create_memory_endpoints,
+    create_documents_endpoints,
+    create_topics_endpoints
+)
 
 def get_logger():
     """获取当前模块logger"""
@@ -105,7 +111,8 @@ async def create_app(
     description: str = "Illufly 后端 API 服务",
     prefix: str = "/api",
     static_dir: Optional[str] = None,
-    cors_origins: Optional[List[str]] = None
+    cors_origins: Optional[List[str]] = None,
+    router_address: Optional[str] = None
 ) -> FastAPI:
     """创建 FastAPI 应用"""
 
@@ -164,9 +171,14 @@ async def create_app(
     mount_memory_api(app, prefix, agent, token_sdk)
 
     # 挂载文件管理API
-    document_service = DocumentService(os.path.join(data_dir, "documents"), logger=get_logger())
+    voidrail_client = ClientDealer(router_address)
+    document_service = DocumentService(
+        os.path.join(data_dir, "documents"),
+        voidrail_client=voidrail_client,
+        logger=get_logger()
+    )
     mount_docs_api(app, prefix, token_sdk, document_service)
-    
+    mount_topics_api(app, prefix, token_sdk, document_service)
 
     # 注意：静态文件应该最后挂载，以避免覆盖API路由
     static_manager = None
@@ -247,11 +259,25 @@ def mount_docs_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, document_serv
     handlers = create_documents_endpoints(
         app=app,
         token_sdk=token_sdk,
-        documents_service=document_service,
+        document_service=document_service,
         prefix=prefix,
         logger=logger
     )
     mount_routes(app, handlers, "Illufly Backend - Documents")
+
+def mount_topics_api(app: FastAPI, prefix: str, token_sdk: TokenSDK, document_service: DocumentService):
+    """挂载主题管理API"""
+    logger = get_logger()
+    logger.info("正在挂载主题管理API...")
+    
+    handlers = create_topics_endpoints(
+        app=app,
+        token_sdk=token_sdk,
+        document_service=document_service,
+        prefix=prefix,
+        logger=logger
+    )
+    mount_routes(app, handlers, "Illufly Backend - Topics")
 
 def mount_static_files(app: FastAPI, prefix: str, static_dir: Optional[str]):
     """挂载静态文件服务"""

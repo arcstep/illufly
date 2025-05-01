@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional, AsyncGenerator
 from fastapi import UploadFile
+from voidrail import ClientDealer
 
 from ..llm import LanceRetriever
 
@@ -20,7 +21,7 @@ class DocumentProcessor:
         meta_manager,
         max_file_size: int = 50 * 1024 * 1024, 
         allowed_extensions: List[str] = None,
-        voidrail_client = None,
+        voidrail_client: ClientDealer = None,
         vector_db_path: str = None,
         embedding_config: Dict[str, Any] = {},
         logger = None
