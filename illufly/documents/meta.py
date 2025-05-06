@@ -23,10 +23,6 @@ class DocumentMeta(BaseModel):
     updated_at: float = Field(default_factory=time.time, description="更新时间")
     state: str = Field(default="init", description="文档状态")
     sub_state: str = Field(default="none", description="子状态")
-    has_markdown: bool = Field(default=False, description="是否有Markdown")
-    has_chunks: bool = Field(default=False, description="是否有切片")
-    has_embeddings: bool = Field(default=False, description="是否有嵌入")
-    has_qa_pairs: bool = Field(default=False, description="是否有QA对")
     resources: Dict[str, Any] = Field(default_factory=dict, description="资源信息")
     state_details: Dict[str, Any] = Field(default_factory=dict, description="状态详情")
     state_history: List[Dict[str, Any]] = Field(default_factory=list, description="状态历史")
@@ -44,7 +40,41 @@ class DocumentMeta(BaseModel):
         return f"{cls.get_prefix(user_id)}:{document_id}"
 
 class DocumentMetaManager:
-    """增强版文档元数据管理器 - 使用RocksDB高效管理元数据，文件系统管理实际文件"""
+    """增强版文档元数据管理器 - 使用RocksDB高效管理元数据，文件系统管理实际文件
+    
+    关键概念:
+    1. 文档(Document) - 由document_id唯一标识的内容实体，可以是本地上传文件、网页书签或对话记录
+    
+    2. 状态(State) - 文档在处理流程中的阶段:
+       - init: 初始状态
+       - uploaded/bookmarked/saved_chat: 来源状态
+       - markdowned: 已转换为Markdown格式
+       - chunked: 已切分为内容块
+       - qa_extracted: 已提取问答对
+       - embedded: 已生成向量嵌入
+    
+    3. 子状态(SubState) - 当前状态的处理进度:
+       - none: 无特定子状态
+       - processing: 处理中
+       - completed: 处理完成
+       - failed: 处理失败
+    
+    4. 资源(Resource) - 文档处理过程中生成的实际数据:
+       - markdown: Markdown格式内容
+       - chunks: 文本切片数据
+       - qa_pairs: 问答对数据
+       - embeddings: 向量嵌入数据
+    
+    状态和资源的关系:
+    - 当文档进入某状态(如markdowned)时，通常表示已生成对应资源(如markdown资源)
+    - 资源存储在文件系统中，资源元数据记录在document.resources字典中
+    - 状态变更历史记录在document.state_history列表中
+    
+    典型文档处理流程:
+    1. 文档上传/保存 -> init -> uploaded/bookmarked/saved_chat状态
+    2. 处理转换 -> processing子状态 -> completed/failed子状态
+    3. 状态前进或回退，资源生成或清理
+    """
     
     __COLLECTION_NAME__ = "document_meta"
     
@@ -233,25 +263,27 @@ class DocumentMetaManager:
             
         # 构建更新数据
         update_data = {
-            "state": new_state,
-            "sub_state": sub_state
-        }
-        
-        # 添加状态历史
-        history_entry = {
-            "timestamp": time.time(),
-            "state": new_state,
+            "state": new_state,  # 更新当前状态
             "sub_state": sub_state
         }
         
         if details:
             update_data["state_details"] = details
-            history_entry["details"] = details
             
-        # 获取现有历史记录并添加新条目
-        state_history = meta.get("state_history", [])
-        state_history.append(history_entry)
-        update_data["state_history"] = state_history
+        # 确保状态有变化时才添加历史
+        if meta.get("state") != new_state or meta.get("sub_state") != sub_state:
+            history_entry = {
+                "timestamp": time.time(),
+                "state": new_state,
+                "sub_state": sub_state
+            }
+            
+            if details:
+                history_entry["details"] = details
+            
+            state_history = meta.get("state_history", [])
+            state_history.append(history_entry)
+            update_data["state_history"] = state_history
         
         result = await self.update_metadata(user_id, document_id, update_data)
         return result is not None
@@ -274,8 +306,7 @@ class DocumentMetaManager:
         
         # 更新元数据
         update_data = {
-            "resources": resources,
-            f"has_{resource_type}": True
+            "resources": resources
         }
         
         result = await self.update_metadata(user_id, document_id, update_data)
@@ -287,34 +318,28 @@ class DocumentMetaManager:
         document_id: str,
         resource_type: str
     ) -> bool:
-        """从元数据中移除资源信息"""
+        """从元数据中彻底移除指定资源信息"""
         meta = await self.get_metadata(user_id, document_id)
         if not meta:
             return False
-            
-        # 创建一个全新的resources对象
-        resources = {}
-        old_resources = meta.get("resources", {})
-        
-        # 手动复制除了要删除的资源外的所有资源
-        for key, value in old_resources.items():
-            if key != resource_type:
-                resources[key] = value
-        
-        # 重建整个元数据对象
+
+        resources = meta.get("resources", {})
+        if resource_type not in resources:
+            self.logger.warning(f"尝试删除不存在的资源: {resource_type}, 文档: {document_id}")
+            return True  # 资源本就不存在
+
+        # 构造新的元数据字典，完全替换 resources
         updated_dict = meta.copy()
-        updated_dict["resources"] = resources
-        updated_dict[f"has_{resource_type}"] = False
+        updated_dict["resources"] = {k: v for k, v in resources.items() if k != resource_type}
         updated_dict["updated_at"] = time.time()
-        
-        # 完全替换元数据对象
-        updated_meta = DocumentMeta(**updated_dict)
+
+        # 保存到 RocksDB
         db_key = DocumentMeta.get_db_key(user_id, document_id)
+        updated_meta = DocumentMeta(**updated_dict)
         self.db.update_with_indexes(self.__COLLECTION_NAME__, db_key, updated_meta)
-        
-        # 重新获取以验证更新生效
-        result = await self.get_metadata(user_id, document_id)
-        return result is not None and resource_type not in result.get("resources", {})
+
+        self.logger.info(f"成功移除资源 {resource_type} 从文档 {document_id}")
+        return True
     
     # === 文件夹识别辅助函数 ===
     

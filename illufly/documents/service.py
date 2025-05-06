@@ -121,16 +121,117 @@ class DocumentService:
     # ==== 状态机管理 ====
     
     async def create_state_machine(self, user_id: str, document_id: str) -> DocumentStateMachine:
-        """创建并激活文档状态机实例"""
+        """创建并激活文档状态机实例，注入回调函数"""
+        # 定义回调函数
+        callbacks = {
+            # 状态前进回调
+            "after_uploaded_to_markdowned": self._process_markdown,
+            "after_bookmarked_to_markdowned": self._process_markdown,
+            "after_markdowned_to_chunked": self._process_chunks,
+            "after_chunked_to_embedded": self._process_embeddings,
+            "after_qa_extracted_to_embedded": self._process_embeddings,
+            
+            # 状态回退回调
+            "before_rollback_markdowned_to_uploaded": self._cleanup_markdown,
+            "before_rollback_markdowned_to_bookmarked": self._cleanup_markdown,
+            "before_rollback_chunked_to_markdowned": self._cleanup_chunks,
+            "before_rollback_embedded_to_chunked": self._cleanup_embeddings,
+            "before_rollback_embedded_to_qa_extracted": self._cleanup_embeddings,
+        }
+        
+        # 创建状态机
         machine = DocumentStateMachine(
             meta_manager=self.meta_manager,
             user_id=user_id,
             document_id=document_id,
-            logger=self.logger
+            logger=self.logger,
+            callbacks=callbacks
         )
         await machine.activate_initial_state()
         return machine
-    
+
+    # 添加回调函数实现
+    async def _process_markdown(self, user_id: str, document_id: str):
+        """处理Markdown转换回调"""
+        try:
+            # 执行文件处理
+            result = await self.processor.convert_document_to_markdown(user_id, document_id)
+            
+            # 添加资源记录
+            await self.meta_manager.add_resource(
+                user_id, document_id, 
+                "markdown", 
+                {"created_at": time.time(), "path": result.get("md_path", "")}
+            )
+        except Exception as e:
+            self.logger.error(f"Markdown处理失败: {e}")
+            # 出现异常时更新子状态为失败
+            machine = await self.create_state_machine(user_id, document_id)
+            await machine.fail_processing("markdowned", str(e))
+            raise
+
+    async def _process_chunks(self, user_id: str, document_id: str):
+        """处理文档切片回调"""
+        try:
+            # 执行切片处理
+            result = await self.processor.process_document_chunks(user_id, document_id)
+            
+            # 更新元数据中的切片信息
+            await self.processor.add_chunks_metadata(user_id, document_id, result["chunks"])
+            
+            # 添加资源记录
+            await self.meta_manager.add_resource(
+                user_id, document_id,
+                "chunks",
+                {
+                    "created_at": time.time(),
+                    "count": result.get("chunks_count", 0),
+                    "path": result.get("chunks_dir", "")
+                }
+            )
+        except Exception as e:
+            self.logger.error(f"文档切片处理失败: {e}")
+            # 出现异常时更新子状态为失败
+            machine = await self.create_state_machine(user_id, document_id)
+            await machine.fail_processing("chunked", str(e))
+            raise
+
+    async def _process_embeddings(self, user_id: str, document_id: str):
+        """处理向量嵌入回调"""
+        try:
+            # 执行向量化处理
+            result = await self.processor.process_document_embeddings(user_id, document_id)
+            
+            # 添加资源记录
+            await self.meta_manager.add_resource(
+                user_id, document_id,
+                "embeddings",
+                {
+                    "created_at": time.time(),
+                    "collection": result.get("collection", ""),
+                    "count": result.get("vectors_count", 0)
+                }
+            )
+        except Exception as e:
+            self.logger.error(f"向量嵌入处理失败: {e}")
+            # 出现异常时更新子状态为失败
+            machine = await self.create_state_machine(user_id, document_id)
+            await machine.fail_processing("embedded", str(e))
+            raise
+
+    # 添加清理回调函数
+    async def _cleanup_markdown(self, user_id: str, document_id: str):
+        """清理Markdown资源的回调"""
+        await self.processor.remove_markdown_file(user_id, document_id)
+
+    async def _cleanup_chunks(self, user_id: str, document_id: str):
+        """清理文档切片资源的回调"""
+        await self.processor.remove_chunks_dir(user_id, document_id)
+
+    async def _cleanup_embeddings(self, user_id: str, document_id: str):
+        """清理向量嵌入资源的回调"""
+        await self.processor.remove_vector_embeddings(user_id, document_id)
+
     # ==== 文档管理 - 委托给处理器 ====
     
     async def create_document(self, user_id: str, doc_info: Dict[str, Any], 
@@ -155,7 +256,7 @@ class DocumentService:
                     {"document_id": document_id}
                 )
             
-            # 创建元数据
+            # 创建元数据 - 移除旧的单一状态标志
             now = int(time.time())
             meta = {
                 **doc_info,
@@ -164,11 +265,14 @@ class DocumentService:
                 "topic_path": topic_path,
                 "state": "init",
                 "sub_state": "none",
-                "has_markdown": False,
-                "has_chunks": False, 
-                "has_embeddings": False,
-                "has_qa_pairs": False
             }
+            
+            # 确保初始化状态历史
+            meta["state_history"] = [{
+                "state": "init",
+                "sub_state": "none",
+                "timestamp": now
+            }]
             
             # 合并用户元数据
             if metadata:
@@ -265,43 +369,37 @@ class DocumentService:
         return await self.create_document(user_id, doc_info, topic_path, metadata)
     
     async def convert_to_markdown(self, user_id: str, document_id: str) -> Result:
-        """转换为Markdown - 协调处理器和状态机"""
+        """转换为Markdown - 完全依赖状态机的状态转换规则"""
         try:
             # 1. 创建状态机
             machine = await self.create_state_machine(user_id, document_id)
             
-            # 2. 检查当前状态
-            current_state = await machine.get_current_state()
-            if current_state not in ["uploaded", "bookmarked"]:
-                return Result.fail(
-                    ErrorType.STATE_ERROR,
-                    f"当前状态 {current_state} 不支持转换为Markdown",
-                    {"current_state": current_state, "required_states": ["uploaded", "bookmarked"]}
-                )
-                
+            # 2. 先检查状态一致性
+            await machine.ensure_state_resource_consistency()
+            
             # 3. 开始处理 - 状态机更新子状态
             await machine.start_processing("markdowned")
             
-            try:
-                # 4. 执行文件处理 - 处理器负责
-                result = await self.processor.convert_document_to_markdown(user_id, document_id)
-                
-                # 5. 完成处理 - 状态机更新状态
-                await machine.complete_processing("markdowned")
-                
-                return Result.ok({
-                    **result,
-                    "document_id": document_id,
-                    "state": "markdowned",
-                    "sub_state": "completed"
-                })
-            except Exception as process_e:
-                # 处理失败 - 状态机记录失败状态
-                await machine.fail_processing("markdowned", str(process_e))
-                error_type, error_message, error_detail = self._classify_exception(process_e)
-                error_detail["user_id"] = user_id
-                error_detail["document_id"] = document_id
-                return Result.fail(error_type, error_message, error_detail)
+            # 4. 更新主状态 - 状态机会自动检查转换是否合法
+            success = await machine.set_state("markdowned")
+            
+            if not success:
+                # 如果状态转换失败，返回错误
+                current_state = await machine.get_current_state()
+                return Result.fail(
+                    ErrorType.STATE_ERROR,
+                    f"无法从当前状态 {current_state} 转换为 markdowned",
+                    {"current_state": current_state, "target_state": "markdowned"}
+                )
+            
+            # 5. 获取最终状态
+            meta = await self.meta_manager.get_metadata(user_id, document_id)
+            
+            return Result.ok({
+                "document_id": document_id,
+                "state": meta.get("state"),
+                "sub_state": meta.get("sub_state")
+            })
         except Exception as e:
             error_type, error_message, error_detail = self._classify_exception(e)
             self.logger.error(f"转换Markdown失败: {error_message}", exc_info=True)
@@ -309,98 +407,110 @@ class DocumentService:
             error_detail["document_id"] = document_id
             return Result.fail(error_type, error_message, error_detail)
     
-    async def chunk_document(self, user_id: str, document_id: str) -> Dict[str, Any]:
-        """将文档切分为片段 - 协调处理器和状态机"""
-        # 1. 创建状态机
-        machine = await self.create_state_machine(user_id, document_id)
-        
-        # 2. 检查当前状态
-        current_state = await machine.get_current_state()
-        if current_state != "markdowned":
-            raise ValueError(f"当前状态 {current_state} 不支持切片")
-            
+    async def chunk_document(self, user_id: str, document_id: str) -> Result:
+        """将文档切分为片段 - 完全依赖状态机的状态转换规则"""
         try:
-            # 3. 开始处理 - 状态机负责状态变更
+            # 1. 创建状态机
+            machine = await self.create_state_machine(user_id, document_id)
+            
+            # 2. 先检查状态一致性
+            await machine.ensure_state_resource_consistency()
+            
+            # 3. 开始处理 - 状态机更新子状态
             await machine.start_processing("chunked")
             
-            # 4. 执行切片 - 处理器负责文件操作
-            result = await self.processor.process_document_chunks(user_id, document_id)
+            # 4. 更新主状态 - 状态机会自动检查转换是否合法
+            success = await machine.set_state("chunked")
             
-            # 5. 更新元数据中的切片信息 - 处理器负责处理相关元数据
-            await self.processor.add_chunks_metadata(user_id, document_id, result["chunks"])
+            if not success:
+                # 如果状态转换失败，返回错误
+                current_state = await machine.get_current_state()
+                return Result.fail(
+                    ErrorType.STATE_ERROR,
+                    f"无法从当前状态 {current_state} 转换为 chunked",
+                    {"current_state": current_state, "target_state": "chunked"}
+                )
             
-            # 6. 完成处理 - 状态机负责状态变更
-            await machine.complete_processing("chunked")
+            # 5. 获取最终状态
+            meta = await self.meta_manager.get_metadata(user_id, document_id)
             
-            return {
-                **result,
+            return Result.ok({
                 "document_id": document_id,
-                "state": "chunked",
-                "sub_state": "completed"
-            }
+                "state": meta.get("state"),
+                "sub_state": meta.get("sub_state")
+            })
         except Exception as e:
-            # 处理失败 - 状态机负责状态变更
-            await machine.fail_processing("chunked", str(e))
-            raise
+            error_type, error_message, error_detail = self._classify_exception(e)
+            self.logger.error(f"切片文档失败: {error_message}", exc_info=True)
+            error_detail["user_id"] = user_id
+            error_detail["document_id"] = document_id
+            return Result.fail(error_type, error_message, error_detail)
     
-    async def generate_embeddings(self, user_id: str, document_id: str) -> Dict[str, Any]:
-        """为文档切片生成向量嵌入"""
-        # 创建状态机
-        machine = await self.create_state_machine(user_id, document_id)
-        
-        # 检查当前状态
-        current_state = await machine.get_current_state()
-        if current_state != "chunked":
-            raise ValueError(f"当前状态 {current_state} 不支持生成嵌入")
-            
+    async def generate_embeddings(self, user_id: str, document_id: str) -> Result:
+        """为文档切片生成向量嵌入 - 完全依赖状态机的状态转换规则"""
         try:
-            # 开始处理
+            # 1. 创建状态机
+            machine = await self.create_state_machine(user_id, document_id)
+            
+            # 2. 先检查状态一致性
+            await machine.ensure_state_resource_consistency()
+            
+            # 3. 开始处理 - 状态机更新子状态
             await machine.start_processing("embedded")
             
-            # 执行向量化
-            result = await self.processor.process_document_embeddings(user_id, document_id)
+            # 4. 更新主状态 - 状态机会自动检查转换是否合法
+            success = await machine.set_state("embedded")
             
-            # 完成处理
-            await machine.complete_processing("embedded")
+            if not success:
+                # 如果状态转换失败，返回错误
+                current_state = await machine.get_current_state()
+                return Result.fail(
+                    ErrorType.STATE_ERROR,
+                    f"无法从当前状态 {current_state} 转换为 embedded",
+                    {"current_state": current_state, "target_state": "embedded"}
+                )
             
-            return {
-                **result,
+            # 5. 获取最终状态
+            meta = await self.meta_manager.get_metadata(user_id, document_id)
+            
+            return Result.ok({
                 "document_id": document_id,
-                "state": "embedded",
-                "sub_state": "completed"
-            }
+                "state": meta.get("state"),
+                "sub_state": meta.get("sub_state")
+            })
         except Exception as e:
-            await machine.fail_processing("embedded", str(e))
-            raise
+            error_type, error_message, error_detail = self._classify_exception(e)
+            self.logger.error(f"生成向量嵌入失败: {error_message}", exc_info=True)
+            error_detail["user_id"] = user_id
+            error_detail["document_id"] = document_id
+            return Result.fail(error_type, error_message, error_detail)
     
-    async def rollback_to_previous_state(self, user_id: str, document_id: str) -> Dict[str, Any]:
-        """回滚到上一个状态 - 协调处理器和状态机"""
-        # 1. 创建状态机
-        machine = await self.create_state_machine(user_id, document_id)
-        
-        # 2. 获取当前状态和前一个状态
-        current_state = await machine.get_current_state()
-        prev_state = machine.get_previous_state()
-        
-        if not prev_state:
-            raise ValueError(f"当前状态 {current_state} 没有前一个状态可回滚")
+    async def rollback_to_previous_state(self, user_id: str, document_id: str) -> Result:
+        """回滚到上一个状态 - 使用状态机回调机制清理资源"""
+        try:
+            # 1. 创建状态机
+            machine = await self.create_state_machine(user_id, document_id)
             
-        # 3. 执行资源回滚操作
-        if current_state == "markdowned" and prev_state in ["uploaded", "bookmarked"]:
-            # 回滚Markdown，删除MD文件
-            await self.processor.remove_markdown_file(user_id, document_id)
-        elif current_state == "chunked" and prev_state == "markdowned":
-            # 回滚切片，删除切片目录
-            await self.processor.remove_chunks_dir(user_id, document_id)
-        elif current_state == "embedded" and prev_state in ["chunked", "qa_extracted"]:
-            # 回滚嵌入，从向量存储中删除
-            await self.processor.remove_vector_embeddings(user_id, document_id)
-                
-        # 4. 执行状态回滚 - 使用状态机
-        await machine.rollback_to_previous(details={"rollback_from": current_state})
-        
-        # 5. 获取更新后的元数据
-        return await self.get_document(user_id, document_id)
+            # 2. 使用状态机执行回退(会自动调用相应回调函数清理资源)
+            success = await machine.rollback()
+            
+            if not success:
+                return Result.fail(
+                    ErrorType.STATE_ERROR,
+                    "状态回退失败",
+                    {"user_id": user_id, "document_id": document_id}
+                )
+            
+            # 3. 获取更新后的元数据
+            updated_meta = await self.get_document(user_id, document_id)
+            return Result.ok(updated_meta)
+            
+        except Exception as e:
+            error_type, error_message, error_detail = self._classify_exception(e)
+            self.logger.error(f"回退状态失败: {error_message}", exc_info=True)
+            error_detail["user_id"] = user_id
+            error_detail["document_id"] = document_id
+            return Result.fail(error_type, error_message, error_detail)
     
     async def delete_document(self, user_id: str, document_id: str) -> Result:
         """删除文档 - 协调状态管理和资源清理"""
@@ -469,8 +579,21 @@ class DocumentService:
             return Result.fail(error_type, error_message, error_detail)
     
     async def get_document(self, user_id: str, document_id: str) -> Optional[Dict[str, Any]]:
-        """获取文档元数据"""
-        return await self.meta_manager.get_metadata(user_id, document_id)
+        """获取文档元数据，并确保状态与资源一致性"""
+        # 先获取元数据
+        meta = await self.meta_manager.get_metadata(user_id, document_id)
+        
+        if meta:
+            # 创建状态机并检查一致性
+            machine = await self.create_state_machine(user_id, document_id)
+            fixed = await machine.ensure_state_resource_consistency()
+            
+            if fixed:
+                # 如果进行了修复，重新获取最新元数据
+                meta = await self.meta_manager.get_metadata(user_id, document_id)
+                self.logger.info(f"已修复文档 {document_id} 的状态与资源不一致问题")
+        
+        return meta
     
     async def list_documents(self, user_id: str, topic_path: str = None) -> List[Dict[str, Any]]:
         """列出用户的所有文档"""
@@ -745,3 +868,32 @@ class DocumentService:
             return ErrorType.STATE_ERROR, str(e), error_detail
         else:
             return ErrorType.UNKNOWN_ERROR, f"发生未知错误: {str(e)}", error_detail
+
+    async def verify_all_documents_consistency(self) -> Dict[str, int]:
+        """验证所有文档的状态与资源一致性"""
+        stats = {"checked": 0, "fixed": 0, "failed": 0}
+        
+        # 获取所有用户
+        user_dirs = [d for d in self.base_dir.glob("*") if d.is_dir()]
+        
+        for user_dir in user_dirs:
+            user_id = user_dir.name
+            # 获取用户所有文档
+            docs = await self.list_documents(user_id)
+            
+            for doc in docs:
+                try:
+                    stats["checked"] += 1
+                    document_id = doc["document_id"]
+                    
+                    machine = await self.create_state_machine(user_id, document_id)
+                    fixed = await machine.ensure_state_resource_consistency()
+                    
+                    if fixed:
+                        stats["fixed"] += 1
+                        self.logger.info(f"已修复文档 {document_id} 的状态与资源不一致")
+                except Exception as e:
+                    stats["failed"] += 1
+                    self.logger.error(f"验证文档一致性失败: {e}")
+        
+        return stats

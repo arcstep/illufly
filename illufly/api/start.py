@@ -8,11 +8,7 @@ from typing import Optional, List, Set, Dict, Any, Callable, Tuple, Union
 
 from voidring import IndexedRocksDB
 from voidrail import ClientDealer
-from soulseal import (
-    create_auth_endpoints,
-    UsersManager, User,
-    TokensManager, TokenBlacklist, TokenSDK
-)
+from soulseal import mount_auth_api, TokenSDK, UsersManager
 
 import logging
 import httpx
@@ -137,7 +133,7 @@ async def create_app(
         allow_credentials=True,  # 允许携带凭证
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["Set-Cookie"]  # 暴露 Set-Cookie 头
+        expose_headers=["Authorization", "Set-Cookie"]  # 暴露头，允许前端读取
     )
 
     # 初始化数据库
@@ -156,13 +152,11 @@ async def create_app(
         await agent.memory.init_retriever()
 
     # 令牌与认证服务
-    token_blacklist = TokenBlacklist()
-    tokens_manager = TokensManager(db, token_blacklist, token_storage_method="cookie")
-    token_sdk = TokenSDK(tokens_manager=tokens_manager, token_storage_method="cookie")
+    token_sdk = TokenSDK(db=db)
     users_manager = UsersManager(db)
     
     # 挂载认证API
-    mount_auth_api(app, prefix, tokens_manager, token_blacklist, users_manager)
+    mount_auth_api(app, prefix, token_sdk, users_manager)
     
     # 挂载对话和记忆API
     thread_manager = ThreadManager(db)
@@ -200,22 +194,6 @@ async def create_app(
     logger.info(f"Illufly API 启动完成: {prefix}/docs")
     return app
 
-def mount_auth_api(app: FastAPI, prefix: str, tokens_manager: TokensManager, token_blacklist: TokenBlacklist, users_manager: UsersManager):
-    """挂载用户认证API"""
-    logger = get_logger()
-    logger.info("正在挂载用户认证API...")
-    
-    # 用户管理和认证路由
-    handlers = create_auth_endpoints(
-        app=app,
-        tokens_manager=tokens_manager,
-        token_blacklist=token_blacklist,
-        users_manager=users_manager,
-        prefix=prefix,
-        logger=logger
-    )
-    
-    mount_routes(app, handlers, "Illufly Backend - Auth")
 
 def mount_chat_api(app: FastAPI, prefix: str, agent: ChatAgent, thread_manager: ThreadManager, token_sdk: TokenSDK):
     """挂载聊天API"""

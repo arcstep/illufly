@@ -276,7 +276,7 @@ async def test_add_remove_resource(meta_manager, user_id, document_id):
     
     # 检查资源添加
     meta = await meta_manager.get_metadata(user_id, document_id)
-    assert meta["has_markdown"] is True
+    assert "markdown" in meta["resources"]
     assert meta["resources"]["markdown"]["path"] == "markdown/test.md"
     
     # 再添加一个资源
@@ -289,7 +289,7 @@ async def test_add_remove_resource(meta_manager, user_id, document_id):
     
     # 验证多个资源
     meta = await meta_manager.get_metadata(user_id, document_id)
-    assert meta["has_chunks"] is True
+    assert "chunks" in meta["resources"]
     assert meta["resources"]["markdown"]["path"] == "markdown/test.md"
     assert meta["resources"]["chunks"]["count"] == 5
     
@@ -299,9 +299,8 @@ async def test_add_remove_resource(meta_manager, user_id, document_id):
     
     # 验证资源被移除
     updated_meta = await meta_manager.get_metadata(user_id, document_id)
-    assert updated_meta["has_markdown"] is False
     assert "markdown" not in updated_meta["resources"]
-    assert updated_meta["has_chunks"] is True  # 其他资源保留
+    assert "chunks" in updated_meta["resources"]  # 其他资源保留
 
 
 @pytest.mark.asyncio

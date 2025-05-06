@@ -5,6 +5,7 @@ import time
 import aiofiles
 import json
 import logging
+import base64
 from pathlib import Path
 from typing import Dict, Any, List, Optional, AsyncGenerator
 from fastapi import UploadFile
@@ -173,7 +174,7 @@ class DocumentProcessor:
             "extension": self.get_file_extension(filename)
         }
     
-    async def convert_to_markdown(self, user_id: str, document_id: str, voidrail_client=None) -> Dict[str, Any]:
+    async def convert_to_markdown(self, user_id: str, document_id: str) -> Dict[str, Any]:
         """将文档转换为Markdown格式"""
         doc_path = self.get_raw_path(user_id, document_id)
         
@@ -187,10 +188,24 @@ class DocumentProcessor:
         
         try:
             # 调用voidrail进行转换
-            if voidrail_client:
+            if self.voidrail_client:
+                # 读取文件内容并转换为base64
+                async with aiofiles.open(doc_path, 'rb') as f:
+                    file_content = await f.read()
+                    base64_content = base64.b64encode(file_content).decode('utf-8')
+                
+                # 获取文件类型
+                file_type = doc_path.suffix.lstrip('.')
+                
                 # 使用LLM服务转换
                 markdown_content = ""
-                async for chunk in voidrail_client.stream(task="file_to_markdown", file_path=str(doc_path)):
+                async for chunk in self.voidrail_client.stream(
+                    "SimpleDocling.convert",
+                    content=base64_content,
+                    content_type="base64",
+                    file_type=file_type,
+                    output_format="markdown"
+                ):
                     markdown_content += chunk
                 
                 # 保存Markdown文件
@@ -198,13 +213,13 @@ class DocumentProcessor:
                     await f.write(markdown_content)
             else:
                 # 简单转换(仅用于测试)
-                markdown_content = f"# {document_id}\n\n自动生成的Markdown内容"
+                markdown_content = f"# {document_id}\n\nMarkdown Content Demo."
                 async with aiofiles.open(md_path, 'w', encoding='utf-8') as f:
                     await f.write(markdown_content)
             
             return {
                 "md_path": str(md_path),
-                "content_preview": markdown_content[:200] + "...",
+                "content_preview": markdown_content[:200] + "..." if len(markdown_content) > 200 else markdown_content,
                 "success": True
             }
         except Exception as e:
@@ -458,7 +473,7 @@ class DocumentProcessor:
     async def convert_document_to_markdown(self, user_id: str, document_id: str) -> Dict[str, Any]:
         """文件转换为Markdown - 只处理文件操作，不修改元数据"""
         try:
-            result = await self.convert_to_markdown(user_id, document_id, voidrail_client=self.voidrail_client)
+            result = await self.convert_to_markdown(user_id, document_id)
             return result
         except Exception as e:
             self.logger.error(f"转换Markdown失败: {e}")

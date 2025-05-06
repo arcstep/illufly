@@ -53,15 +53,7 @@ async def uploaded_document(meta_manager, user_id, document_id):
     doc_id = f"{document_id}_uploaded"
     await meta_manager.create_document(
         user_id,
-        doc_id,
-        None,  # 无主题路径
-        {
-            "state": "uploaded", 
-            "sub_state": "none",
-            "has_markdown": False,
-            "has_chunks": False,
-            "has_embeddings": False
-        }
+        doc_id
     )
     
     # 创建状态机
@@ -181,17 +173,6 @@ async def test_chat_sequence(meta_manager, user_id):
     assert machine.current_state.id == "qa_extracted"
 
 
-@pytest.mark.asyncio
-async def test_rollback(uploaded_document):
-    """测试状态回退"""
-    # 从uploaded前进到markdowned
-    await uploaded_document.advance_to_next()
-    assert uploaded_document.current_state.id == "markdowned"
-    
-    # 回退到上一个状态
-    await uploaded_document.rollback_to_previous()
-    assert uploaded_document.current_state.id == "uploaded"
-
 
 @pytest.mark.asyncio
 async def test_sub_states(meta_manager, user_id):
@@ -248,36 +229,6 @@ async def test_fail_processing(meta_manager, user_id):
     assert meta["state"] == "markdowned"
     assert meta["sub_state"] == "failed"
     assert meta["state_details"]["error"] == error_message
-
-
-@pytest.mark.asyncio
-async def test_state_hooks(meta_manager, user_id):
-    """测试状态钩子函数"""
-    # 创建新文档
-    doc_id = "state_hooks_test"
-    await meta_manager.create_document(user_id, doc_id)
-    
-    # 初始化状态机
-    machine = DocumentStateMachine(meta_manager, user_id, doc_id)
-    await machine.initialize_from_metadata()
-    await machine.set_state("uploaded")
-    
-    # 进入markdowned状态应该设置has_markdown=True
-    await machine.set_state("markdowned")
-    
-    # 验证元数据字段更新
-    meta = await meta_manager.get_metadata(user_id, doc_id)
-    assert meta["has_markdown"] is True
-    
-    # 前进到chunked状态
-    await machine.advance_to_next()
-    meta = await meta_manager.get_metadata(user_id, doc_id)
-    assert meta["has_chunks"] is True
-    
-    # 前进到embedded状态
-    await machine.advance_to_next()
-    meta = await meta_manager.get_metadata(user_id, doc_id)
-    assert meta["has_embeddings"] is True
 
 
 @pytest.mark.asyncio

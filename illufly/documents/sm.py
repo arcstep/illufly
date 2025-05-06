@@ -26,7 +26,7 @@ class DocumentState:
         return state in [DocumentState.UPLOADED, DocumentState.BOOKMARKED, DocumentState.SAVED_CHAT]
 
 class DocumentStateMachine(StateMachine):
-    """简化的文档状态机 - 专注于核心格式转换状态"""
+    """简化的文档状态机 - 支持回调注入"""
     
     # 初始状态 - 文档创建初始点
     init = State('初始化', initial=True)
@@ -99,12 +99,22 @@ class DocumentStateMachine(StateMachine):
         FAILED = "failed"          # 失败
         NONE = "none"              # 无子状态
     
-    def __init__(self, meta_manager, user_id, document_id, logger=None):
+    # 添加到 DocumentStateMachine 类中
+    RESOURCE_STATE_MAP = {
+        "markdown": DocumentState.MARKDOWNED,
+        "chunks": DocumentState.CHUNKED,
+        "qa_pairs": DocumentState.QA_EXTRACTED, 
+        "embeddings": DocumentState.EMBEDDED
+    }
+    
+    def __init__(self, meta_manager, user_id, document_id, logger=None, callbacks=None):
         self.meta_manager = meta_manager
         self.user_id = user_id
         self.document_id = document_id
         self.logger = logger or logging.getLogger(__name__)
         self.previous_state = None
+        # 注册回调函数字典
+        self.callbacks = callbacks or {}
         super().__init__()
     
     @classmethod
@@ -138,7 +148,7 @@ class DocumentStateMachine(StateMachine):
         return state_map.get(meta["state"], "init")
     
     async def set_state(self, new_state: str, details: dict = None, sub_state: str = SubState.NONE, force: bool = False) -> bool:
-        """设置状态并更新元数据，支持子状态"""
+        """设置状态并更新元数据，支持子状态和回调执行"""
         # 保存之前的状态
         old_state = await self.get_current_state()
         self.previous_state = old_state
@@ -159,9 +169,19 @@ class DocumentStateMachine(StateMachine):
         
         # 执行状态转换
         if target_state:
+            # 1. 更新内部状态
             self.current_state = target_state
             
-            # 更新元数据 - 确保更新成功且同步
+            # 2. 执行前置回调（如果存在）
+            before_callback_name = f"before_{old_state}_to_{new_state}"
+            if before_callback_name in self.callbacks:
+                try:
+                    await self.callbacks[before_callback_name](self.user_id, self.document_id)
+                except Exception as e:
+                    self.logger.error(f"执行前置回调失败: {before_callback_name}, 错误: {e}")
+                    return False
+            
+            # 3. 更新元数据
             success = await self.meta_manager.change_state(
                 self.user_id, self.document_id, 
                 new_state, details, sub_state
@@ -171,16 +191,19 @@ class DocumentStateMachine(StateMachine):
                 self.logger.error(f"文档 {self.document_id} 元数据状态更新失败")
                 return False
             
-            # 获取更新后的元数据，确认状态已更新
-            updated_meta = await self.meta_manager.get_metadata(self.user_id, self.document_id)
-            if updated_meta.get("state") != new_state:
-                self.logger.error(f"元数据状态验证失败: 期望 {new_state}，实际 {updated_meta.get('state')}")
-                return False
-            
-            # 调用进入状态的钩子函数
+            # 4. 调用进入状态的钩子函数
             hook_method = f"on_enter_{new_state}"
             if hasattr(self, hook_method):
                 await getattr(self, hook_method)(old_state)
+            
+            # 5. 执行后置回调（如果存在）
+            after_callback_name = f"after_{old_state}_to_{new_state}"
+            if after_callback_name in self.callbacks:
+                try:
+                    await self.callbacks[after_callback_name](self.user_id, self.document_id)
+                except Exception as e:
+                    self.logger.error(f"执行后置回调失败: {after_callback_name}, 错误: {e}")
+                    # 不影响状态转换结果，但记录日志
             
             self.logger.info(f"文档 {self.document_id} 状态从 {old_state} 变更为 {new_state}[{sub_state}]")
             return True
@@ -198,98 +221,57 @@ class DocumentStateMachine(StateMachine):
                 break
     
     async def on_enter_markdowned(self, from_state=None):
-        """进入Markdown完成状态"""
-        await self.meta_manager.update_metadata(
-            self.user_id, self.document_id,
-            {
-                "has_markdown": True,
-                "has_chunks": False,
-                "has_embeddings": False
-            }
-        )
+        """进入Markdown完成状态 - 仅处理清理逻辑
         
-        # 如果是从切片状态回退，需要清理切片资源
+        当状态转为markdowned时，如果是从chunked状态回退，
+        需要清理chunks资源以保持状态与资源一致性。
+        """
+        # 仅保留清理逻辑，删除资源添加代码
         if from_state == "chunked":
             await self.meta_manager.remove_resource(
                 self.user_id, self.document_id, "chunks"
             )
     
     async def on_enter_chunked(self, from_state=None):
-        """进入切片完成状态"""
-        await self.meta_manager.update_metadata(
-            self.user_id, self.document_id,
-            {
-                "has_chunks": True,
-                "has_embeddings": False
-            }
-        )
+        """进入切片完成状态 - 仅处理清理逻辑
         
-        # 如果是从嵌入状态回退，需要清理嵌入资源
+        当状态转为chunked时，如果是从embedded状态回退，
+        需要清理embeddings资源以保持状态与资源一致性。
+        """
+        # 仅保留清理逻辑，删除资源添加代码
         if from_state == "embedded":
             await self.meta_manager.remove_resource(
                 self.user_id, self.document_id, "embeddings"
             )
     
     async def on_enter_qa_extracted(self, from_state=None):
-        """进入QA提取完成状态"""
-        await self.meta_manager.update_metadata(
-            self.user_id, self.document_id,
-            {
-                "has_qa_pairs": True,
-                "has_embeddings": False
-            }
-        )
+        """进入QA提取完成状态 - 仅处理清理逻辑
         
-        # 如果是从嵌入状态回退，需要清理嵌入资源
+        当状态转为qa_extracted时，如果是从embedded状态回退，
+        需要清理embeddings资源以保持状态与资源一致性。
+        """
+        # 仅保留清理逻辑，删除资源添加代码
         if from_state == "embedded":
             await self.meta_manager.remove_resource(
                 self.user_id, self.document_id, "embeddings"
             )
     
     async def on_enter_embedded(self, from_state=None):
-        """进入嵌入完成状态"""
-        await self.meta_manager.update_metadata(
-            self.user_id, self.document_id,
-            {
-                "has_embeddings": True
-            }
-        )
+        """进入嵌入完成状态 - 无需特殊处理"""
+        pass
     
     async def on_enter_init(self, from_state=None):
-        """进入初始状态"""
-        await self.meta_manager.update_metadata(
-            self.user_id, self.document_id,
-            {
-                "has_markdown": False,
-                "has_chunks": False,
-                "has_embeddings": False,
-                "has_qa_pairs": False
-            }
-        )
+        """进入初始状态 - 可选清理所有资源"""
+        # 可选实现：清理所有资源
+        pass
     
     async def on_enter_uploaded(self, from_state=None):
-        """进入上传状态"""
-        await self.meta_manager.update_metadata(
-            self.user_id, self.document_id,
-            {
-                "has_markdown": False,
-                "has_chunks": False,
-                "has_embeddings": False,
-                "has_qa_pairs": False
-            }
-        )
+        """进入上传状态 - 无需特殊处理"""
+        pass
 
     async def on_enter_bookmarked(self, from_state=None):
-        """进入书签状态"""
-        await self.meta_manager.update_metadata(
-            self.user_id, self.document_id,
-            {
-                "has_markdown": False,
-                "has_chunks": False,
-                "has_embeddings": False,
-                "has_qa_pairs": False
-            }
-        )
+        """进入书签状态 - 无需特殊处理"""
+        pass
     
     # 辅助方法
     def get_sequence(self) -> list:
@@ -388,12 +370,6 @@ class DocumentStateMachine(StateMachine):
             return await self.set_state(next_state, details)
         return False
     
-    async def rollback_to_previous(self, details=None) -> bool:
-        """回退到序列中的上一个状态"""
-        prev_state = self.get_previous_state()
-        if prev_state:
-            return await self.set_state(prev_state, details)
-        return False
 
     async def get_current_state_info(self) -> Dict[str, str]:
         """获取当前完整状态信息，包括主状态和子状态"""
@@ -461,3 +437,105 @@ class DocumentStateMachine(StateMachine):
         
         # 否则使用默认初始状态
         await super().activate_initial_state()
+
+    async def rollback(self) -> bool:
+        """改进的回退逻辑，支持回调函数，并正确管理状态历史"""
+        # 1. 获取当前状态和子状态
+        state_info = await self.get_current_state_info()
+        current_state = state_info["state"]
+        current_sub_state = state_info["sub_state"]
+
+        # 情况1：子状态为 processing 或 failed，只回退子状态到 completed
+        if current_sub_state in [self.SubState.PROCESSING, self.SubState.FAILED]:
+            return await self.set_state(
+                current_state,
+                sub_state=self.SubState.COMPLETED
+            )
+
+        # 情况2：主状态回退，按历史记录前进
+        meta = await self.meta_manager.get_metadata(self.user_id, self.document_id)
+        if not meta:
+            self.logger.error(f"回退失败：无法获取文档 {self.document_id} 元数据")
+            return False
+
+        history = meta.get("state_history", [])
+        if len(history) <= 1:
+            self.logger.warning(f"无法回退：文档 {self.document_id} 状态历史不足")
+            return False
+
+        # 前一个状态记录
+        prev_record = history[-2]
+        prev_state = prev_record["state"]
+        prev_sub_state = prev_record.get("sub_state", self.SubState.COMPLETED)
+
+        # 回退前回调
+        cb_name = f"before_rollback_{current_state}_to_{prev_state}"
+        if cb_name in self.callbacks:
+            try:
+                self.logger.info(f"调用回退回调: {cb_name}")
+                await self.callbacks[cb_name](self.user_id, self.document_id)
+            except Exception as e:
+                self.logger.error(f"回退回调失败 {cb_name}: {e}")
+                return False
+
+        # 裁剪掉最新一条历史，并更新状态
+        new_history = history[:-1]
+        await self.meta_manager.update_metadata(
+            self.user_id,
+            self.document_id,
+            {
+                "state": prev_state,
+                "sub_state": prev_sub_state,
+                "state_history": new_history
+            }
+        )
+
+        # 更新状态机内部 current_state
+        for st in self.states:
+            if st.id == prev_state:
+                self.current_state = st
+                break
+
+        # 调用对应 on_enter 钩子清理资源
+        hook = f"on_enter_{prev_state}"
+        if hasattr(self, hook):
+            await getattr(self, hook)(current_state)
+
+        self.logger.info(f"文档 {self.document_id} 回退到 {prev_state}[{prev_sub_state}]")
+        return True
+
+    async def ensure_state_resource_consistency(self) -> bool:
+        """确保文档状态和资源一致性
+        
+        根据文档当前状态检查必要资源是否存在，如不存在则修复。
+        此方法应该在加载文档时检查使用。
+        
+        Returns:
+            bool: 是否需要进行修复
+        """
+        current_state = await self.get_current_state()
+        meta = await self.meta_manager.get_metadata(self.user_id, self.document_id)
+        
+        if not meta:
+            return False
+        
+        resources = meta.get("resources", {})
+        fixed = False
+        
+        # 检查并修复资源状态一致性
+        if current_state == "markdowned" and "markdown" not in resources:
+            # 状态为markdowned但缺少markdown资源，进行降级
+            await self.rollback()
+            fixed = True
+        
+        elif current_state == "chunked" and "chunks" not in resources:
+            # 状态为chunked但缺少chunks资源，进行降级
+            await self.rollback()
+            fixed = True
+        
+        elif current_state == "embedded" and "embeddings" not in resources:
+            # 状态为embedded但缺少embeddings资源，进行降级 
+            await self.rollback()
+            fixed = True
+        
+        return fixed

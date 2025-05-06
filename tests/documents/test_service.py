@@ -21,38 +21,6 @@ os.makedirs(cache_dir, exist_ok=True)
 init_litellm(cache_dir)
 
 
-class SimpleVoidrailClient:
-    """简单的文档转换客户端真实实现"""
-    
-    async def stream(self, task=None, file_path=None, **kwargs):
-        """流式返回处理结果"""
-        if task != "file_to_markdown":
-            raise ValueError(f"不支持的任务类型: {task}")
-            
-        # 从文件读取内容并转换为简单的Markdown
-        if file_path and os.path.exists(file_path):
-            file_name = os.path.basename(file_path)
-            file_ext = os.path.splitext(file_name)[1].lower()
-            
-            # 简单模拟不同文件类型的转换
-            content = f"# {file_name}\n\n"
-            
-            if file_ext == '.txt':
-                # 文本文件直接读取内容
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    text = f.read(2000)  # 读取最多2000字符
-                content += text
-            elif file_ext == '.pdf':
-                content += "这是从PDF文件中提取的文本内容。\n\n* 第一段落\n* 第二段落\n* 第三段落"
-            elif file_ext in ['.jpg', '.jpeg', '.png', '.gif']:
-                content += "这是图片描述文本。\n\n图片中可能包含的内容..."
-            else:
-                content += "这是通用文档内容。\n\n## 第一章\n\n这是第一章的内容。\n\n## 第二章\n\n这是第二章的内容。"
-                
-            # 流式返回
-            yield content
-
-
 # 简单的IndexedRocksDB模拟
 class SimpleIndexedRocksDB:
     def __init__(self, db_path):
@@ -97,20 +65,14 @@ def temp_dir():
         yield temp_dir
 
 
-@pytest.fixture
-def voidrail_client():
-    """创建文档转换客户端"""
-    return SimpleVoidrailClient()
-
 
 @pytest.fixture
-def doc_service(temp_dir, voidrail_client):
+def doc_service(temp_dir):
     """创建文档服务实例"""
     service = DocumentService(
         base_dir=temp_dir,
         max_file_size=5 * 1024 * 1024,  # 5MB限制
         max_total_size_per_user=20 * 1024 * 1024,  # 20MB总限制
-        voidrail_client=voidrail_client,
         embedding_config={}
     )
     

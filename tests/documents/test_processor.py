@@ -19,118 +19,6 @@ os.makedirs(cache_dir, exist_ok=True)
 init_litellm(cache_dir)
 
 
-class SimpleVoidrailClient:
-    """简单的文档转换客户端真实实现"""
-    
-    async def stream(self, task=None, file_path=None, **kwargs):
-        """流式返回处理结果"""
-        if task != "file_to_markdown":
-            raise ValueError(f"不支持的任务类型: {task}")
-            
-        # 从文件读取内容并转换为简单的Markdown
-        if file_path and os.path.exists(file_path):
-            file_name = os.path.basename(file_path)
-            file_ext = os.path.splitext(file_name)[1].lower()
-            
-            # 简单模拟不同文件类型的转换
-            content = f"# {file_name}\n\n"
-            
-            if file_ext == '.txt':
-                # 文本文件直接读取内容
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    text = f.read(2000)  # 读取最多2000字符
-                content += text
-            elif file_ext == '.pdf':
-                content += "这是从PDF文件中提取的文本内容。\n\n* 第一段落\n* 第二段落\n* 第三段落"
-            elif file_ext in ['.jpg', '.jpeg', '.png', '.gif']:
-                content += "这是图片描述文本。\n\n图片中可能包含的内容..."
-            else:
-                content += "这是通用文档内容。\n\n## 第一章\n\n这是第一章的内容。\n\n## 第二章\n\n这是第二章的内容。"
-                
-            # 流式返回
-            yield content
-
-    async def delete(self, collection_name=None, user_id=None, document_id=None, filter=None):
-        """删除向量"""
-        if collection_name not in self.collections:
-            return {"success": True, "deleted": 0}
-            
-        collection = self.collections[collection_name]
-        deleted_count = 0
-        
-        if document_id:
-            # 筛选出要保留的项
-            new_texts = []
-            new_vectors = []
-            new_metadatas = []
-            new_ids = []
-            
-            for i in range(len(collection["texts"])):
-                metadata = collection["metadatas"][i]
-                if metadata.get("document_id") != document_id:
-                    new_texts.append(collection["texts"][i])
-                    new_vectors.append(collection["vectors"][i])
-                    new_metadatas.append(metadata)
-                    new_ids.append(collection["ids"][i])
-                else:
-                    deleted_count += 1
-            
-            # 更新集合
-            collection["texts"] = new_texts
-            collection["vectors"] = new_vectors
-            collection["metadatas"] = new_metadatas
-            collection["ids"] = new_ids
-        
-        return {"success": True, "deleted": deleted_count}
-    
-    async def query(self, query_texts, collection_name=None, user_id=None, limit=10, 
-                   document_id=None, threshold=0.8, filter=None):
-        """查询相似文本"""
-        if collection_name not in self.collections:
-            return [{"query": q, "results": [], "error": "集合不存在"} for q in ([query_texts] if isinstance(query_texts, str) else query_texts)]
-            
-        collection = self.collections[collection_name]
-        queries = [query_texts] if isinstance(query_texts, str) else query_texts
-        results = []
-        
-        for query in queries:
-            # 简单计算相似度 - 词汇重叠程度
-            query_result = {"query": query, "results": []}
-            query_words = set(query.lower().split())
-            
-            matches = []
-            for i, text in enumerate(collection["texts"]):
-                text_words = set(text.lower().split())
-                
-                # 简单相似度计算 - 词汇重叠比例
-                if not text_words:
-                    similarity = 0
-                else:
-                    overlap = len(query_words.intersection(text_words))
-                    similarity = overlap / max(len(query_words), 1)
-                
-                metadata = collection["metadatas"][i]
-                
-                # 如果指定了document_id，只返回匹配的文档
-                if document_id and metadata.get("document_id") != document_id:
-                    continue
-                    
-                # 符合相似度阈值的结果
-                if similarity >= threshold:
-                    matches.append({
-                        "text": text,
-                        "distance": similarity,
-                        "metadata": metadata
-                    })
-            
-            # 按相似度排序并限制返回数量
-            matches.sort(key=lambda x: x["distance"], reverse=True)
-            query_result["results"] = matches[:limit]
-            results.append(query_result)
-            
-        return results
-
-
 @pytest.fixture
 def temp_dir():
     """创建临时目录用于测试"""
@@ -154,18 +42,11 @@ def retriever(temp_dir):
 
 
 @pytest.fixture
-def voidrail_client():
-    """创建文档转换客户端"""
-    return SimpleVoidrailClient()
-
-
-@pytest.fixture
-def processor(temp_dir, meta_manager, retriever, voidrail_client):
+def processor(temp_dir, meta_manager, retriever):
     """创建文档处理器"""
     return DocumentProcessor(
         docs_dir=f"{temp_dir}/processor_files",
         meta_manager=meta_manager,
-        voidrail_client=voidrail_client,
         vector_db_path=f"{temp_dir}/vectors",
         embedding_config={}  # 默认配置
     )
