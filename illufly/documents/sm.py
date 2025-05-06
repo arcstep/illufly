@@ -266,12 +266,18 @@ class DocumentStateMachine(StateMachine):
         pass
     
     async def on_enter_uploaded(self, from_state=None):
-        """进入上传状态 - 无需特殊处理"""
-        pass
-
+        """进入上传状态 - 清理markdowned资源记录"""
+        if from_state == "markdowned":
+            await self.meta_manager.remove_resource(
+                self.user_id, self.document_id, "markdown"
+            )
+    
     async def on_enter_bookmarked(self, from_state=None):
         """进入书签状态 - 无需特殊处理"""
-        pass
+        if from_state == "markdowned":
+            await self.meta_manager.remove_resource(
+                self.user_id, self.document_id, "markdown"
+            )
     
     # 辅助方法
     def get_sequence(self) -> list:
@@ -439,35 +445,52 @@ class DocumentStateMachine(StateMachine):
         await super().activate_initial_state()
 
     async def rollback(self) -> bool:
-        """改进的回退逻辑，支持回调函数，并正确管理状态历史"""
-        # 1. 获取当前状态和子状态
+        """改进的回退逻辑，处理子状态和主状态回退"""
+        # 获取当前状态和子状态
         state_info = await self.get_current_state_info()
         current_state = state_info["state"]
         current_sub_state = state_info["sub_state"]
-
-        # 情况1：子状态为 processing 或 failed，只回退子状态到 completed
-        if current_sub_state in [self.SubState.PROCESSING, self.SubState.FAILED]:
-            return await self.set_state(
-                current_state,
-                sub_state=self.SubState.COMPLETED
-            )
-
-        # 情况2：主状态回退，按历史记录前进
+        
         meta = await self.meta_manager.get_metadata(self.user_id, self.document_id)
         if not meta:
             self.logger.error(f"回退失败：无法获取文档 {self.document_id} 元数据")
             return False
-
+        
         history = meta.get("state_history", [])
         if len(history) <= 1:
             self.logger.warning(f"无法回退：文档 {self.document_id} 状态历史不足")
             return False
-
-        # 前一个状态记录
-        prev_record = history[-2]
-        prev_state = prev_record["state"]
-        prev_sub_state = prev_record.get("sub_state", self.SubState.COMPLETED)
-
+        
+        # 如果子状态为processing或failed，只是修复子状态为completed，然后直接返回
+        if current_sub_state in [self.SubState.PROCESSING, self.SubState.FAILED]:
+            await self.meta_manager.update_metadata(
+                self.user_id,
+                self.document_id,
+                {
+                    "sub_state": self.SubState.COMPLETED
+                }
+            )
+            self.logger.info(f"文档 {self.document_id} 子状态从 {current_sub_state} 回退到 {self.SubState.COMPLETED}")
+            return True
+        
+        # 主状态回退逻辑 - 只有子状态正常时才执行
+        prev_state = None
+        prev_sub_state = None
+        new_history = list(history)  # 复制历史记录
+        
+        # 从最新记录开始往前查找不同的主状态
+        for i in range(len(history) - 2, -1, -1):
+            record = history[i]
+            if record["state"] != current_state:
+                prev_state = record["state"]
+                prev_sub_state = record.get("sub_state", self.SubState.COMPLETED)
+                new_history = history[:i+1]  # 保留到前一状态
+                break
+        
+        if not prev_state:
+            self.logger.warning(f"无法回退主状态：文档 {self.document_id} 没有找到不同的前一状态")
+            return False
+        
         # 回退前回调
         cb_name = f"before_rollback_{current_state}_to_{prev_state}"
         if cb_name in self.callbacks:
@@ -477,9 +500,8 @@ class DocumentStateMachine(StateMachine):
             except Exception as e:
                 self.logger.error(f"回退回调失败 {cb_name}: {e}")
                 return False
-
-        # 裁剪掉最新一条历史，并更新状态
-        new_history = history[:-1]
+        
+        # 更新状态和历史
         await self.meta_manager.update_metadata(
             self.user_id,
             self.document_id,
@@ -489,18 +511,18 @@ class DocumentStateMachine(StateMachine):
                 "state_history": new_history
             }
         )
-
-        # 更新状态机内部 current_state
+        
+        # 更新状态机内部状态
         for st in self.states:
             if st.id == prev_state:
                 self.current_state = st
                 break
-
+        
         # 调用对应 on_enter 钩子清理资源
         hook = f"on_enter_{prev_state}"
         if hasattr(self, hook):
             await getattr(self, hook)(current_state)
-
+        
         self.logger.info(f"文档 {self.document_id} 回退到 {prev_state}[{prev_sub_state}]")
         return True
 

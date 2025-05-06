@@ -222,15 +222,22 @@ class DocumentService:
     # 添加清理回调函数
     async def _cleanup_markdown(self, user_id: str, document_id: str):
         """清理Markdown资源的回调"""
+        # 删除物理文件
         await self.processor.remove_markdown_file(user_id, document_id)
+        # 从元数据中移除资源记录
+        await self.meta_manager.remove_resource(user_id, document_id, "markdown")
 
     async def _cleanup_chunks(self, user_id: str, document_id: str):
         """清理文档切片资源的回调"""
         await self.processor.remove_chunks_dir(user_id, document_id)
+        # 从元数据中移除资源记录
+        await self.meta_manager.remove_resource(user_id, document_id, "chunks")
 
     async def _cleanup_embeddings(self, user_id: str, document_id: str):
         """清理向量嵌入资源的回调"""
         await self.processor.remove_vector_embeddings(user_id, document_id)
+        # 从元数据中移除资源记录
+        await self.meta_manager.remove_resource(user_id, document_id, "embeddings")
 
     # ==== 文档管理 - 委托给处理器 ====
     
