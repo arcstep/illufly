@@ -28,6 +28,9 @@ class DocumentMeta(BaseModel):
     state_history: List[Dict[str, Any]] = Field(default_factory=list, description="状态历史")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="用户自定义元数据")
     collection_name: Optional[str] = Field(default=None, description="向量集合名称")
+    is_public: bool = Field(default=False, description="是否公开共享")
+    allowed_roles: List[str] = Field(default_factory=list, description="允许访问的角色列表")
+    summary: Optional[str] = Field(default=None, description="文档摘要")
 
     @classmethod
     def get_prefix(cls, user_id: str = None) -> str:

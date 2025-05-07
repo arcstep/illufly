@@ -536,7 +536,11 @@ class DocumentService:
             
             # 1. 从向量存储中删除
             try:
+                # 删除内容切片向量
                 await self.processor.remove_vector_embeddings(user_id, document_id)
+                
+                # 删除摘要向量
+                await self.processor.remove_summary_vector(user_id, document_id)
             except Exception as ve:
                 errors.append(f"从向量存储中删除失败: {str(ve)}")
             
@@ -743,14 +747,28 @@ class DocumentService:
         self, 
         user_id: str, 
         document_id: str, 
-        metadata: Dict[str, Any]
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        summary: Optional[str] = None,
+        is_public: Optional[bool] = None,
+        allowed_roles: Optional[List[str]] = None,
+        topic_path: Optional[str] = None,
+        metadata: Dict[str, Any] = None
     ) -> Result:
-        """更新文档元数据（标题、描述、标签等）
+        """更新文档元数据
         
         Args:
             user_id: 用户ID
             document_id: 文档ID
-            metadata: 包含要更新的元数据字段
+            title: 文档标题
+            description: 文档描述
+            tags: 标签列表
+            summary: 文档摘要
+            is_public: 是否公开
+            allowed_roles: 允许访问的角色列表
+            topic_path: 主题路径
+            metadata: 其他元数据字段
             
         Returns:
             Result对象，包含更新后的文档元数据或错误信息
@@ -765,13 +783,35 @@ class DocumentService:
                     {"user_id": user_id, "document_id": document_id}
                 )
             
-            # 2. 只允许更新特定字段（白名单）
-            allowed_fields = ["title", "description", "tags"]
+            # 2. 构建更新数据，只包含非None的字段
             update_data = {}
             
-            for field in allowed_fields:
-                if field in metadata and metadata[field] is not None:
-                    update_data[field] = metadata[field]
+            # 添加显式参数
+            if title is not None:
+                update_data["title"] = title
+            if description is not None:
+                update_data["description"] = description
+            if tags is not None:
+                update_data["tags"] = tags
+            if summary is not None:
+                update_data["summary"] = summary
+            if is_public is not None:
+                update_data["is_public"] = is_public
+            if allowed_roles is not None:
+                update_data["allowed_roles"] = allowed_roles
+            if topic_path is not None:
+                update_data["topic_path"] = topic_path
+            
+            # 合并其他元数据
+            if metadata:
+                # 过滤已经作为显式参数的字段
+                filtered_metadata = {k: v for k, v in metadata.items() 
+                                    if k not in ["title", "description", "tags", "summary", 
+                                                "is_public", "allowed_roles", "topic_path"]}
+                if filtered_metadata:
+                    # 如果元数据字段已存在，则合并而不是覆盖
+                    existing_metadata = doc_meta.get("metadata", {})
+                    update_data["metadata"] = {**existing_metadata, **filtered_metadata}
             
             # 3. 如果没有需要更新的字段，直接返回当前元数据
             if not update_data:
@@ -788,6 +828,32 @@ class DocumentService:
                     "更新元数据失败",
                     {"user_id": user_id, "document_id": document_id}
                 )
+            
+            # 5. 如果更新了摘要，则保存摘要向量
+            if summary is not None:
+                try:
+                    # 委托给处理器处理向量存储
+                    vector_result = await self.processor.update_document_summary_vector(
+                        user_id=user_id,
+                        document_id=document_id,
+                        summary=summary,
+                        doc_meta=updated_meta
+                    )
+                    
+                    if not vector_result.get("success", False):
+                        self.logger.warning(f"摘要向量更新失败: {vector_result.get('error', '未知错误')}")
+                except Exception as ve:
+                    # 向量存储失败不影响元数据更新结果
+                    self.logger.error(f"保存摘要向量失败: {ve}", exc_info=True)
+            
+            # 6. 如果修改了topic_path，需要执行物理目录移动
+            if topic_path is not None and topic_path != doc_meta.get("topic_path"):
+                try:
+                    move_result = await self.move_document_to_topic(user_id, document_id, topic_path)
+                    if not move_result.success:
+                        self.logger.warning(f"移动文档目录失败，但元数据已更新: {move_result.error_message}")
+                except Exception as me:
+                    self.logger.error(f"移动文档目录失败: {me}", exc_info=True)
             
             return Result.ok(updated_meta)
         except Exception as e:
@@ -904,3 +970,44 @@ class DocumentService:
                     self.logger.error(f"验证文档一致性失败: {e}")
         
         return stats
+
+    async def list_user_collections(self, user_id: str) -> Result:
+        """列出用户拥有的所有向量嵌入集合
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            Result对象，包含用户的向量集合列表
+        """
+        try:
+            # 委托给处理器执行实际操作
+            collections = await self.processor.list_user_collections(user_id)
+            
+            # 增加summaries集合的检查（如果存在）
+            summaries_collection = "summaries"
+            if self.processor.retriever:
+                try:
+                    # 检查summaries集合中是否有该用户的向量
+                    stats = await self.processor.retriever.get_stats(summaries_collection)
+                    if stats:
+                        # 添加到结果中
+                        collections.append({
+                            "collection_name": summaries_collection,
+                            "topic_name": "文档摘要",
+                            "vectors_count": stats.get(summaries_collection, {}).get("total_vectors", 0),
+                            "document_count": stats.get(summaries_collection, {}).get("unique_documents", 0),
+                            "is_system": True  # 标记为系统集合
+                        })
+                except Exception as e:
+                    self.logger.debug(f"检查摘要集合失败: {e}")  # 这不是严重错误，用debug级别即可
+            
+            return Result.ok({
+                "collections": collections,
+                "total": len(collections)
+            })
+        except Exception as e:
+            error_type, error_message, error_detail = self._classify_exception(e)
+            self.logger.error(f"获取用户集合失败: {error_message}", exc_info=True)
+            error_detail["user_id"] = user_id
+            return Result.fail(error_type, error_message, error_detail)

@@ -638,17 +638,6 @@ class DocumentProcessor:
         )
         return result is not None
     
-    async def update_document_metadata(
-        self,
-        user_id: str,
-        document_id: str,
-        metadata_updates: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """更新文档元数据中与处理相关的字段"""
-        return await self.meta_manager.update_metadata(
-            user_id, document_id, metadata_updates
-        )
-
     async def search_chunks(
         self, 
         user_id: str, 
@@ -861,3 +850,95 @@ class DocumentProcessor:
         except Exception as e:
             self.logger.error(f"获取用户集合失败: {e}")
             return []
+
+    async def update_document_summary_vector(
+        self,
+        user_id: str,
+        document_id: str,
+        summary: str,
+        doc_meta: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
+        """更新文档摘要向量
+        
+        Args:
+            user_id: 用户ID
+            document_id: 文档ID
+            summary: 文档摘要
+            doc_meta: 文档元数据(可选)，如果不提供将自动获取
+            
+        Returns:
+            字典，包含操作结果
+        """
+        if not self.retriever:
+            return {"success": False, "error": "未配置向量数据库"}
+        
+        try:
+            # 获取文档元数据(如果未提供)
+            if not doc_meta:
+                doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+                if not doc_meta:
+                    return {"success": False, "error": f"找不到文档: {document_id}"}
+            
+            # 固定使用summaries集合
+            collection_name = "summaries"
+            
+            # 创建向量元数据
+            vector_metadata = {
+                "document_id": document_id,
+                "user_id": user_id,
+                "is_public": doc_meta.get("is_public", False),
+                "allowed_roles": doc_meta.get("allowed_roles", []),
+                "title": doc_meta.get("title") or doc_meta.get("original_name", ""),
+                "topic_path": doc_meta.get("topic_path", "")
+            }
+            
+            # 添加向量 - 使用document_id作为向量ID以便更新
+            result = await self.retriever.add(
+                texts=[summary],
+                collection_name=collection_name,
+                metadatas=[vector_metadata],
+                ids=[document_id]
+            )
+            
+            return {
+                "success": result.get("success", False),
+                "collection": collection_name,
+                "document_id": document_id
+            }
+        except Exception as e:
+            self.logger.error(f"更新摘要向量失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def remove_summary_vector(self, user_id: str, document_id: str) -> bool:
+        """从summaries集合中删除文档摘要向量
+        
+        Args:
+            user_id: 用户ID
+            document_id: 文档ID
+            
+        Returns:
+            布尔值，表示操作是否成功
+        """
+        if not self.retriever:
+            return False
+        
+        try:
+            # 固定使用summaries集合
+            collection_name = "summaries"
+            
+            # 从摘要集合中删除
+            result = await self.retriever.delete(
+                collection_name=collection_name,
+                user_id=user_id,
+                document_id=document_id  # 文档ID直接作为向量ID使用
+            )
+            
+            if result.get("success", True):
+                self.logger.info(f"已从摘要集合中删除文档 {document_id} 的向量")
+                return True
+            else:
+                self.logger.warning(f"从摘要集合删除失败: {result.get('error', '未知错误')}")
+                return False
+        except Exception as e:
+            self.logger.error(f"删除摘要向量失败: {e}")
+            return False
