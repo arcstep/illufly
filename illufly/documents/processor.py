@@ -175,7 +175,7 @@ class DocumentProcessor:
         }
     
     async def convert_to_markdown(self, user_id: str, document_id: str) -> Dict[str, Any]:
-        """将文档转换为Markdown格式"""
+        """将文档转换为Markdown格式，对纯文本文件直接复制"""
         doc_path = self.get_raw_path(user_id, document_id)
         
         # 确保目录存在
@@ -187,41 +187,63 @@ class DocumentProcessor:
             raise FileNotFoundError(f"找不到原始文档: {document_id}")
         
         try:
-            # 调用voidrail进行转换
-            if self.voidrail_client:
-                # 读取文件内容并转换为base64
-                async with aiofiles.open(doc_path, 'rb') as f:
-                    file_content = await f.read()
-                    base64_content = base64.b64encode(file_content).decode('utf-8')
-                
-                # 获取文件类型
-                file_type = doc_path.suffix.lstrip('.')
-                
-                # 使用LLM服务转换
-                markdown_content = ""
-                async for chunk in self.voidrail_client.stream(
-                    "SimpleDocling.convert",
-                    content=base64_content,
-                    content_type="base64",
-                    file_type=file_type,
-                    output_format="markdown"
-                ):
-                    markdown_content += chunk
-                
-                # 保存Markdown文件
-                async with aiofiles.open(md_path, 'w', encoding='utf-8') as f:
-                    await f.write(markdown_content)
-            else:
-                # 简单转换(仅用于测试)
-                markdown_content = f"# {document_id}\n\nMarkdown Content Demo."
-                async with aiofiles.open(md_path, 'w', encoding='utf-8') as f:
-                    await f.write(markdown_content)
+            # 获取文件扩展名
+            file_ext = doc_path.suffix.lower()
             
-            return {
-                "md_path": str(md_path),
-                "content_preview": markdown_content[:200] + "..." if len(markdown_content) > 200 else markdown_content,
-                "success": True
-            }
+            # 对纯文本文件直接复制
+            if file_ext in ['.md', '.markdown', '.txt']:
+                self.logger.info(f"检测到纯文本文件: {document_id}，直接复制")
+                
+                # 直接读取并写入（保持编码一致性）
+                async with aiofiles.open(doc_path, 'r', encoding='utf-8', errors='replace') as src:
+                    content = await src.read()
+                    
+                    async with aiofiles.open(md_path, 'w', encoding='utf-8') as dest:
+                        await dest.write(content)
+                
+                return {
+                    "md_path": str(md_path),
+                    "content_preview": content[:200] + "..." if len(content) > 200 else content,
+                    "success": True,
+                    "method": "direct_copy"
+                }
+            else:
+                # 对其他文件类型使用voidrail进行转换
+                if self.voidrail_client:
+                    # 读取文件内容并转换为base64
+                    async with aiofiles.open(doc_path, 'rb') as f:
+                        file_content = await f.read()
+                        base64_content = base64.b64encode(file_content).decode('utf-8')
+                    
+                    # 获取文件类型
+                    file_type = file_ext.lstrip('.')
+                    
+                    # 使用LLM服务转换
+                    markdown_content = ""
+                    async for chunk in self.voidrail_client.stream(
+                        "SimpleDocling.convert",
+                        content=base64_content,
+                        content_type="base64",
+                        file_type=file_type,
+                        output_format="markdown"
+                    ):
+                        markdown_content += chunk
+                    
+                    # 保存Markdown文件
+                    async with aiofiles.open(md_path, 'w', encoding='utf-8') as f:
+                        await f.write(markdown_content)
+                else:
+                    # 简单转换(仅用于测试)
+                    markdown_content = f"# {document_id}\n\nMarkdown Content Demo."
+                    async with aiofiles.open(md_path, 'w', encoding='utf-8') as f:
+                        await f.write(markdown_content)
+                
+                return {
+                    "md_path": str(md_path),
+                    "content_preview": markdown_content[:200] + "..." if len(markdown_content) > 200 else markdown_content,
+                    "success": True,
+                    "method": "conversion"
+                }
         except Exception as e:
             self.logger.error(f"转换Markdown失败: {e}")
             raise
@@ -315,6 +337,7 @@ class DocumentProcessor:
             # 执行向量化
             await retriever.add(
                 collection_name=collection_name,
+                user_id=user_id,
                 texts=[c["text"] for c in chunks],
                 metadatas=[c["metadata"] for c in chunks],
                 ids=[f"{document_id}_{i}" for i in range(len(chunks))]
@@ -489,33 +512,73 @@ class DocumentProcessor:
             raise
     
     async def process_document_embeddings(self, user_id: str, document_id: str) -> Dict[str, Any]:
-        """生成向量嵌入 - 正确使用LanceRetriever的add方法"""
+        """生成向量嵌入 - 使用主题路径的集合名称"""
         if not self.retriever:
             raise ValueError("没有配置向量检索器，无法生成嵌入")
         
         try:
+            # 获取文档元数据
+            doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+            if not doc_meta:
+                raise ValueError(f"找不到文档元数据: {document_id}")
+            
+            # 获取主题路径
+            topic_path = doc_meta.get("topic_path", "")
+            
+            # 从主题路径提取集合名称
+            collection_name = None
+            if topic_path:
+                extracted_collection = self.extract_collection_name_from_topic(user_id, topic_path)
+                if extracted_collection:
+                    collection_name = extracted_collection
+                    # 保存集合名称到元数据
+                    await self.meta_manager.update_metadata(
+                        user_id, document_id, 
+                        {"collection_name": collection_name}
+                    )
+            
+            # 如果没有提取到集合名称，使用默认命名
+            if not collection_name:
+                collection_name = f"user_{user_id}"
+            
+            # 获取自定义元数据
+            custom_metadata = doc_meta.get("metadata", {})
+            
             # 获取所有切片文本
             chunks = []
             metadatas = []
             
             async for chunk in self.iter_chunks(user_id, document_id):
                 chunks.append(chunk["content"])
-                metadatas.append({
+                chunk_metadata = {
                     "document_id": document_id,
                     "chunk_index": chunk["chunk_index"],
-                    "user_id": user_id
-                })
+                    "user_id": user_id,
+                }
+                
+                # 只有当topic_path有值时才添加它
+                if topic_path:
+                    chunk_metadata["topic_path"] = topic_path
+                
+                # 添加自定义元数据以支持索引
+                if custom_metadata:
+                    # 从元数据中筛选索引字段
+                    for key in ["title", "description", "tags", "category", "source", "author", "created_date"]:
+                        if key in custom_metadata:
+                            chunk_metadata[key] = custom_metadata[key]
+                
+                metadatas.append(chunk_metadata)
             
             if not chunks:
                 raise ValueError(f"没有找到文档切片: {document_id}")
             
-            # 使用retriever的add方法添加向量
-            collection_name = f"user_{user_id}"
+            # 使用collection_name添加向量
             result = await self.retriever.add(
                 texts=chunks,
                 collection_name=collection_name,
                 user_id=user_id,
-                metadatas=metadatas
+                metadatas=metadatas,
+                indexable_fields=["title", "description", "tags", "category", "source", "author", "created_date"]
             )
             
             if not result.get("success", False):
@@ -534,12 +597,28 @@ class DocumentProcessor:
             raise
     
     async def remove_vector_embeddings(self, user_id: str, document_id: str) -> bool:
-        """从向量数据库中删除嵌入 - 正确使用LanceRetriever的delete方法"""
+        """从向量数据库中删除嵌入 - 支持自定义集合名称"""
         if not self.retriever:
             return False
         
         try:
-            collection_name = f"user_{user_id}"
+            # 先获取文档元数据
+            doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+            if not doc_meta:
+                return False
+            
+            # 获取保存的集合名称
+            collection_name = doc_meta.get("collection_name")
+            
+            # 如果没有保存集合名称，尝试从主题路径提取
+            if not collection_name and "topic_path" in doc_meta:
+                collection_name = self.extract_collection_name_from_topic(user_id, doc_meta["topic_path"])
+            
+            # 如果仍然没有，使用默认命名
+            if not collection_name:
+                collection_name = f"user_{user_id}"
+            
+            # 从对应集合中删除
             result = await self.retriever.delete(
                 collection_name=collection_name,
                 user_id=user_id,
@@ -575,17 +654,20 @@ class DocumentProcessor:
         user_id: str, 
         query: str, 
         document_id: str = None, 
+        collection_name: str = None,
         limit: int = 10,
         threshold: float = 0.8
     ) -> Dict[str, Any]:
-        """搜索文档内容 - 使用向量检索进行语义搜索"""
+        """搜索文档内容 - 支持自定义集合名称"""
         if not query or not user_id:
             raise ValueError("无效的参数: 必须提供user_id和查询内容")
         
         if not self.retriever:
             raise ValueError("没有配置向量检索器，无法执行搜索")
         
-        collection_name = f"user_{user_id}"
+        # 如果未提供集合名称，使用默认命名
+        if not collection_name:
+            collection_name = f"user_{user_id}"
         
         # 构建过滤条件
         filter_condition = None
@@ -620,13 +702,15 @@ class DocumentProcessor:
                             "title": doc_meta.get("original_name", ""),
                             "type": doc_meta.get("type", ""),
                             "state": doc_meta.get("state", ""),
+                            "topic_path": doc_meta.get("topic_path", "")
                         }
                 enhanced_matches.append(match)
             
             return {
                 "query": query,
                 "matches": enhanced_matches,
-                "total": len(enhanced_matches)
+                "total": len(enhanced_matches),
+                "collection": collection_name
             }
         else:
             # 没有结果或查询出错
@@ -637,7 +721,8 @@ class DocumentProcessor:
             return {
                 "query": query,
                 "matches": [],
-                "total": 0
+                "total": 0,
+                "collection": collection_name
             }
 
     async def get_markdown(self, user_id: str, document_id: str) -> Dict[str, Any]:
@@ -682,3 +767,97 @@ class DocumentProcessor:
         except Exception as e:
             self.logger.error(f"读取Markdown文件失败: {e}")
             raise
+
+    def extract_collection_name_from_topic(self, user_id: str, topic_path: str) -> Optional[str]:
+        """从主题路径中提取集合名称，并添加用户ID前缀防止冲突
+        
+        规则：找到由下划线包围的路径段，如 _category_/subcategory 取 user_123__category_
+        
+        Args:
+            user_id: 用户ID
+            topic_path: 主题路径，如 "finance/_reports_/q1" 或 "_finance_/reports"
+            
+        Returns:
+            提取的集合名称，如无匹配则返回None
+        """
+        if not topic_path:
+            return None
+        
+        # 安全检查
+        if not user_id:
+            return None
+        
+        # 按路径分隔符拆分
+        parts = topic_path.split('/')
+        
+        # 查找符合"前后带下划线"规则的路径段
+        for part in parts:
+            if part.startswith('_') and part.endswith('_') and len(part) > 2:
+                # 添加用户ID前缀避免冲突
+                return f"user_{user_id}{part}"
+            
+        # 查找带下划线的连续路径段，如 '_finance/reports_'
+        if '_' in topic_path:
+            # 找到所有下划线的位置
+            underscores = [i for i, char in enumerate(topic_path) if char == '_']
+            if len(underscores) >= 2:
+                # 检查第一个下划线是否在路径开头
+                first_slash = topic_path.find('/')
+                if first_slash == -1 or underscores[0] < first_slash:
+                    # 查找匹配的结束下划线（在最后一个斜杠之后）
+                    last_slash = topic_path.rfind('/')
+                    for idx in underscores:
+                        if idx > last_slash and last_slash != -1:
+                            # 找到了符合条件的首尾下划线
+                            collection_name = topic_path[underscores[0]:idx+1]
+                            return f"user_{user_id}{collection_name}"
+        
+        return None
+
+    async def list_user_collections(self, user_id: str) -> List[Dict[str, Any]]:
+        """列出用户可访问的所有向量集合"""
+        if not self.retriever:
+            return []
+        
+        try:
+            # 获取所有集合并添加日志
+            all_collections = await self.retriever.list_collections()
+            self.logger.info(f"获取到的所有集合: {all_collections}")
+            
+            # 筛选出用户可访问的集合
+            user_collections = []
+            default_collection = f"user_{user_id}"
+            
+            for collection in all_collections:
+                # 检查是否为用户的默认集合或自定义集合
+                if collection == default_collection or collection.startswith(f"user_{user_id}_"):
+                    try:
+                        # 获取集合统计信息
+                        stats = await self.retriever.get_stats(collection)
+                        
+                        # 尝试提取主题名称
+                        topic_name = None
+                        if collection.startswith(f"user_{user_id}_"):
+                            topic_name = collection[len(f"user_{user_id}"):]
+                        
+                        user_collections.append({
+                            "collection_name": collection,
+                            "topic_name": topic_name,
+                            "vectors_count": stats.get(collection, {}).get("total_vectors", 0),
+                            "document_count": stats.get(collection, {}).get("unique_documents", 0)
+                        })
+                    except Exception as e:
+                        self.logger.error(f"获取集合{collection}统计信息失败: {e}")
+                        # 添加基本信息，避免完全跳过
+                        user_collections.append({
+                            "collection_name": collection,
+                            "topic_name": collection.replace(f"user_{user_id}", "") if collection.startswith(f"user_{user_id}_") else None,
+                            "vectors_count": 0,
+                            "document_count": 0
+                        })
+            
+            self.logger.info(f"为用户 {user_id} 找到的集合: {[c['collection_name'] for c in user_collections]}")
+            return user_collections
+        except Exception as e:
+            self.logger.error(f"获取用户集合失败: {e}")
+            return []

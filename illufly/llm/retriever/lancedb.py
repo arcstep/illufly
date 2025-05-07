@@ -142,6 +142,7 @@ class LanceRetriever(BaseRetriever):
         collection_name: str = None,
         user_id: str = None,
         metadatas: Union[Dict[str, Any], List[Dict[str, Any]]] = None,
+        indexable_fields: List[str] = None,  # 新增: 指定哪些字段应作为独立列存储
         **kwargs
     ) -> Dict[str, Any]:
         """添加文本到向量库，自动处理长文本和格式化元数据
@@ -151,6 +152,7 @@ class LanceRetriever(BaseRetriever):
             collection_name: 集合名称，默认为"documents"
             user_id: 用户ID，默认为"default"
             metadatas: 元数据，单个字典或字典列表
+            indexable_fields: 需要作为独立列存储的元数据字段名称列表
             **kwargs: 传递给嵌入模型的额外参数
             
         Returns:
@@ -233,6 +235,11 @@ class LanceRetriever(BaseRetriever):
         table = self._get_or_create_table(table_name, dimension=dimension)
         self._logger.info(f"向量表：表名 {table_name}, 向量维度 {dimension}")
 
+        # 默认索引字段
+        default_indexable_fields = ["document_id", "chunk_index", "user_id", "original_name", "source_type", "source_url"]
+        if indexable_fields:
+            default_indexable_fields.extend(indexable_fields)
+        
         # 准备数据 - 只保留成功获取到非零向量的记录
         records = []
         skipped_count = 0
@@ -246,37 +253,28 @@ class LanceRetriever(BaseRetriever):
                 continue  # 跳过此记录
             
             # 提取常用元数据，确保所有字段都有默认值
-            document_id = metadata.get("document_id", "") or ""
-            chunk_index = metadata.get("chunk_index", 0) or 0  # 确保非None
-            original_name = metadata.get("original_name", "") or ""
-            source_type = metadata.get("source_type", "") or ""
-            source_url = metadata.get("source_url", "") or ""
-            
-            # 确保chunk_index是整数
-            try:
-                chunk_index = int(chunk_index)
-            except (TypeError, ValueError):
-                chunk_index = 0
-            
-            # 其余元数据 JSON 化
-            extra_metadata = {
-                k: v for k, v in metadata.items()
-                if k not in ["document_id", "chunk_index", "original_name", "source_type", "source_url"]
-            }
-            
-            # 确保所有字段有正确类型，不为None
             record = {
                 "vector": embedding,
                 "text": text or "",  # 确保非None
                 "user_id": user_id or "default",
-                "document_id": document_id,
-                "chunk_index": chunk_index,
-                "original_name": original_name,
-                "source_type": source_type,
-                "source_url": source_url,
+                "document_id": metadata.get("document_id", "") or "",
+                "chunk_index": metadata.get("chunk_index", 0) or 0,
+                "original_name": metadata.get("original_name", "") or "",
+                "source_type": metadata.get("source_type", "") or "",
+                "source_url": metadata.get("source_url", "") or "",
                 "created_at": timestamp,
-                "metadata_json": json.dumps(extra_metadata)
             }
+            
+            # 将索引字段作为独立列
+            extra_metadata = {}
+            for key, value in metadata.items():
+                if key in default_indexable_fields:
+                    record[key] = value
+                else:
+                    extra_metadata[key] = value
+            
+            # 其余元数据JSON化
+            record["metadata_json"] = json.dumps(extra_metadata)
             records.append(record)
         
         # 记录最终准备添加的records信息
@@ -578,11 +576,18 @@ class LanceRetriever(BaseRetriever):
         return results
     
     async def list_collections(self) -> List[str]:
-        """列出所有集合名称"""
-        table_names = self.db.table_names()
-        # 表名前缀是'vectors_'，需要去掉
-        collections = [name[8:] for name in table_names if name.startswith('vectors_')]
-        return collections
+        """列出所有向量集合"""
+        try:
+            # 获取数据库连接对象
+            if hasattr(self, "db") and self.db is not None:
+                # 不传递任何参数，直接调用table_names()
+                return self.db.table_names()
+            else:
+                self._logger.error("数据库连接不可用")
+                return []
+        except Exception as e:
+            self._logger.error(f"列举集合失败: {e}")
+            return []
     
     async def get_stats(self, collection_name: str = None) -> Dict[str, Any]:
         """获取集合统计信息

@@ -227,6 +227,7 @@ def create_documents_endpoints(
         title: Optional[str] = Form(None),
         description: Optional[str] = Form(None),
         tags: Optional[str] = Form(None),
+        metadata: Optional[str] = Form(None),  # 新增: 接收自定义元数据的JSON字符串
         token_claims: Dict[str, Any] = Depends(require_user)
     ):
         """上传文档"""
@@ -234,19 +235,36 @@ def create_documents_endpoints(
         logger.info(f"上传文档请求: 用户ID={user_id}, 文件名={file.filename}")
         
         try:
+            # 文件类型检查 - 从processor获取允许的扩展名
+            allowed_extensions = document_service.processor.allowed_extensions
+            file_ext = os.path.splitext(file.filename)[1].lower()
+            
+            if file_ext not in allowed_extensions:
+                supported_ext = ', '.join(allowed_extensions)
+                raise ValueError(f"不支持的文件类型: {file_ext}。支持的类型: {supported_ext}")
+            
             # 准备元数据
-            metadata = {}
+            meta_dict = {}
             if title:
-                metadata["title"] = title
+                meta_dict["title"] = title
             if description:
-                metadata["description"] = description
+                meta_dict["description"] = description
             if tags:
                 try:
-                    metadata["tags"] = json.loads(tags)
+                    meta_dict["tags"] = json.loads(tags)
                 except:
-                    metadata["tags"] = [t.strip() for t in tags.split(',') if t.strip()]
+                    meta_dict["tags"] = [t.strip() for t in tags.split(',') if t.strip()]
             
-            result = await document_service.upload_document(user_id, file, metadata=metadata)
+            # 处理自定义元数据
+            if metadata:
+                try:
+                    custom_metadata = json.loads(metadata)
+                    # 合并自定义元数据
+                    meta_dict.update(custom_metadata)
+                except json.JSONDecodeError:
+                    logger.warning(f"解析自定义元数据失败: {metadata}")
+            
+            result = await document_service.upload_document(user_id, file, metadata=meta_dict)
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error_message)
             
@@ -491,6 +509,7 @@ def create_documents_endpoints(
         query: str,
         document_id: Optional[str] = None,
         limit: Optional[int] = 10,
+        filter_metadata: Optional[str] = None,  # 新增: 接收元数据过滤条件
         token_claims: Dict[str, Any] = Depends(require_user)
     ):
         """搜索文档内容"""
@@ -498,11 +517,32 @@ def create_documents_endpoints(
         logger.info(f"文档搜索请求: 用户ID={user_id}, 查询={query}, 文档ID={document_id}")
         
         try:
+            # 解析元数据过滤条件
+            filter_condition = None
+            if filter_metadata:
+                try:
+                    filter_dict = json.loads(filter_metadata)
+                    conditions = []
+                    for key, value in filter_dict.items():
+                        if isinstance(value, str):
+                            conditions.append(f"{key} = '{value}'")
+                        elif isinstance(value, (int, float)):
+                            conditions.append(f"{key} = {value}")
+                        elif isinstance(value, list):
+                            values = "', '".join([str(v) for v in value])
+                            conditions.append(f"{key} IN ('{values}')")
+                    
+                    if conditions:
+                        filter_condition = " AND ".join(conditions)
+                except json.JSONDecodeError:
+                    logger.warning(f"解析元数据过滤条件失败: {filter_metadata}")
+                
             result = await document_service.search_chunks(
                 user_id=user_id,
                 query=query,
                 document_id=document_id,
-                limit=limit
+                limit=limit,
+                filter=filter_condition
             )
             
             if not result.success:

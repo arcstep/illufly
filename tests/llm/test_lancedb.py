@@ -52,15 +52,16 @@ async def test_add_and_get_stats_and_list(retriever):
     assert stats["col1"]["unique_users"] == 1
     assert stats["col1"]["unique_documents"] == 1
 
-    # 4. list_collections（无前缀默认返回空）
-    assert await retriever.list_collections() == []
+    # 4. list_collections应该包含创建的表
+    collections = await retriever.list_collections()
+    assert "col1" in collections
 
 @pytest.mark.asyncio
 async def test_list_collections_with_prefix(retriever):
     # 在真实 DB 中创建名为 vectors_test 的表
     retriever._get_or_create_table("vectors_test")
     collections = await retriever.list_collections()
-    assert "test" in collections
+    assert "vectors_test" in collections  # 检查完整表名
 
 @pytest.mark.asyncio
 async def test_delete_single_and_multi(retriever):
