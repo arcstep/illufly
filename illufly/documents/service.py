@@ -110,7 +110,7 @@ class DocumentService:
             meta_manager=self.meta_manager,
             max_file_size=max_file_size,
             allowed_extensions=allowed_extensions,
-            voidrail_client=ClientDealer,
+            voidrail_client=voidrail_client,
             vector_db_path=str(self.base_dir / "vector_db"),
             embedding_config=embedding_config,
             logger=logger

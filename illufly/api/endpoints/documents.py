@@ -63,9 +63,8 @@ def create_documents_endpoints(
     # 定义允许直接提取的字段列表
     DOCUMENT_FIELDS = [
         "document_id", "original_name", "size", "type", "extension", 
-        "created_at", "updated_at", "status", "title", "description", 
-        "tags", "has_markdown", "has_chunks", "has_embeddings", 
-        "source_type", "source_url", "chunks_count"
+        "created_at", "updated_at", "status", "title", "description", "tags", 
+        "source_type", "source_url", "chunks_count", "state", "sub_state"
     ]
     
     def format_document_info(doc_info, prefix, include_details=False):
@@ -73,31 +72,24 @@ def create_documents_endpoints(
         # 基础结果
         result = {k: doc_info.get(k) for k in DOCUMENT_FIELDS if k in doc_info}
         
-        # 获取状态 - 使用新字段
-        current_state = doc_info.get("state", "ready")
+        # 状态字段保持原样，不做额外处理
+        current_state = doc_info.get("state", "init")
+        sub_state = doc_info.get("sub_state", "none")
         
         # 下载URL - 仅本地文件可下载
         if doc_info.get("source_type") == "local":
             result["download_url"] = f"{prefix}/documents/{doc_info['document_id']}/download"
         else:
             result["download_url"] = None
-            
-        # 处理状态相关字段
-        result["process_stage"] = current_state  # 直接使用状态机状态
-        result["is_processing"] = current_state in ["markdowning", "chunking", "embedding"]
         
-        # 兼容性字段
-        result["converted"] = doc_info.get("has_markdown", False)
+        # 移除冗余字段，只保留必要的兼容性字段
+        result["is_processing"] = sub_state == "processing"
         
-        # 包含详细阶段信息
+        # 包含详细信息
         if include_details:
-            process_details = doc_info.get("process_details", {})
-            result["stages_detail"] = {
-                "markdowning": process_details.get("markdowning", {}),
-                "chunking": process_details.get("chunking", {}),
-                "embedding": process_details.get("embedding", {})
-            }
-            
+            result["resources"] = doc_info.get("resources", {})
+            result["state_history"] = doc_info.get("state_history", [])
+        
         return result
     
     @handle_errors()
@@ -336,9 +328,10 @@ def create_documents_endpoints(
             if not doc_info:
                 raise HTTPException(status_code=404, detail="文档不存在")
             
-            current_state = doc_info.get("state", "init")
-            processing_states = ["markdowning", "chunking", "embedding"]
-            if current_state in processing_states:
+            # 检查是否在处理中
+            current_state = doc_info.get("state")
+            sub_state = doc_info.get("sub_state")
+            if sub_state == "processing":
                 return {
                     "success": False,
                     "document_id": document_id,
@@ -399,22 +392,20 @@ def create_documents_endpoints(
             if not doc_info:
                 raise HTTPException(status_code=404, detail="文档不存在")
             
-            current_state = doc_info.get("state", "init")
-            
-            if current_state != "markdowned":
-                if current_state in ["markdowning", "chunking", "embedding"]:
-                    raise HTTPException(status_code=400, detail=f"文档处理进行中: {current_state}")
-                elif current_state == "init" or current_state == "uploaded" or current_state == "bookmarked":
-                    raise HTTPException(status_code=400, detail="文档必须先转换为Markdown才能进行切片")
-                elif current_state == "chunked" or current_state == "embedded":
-                    # 已经完成切片或更高阶段
-                    return {
-                        "success": True,
-                        "document_id": document_id,
-                        "message": "文档已完成切片",
-                        "current_state": current_state,
-                        "chunks_count": doc_info.get("chunks_count", 0)
-                    }
+            # 检查文档是否处于可切片状态
+            if doc_info.get("sub_state") == "processing":
+                raise HTTPException(status_code=400, detail=f"文档处理进行中: {doc_info['state']}")
+            elif doc_info['state'] in ["init", "uploaded", "bookmarked"]:
+                raise HTTPException(status_code=400, detail="文档必须先转换为Markdown才能进行切片")
+            elif doc_info['state'] in ["chunked", "embedded"]:
+                # 已经完成切片或更高阶段
+                return {
+                    "success": True,
+                    "document_id": document_id,
+                    "message": "文档已完成切片",
+                    "current_state": doc_info['state'],
+                    "chunks_count": doc_info.get("chunks_count", 0)
+                }
             
             result = await document_service.chunk_document(user_id, document_id)
             
@@ -422,8 +413,8 @@ def create_documents_endpoints(
                 "success": True,
                 "document_id": document_id,
                 "message": "文档切片处理完成",
-                "current_state": result.get("state", "chunked"),
-                "chunks_count": result.get("chunks_count", 0)
+                "current_state": result.data.get("state", "chunked"),
+                "chunks_count": result.data.get("chunks_count", 0)
             }
         except Exception as e:
             logger.error(f"文档切片失败: {str(e)}")
@@ -467,22 +458,20 @@ def create_documents_endpoints(
             if not doc_info:
                 raise HTTPException(status_code=404, detail="文档不存在")
             
-            current_state = doc_info.get("state", "init")
-            
-            if current_state != "chunked":
-                if current_state in ["markdowning", "chunking", "embedding"]:
-                    raise HTTPException(status_code=400, detail=f"文档处理进行中: {current_state}")
-                elif current_state in ["init", "uploaded", "bookmarked", "markdowned"]:
-                    raise HTTPException(status_code=400, detail="文档必须先完成切片才能创建索引")
-                elif current_state == "embedded":
-                    # 已经完成嵌入
-                    return {
-                        "success": True,
-                        "document_id": document_id,
-                        "message": "文档已完成索引",
-                        "current_state": current_state,
-                        "indexed_chunks": doc_info.get("vectors_count", 0)
-                    }
+            # 检查文档是否处于可索引状态
+            if doc_info.get("sub_state") == "processing":
+                raise HTTPException(status_code=400, detail=f"文档处理进行中: {doc_info['state']}")
+            elif doc_info['state'] in ["init", "uploaded", "bookmarked", "markdowned"]:
+                raise HTTPException(status_code=400, detail="文档必须先完成切片才能创建索引")
+            elif doc_info['state'] == "embedded":
+                # 已经完成嵌入
+                return {
+                    "success": True,
+                    "document_id": document_id,
+                    "message": "文档已完成索引",
+                    "current_state": doc_info['state'],
+                    "indexed_chunks": doc_info.get("vectors_count", 0)
+                }
             
             result = await document_service.generate_embeddings(user_id, document_id)
             
@@ -490,8 +479,8 @@ def create_documents_endpoints(
                 "success": True,
                 "document_id": document_id,
                 "message": "文档索引创建完成",
-                "current_state": result.get("state", "embedded"),
-                "indexed_chunks": result.get("vectors_count", 0)
+                "current_state": result.data.get("state", "embedded"),
+                "indexed_chunks": result.data.get("vectors_count", 0)
             }
         except Exception as e:
             logger.error(f"创建文档索引失败: {str(e)}")
@@ -550,9 +539,8 @@ def create_documents_endpoints(
                     }
                     continue
                 
-                state_info = await document_service.get_document_state(user_id, document_id)
-                current_state = state_info.get("state", "init")
-                sub_state = state_info.get("sub_state", "none")
+                current_state = doc_meta.get("state", "init")
+                sub_state = doc_meta.get("sub_state", "none")
                 
                 results[document_id] = {
                     "found": True,
@@ -560,11 +548,8 @@ def create_documents_endpoints(
                     "title": doc_meta.get("title", ""),
                     "original_name": doc_meta.get("original_name", ""),
                     "process_state": current_state,
-                    "is_processing": sub_state == "processing",
-                    "has_markdown": doc_meta.get("has_markdown", False),
-                    "has_chunks": doc_meta.get("has_chunks", False),
-                    "has_embeddings": doc_meta.get("has_embeddings", False),
-                    "sub_state": sub_state
+                    "sub_state": sub_state,
+                    "is_processing": sub_state == "processing"
                 }
             except Exception as e:
                 logger.error(f"获取文档状态失败: {document_id}, 错误: {e}")
