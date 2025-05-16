@@ -118,22 +118,6 @@ def sample_text_file(temp_dir):
 
 
 @pytest.fixture
-def upload_file(sample_text_file):
-    """创建用于上传的文件对象"""
-    def _create_upload_file():
-        with open(sample_text_file, "rb") as f:
-            content = f.read()
-            
-        file_like = io.BytesIO(content)
-        return UploadFile(
-            filename="sample.txt",
-            file=file_like,
-            size=len(content)
-        )
-    return _create_upload_file
-
-
-@pytest.fixture
 async def my_upload_document(client, sample_text_file):
     """上传文档并返回文档ID的fixture"""
     async def _upload_document():

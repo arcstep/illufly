@@ -9,7 +9,7 @@ import base64
 from pathlib import Path
 from typing import Dict, Any, List, Optional, AsyncGenerator
 from fastapi import UploadFile
-from voidrail import ClientDealer
+from voidrail import CeleryClient
 
 from ..llm import LanceRetriever
 
@@ -22,7 +22,6 @@ class DocumentProcessor:
         meta_manager,
         max_file_size: int = 50 * 1024 * 1024, 
         allowed_extensions: List[str] = None,
-        voidrail_client: ClientDealer = None,
         vector_db_path: str = None,
         embedding_config: Dict[str, Any] = {},
         logger = None
@@ -34,7 +33,7 @@ class DocumentProcessor:
             '.pptx', '.md', '.markdown', '.pdf', '.docx', '.txt',
             '.jpg', '.jpeg', '.png', '.gif', '.webp'
         ]
-        self.voidrail_client = voidrail_client
+        self.voidrail_client = CeleryClient("docling.convert")
         self.logger = logger or logging.getLogger(__name__)
         
         # 初始化向量检索器

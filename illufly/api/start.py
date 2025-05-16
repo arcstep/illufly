@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Optional, List, Set, Dict, Any, Callable, Tuple, Union
 
 from voidring import IndexedRocksDB
-from voidrail import ClientDealer
 from soulseal import mount_auth_api, TokenSDK, UsersManager
 
 import logging
@@ -165,10 +164,8 @@ async def create_app(
     mount_memory_api(app, prefix, agent, token_sdk)
 
     # 挂载文件管理API
-    voidrail_client = ClientDealer(router_address)
     document_service = DocumentService(
         os.path.join(data_dir, "documents"),
-        voidrail_client=voidrail_client,
         logger=get_logger()
     )
     mount_docs_api(app, prefix, token_sdk, document_service)

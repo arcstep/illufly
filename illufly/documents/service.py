@@ -12,7 +12,6 @@ from enum import Enum
 from typing import List, Dict, Any, Optional, AsyncGenerator, Literal, Tuple, Union
 from pathlib import Path
 from fastapi import UploadFile
-from voidrail import ClientDealer
 
 from ..llm.retriever.lancedb import LanceRetriever
 from .sm import DocumentStateMachine
@@ -52,7 +51,7 @@ class Result:
         return cls(success=True, data=data)
     
     @classmethod
-    def fail(cls, 
+    def fail(cls,
              error_type: ErrorType, 
              error_message: str, 
              error_detail: Dict[str, Any] = None) -> 'Result':
@@ -90,7 +89,6 @@ class DocumentService:
         max_file_size: int = 50 * 1024 * 1024,
         max_total_size_per_user: int = 200 * 1024 * 1024,
         allowed_extensions: List[str] = None,
-        voidrail_client: ClientDealer = None,
         embedding_config: Dict[str, Any] = {},
         logger = None
     ):
@@ -110,7 +108,6 @@ class DocumentService:
             meta_manager=self.meta_manager,
             max_file_size=max_file_size,
             allowed_extensions=allowed_extensions,
-            voidrail_client=voidrail_client,
             vector_db_path=str(self.base_dir / "vector_db"),
             embedding_config=embedding_config,
             logger=logger

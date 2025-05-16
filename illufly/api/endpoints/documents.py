@@ -21,7 +21,11 @@ class DocumentMetadataUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[List[str]] = None
-    extra_fields: Optional[Dict[str, Any]] = None
+    summary: Optional[str] = None
+    is_public: Optional[bool] = None
+    allowed_roles: Optional[List[str]] = None
+    topic_path: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 # 远程URL书签请求模型
 class BookmarkUrlRequest(BaseModel):
@@ -123,20 +127,18 @@ def create_documents_endpoints(
         """更新文档元数据"""
         user_id = token_claims["user_id"]
         
-        # 构建元数据字典
-        update_data = {}
-        if metadata.title is not None:
-            update_data["title"] = metadata.title
-        if metadata.description is not None:
-            update_data["description"] = metadata.description
-        if metadata.tags is not None:
-            update_data["tags"] = metadata.tags
-        if metadata.extra_fields:
-            update_data.update(metadata.extra_fields)
-        
-        # 使用DocumentService提供的方法更新元数据
+        # 直接传递所有参数给service
         result = await document_service.update_document_metadata(
-            user_id, document_id, update_data
+            user_id, 
+            document_id,
+            title=metadata.title,
+            description=metadata.description,
+            tags=metadata.tags,
+            summary=metadata.summary,
+            is_public=metadata.is_public,
+            allowed_roles=metadata.allowed_roles,
+            topic_path=metadata.topic_path,
+            metadata=metadata.metadata  # 传递额外元数据
         )
         
         if not result.success:
@@ -629,6 +631,24 @@ def create_documents_endpoints(
             "message": "文档已移动到新位置"
         }
     
+    @handle_errors()
+    async def list_user_collections(
+        token_claims: Dict[str, Any] = Depends(require_user)
+    ):
+        """列出用户拥有的向量集合"""
+        user_id = token_claims["user_id"]
+        logger.info(f"列出向量集合请求: 用户ID={user_id}")
+        
+        result = await document_service.list_user_collections(user_id)
+        if not result.success:
+            raise HTTPException(status_code=400, detail=result.error_message)
+        
+        return {
+            "success": True,
+            "collections": result.data.get("collections", []),
+            "total": result.data.get("total", 0)
+        }
+    
     # 返回路由列表，格式为(HTTP方法, 路径, 处理函数)
     return [
         (HttpMethod.GET,  f"{prefix}/documents", list_documents),
@@ -647,4 +667,5 @@ def create_documents_endpoints(
         (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/index", index_document),
         (HttpMethod.POST, f"{prefix}/documents/chunks/search", search_documents),
         (HttpMethod.POST, f"{prefix}/documents/status", get_documents_status),
+        (HttpMethod.GET,  f"{prefix}/documents/collections", list_user_collections),
     ]

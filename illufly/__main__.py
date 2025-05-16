@@ -7,7 +7,6 @@ import os
 import traceback
 import sys
 
-from voidrail import ServiceRouter
 from .api.start import create_app
 
 # 初始化最基础的日志配置
@@ -81,8 +80,6 @@ async def start_server(
     """启动服务的异步逻辑"""
     try:
         logger.info("正在创建应用实例...")
-        router = ServiceRouter(router_address)
-        await router.start()
 
         app = await create_app(
             data_dir=data_dir,
