@@ -14,7 +14,6 @@ from pathlib import Path
 from fastapi import UploadFile
 
 from ..llm.retriever.lancedb import LanceRetriever
-from .sm import DocumentStateMachine
 from .processor import DocumentProcessor
 from .meta import DocumentMetaManager
 
@@ -22,7 +21,6 @@ from .meta import DocumentMetaManager
 class ErrorType(str, Enum):
     VALIDATION_ERROR = "validation_error"  # 验证错误（如状态检查失败）
     FILE_ERROR = "file_error"  # 文件操作错误
-    STATE_ERROR = "state_error"  # 状态转换错误
     DATABASE_ERROR = "database_error"  # 数据库错误
     RESOURCE_ERROR = "resource_error"  # 资源（向量存储等）错误
     UNKNOWN_ERROR = "unknown_error"  # 未知错误
@@ -81,7 +79,7 @@ class Result:
             }
 
 class DocumentService:
-    """简化为协调层，主要负责创建状态机和委托处理器执行操作"""
+    """简化的文档服务 - 协调文档处理和元数据管理的操作"""
     
     def __init__(
         self, 
@@ -114,133 +112,10 @@ class DocumentService:
         )
 
         self.logger = logger or logging.getLogger(__name__)
-
-    # ==== 状态机管理 ====
-    
-    async def create_state_machine(self, user_id: str, document_id: str) -> DocumentStateMachine:
-        """创建并激活文档状态机实例，注入回调函数"""
-        # 定义回调函数
-        callbacks = {
-            # 状态前进回调
-            "after_uploaded_to_markdowned": self._process_markdown,
-            "after_bookmarked_to_markdowned": self._process_markdown,
-            "after_markdowned_to_chunked": self._process_chunks,
-            "after_chunked_to_embedded": self._process_embeddings,
-            "after_qa_extracted_to_embedded": self._process_embeddings,
-            
-            # 状态回退回调
-            "before_rollback_markdowned_to_uploaded": self._cleanup_markdown,
-            "before_rollback_markdowned_to_bookmarked": self._cleanup_markdown,
-            "before_rollback_chunked_to_markdowned": self._cleanup_chunks,
-            "before_rollback_embedded_to_chunked": self._cleanup_embeddings,
-            "before_rollback_embedded_to_qa_extracted": self._cleanup_embeddings,
-        }
-        
-        # 创建状态机
-        machine = DocumentStateMachine(
-            meta_manager=self.meta_manager,
-            user_id=user_id,
-            document_id=document_id,
-            logger=self.logger,
-            callbacks=callbacks
-        )
-        await machine.activate_initial_state()
-        return machine
-
-    # 添加回调函数实现
-    async def _process_markdown(self, user_id: str, document_id: str):
-        """处理Markdown转换回调"""
-        try:
-            # 执行文件处理
-            result = await self.processor.convert_document_to_markdown(user_id, document_id)
-            
-            # 添加资源记录
-            await self.meta_manager.add_resource(
-                user_id, document_id, 
-                "markdown", 
-                {"created_at": time.time(), "path": result.get("md_path", "")}
-            )
-        except Exception as e:
-            self.logger.error(f"Markdown处理失败: {e}")
-            # 出现异常时更新子状态为失败
-            machine = await self.create_state_machine(user_id, document_id)
-            await machine.fail_processing("markdowned", str(e))
-            raise
-
-    async def _process_chunks(self, user_id: str, document_id: str):
-        """处理文档切片回调"""
-        try:
-            # 执行切片处理
-            result = await self.processor.process_document_chunks(user_id, document_id)
-            
-            # 更新元数据中的切片信息
-            await self.processor.add_chunks_metadata(user_id, document_id, result["chunks"])
-            
-            # 添加资源记录
-            await self.meta_manager.add_resource(
-                user_id, document_id,
-                "chunks",
-                {
-                    "created_at": time.time(),
-                    "count": result.get("chunks_count", 0),
-                    "path": result.get("chunks_dir", "")
-                }
-            )
-        except Exception as e:
-            self.logger.error(f"文档切片处理失败: {e}")
-            # 出现异常时更新子状态为失败
-            machine = await self.create_state_machine(user_id, document_id)
-            await machine.fail_processing("chunked", str(e))
-            raise
-
-    async def _process_embeddings(self, user_id: str, document_id: str):
-        """处理向量嵌入回调"""
-        try:
-            # 执行向量化处理
-            result = await self.processor.process_document_embeddings(user_id, document_id)
-            
-            # 添加资源记录
-            await self.meta_manager.add_resource(
-                user_id, document_id,
-                "embeddings",
-                {
-                    "created_at": time.time(),
-                    "collection": result.get("collection", ""),
-                    "count": result.get("vectors_count", 0)
-                }
-            )
-        except Exception as e:
-            self.logger.error(f"向量嵌入处理失败: {e}")
-            # 出现异常时更新子状态为失败
-            machine = await self.create_state_machine(user_id, document_id)
-            await machine.fail_processing("embedded", str(e))
-            raise
-
-    # 添加清理回调函数
-    async def _cleanup_markdown(self, user_id: str, document_id: str):
-        """清理Markdown资源的回调"""
-        # 删除物理文件
-        await self.processor.remove_markdown_file(user_id, document_id)
-        # 从元数据中移除资源记录
-        await self.meta_manager.remove_resource(user_id, document_id, "markdown")
-
-    async def _cleanup_chunks(self, user_id: str, document_id: str):
-        """清理文档切片资源的回调"""
-        await self.processor.remove_chunks_dir(user_id, document_id)
-        # 从元数据中移除资源记录
-        await self.meta_manager.remove_resource(user_id, document_id, "chunks")
-
-    async def _cleanup_embeddings(self, user_id: str, document_id: str):
-        """清理向量嵌入资源的回调"""
-        await self.processor.remove_vector_embeddings(user_id, document_id)
-        # 从元数据中移除资源记录
-        await self.meta_manager.remove_resource(user_id, document_id, "embeddings")
-
-    # ==== 文档管理 - 委托给处理器 ====
     
     async def create_document(self, user_id: str, doc_info: Dict[str, Any], 
                             topic_path: str = None, metadata: Dict[str, Any] = None) -> Result:
-        """创建文档元数据并设置初始状态 - 业务流程起点"""
+        """创建文档元数据 - 业务流程起点"""
         try:
             if not user_id or not doc_info or "document_id" not in doc_info:
                 return Result.fail(
@@ -260,28 +135,20 @@ class DocumentService:
                     {"document_id": document_id}
                 )
             
-            # 创建元数据 - 移除旧的单一状态标志
+            # 创建元数据
             now = int(time.time())
             meta = {
                 **doc_info,
                 "created_at": now,
                 "updated_at": now,
                 "topic_path": topic_path,
-                "state": "init",
-                "sub_state": "none",
+                "processed": False  # 初始状态为未处理
             }
-            
-            # 确保初始化状态历史
-            meta["state_history"] = [{
-                "state": "init",
-                "sub_state": "none",
-                "timestamp": now
-            }]
             
             # 合并用户元数据
             if metadata:
                 # 过滤保留字段
-                for key in ["document_id", "created_at", "state"]:
+                for key in ["document_id", "created_at", "processed"]:
                     if key in metadata:
                         del metadata[key]
                 meta.update(metadata)
@@ -291,20 +158,7 @@ class DocumentService:
                 user_id, document_id, topic_path, meta
             )
             
-            # 创建状态机并设置相应初始状态
-            machine = await self.create_state_machine(user_id, document_id)
-            
-            # 根据文档类型设置初始状态
-            if doc_info.get("source_type") == "remote":
-                await machine.set_state("bookmarked", sub_state="completed")
-            elif doc_info.get("source_type") == "chat":
-                await machine.set_state("saved_chat", sub_state="completed")
-            else:
-                await machine.set_state("uploaded", sub_state="completed")
-                
-            # 获取更新后的元数据并返回
-            updated_doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
-            return Result.ok(updated_doc_meta)
+            return Result.ok(doc_meta)
         except Exception as e:
             error_type, error_message, error_detail = self._classify_exception(e)
             self.logger.error(f"创建文档失败: {error_message}", exc_info=True)
@@ -313,8 +167,8 @@ class DocumentService:
             return Result.fail(error_type, error_message, error_detail)
         
     async def upload_document(self, user_id: str, file: UploadFile, topic_path: str = None, 
-                            metadata: Dict[str, Any] = None) -> Result:
-        """上传文档 - 协调文件处理和状态管理"""
+                            metadata: Dict[str, Any] = None, auto_process: bool = False) -> Result:
+        """上传文档并可选择自动处理"""
         try:
             # 1. 处理文件上传
             if not file or not file.filename:
@@ -342,7 +196,7 @@ class DocumentService:
                 error_detail["filename"] = file.filename
                 return Result.fail(error_type, error_message, error_detail)
             
-            # 2. 创建文档元数据和设置状态
+            # 2. 创建文档元数据
             doc_result = await self.create_document(user_id, file_info, topic_path, metadata)
             if not doc_result.success:
                 # 如果创建元数据失败，但文件已上传，尝试清理文件
@@ -356,6 +210,25 @@ class DocumentService:
                 
                 return doc_result
             
+            # 3. 如果需要自动处理，立即处理文档
+            document_id = file_info["document_id"]
+            if auto_process:
+                process_result = await self.process_document(user_id, document_id)
+                if not process_result.success:
+                    self.logger.warning(f"文档自动处理失败: {process_result.error_message}")
+                    # 更新元数据以记录处理失败
+                    await self.meta_manager.update_metadata(
+                        user_id, document_id, 
+                        {
+                            "processed": False,
+                            "process_error": process_result.error_message
+                        }
+                    )
+                    
+                # 始终返回文档信息，即使处理失败
+                doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+                return Result.ok(doc_meta)
+            
             return doc_result
         except Exception as e:
             error_type, error_message, error_detail = self._classify_exception(e)
@@ -364,160 +237,78 @@ class DocumentService:
             return Result.fail(error_type, error_message, error_detail)
     
     async def create_bookmark(self, user_id: str, url: str, filename: str, 
-                            topic_path: str = None, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
-        """创建网络书签文档 - 协调文档注册和状态管理"""
-        # 1. 注册远程文档
-        doc_info = await self.processor.register_remote_doc_info(user_id, url, filename)
-        
-        # 2. 创建文档元数据和设置状态
-        return await self.create_document(user_id, doc_info, topic_path, metadata)
-    
-    async def convert_to_markdown(self, user_id: str, document_id: str) -> Result:
-        """转换为Markdown - 完全依赖状态机的状态转换规则"""
+                            topic_path: str = None, metadata: Dict[str, Any] = None,
+                            auto_process: bool = False) -> Result:
+        """创建网络书签文档，可选择自动处理"""
         try:
-            # 1. 创建状态机
-            machine = await self.create_state_machine(user_id, document_id)
+            # 1. 注册远程文档
+            doc_info = await self.processor.register_remote_doc_info(user_id, url, filename)
             
-            # 2. 先检查状态一致性
-            await machine.ensure_state_resource_consistency()
+            # 2. 创建文档元数据
+            doc_result = await self.create_document(user_id, doc_info, topic_path, metadata)
+            if not doc_result.success:
+                return doc_result
             
-            # 3. 开始处理 - 状态机更新子状态
-            await machine.start_processing("markdowned")
-            
-            # 4. 更新主状态 - 状态机会自动检查转换是否合法
-            success = await machine.set_state("markdowned")
-            
-            if not success:
-                # 如果状态转换失败，返回错误
-                current_state = await machine.get_current_state()
-                return Result.fail(
-                    ErrorType.STATE_ERROR,
-                    f"无法从当前状态 {current_state} 转换为 markdowned",
-                    {"current_state": current_state, "target_state": "markdowned"}
-                )
-            
-            # 5. 获取最终状态
-            meta = await self.meta_manager.get_metadata(user_id, document_id)
-            
-            return Result.ok({
-                "document_id": document_id,
-                "state": meta.get("state"),
-                "sub_state": meta.get("sub_state")
-            })
+            # 3. 如果需要自动处理，立即处理文档
+            document_id = doc_info["document_id"]
+            if auto_process:
+                process_result = await self.process_document(user_id, document_id)
+                if not process_result.success:
+                    self.logger.warning(f"书签自动处理失败: {process_result.error_message}")
+                    # 更新元数据以记录处理失败
+                    await self.meta_manager.update_metadata(
+                        user_id, document_id, 
+                        {
+                            "processed": False,
+                            "process_error": process_result.error_message
+                        }
+                    )
+                
+                # 始终返回文档信息，即使处理失败
+                doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+                return Result.ok(doc_meta)
+                
+            return doc_result
         except Exception as e:
             error_type, error_message, error_detail = self._classify_exception(e)
-            self.logger.error(f"转换Markdown失败: {error_message}", exc_info=True)
+            self.logger.error(f"创建书签失败: {error_message}", exc_info=True)
             error_detail["user_id"] = user_id
-            error_detail["document_id"] = document_id
+            error_detail["url"] = url
             return Result.fail(error_type, error_message, error_detail)
     
-    async def chunk_document(self, user_id: str, document_id: str) -> Result:
-        """将文档切分为片段 - 完全依赖状态机的状态转换规则"""
+    async def process_document(self, user_id: str, document_id: str) -> Result:
+        """一体化处理文档（转换、切片、嵌入）"""
         try:
-            # 1. 创建状态机
-            machine = await self.create_state_machine(user_id, document_id)
-            
-            # 2. 先检查状态一致性
-            await machine.ensure_state_resource_consistency()
-            
-            # 3. 开始处理 - 状态机更新子状态
-            await machine.start_processing("chunked")
-            
-            # 4. 更新主状态 - 状态机会自动检查转换是否合法
-            success = await machine.set_state("chunked")
-            
-            if not success:
-                # 如果状态转换失败，返回错误
-                current_state = await machine.get_current_state()
+            # 检查文档是否存在
+            doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+            if not doc_meta:
                 return Result.fail(
-                    ErrorType.STATE_ERROR,
-                    f"无法从当前状态 {current_state} 转换为 chunked",
-                    {"current_state": current_state, "target_state": "chunked"}
-                )
-            
-            # 5. 获取最终状态
-            meta = await self.meta_manager.get_metadata(user_id, document_id)
-            
-            return Result.ok({
-                "document_id": document_id,
-                "state": meta.get("state"),
-                "sub_state": meta.get("sub_state")
-            })
-        except Exception as e:
-            error_type, error_message, error_detail = self._classify_exception(e)
-            self.logger.error(f"切片文档失败: {error_message}", exc_info=True)
-            error_detail["user_id"] = user_id
-            error_detail["document_id"] = document_id
-            return Result.fail(error_type, error_message, error_detail)
-    
-    async def generate_embeddings(self, user_id: str, document_id: str) -> Result:
-        """为文档切片生成向量嵌入 - 完全依赖状态机的状态转换规则"""
-        try:
-            # 1. 创建状态机
-            machine = await self.create_state_machine(user_id, document_id)
-            
-            # 2. 先检查状态一致性
-            await machine.ensure_state_resource_consistency()
-            
-            # 3. 开始处理 - 状态机更新子状态
-            await machine.start_processing("embedded")
-            
-            # 4. 更新主状态 - 状态机会自动检查转换是否合法
-            success = await machine.set_state("embedded")
-            
-            if not success:
-                # 如果状态转换失败，返回错误
-                current_state = await machine.get_current_state()
-                return Result.fail(
-                    ErrorType.STATE_ERROR,
-                    f"无法从当前状态 {current_state} 转换为 embedded",
-                    {"current_state": current_state, "target_state": "embedded"}
-                )
-            
-            # 5. 获取最终状态
-            meta = await self.meta_manager.get_metadata(user_id, document_id)
-            
-            return Result.ok({
-                "document_id": document_id,
-                "state": meta.get("state"),
-                "sub_state": meta.get("sub_state")
-            })
-        except Exception as e:
-            error_type, error_message, error_detail = self._classify_exception(e)
-            self.logger.error(f"生成向量嵌入失败: {error_message}", exc_info=True)
-            error_detail["user_id"] = user_id
-            error_detail["document_id"] = document_id
-            return Result.fail(error_type, error_message, error_detail)
-    
-    async def rollback_to_previous_state(self, user_id: str, document_id: str) -> Result:
-        """回滚到上一个状态 - 使用状态机回调机制清理资源"""
-        try:
-            # 1. 创建状态机
-            machine = await self.create_state_machine(user_id, document_id)
-            
-            # 2. 使用状态机执行回退(会自动调用相应回调函数清理资源)
-            success = await machine.rollback()
-            
-            if not success:
-                return Result.fail(
-                    ErrorType.STATE_ERROR,
-                    "状态回退失败",
+                    ErrorType.RESOURCE_ERROR,
+                    f"找不到文档: {document_id}",
                     {"user_id": user_id, "document_id": document_id}
                 )
+                
+            # 如果文档已处理成功，直接返回
+            if doc_meta.get("processed", False):
+                return Result.ok({
+                    "document_id": document_id,
+                    "already_processed": True,
+                    "message": "文档已处理，无需重复处理"
+                })
             
-            # 3. 获取更新后的元数据
-            updated_meta = await self.get_document(user_id, document_id)
-            return Result.ok(updated_meta)
+            # 委托处理器执行一体化处理
+            result = await self.processor.process_document_complete(user_id, document_id)
             
+            return Result.ok(result)
         except Exception as e:
             error_type, error_message, error_detail = self._classify_exception(e)
-            self.logger.error(f"回退状态失败: {error_message}", exc_info=True)
+            self.logger.error(f"处理文档失败: {error_message}", exc_info=True)
             error_detail["user_id"] = user_id
             error_detail["document_id"] = document_id
             return Result.fail(error_type, error_message, error_detail)
     
     async def delete_document(self, user_id: str, document_id: str) -> Result:
-        """删除文档 - 协调状态管理和资源清理"""
+        """删除文档 - 协调资源清理"""
         try:
             # 检查文档是否存在
             doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
@@ -587,158 +378,17 @@ class DocumentService:
             return Result.fail(error_type, error_message, error_detail)
     
     async def get_document(self, user_id: str, document_id: str) -> Optional[Dict[str, Any]]:
-        """获取文档元数据，并确保状态与资源一致性"""
-        # 先获取元数据
-        meta = await self.meta_manager.get_metadata(user_id, document_id)
-        
-        if meta:
-            # 创建状态机并检查一致性
-            machine = await self.create_state_machine(user_id, document_id)
-            fixed = await machine.ensure_state_resource_consistency()
-            
-            if fixed:
-                # 如果进行了修复，重新获取最新元数据
-                meta = await self.meta_manager.get_metadata(user_id, document_id)
-                self.logger.info(f"已修复文档 {document_id} 的状态与资源不一致问题")
-        
-        return meta
+        """获取文档元数据"""
+        return await self.meta_manager.get_metadata(user_id, document_id)
     
     async def list_documents(self, user_id: str, topic_path: str = None) -> List[Dict[str, Any]]:
         """列出用户的所有文档"""
         # 使用元数据管理器获取文档列表
         return await self.meta_manager.list_documents(user_id, topic_path)
     
-    async def get_document_state(self, user_id: str, document_id: str) -> Dict[str, str]:
-        """获取文档当前状态，包括主状态和子状态"""
-        machine = await self.create_state_machine(user_id, document_id)
-        return await machine.get_current_state_info()
-
-    async def get_markdown(self, user_id: str, document_id: str) -> Result:
-        """获取文档的Markdown内容
-        
-        Args:
-            user_id: 用户ID
-            document_id: 文档ID
-            
-        Returns:
-            Result对象，包含Markdown内容或错误信息
-        """
-        try:
-            # 1. 检查文档元数据
-            doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
-            if not doc_meta:
-                return Result.fail(
-                    ErrorType.RESOURCE_ERROR,
-                    f"找不到文档: {document_id}",
-                    {"user_id": user_id, "document_id": document_id}
-                )
-            
-            # 2. 检查文档状态
-            state = doc_meta.get("state", "init")
-            if state not in ["markdowned", "chunked", "embedded"]:
-                return Result.fail(
-                    ErrorType.STATE_ERROR,
-                    f"文档当前状态 ({state}) 不支持获取Markdown内容",
-                    {"user_id": user_id, "document_id": document_id, "state": state}
-                )
-            
-            # 3. 获取Markdown内容
-            content_data = await self.processor.get_markdown(user_id, document_id)
-            
-            # 4. 合并元数据和内容数据
-            result = {
-                **content_data,
-                "title": doc_meta.get("original_name", ""),
-                "type": doc_meta.get("type", ""),
-                "extension": doc_meta.get("extension", ""),
-                "state": state
-            }
-            
-            return Result.ok(result)
-        
-        except FileNotFoundError as e:
-            return Result.fail(
-                ErrorType.FILE_ERROR,
-                f"找不到Markdown文件: {document_id}",
-                {"user_id": user_id, "document_id": document_id}
-            )
-        except ValueError as e:
-            return Result.fail(
-                ErrorType.VALIDATION_ERROR,
-                str(e),
-                {"user_id": user_id, "document_id": document_id}
-            )
-        except Exception as e:
-            error_type, error_message, error_detail = self._classify_exception(e)
-            self.logger.error(f"获取文档内容失败: {error_message}", exc_info=True)
-            error_detail["user_id"] = user_id
-            error_detail["document_id"] = document_id
-            return Result.fail(error_type, error_message, error_detail)
-
-    async def get_chunks(self, user_id: str, document_id: str, start_index: int = 0, limit: int = 20) -> Result:
-        """获取文档的切片列表
-        
-        Args:
-            user_id: 用户ID
-            document_id: 文档ID
-            start_index: 开始的切片索引
-            limit: 返回的最大切片数量
-            
-        Returns:
-            Result对象，包含切片列表或错误信息
-        """
-        try:
-            # 1. 检查文档元数据
-            doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
-            if not doc_meta:
-                return Result.fail(
-                    ErrorType.RESOURCE_ERROR,
-                    f"找不到文档: {document_id}",
-                    {"user_id": user_id, "document_id": document_id}
-                )
-            
-            # 2. 检查文档状态
-            state = doc_meta.get("state", "init")
-            if state not in ["chunked", "embedded"]:
-                return Result.fail(
-                    ErrorType.STATE_ERROR,
-                    f"文档当前状态 ({state}) 不支持获取切片内容",
-                    {"user_id": user_id, "document_id": document_id, "state": state}
-                )
-            
-            # 3. 获取切片数据
-            chunks_data = []
-            async for chunk in self.processor.iter_chunks(user_id, document_id):
-                chunks_data.append(chunk)
-            
-            # 4. 添加文档元数据
-            result = {
-                "chunks": chunks_data,
-                "title": doc_meta.get("original_name", ""),
-                "type": doc_meta.get("type", ""),
-                "state": state
-            }
-            
-            return Result.ok(result)
-        
-        except FileNotFoundError as e:
-            return Result.fail(
-                ErrorType.FILE_ERROR,
-                f"找不到文档切片: {document_id}",
-                {"user_id": user_id, "document_id": document_id}
-            )
-        except ValueError as e:
-            return Result.fail(
-                ErrorType.VALIDATION_ERROR,
-                str(e),
-                {"user_id": user_id, "document_id": document_id}
-            )
-        except Exception as e:
-            error_type, error_message, error_detail = self._classify_exception(e)
-            self.logger.error(f"获取文档切片失败: {error_message}", exc_info=True)
-            error_detail["user_id"] = user_id
-            error_detail["document_id"] = document_id
-            return Result.fail(error_type, error_message, error_detail)
+    async def list_processed_documents(self, user_id: str, processed: bool = True) -> List[Dict[str, Any]]:
+        """列出已处理或未处理的文档"""
+        return await self.meta_manager.find_processed_documents(user_id, processed)
 
     async def update_document_metadata(
         self, 
@@ -753,23 +403,7 @@ class DocumentService:
         topic_path: Optional[str] = None,
         metadata: Dict[str, Any] = None
     ) -> Result:
-        """更新文档元数据
-        
-        Args:
-            user_id: 用户ID
-            document_id: 文档ID
-            title: 文档标题
-            description: 文档描述
-            tags: 标签列表
-            summary: 文档摘要
-            is_public: 是否公开
-            allowed_roles: 允许访问的角色列表
-            topic_path: 主题路径
-            metadata: 其他元数据字段
-            
-        Returns:
-            Result对象，包含更新后的文档元数据或错误信息
-        """
+        """更新文档元数据"""
         try:
             # 1. 检查文档是否存在
             doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
@@ -934,49 +568,11 @@ class DocumentService:
             return ErrorType.FILE_ERROR, f"找不到文件: {str(e)}", error_detail
         elif isinstance(e, PermissionError):
             return ErrorType.FILE_ERROR, f"文件权限错误: {str(e)}", error_detail
-        elif "state" in str(e).lower():
-            return ErrorType.STATE_ERROR, str(e), error_detail
         else:
             return ErrorType.UNKNOWN_ERROR, f"发生未知错误: {str(e)}", error_detail
 
-    async def verify_all_documents_consistency(self) -> Dict[str, int]:
-        """验证所有文档的状态与资源一致性"""
-        stats = {"checked": 0, "fixed": 0, "failed": 0}
-        
-        # 获取所有用户
-        user_dirs = [d for d in self.base_dir.glob("*") if d.is_dir()]
-        
-        for user_dir in user_dirs:
-            user_id = user_dir.name
-            # 获取用户所有文档
-            docs = await self.list_documents(user_id)
-            
-            for doc in docs:
-                try:
-                    stats["checked"] += 1
-                    document_id = doc["document_id"]
-                    
-                    machine = await self.create_state_machine(user_id, document_id)
-                    fixed = await machine.ensure_state_resource_consistency()
-                    
-                    if fixed:
-                        stats["fixed"] += 1
-                        self.logger.info(f"已修复文档 {document_id} 的状态与资源不一致")
-                except Exception as e:
-                    stats["failed"] += 1
-                    self.logger.error(f"验证文档一致性失败: {e}")
-        
-        return stats
-
     async def list_user_collections(self, user_id: str) -> Result:
-        """列出用户拥有的所有向量嵌入集合
-        
-        Args:
-            user_id: 用户ID
-            
-        Returns:
-            Result对象，包含用户的向量集合列表
-        """
+        """列出用户拥有的所有向量嵌入集合"""
         try:
             # 委托给处理器执行实际操作
             collections = await self.processor.list_user_collections(user_id)

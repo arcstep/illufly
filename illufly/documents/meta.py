@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from voidring import IndexedRocksDB
 
 class DocumentMeta(BaseModel):
-    """文档元数据模型 - 用于RocksDB存储"""
+    """简化的文档元数据模型"""
     document_id: str = Field(..., description="文档ID")
     user_id: str = Field(..., description="用户ID")
     topic_path: Optional[str] = Field(default=None, description="主题路径")
@@ -21,17 +21,15 @@ class DocumentMeta(BaseModel):
     source_url: Optional[str] = Field(default=None, description="来源URL")
     created_at: float = Field(default_factory=time.time, description="创建时间")
     updated_at: float = Field(default_factory=time.time, description="更新时间")
-    state: str = Field(default="init", description="文档状态")
-    sub_state: str = Field(default="none", description="子状态")
-    resources: Dict[str, Any] = Field(default_factory=dict, description="资源信息")
-    state_details: Dict[str, Any] = Field(default_factory=dict, description="状态详情")
-    state_history: List[Dict[str, Any]] = Field(default_factory=list, description="状态历史")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="用户自定义元数据")
+    processed: bool = Field(default=False, description="是否已处理完成")
+    process_error: Optional[str] = Field(default=None, description="处理失败的错误信息")
     collection_name: Optional[str] = Field(default=None, description="向量集合名称")
     is_public: bool = Field(default=False, description="是否公开共享")
     allowed_roles: List[str] = Field(default_factory=list, description="允许访问的角色列表")
     summary: Optional[str] = Field(default=None, description="文档摘要")
-
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="用户自定义元数据")
+    
+    # 保留一些必要方法
     @classmethod
     def get_prefix(cls, user_id: str = None) -> str:
         """获取rocksdb键前缀"""
@@ -44,40 +42,19 @@ class DocumentMeta(BaseModel):
         return f"{cls.get_prefix(user_id)}:{document_id}"
 
 class DocumentMetaManager:
-    """增强版文档元数据管理器 - 使用RocksDB高效管理元数据，文件系统管理实际文件
+    """简化版文档元数据管理器 - 使用RocksDB高效管理元数据，文件系统管理实际文件
     
     关键概念:
-    1. 文档(Document) - 由document_id唯一标识的内容实体，可以是本地上传文件、网页书签或对话记录
+    1. 文档(Document) - 由document_id唯一标识的内容实体，可以是本地上传文件、网页书签
     
-    2. 状态(State) - 文档在处理流程中的阶段:
-       - init: 初始状态
-       - uploaded/bookmarked/saved_chat: 来源状态
-       - markdowned: 已转换为Markdown格式
-       - chunked: 已切分为内容块
-       - qa_extracted: 已提取问答对
-       - embedded: 已生成向量嵌入
-    
-    3. 子状态(SubState) - 当前状态的处理进度:
-       - none: 无特定子状态
-       - processing: 处理中
-       - completed: 处理完成
-       - failed: 处理失败
-    
-    4. 资源(Resource) - 文档处理过程中生成的实际数据:
-       - markdown: Markdown格式内容
-       - chunks: 文本切片数据
-       - qa_pairs: 问答对数据
-       - embeddings: 向量嵌入数据
-    
-    状态和资源的关系:
-    - 当文档进入某状态(如markdowned)时，通常表示已生成对应资源(如markdown资源)
-    - 资源存储在文件系统中，资源元数据记录在document.resources字典中
-    - 状态变更历史记录在document.state_history列表中
+    2. 处理状态(Processed) - 文档是否已完成处理:
+       - processed=False: 未处理或处理失败
+       - processed=True: 处理完成
     
     典型文档处理流程:
-    1. 文档上传/保存 -> init -> uploaded/bookmarked/saved_chat状态
-    2. 处理转换 -> processing子状态 -> completed/failed子状态
-    3. 状态前进或回退，资源生成或清理
+    1. 文档上传/保存 -> 创建元数据(processed=False)
+    2. 处理文档 -> 执行转换、切片、向量化
+    3. 处理完成 -> 更新元数据(processed=True)
     """
     
     __COLLECTION_NAME__ = "document_meta"
@@ -91,7 +68,7 @@ class DocumentMetaManager:
         
         # 注册模型和索引
         self.db.register_collection(self.__COLLECTION_NAME__, DocumentMeta)
-        self.db.register_index(self.__COLLECTION_NAME__, DocumentMeta, "state")
+        self.db.register_index(self.__COLLECTION_NAME__, DocumentMeta, "processed")
         self.db.register_index(self.__COLLECTION_NAME__, DocumentMeta, "topic_path")
         
         # 确保基础目录存在
@@ -145,7 +122,7 @@ class DocumentMetaManager:
             "topic_path": topic_path,
             "created_at": now,
             "updated_at": now,
-            "state": "init"
+            "processed": False  # 初始状态为未处理
         }
         
         # 合并传入的元数据
@@ -242,108 +219,13 @@ class DocumentMetaManager:
         results.sort(key=lambda x: x.get("created_at", 0), reverse=True)
         return results
     
-    async def find_documents_by_state(self, user_id: str, state: str) -> List[Dict[str, Any]]:
-        """查找特定状态的文档"""
-        # 先获取所有指定状态的文档
-        state_docs = self.db.values_with_index(self.__COLLECTION_NAME__, "state", state)
+    async def find_processed_documents(self, user_id: str, processed: bool = True) -> List[Dict[str, Any]]:
+        """查找已处理或未处理的文档"""
+        # 使用processed索引查询
+        all_docs = self.db.values_with_index(self.__COLLECTION_NAME__, "processed", processed)
         
         # 过滤用户ID
-        return [doc.model_dump() for doc in state_docs if doc.user_id == user_id]
-    
-    # === 状态管理钩子 ===
-    
-    async def change_state(
-        self,
-        user_id: str,
-        document_id: str,
-        new_state: str,
-        details: Dict[str, Any] = None,
-        sub_state: str = "none"
-    ) -> bool:
-        """更改文档状态"""
-        meta = await self.get_metadata(user_id, document_id)
-        if not meta:
-            return False
-            
-        # 构建更新数据
-        update_data = {
-            "state": new_state,  # 更新当前状态
-            "sub_state": sub_state
-        }
-        
-        if details:
-            update_data["state_details"] = details
-            
-        # 确保状态有变化时才添加历史
-        if meta.get("state") != new_state or meta.get("sub_state") != sub_state:
-            history_entry = {
-                "timestamp": time.time(),
-                "state": new_state,
-                "sub_state": sub_state
-            }
-            
-            if details:
-                history_entry["details"] = details
-            
-            state_history = meta.get("state_history", [])
-            state_history.append(history_entry)
-            update_data["state_history"] = state_history
-        
-        result = await self.update_metadata(user_id, document_id, update_data)
-        return result is not None
-    
-    async def add_resource(
-        self,
-        user_id: str,
-        document_id: str,
-        resource_type: str,
-        resource_info: Dict[str, Any]
-    ) -> bool:
-        """添加资源信息到元数据"""
-        meta = await self.get_metadata(user_id, document_id)
-        if not meta:
-            return False
-            
-        # 获取现有资源
-        resources = meta.get("resources", {})
-        resources[resource_type] = resource_info
-        
-        # 更新元数据
-        update_data = {
-            "resources": resources
-        }
-        
-        result = await self.update_metadata(user_id, document_id, update_data)
-        return result is not None
-    
-    async def remove_resource(
-        self,
-        user_id: str,
-        document_id: str,
-        resource_type: str
-    ) -> bool:
-        """从元数据中彻底移除指定资源信息"""
-        meta = await self.get_metadata(user_id, document_id)
-        if not meta:
-            return False
-
-        resources = meta.get("resources", {})
-        if resource_type not in resources:
-            self.logger.warning(f"尝试删除不存在的资源: {resource_type}, 文档: {document_id}")
-            return True  # 资源本就不存在
-
-        # 构造新的元数据字典，完全替换 resources
-        updated_dict = meta.copy()
-        updated_dict["resources"] = {k: v for k, v in resources.items() if k != resource_type}
-        updated_dict["updated_at"] = time.time()
-
-        # 保存到 RocksDB
-        db_key = DocumentMeta.get_db_key(user_id, document_id)
-        updated_meta = DocumentMeta(**updated_dict)
-        self.db.update_with_indexes(self.__COLLECTION_NAME__, db_key, updated_meta)
-
-        self.logger.info(f"成功移除资源 {resource_type} 从文档 {document_id}")
-        return True
+        return [doc.model_dump() for doc in all_docs if doc.user_id == user_id]
     
     # === 文件夹识别辅助函数 ===
     

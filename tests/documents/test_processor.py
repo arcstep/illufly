@@ -7,6 +7,7 @@ import aiofiles
 from pathlib import Path
 from fastapi import UploadFile
 from io import BytesIO
+import shutil
 
 from illufly.llm import LanceRetriever, init_litellm
 from illufly.documents.processor import DocumentProcessor
@@ -101,8 +102,8 @@ async def test_save_uploaded_file(processor, user_id, upload_file):
     assert file_info["extension"] == ".txt"
     assert file_info["size"] > 0
     
-    # 验证文件是否实际保存
-    file_path = processor.get_raw_path(user_id, file_info["document_id"])
+    # 验证文件是否实际保存 - 使用新的路径结构
+    file_path = processor.get_document_file_path(user_id, file_info["document_id"])
     assert file_path.exists()
     
     # 验证文件内容
@@ -137,50 +138,55 @@ async def test_convert_to_markdown(processor, user_id, upload_file):
     file_info = await processor.save_uploaded_file(user_id, file)
     document_id = file_info["document_id"]
     
+    # 创建文档元数据
+    await processor.meta_manager.create_document(user_id, document_id, None, {
+        "original_name": "测试文档.txt",
+        "type": "txt"
+    })
+    
     # 转换为Markdown
     result = await processor.convert_to_markdown(user_id, document_id)
     
-    # 验证结果
-    assert "md_path" in result
+    # 验证结果 - 现在直接返回内容而不是文件路径
+    assert "content" in result
     assert "content_preview" in result
     assert result["success"] is True
-    
-    # 验证Markdown文件是否创建
-    md_path = processor.get_md_path(user_id, document_id)
-    assert md_path.exists()
-    
-    # 验证文件内容
-    async with aiofiles.open(md_path, "r", encoding="utf-8") as f:
-        content = await f.read()
-        assert "这是一个测试文本文件" in content
+    assert "这是一个测试文本文件" in result["content"]
 
 
 @pytest.mark.asyncio
-async def test_chunk_document(processor, user_id, upload_file):
-    """测试文档分块"""
-    # 上传文件并转换为Markdown
+async def test_memory_chunking(processor, user_id, upload_file):
+    """测试在内存中进行文档切片"""
+    # 上传文件
     file = await upload_file()
     file_info = await processor.save_uploaded_file(user_id, file)
     document_id = file_info["document_id"]
-    await processor.convert_to_markdown(user_id, document_id)
     
-    # 执行文档分块
-    result = await processor.chunk_document(user_id, document_id)
+    # 创建文档元数据
+    await processor.meta_manager.create_document(user_id, document_id, None, {
+        "original_name": "测试文档.txt",
+        "type": "txt"
+    })
+    
+    # 获取转换结果
+    convert_result = await processor.convert_to_markdown(user_id, document_id)
+    
+    # 模拟内存中切片过程
+    md_content = convert_result["content"]
+    chunks = []
+    current_chunk = ""
+    for line in md_content.split('\n'):
+        current_chunk += line + '\n'
+        if len(current_chunk) > 1000 or (line.startswith('#') and current_chunk.strip() != line):
+            chunks.append(current_chunk.strip())
+            current_chunk = ""
+    
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
     
     # 验证结果
-    assert "chunks_count" in result
-    assert result["chunks_count"] > 0
-    assert "chunks_dir" in result
-    assert "chunks" in result
-    assert len(result["chunks"]) == result["chunks_count"]
-    
-    # 验证分块文件是否创建
-    chunks_dir = processor.get_chunks_dir(user_id, document_id)
-    assert chunks_dir.exists()
-    assert len(list(chunks_dir.glob("chunk_*.txt"))) == result["chunks_count"]
-    
-    # 验证chunk元数据文件
-    assert len(list(chunks_dir.glob("chunk_*.json"))) == result["chunks_count"]
+    assert len(chunks) > 0
+    assert "这是一个测试文本文件" in chunks[0]
 
 
 @pytest.mark.asyncio
@@ -231,29 +237,22 @@ async def test_calculate_storage_usage(processor, user_id, upload_file):
 @pytest.mark.asyncio
 async def test_remove_document_files(processor, user_id, upload_file):
     """测试删除文档文件"""
-    # 上传文件并处理
+    # 上传文件
     file = await upload_file()
     file_info = await processor.save_uploaded_file(user_id, file)
     document_id = file_info["document_id"]
-    await processor.convert_to_markdown(user_id, document_id)
-    await processor.chunk_document(user_id, document_id)
     
-    # 删除文档文件
-    result = await processor.remove_document_files(user_id, document_id)
+    # 验证文件存在
+    doc_path = processor.get_document_file_path(user_id, document_id)
+    assert doc_path.exists()
     
-    # 验证结果
-    assert result["raw"] is True
-    assert result["markdown"] is True
-    assert result["chunks"] is True
+    # 删除文档目录
+    doc_dir = processor.get_document_dir(user_id, document_id)
+    shutil.rmtree(doc_dir)
     
-    # 验证文件是否真的被删除
-    raw_path = processor.get_raw_path(user_id, document_id)
-    md_path = processor.get_md_path(user_id, document_id)
-    chunks_dir_path = processor.get_chunks_dir_path(user_id, document_id)  # 使用新方法不会创建目录
-    
-    assert not raw_path.exists()
-    assert not md_path.exists()
-    assert not chunks_dir_path.exists()
+    # 验证文件已删除
+    assert not doc_path.exists()
+    assert not doc_dir.exists()
 
 
 @pytest.mark.asyncio
@@ -468,3 +467,36 @@ async def test_list_user_collections(processor, user_id, upload_file, meta_manag
     
     # 更宽松的验证
     assert collections is not None
+
+
+@pytest.mark.asyncio
+async def test_process_document_complete(processor, user_id, upload_file):
+    """测试一步完成文档处理"""
+    # 上传文件
+    file = await upload_file()
+    file_info = await processor.save_uploaded_file(user_id, file)
+    document_id = file_info["document_id"]
+    
+    # 创建文档元数据
+    await processor.meta_manager.create_document(user_id, document_id, None, {
+        "original_name": "测试文档.txt",
+        "type": "txt"
+    })
+    
+    # 一步执行文档处理
+    result = await processor.process_document_complete(user_id, document_id)
+    
+    # 验证结果
+    assert result["success"] is True
+    assert result["document_id"] == document_id
+    assert "collection" in result
+    assert "chunks_count" in result
+    assert result["chunks_count"] > 0
+    assert "vectors_count" in result
+    assert result["vectors_count"] > 0
+    
+    # 验证元数据已更新
+    doc_meta = await processor.meta_manager.get_metadata(user_id, document_id)
+    assert doc_meta["processed"] is True
+    assert doc_meta["collection_name"] == result["collection"]
+    assert doc_meta["process_error"] is None

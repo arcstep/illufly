@@ -84,7 +84,7 @@ async def test_create_document(meta_manager, user_id, document_id):
     assert meta["document_id"] == document_id
     assert meta["user_id"] == user_id
     assert meta["topic_path"] == topic_path
-    assert meta["state"] == "init"
+    assert meta["processed"] == False  # 初始状态未处理
     assert "created_at" in meta
     assert "updated_at" in meta
     
@@ -228,115 +228,6 @@ async def test_list_documents(meta_manager, user_id):
 
 
 @pytest.mark.asyncio
-async def test_change_state(meta_manager, user_id, document_id):
-    """测试修改文档状态"""
-    # 创建文档
-    await meta_manager.create_document(user_id, document_id)
-    
-    # 修改状态
-    details = {"progress": 0.5, "message": "Processing"}
-    result = await meta_manager.change_state(
-        user_id, document_id, "processing", details, "chunking"
-    )
-    assert result is True
-    
-    # 检查状态变更
-    meta = await meta_manager.get_metadata(user_id, document_id)
-    assert meta["state"] == "processing"
-    assert meta["sub_state"] == "chunking"
-    assert meta["state_details"]["progress"] == 0.5
-    
-    # 检查历史记录
-    assert len(meta["state_history"]) == 1
-    assert meta["state_history"][0]["state"] == "processing"
-    assert meta["state_history"][0]["sub_state"] == "chunking"
-    assert meta["state_history"][0]["details"]["message"] == "Processing"
-    
-    # 再次修改状态
-    await meta_manager.change_state(user_id, document_id, "completed")
-    updated_meta = await meta_manager.get_metadata(user_id, document_id)
-    assert updated_meta["state"] == "completed"
-    assert len(updated_meta["state_history"]) == 2
-
-
-@pytest.mark.asyncio
-async def test_add_remove_resource(meta_manager, user_id, document_id):
-    """测试添加和移除资源"""
-    # 创建文档
-    await meta_manager.create_document(user_id, document_id)
-    
-    # 添加资源
-    markdown_resource = {
-        "path": "markdown/test.md",
-        "size": 1024,
-        "created_at": time.time()
-    }
-    result = await meta_manager.add_resource(user_id, document_id, "markdown", markdown_resource)
-    assert result is True
-    
-    # 检查资源添加
-    meta = await meta_manager.get_metadata(user_id, document_id)
-    assert "markdown" in meta["resources"]
-    assert meta["resources"]["markdown"]["path"] == "markdown/test.md"
-    
-    # 再添加一个资源
-    chunks_resource = {
-        "count": 5,
-        "path": "chunks/",
-        "created_at": time.time()
-    }
-    await meta_manager.add_resource(user_id, document_id, "chunks", chunks_resource)
-    
-    # 验证多个资源
-    meta = await meta_manager.get_metadata(user_id, document_id)
-    assert "chunks" in meta["resources"]
-    assert meta["resources"]["markdown"]["path"] == "markdown/test.md"
-    assert meta["resources"]["chunks"]["count"] == 5
-    
-    # 移除资源
-    remove_result = await meta_manager.remove_resource(user_id, document_id, "markdown")
-    assert remove_result is True
-    
-    # 验证资源被移除
-    updated_meta = await meta_manager.get_metadata(user_id, document_id)
-    assert "markdown" not in updated_meta["resources"]
-    assert "chunks" in updated_meta["resources"]  # 其他资源保留
-
-
-@pytest.mark.asyncio
-async def test_find_documents_by_state(meta_manager, user_id):
-    """测试根据状态查找文档"""
-    # 创建多个状态不同的文档
-    doc1 = "state_doc1"
-    doc2 = "state_doc2" 
-    doc3 = "state_doc3"
-    
-    await meta_manager.create_document(user_id, doc1)
-    await meta_manager.change_state(user_id, doc1, "processing")
-    
-    await meta_manager.create_document(user_id, doc2)
-    await meta_manager.change_state(user_id, doc2, "completed")
-    
-    await meta_manager.create_document(user_id, doc3)
-    await meta_manager.change_state(user_id, doc3, "processing")
-    
-    # 查询处理中状态
-    processing_docs = await meta_manager.find_documents_by_state(user_id, "processing")
-    assert len(processing_docs) == 2
-    processing_ids = {doc["document_id"] for doc in processing_docs}
-    assert processing_ids == {doc1, doc3}
-    
-    # 查询完成状态
-    completed_docs = await meta_manager.find_documents_by_state(user_id, "completed")
-    assert len(completed_docs) == 1
-    assert completed_docs[0]["document_id"] == doc2
-    
-    # 查询不存在的状态
-    nonexistent_state_docs = await meta_manager.find_documents_by_state(user_id, "nonexistent")
-    assert len(nonexistent_state_docs) == 0
-
-
-@pytest.mark.asyncio
 async def test_document_folder_functions(meta_manager):
     """测试文档目录名称相关功能"""
     # 测试文件夹名检查
@@ -366,3 +257,32 @@ async def test_get_topic_path(meta_manager, user_id, document_id):
     # 测试不存在的文档
     nonexistent_path = await meta_manager._get_topic_path(user_id, "nonexistent")
     assert nonexistent_path is None
+
+
+@pytest.mark.asyncio
+async def test_processed_documents(meta_manager, user_id):
+    """测试查找已处理/未处理的文档"""
+    # 创建测试文档
+    doc1 = "processed_doc1"
+    doc2 = "processed_doc2" 
+    doc3 = "unprocessed_doc"
+    
+    # 创建并标记为已处理/未处理
+    await meta_manager.create_document(user_id, doc1)
+    await meta_manager.update_metadata(user_id, doc1, {"processed": True})
+    
+    await meta_manager.create_document(user_id, doc2)
+    await meta_manager.update_metadata(user_id, doc2, {"processed": True})
+    
+    await meta_manager.create_document(user_id, doc3)
+    
+    # 查询已处理文档
+    processed_docs = await meta_manager.find_processed_documents(user_id, True)
+    assert len(processed_docs) == 2
+    processed_ids = {doc["document_id"] for doc in processed_docs}
+    assert processed_ids == {doc1, doc2}
+    
+    # 查询未处理文档
+    unprocessed_docs = await meta_manager.find_processed_documents(user_id, False)
+    assert len(unprocessed_docs) == 1
+    assert unprocessed_docs[0]["document_id"] == doc3

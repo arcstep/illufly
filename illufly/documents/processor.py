@@ -13,6 +13,9 @@ from voidrail import CeleryClient
 
 from ..llm import LanceRetriever
 
+CONVERT_SERVICE_NAME = "docling"
+CONVERT_METHOD_NAME = "convert"
+
 class DocumentProcessor:
     """处理文档转换的专用类 - 专注于文档处理的具体实现"""
     
@@ -33,7 +36,7 @@ class DocumentProcessor:
             '.pptx', '.md', '.markdown', '.pdf', '.docx', '.txt',
             '.jpg', '.jpeg', '.png', '.gif', '.webp'
         ]
-        self.voidrail_client = CeleryClient("docling.convert")
+        self.voidrail_client = CeleryClient(CONVERT_SERVICE_NAME)
         self.logger = logger or logging.getLogger(__name__)
         
         # 初始化向量检索器
@@ -125,6 +128,23 @@ class DocumentProcessor:
         _, ext = os.path.splitext(file_name)
         return ext.lower()[1:]  # 去掉点号
     
+    # ==== 简化的文件路径管理 ====
+    
+    def get_document_dir(self, user_id: str, document_id: str) -> Path:
+        """获取文档目录路径"""
+        doc_dir = self.get_path(user_id, document_id)
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        return doc_dir
+    
+    def get_document_file_path(self, user_id: str, document_id: str, filename: str = None) -> Path:
+        """获取文档文件路径，不指定文件名则返回原始文件路径"""
+        doc_dir = self.get_document_dir(user_id, document_id)
+        if filename:
+            return doc_dir / filename
+        # 默认使用document_id作为原始文件名
+        base_name = document_id
+        return doc_dir / base_name
+    
     # ==== 文档处理核心方法 ====
     
     async def save_uploaded_file(self, user_id: str, file: UploadFile) -> Dict[str, Any]:
@@ -136,8 +156,8 @@ class DocumentProcessor:
         # 生成文档ID和路径
         document_id = self.generate_document_id(file.filename)
         # 确保目录存在
-        self.ensure_raw_dir(user_id)
-        file_path = self.get_raw_path(user_id, document_id)
+        doc_dir = self.get_document_dir(user_id, document_id)
+        file_path = self.get_document_file_path(user_id, document_id)
         
         # 保存文件
         file_size = 0
@@ -161,7 +181,13 @@ class DocumentProcessor:
     
     async def register_remote_document(self, user_id: str, url: str, filename: str) -> Dict[str, Any]:
         """注册远程文档"""
+        # 检查文件类型
+        if not self.is_valid_file_type(filename):
+            raise ValueError(f"不支持的文件类型: {filename}")
+        
         document_id = self.generate_document_id(filename)
+        # 创建文档目录但不下载文件
+        self.get_document_dir(user_id, document_id)
         
         # 返回基本信息
         return {
@@ -174,75 +200,84 @@ class DocumentProcessor:
         }
     
     async def convert_to_markdown(self, user_id: str, document_id: str) -> Dict[str, Any]:
-        """将文档转换为Markdown格式，对纯文本文件直接复制"""
-        doc_path = self.get_raw_path(user_id, document_id)
+        """将文档转换为Markdown格式
         
-        # 确保目录存在
-        self.ensure_md_dir(user_id)
-        md_path = self.get_md_path(user_id, document_id)
+        支持直接处理本地文件或远程URL
         
-        # 检查原始文档是否存在
-        if not doc_path.exists():
-            raise FileNotFoundError(f"找不到原始文档: {document_id}")
-        
-        try:
-            # 获取文件扩展名
-            file_ext = doc_path.suffix.lower()
+        Args:
+            user_id: 用户ID
+            document_id: 文档ID
             
-            # 对纯文本文件直接复制
-            if file_ext in ['.md', '.markdown', '.txt']:
-                self.logger.info(f"检测到纯文本文件: {document_id}，直接复制")
-                
-                # 直接读取并写入（保持编码一致性）
-                async with aiofiles.open(doc_path, 'r', encoding='utf-8', errors='replace') as src:
-                    content = await src.read()
-                    
-                    async with aiofiles.open(md_path, 'w', encoding='utf-8') as dest:
-                        await dest.write(content)
-                
+        Returns:
+            转换结果信息字典
+        """
+        try:
+            # 获取文档元数据
+            doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+            if not doc_meta:
+                raise ValueError(f"找不到文档元数据: {document_id}")
+            
+            # 获取文件路径或URL
+            doc_path = self.get_document_file_path(user_id, document_id)
+            is_remote = doc_meta.get("source_type") == "remote"
+            source_url = doc_meta.get("source_url") if is_remote else None
+            file_type = doc_meta.get("type")
+            
+            # 处理纯文本文件类型 (本地)
+            if not is_remote and file_type in ['md', 'markdown', 'txt']:
+                self.logger.info(f"检测到纯文本文件: {document_id}，直接返回内容")
+                async with aiofiles.open(doc_path, 'r', encoding='utf-8', errors='replace') as f:
+                    content = await f.read()
                 return {
-                    "md_path": str(md_path),
+                    "content": content,
                     "content_preview": content[:200] + "..." if len(content) > 200 else content,
                     "success": True,
-                    "method": "direct_copy"
+                    "method": "direct_read"
                 }
+            
+            # 使用voidrail进行转换
+            if not self.voidrail_client:
+                raise ValueError("未配置转换服务，无法进行文档转换")
+            
+            # 准备转换参数
+            conversion_params = {
+                "file_type": file_type,
+                "output_format": "markdown"
+            }
+            
+            # 处理本地或远程文件
+            if is_remote and source_url:
+                # 直接使用URL进行转换
+                self.logger.info(f"远程文档转换: {source_url}")
+                conversion_params["content"] = source_url
+                conversion_params["content_type"] = "url"
             else:
-                # 对其他文件类型使用voidrail进行转换
-                if self.voidrail_client:
-                    # 读取文件内容并转换为base64
-                    async with aiofiles.open(doc_path, 'rb') as f:
-                        file_content = await f.read()
-                        base64_content = base64.b64encode(file_content).decode('utf-8')
+                # 本地文件转换
+                if not doc_path.exists():
+                    raise FileNotFoundError(f"找不到原始文档: {document_id}")
                     
-                    # 获取文件类型
-                    file_type = file_ext.lstrip('.')
+                # 读取文件内容并转换为base64
+                async with aiofiles.open(doc_path, 'rb') as f:
+                    file_content = await f.read()
+                    base64_content = base64.b64encode(file_content).decode('utf-8')
                     
-                    # 使用LLM服务转换
-                    markdown_content = ""
-                    async for chunk in self.voidrail_client.stream(
-                        "SimpleDocling.convert",
-                        content=base64_content,
-                        content_type="base64",
-                        file_type=file_type,
-                        output_format="markdown"
-                    ):
-                        markdown_content += chunk
-                    
-                    # 保存Markdown文件
-                    async with aiofiles.open(md_path, 'w', encoding='utf-8') as f:
-                        await f.write(markdown_content)
-                else:
-                    # 简单转换(仅用于测试)
-                    markdown_content = f"# {document_id}\n\nMarkdown Content Demo."
-                    async with aiofiles.open(md_path, 'w', encoding='utf-8') as f:
-                        await f.write(markdown_content)
-                
-                return {
-                    "md_path": str(md_path),
-                    "content_preview": markdown_content[:200] + "..." if len(markdown_content) > 200 else markdown_content,
-                    "success": True,
-                    "method": "conversion"
-                }
+                conversion_params["content"] = base64_content
+                conversion_params["content_type"] = "base64"
+            
+            # 使用LLM服务转换
+            markdown_content = ""
+            async for chunk in self.voidrail_client.stream(
+                f"{CONVERT_SERVICE_NAME}.{CONVERT_METHOD_NAME}",
+                **conversion_params
+            ):
+                markdown_content += chunk
+            
+            return {
+                "content": markdown_content,
+                "content_preview": markdown_content[:200] + "..." if len(markdown_content) > 200 else markdown_content,
+                "success": True,
+                "method": "conversion"
+            }
         except Exception as e:
             self.logger.error(f"转换Markdown失败: {e}")
             raise
@@ -941,3 +976,172 @@ class DocumentProcessor:
         except Exception as e:
             self.logger.error(f"删除摘要向量失败: {e}")
             return False
+
+    async def process_document_complete(self, user_id: str, document_id: str) -> Dict[str, Any]:
+        """一步完成文档处理：转换、切片和嵌入向量
+        
+        Args:
+            user_id: 用户ID
+            document_id: 文档ID
+            
+        Returns:
+            包含处理结果的字典
+        """
+        try:
+            # 1. 获取文档元数据
+            doc_meta = await self.meta_manager.get_metadata(user_id, document_id)
+            if not doc_meta:
+                raise ValueError(f"找不到文档元数据: {document_id}")
+            
+            # 从元数据中获取主题路径和确定集合名称
+            topic_path = doc_meta.get("topic_path", "")
+            collection_name = None
+            
+            # 从主题路径提取集合名称
+            if topic_path:
+                extracted_collection = self.extract_collection_name_from_topic(user_id, topic_path)
+                if extracted_collection:
+                    collection_name = extracted_collection
+            
+            # 如果没有提取到集合名称，使用默认命名
+            if not collection_name:
+                collection_name = f"user_{user_id}"
+            
+            # 2. 直接转换为Markdown
+            try:
+                # 不保存文件，直接获取转换结果
+                markdown_result = await self.convert_to_markdown(user_id, document_id)
+                md_content = markdown_result["content"]
+                
+                if not md_content.strip():
+                    raise ValueError("转换后的文档内容为空")
+                
+            except Exception as e:
+                self.logger.error(f"转换Markdown失败: {e}")
+                # 更新元数据，标记为处理失败
+                await self.meta_manager.update_metadata(
+                    user_id, document_id, 
+                    {
+                        "processed": False,
+                        "process_error": f"转换失败: {str(e)}"
+                    }
+                )
+                raise
+            
+            # 3. 直接在内存中切片
+            try:
+                # 简单分段策略
+                chunks = []
+                current_chunk = ""
+                for line in md_content.split('\n'):
+                    current_chunk += line + '\n'
+                    if len(current_chunk) > 1000 or (line.startswith('#') and current_chunk.strip() != line):
+                        chunks.append(current_chunk.strip())
+                        current_chunk = ""
+                
+                # 添加最后一个块
+                if current_chunk.strip():
+                    chunks.append(current_chunk.strip())
+                
+                if not chunks:
+                    raise ValueError("文档内容为空，切片失败")
+                
+            except Exception as e:
+                self.logger.error(f"文档切片失败: {e}")
+                # 更新元数据，标记为处理失败
+                await self.meta_manager.update_metadata(
+                    user_id, document_id, 
+                    {
+                        "processed": False,
+                        "process_error": f"切片失败: {str(e)}"
+                    }
+                )
+                raise
+            
+            # 4. 直接生成向量嵌入
+            try:
+                if not self.retriever:
+                    raise ValueError("没有配置向量检索器，无法生成嵌入")
+                
+                # 获取自定义元数据
+                custom_metadata = doc_meta.get("metadata", {})
+                
+                # 准备向量数据
+                metadatas = []
+                
+                for i, chunk in enumerate(chunks):
+                    chunk_metadata = {
+                        "document_id": document_id,
+                        "chunk_index": i,
+                        "user_id": user_id,
+                    }
+                    
+                    # 只有当topic_path有值时才添加它
+                    if topic_path:
+                        chunk_metadata["topic_path"] = topic_path
+                    
+                    # 添加自定义元数据以支持索引
+                    if custom_metadata:
+                        # 从元数据中筛选索引字段
+                        for key in ["title", "description", "tags", "category", "source", "author", "created_date"]:
+                            if key in custom_metadata:
+                                chunk_metadata[key] = custom_metadata[key]
+                    
+                    metadatas.append(chunk_metadata)
+                
+                # 使用collection_name添加向量
+                result = await self.retriever.add(
+                    texts=chunks,
+                    collection_name=collection_name,
+                    user_id=user_id,
+                    metadatas=metadatas,
+                    indexable_fields=["title", "description", "tags", "category", "source", "author", "created_date"],
+                    ids=[f"{document_id}_{i}" for i in range(len(chunks))]
+                )
+                
+                if not result.get("success", False):
+                    raise ValueError(f"向量添加失败: {result.get('error', '未知错误')}")
+                
+                # 确保创建索引
+                await self.retriever.ensure_index(collection_name)
+                
+            except Exception as e:
+                self.logger.error(f"生成嵌入向量失败: {e}")
+                # 更新元数据，标记为处理失败
+                await self.meta_manager.update_metadata(
+                    user_id, document_id, 
+                    {
+                        "processed": False,
+                        "process_error": f"嵌入失败: {str(e)}"
+                    }
+                )
+                raise
+            
+            # 5. 更新元数据，标记为已处理
+            update_result = await self.meta_manager.update_metadata(
+                user_id, document_id, 
+                {
+                    "processed": True,
+                    "collection_name": collection_name,
+                    "process_error": None  # 清除可能存在的错误信息
+                }
+            )
+            
+            return {
+                "document_id": document_id,
+                "collection": collection_name,
+                "chunks_count": len(chunks),
+                "vectors_count": result.get("added", 0),
+                "success": True
+            }
+        except Exception as e:
+            self.logger.error(f"文档处理失败: {e}")
+            # 更新元数据，标记为处理失败
+            await self.meta_manager.update_metadata(
+                user_id, document_id, 
+                {
+                    "processed": False,
+                    "process_error": str(e)
+                }
+            )
+            raise
