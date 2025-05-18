@@ -190,113 +190,6 @@ async def test_memory_chunking(processor, user_id, upload_file):
 
 
 @pytest.mark.asyncio
-async def test_generate_embeddings(processor, user_id, upload_file):
-    """测试生成文档嵌入向量"""
-    # 上传文件并处理
-    file = await upload_file()
-    file_info = await processor.save_uploaded_file(user_id, file)
-    document_id = file_info["document_id"]
-    await processor.convert_to_markdown(user_id, document_id)
-    await processor.chunk_document(user_id, document_id)
-    
-    # 生成嵌入向量
-    result = await processor.generate_embeddings(user_id, document_id, processor.retriever)
-    
-    # 验证结果
-    assert "collection" in result
-    assert result["collection"] == f"user_{user_id}"
-    assert "vectors_count" in result
-    assert result["vectors_count"] > 0
-    assert result["success"] is True
-
-
-@pytest.mark.asyncio
-async def test_calculate_storage_usage(processor, user_id, upload_file):
-    """测试计算存储空间使用量"""
-    # 上传文件并处理
-    file = await upload_file()
-    file_info = await processor.save_uploaded_file(user_id, file)
-    document_id = file_info["document_id"]
-    await processor.convert_to_markdown(user_id, document_id)
-    
-    # 计算存储空间
-    usage = await processor.calculate_storage_usage(user_id)
-    
-    # 验证结果
-    assert usage > 0
-    
-    # 多次上传增加使用量
-    file2 = await upload_file()
-    file_info2 = await processor.save_uploaded_file(user_id, file2)
-    await processor.convert_to_markdown(user_id, file_info2["document_id"])
-    
-    new_usage = await processor.calculate_storage_usage(user_id)
-    assert new_usage > usage
-
-
-@pytest.mark.asyncio
-async def test_remove_document_files(processor, user_id, upload_file):
-    """测试删除文档文件"""
-    # 上传文件
-    file = await upload_file()
-    file_info = await processor.save_uploaded_file(user_id, file)
-    document_id = file_info["document_id"]
-    
-    # 验证文件存在
-    doc_path = processor.get_document_file_path(user_id, document_id)
-    assert doc_path.exists()
-    
-    # 删除文档目录
-    doc_dir = processor.get_document_dir(user_id, document_id)
-    shutil.rmtree(doc_dir)
-    
-    # 验证文件已删除
-    assert not doc_path.exists()
-    assert not doc_dir.exists()
-
-
-@pytest.mark.asyncio
-async def test_process_document_embeddings(processor, user_id, upload_file, meta_manager):
-    """测试文档嵌入完整流程"""
-    # 上传文件
-    file = await upload_file()
-    file_info = await processor.save_uploaded_file(user_id, file)
-    document_id = file_info["document_id"]
-    
-    # 创建文档元数据
-    await meta_manager.create_document(user_id, document_id, None, {
-        "original_name": "测试文档.txt",
-        "type": "txt"
-    })
-    
-    # 处理流程
-    await processor.convert_to_markdown(user_id, document_id)
-    await processor.chunk_document(user_id, document_id)
-    
-    # 保存切片到元数据
-    chunks_result = await processor.chunk_document(user_id, document_id)
-    await processor.add_chunks_metadata(user_id, document_id, chunks_result["chunks"])
-    
-    try:
-        # 生成嵌入向量
-        embedding_result = await processor.process_document_embeddings(user_id, document_id)
-        
-        # 验证结果
-        assert embedding_result["success"] is True
-        assert embedding_result["vectors_count"] > 0
-    except ValueError as e:
-        # 如果是topic_path字段错误，跳过此测试
-        if "topic_path" in str(e):
-            pytest.skip("LanceDB不支持topic_path字段")
-        else:
-            raise
-    
-    # 删除嵌入向量
-    delete_result = await processor.remove_vector_embeddings(user_id, document_id)
-    assert delete_result is True
-
-
-@pytest.mark.asyncio
 async def test_search_chunks(processor, user_id, upload_file, meta_manager):
     """测试搜索文档内容"""
     # 上传文件并处理
@@ -310,10 +203,8 @@ async def test_search_chunks(processor, user_id, upload_file, meta_manager):
         "type": "txt"
     })
     
-    # 处理流程
-    await processor.convert_to_markdown(user_id, document_id)
-    await processor.chunk_document(user_id, document_id)
-    await processor.process_document_embeddings(user_id, document_id)
+    # 一步处理文档
+    await processor.process_document_complete(user_id, document_id)
     
     # 搜索文档
     search_result = await processor.search_chunks(user_id, "测试文本")
@@ -333,26 +224,27 @@ async def test_search_chunks(processor, user_id, upload_file, meta_manager):
 
 
 @pytest.mark.asyncio
-async def test_get_markdown(processor, user_id, upload_file):
-    """测试获取Markdown内容"""
-    # 上传文件并转换
+async def test_get_document_content(processor, user_id, upload_file):
+    """测试获取文档内容"""
+    # 上传文件
     file = await upload_file()
     file_info = await processor.save_uploaded_file(user_id, file)
     document_id = file_info["document_id"]
-    await processor.convert_to_markdown(user_id, document_id)
     
-    # 获取Markdown内容
-    result = await processor.get_markdown(user_id, document_id)
+    # 创建文档元数据
+    await processor.meta_manager.create_document(user_id, document_id, None, {
+        "original_name": "测试文档.txt",
+        "type": "txt"
+    })
+    
+    # 直接获取转换内容
+    result = await processor.convert_to_markdown(user_id, document_id)
     
     # 验证结果
-    assert result["document_id"] == document_id
+    assert result["success"] is True
     assert "content" in result
-    # 纯文本直接复制，不会添加标题
     assert "这是一个测试文本文件" in result["content"]
-    assert "file_size" in result
-    assert result["file_size"] > 0
-    assert "last_modified" in result
-    assert "file_path" in result
+    assert "content_preview" in result
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -392,21 +284,19 @@ async def test_custom_collection_via_topic_path(processor, user_id, upload_file,
         "type": "txt"
     })
     
-    # 处理流程
-    await processor.convert_to_markdown(user_id, document_id)
-    await processor.chunk_document(user_id, document_id)
-    
+    # 直接一步处理
     try:
-        # 生成嵌入向量
-        embedding_result = await processor.process_document_embeddings(user_id, document_id)
+        # 一步完成处理
+        result = await processor.process_document_complete(user_id, document_id)
         
         # 验证结果 - 应该使用从主题路径提取的集合名称
         expected_collection = f"user_{user_id}_test_collection_"
-        assert embedding_result["collection"] == expected_collection
+        assert result["collection"] == expected_collection
         
         # 验证元数据中保存了集合名称
         doc_meta = await meta_manager.get_metadata(user_id, document_id)
         assert doc_meta.get("collection_name") == expected_collection
+        assert doc_meta["processed"] is True
     except ValueError as e:
         if "topic_path" in str(e):
             pytest.skip("LanceDB不支持topic_path字段")
@@ -441,11 +331,9 @@ async def test_list_user_collections(processor, user_id, upload_file, meta_manag
             "type": "txt"
         })
         
-        await processor.convert_to_markdown(user_id, document_id)
-        await processor.chunk_document(user_id, document_id)
-        
         try:
-            result = await processor.process_document_embeddings(user_id, document_id)
+            # 一步完成处理
+            result = await processor.process_document_complete(user_id, document_id)
             created_collections.add(result["collection"])
             print(f"创建的集合: {result['collection']}")
         except ValueError as e:

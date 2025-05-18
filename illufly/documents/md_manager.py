@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from .path_manager import PathManager
-from .indexing import DocumentIndexManager
+from .md_indexing import MarkdownIndexing
 
 class MarkdownManager:
     """Markdown文档管理器 - 处理文档内容、元数据、主题结构和索引"""
@@ -22,7 +22,7 @@ class MarkdownManager:
         
         # 创建辅助管理器
         self.path_manager = PathManager(base_dir)
-        self.index_manager = DocumentIndexManager(self.path_manager)
+        self.index_manager = MarkdownIndexing(self.path_manager)
         
         # 内部维护文档索引
         self.document_index = {}  # {user_id: {document_id: {topic_path, file_name, last_checked}}}
@@ -175,7 +175,35 @@ class MarkdownManager:
             with open(cache_file, 'r', encoding='utf-8') as f:
                 cache_data = json.load(f)
                 
-            self.document_index = cache_data["index"]
+            # 加载索引，确保结构正确
+            self.document_index = {}
+            loaded_index = cache_data["index"]
+            
+            # 确保结构一致性
+            for user_id, docs in loaded_index.items():
+                self.document_index[user_id] = {}
+                for doc_id, info in docs.items():
+                    # 确保info中的topic_path是字符串，而不是字典
+                    if isinstance(info, dict):
+                        topic_path = info.get("topic_path", "")
+                        if isinstance(topic_path, str):
+                            self.document_index[user_id][doc_id] = info
+                        else:
+                            # 如果是错误的结构，尝试修复
+                            corrected_info = {
+                                "topic_path": ".",  # 默认为根目录
+                                "file_name": info.get("file_name", f"__id_{doc_id}__.md"),
+                                "last_checked": info.get("last_checked", datetime.now().timestamp())
+                            }
+                            self.document_index[user_id][doc_id] = corrected_info
+                    else:
+                        # 如果整个info不是字典，创建一个默认结构
+                        self.document_index[user_id][doc_id] = {
+                            "topic_path": ".",
+                            "file_name": f"__id_{doc_id}__.md",
+                            "last_checked": datetime.now().timestamp()
+                        }
+                
             self.logger.info(f"成功从缓存加载索引，时间戳: {cache_data['timestamp']}")
             return True
         except Exception as e:
@@ -245,8 +273,9 @@ class MarkdownManager:
         """
         # 1. 优先从索引获取路径
         topic_path = None
-        if self.document_index.get(user_id):
-            topic_path = self.document_index[user_id].get(document_id)
+        if self.document_index.get(user_id) and document_id in self.document_index[user_id]:
+            # 从字典中提取topic_path字段，而不是使用整个字典
+            topic_path = self.document_index[user_id][document_id]["topic_path"]
         
         # 2. 如果没有找到，再尝试从元数据或文件系统查找
         if not topic_path:
@@ -496,16 +525,7 @@ class MarkdownManager:
         return result
         
     async def move_document(self, user_id: str, document_id: str, target_topic_path: str) -> bool:
-        """将文档移动到另一个主题
-        
-        Args:
-            user_id: 用户ID
-            document_id: 文档ID
-            target_topic_path: 目标主题路径
-            
-        Returns:
-            移动是否成功
-        """
+        """将文档移动到另一个主题"""
         # 1. 读取当前文档
         document = await self.read_document(user_id, document_id)
         if not document:
@@ -530,12 +550,13 @@ class MarkdownManager:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             source_path.rename(target_path)
             
-            # 5. 更新元数据
+            # 5. 更新元数据并保存
             metadata = document["metadata"]
             metadata["topic_path"] = target_topic_path
             metadata["updated_at"] = datetime.now().isoformat()
             
-            return True
+            # 重要：调用update_document保存元数据更改到文件
+            return await self.update_document(user_id, document_id, content=document["content"], metadata=metadata)
         except Exception as e:
             self.logger.error(f"移动文档失败: {document_id}, 错误: {e}")
             return False

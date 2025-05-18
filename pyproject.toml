@@ -47,6 +47,7 @@ diskcache = "^5.6.3"
 click = "^8.1.8"
 lancedb = "^0.21.2"
 python-statemachine = "^2.5.0"
+python-frontmatter = "^1.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

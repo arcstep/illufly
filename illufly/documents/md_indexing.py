@@ -5,7 +5,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-class DocumentIndexManager:
+class MarkdownIndexing:
     """文档索引管理器 - 维护document_id到路径和元数据的缓存映射"""
     
     def __init__(self, path_manager):

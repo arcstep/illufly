@@ -13,13 +13,12 @@ from typing import List, Dict, Any, Optional, AsyncGenerator, Literal, Tuple, Un
 from pathlib import Path
 from fastapi import UploadFile
 
-from ..llm.retriever.lancedb import LanceRetriever
 from .processor import DocumentProcessor
 from .meta import DocumentMetaManager
 
 # 定义错误类型枚举
 class ErrorType(str, Enum):
-    VALIDATION_ERROR = "validation_error"  # 验证错误（如状态检查失败）
+    VALIDATION_ERROR = "validation_error"  # 验证错误
     FILE_ERROR = "file_error"  # 文件操作错误
     DATABASE_ERROR = "database_error"  # 数据库错误
     RESOURCE_ERROR = "resource_error"  # 资源（向量存储等）错误
@@ -334,7 +333,10 @@ class DocumentService:
             
             # 2. 删除文件资源
             try:
-                await self.processor.remove_document_files(user_id, document_id)
+                # 这里应该改用新的文件删除方法，删除文档目录
+                doc_dir = self.processor.get_document_dir(user_id, document_id)
+                if doc_dir.exists():
+                    shutil.rmtree(doc_dir)
             except Exception as fe:
                 errors.append(f"删除文件资源失败: {str(fe)}")
             
