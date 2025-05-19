@@ -503,3 +503,68 @@ class TestMarkdownManager:
         # 检查是否已修复
         doc = await md_manager.read_document(user_id, doc_id)
         assert doc["metadata"]["topic_path"] == "topic1"
+
+    async def test_index_repair_after_file_system_changes(self, md_manager, setup_test_data):
+        """测试文件系统直接修改后的索引修复"""
+        user_id = setup_test_data["user1"]
+        doc_id = setup_test_data["doc1_id"]
+        
+        # 获取原始文档信息
+        doc = await md_manager.read_document(user_id, doc_id)
+        old_path = Path(doc["file_path"])
+        original_topic_path = doc["metadata"]["topic_path"]
+        
+        # 直接通过文件系统移动文件，绕过索引更新
+        new_dir = md_manager.get_topic_path(user_id, "manually_moved")
+        new_dir.mkdir(exist_ok=True)
+        new_path = new_dir / old_path.name
+        old_path.rename(new_path)
+        
+        # 直接从索引获取路径（不触发文件系统搜索）
+        index_path = await md_manager.index_manager.get_document_path(user_id, doc_id)
+        # 验证索引中的路径仍然是旧路径
+        assert index_path == original_topic_path
+        
+        # 尝试读取文档（应该能找到，是通过文件系统搜索找到的）
+        doc1 = await md_manager.read_document(user_id, doc_id)
+        assert doc1 is not None
+        assert "manually_moved" in doc1["file_path"]
+        # 元数据中的路径还是旧的
+        assert doc1["metadata"]["topic_path"] == original_topic_path
+        
+        # 强制刷新索引
+        await md_manager.index_manager.refresh_index(user_id, force=True)
+        
+        # 再次直接从索引获取路径
+        updated_index_path = await md_manager.index_manager.get_document_path(user_id, doc_id)
+        # 验证索引已更新为新路径
+        assert updated_index_path == "manually_moved"
+        
+        # 修复元数据
+        await md_manager.verify_and_repair_document_paths(user_id, "manually_moved")
+        
+        # 再次读取文档，验证元数据也已更新
+        doc2 = await md_manager.read_document(user_id, doc_id)
+        assert doc2["metadata"]["topic_path"] == "manually_moved"
+
+    async def test_concurrent_operations(self, md_manager, setup_test_data):
+        """测试并发操作下的索引一致性"""
+        user_id = setup_test_data["user1"]
+        
+        # 创建多个并发任务
+        async def create_and_move_docs():
+            doc_ids = []
+            for i in range(10):
+                doc_id = await md_manager.create_document(user_id, f"topic{i%3}", f"并发文档{i}")
+                doc_ids.append(doc_id)
+            return doc_ids
+        
+        # 并发执行多个任务
+        tasks = [create_and_move_docs() for _ in range(5)]
+        results = await asyncio.gather(*tasks)
+        
+        # 验证所有文档都能正确访问
+        for doc_ids in results:
+            for doc_id in doc_ids:
+                doc = await md_manager.read_document(user_id, doc_id)
+                assert doc is not None

@@ -3,8 +3,6 @@ import re
 import uuid
 import logging
 import frontmatter
-import json
-import asyncio
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -23,12 +21,6 @@ class MarkdownManager:
         # 创建辅助管理器
         self.path_manager = PathManager(base_dir)
         self.index_manager = MarkdownIndexing(self.path_manager)
-        
-        # 内部维护文档索引
-        self.document_index = {}  # {user_id: {document_id: {topic_path, file_name, last_checked}}}
-        self.index_lock = asyncio.Lock()
-        self.last_refresh = {}  # {user_id: timestamp}
-        self.refresh_interval = 300  # 秒
     
     def get_user_base(self, user_id: str) -> Path:
         """获取用户根目录"""
@@ -66,149 +58,16 @@ class MarkdownManager:
     
     async def initialize(self, callback=None):
         """初始化系统，构建文档索引"""
-        # 获取所有用户目录
-        if not self.base_dir.exists():
-            return {}
-            
-        result = {}
-        user_dirs = [d for d in self.base_dir.iterdir() if d.is_dir()]
-        
-        self.logger.info(f"开始初始化，发现 {len(user_dirs)} 个用户目录")
-        
-        for i, user_dir in enumerate(user_dirs):
-            user_id = user_dir.name
-            try:
-                # 刷新用户索引
-                await self._refresh_user_index(user_id, force=True)
-                
-                # 统计文档数量
-                doc_count = len(self.document_index.get(user_id, {}))
-                result[user_id] = doc_count
-                
-                # 报告进度
-                if callback:
-                    await callback(user_id, i + 1, len(user_dirs))
-                    
-                self.logger.info(f"用户 {user_id} 索引完成，发现 {doc_count} 个文档")
-            except Exception as e:
-                self.logger.error(f"用户 {user_id} 索引失败: {e}")
-        
-        # 记录总体结果
-        total_docs = sum(result.values())
-        self.logger.info(f"初始化完成，共 {len(user_dirs)} 个用户，{total_docs} 个文档")
-        
-        return result
-    
-    async def _refresh_user_index(self, user_id: str, force: bool = False) -> None:
-        """刷新指定用户的文档索引"""
-        now = datetime.now().timestamp()
-        if not force and user_id in self.last_refresh:
-            if now - self.last_refresh[user_id] < self.refresh_interval:
-                return  # 在刷新间隔内，不重复刷新
-        
-        async with self.index_lock:
-            # 初始化用户索引
-            if user_id not in self.document_index:
-                self.document_index[user_id] = {}
-                
-            # 记录所有找到的文档ID
-            found_docs = set()
-            
-            # 遍历用户目录下的所有文件
-            user_base = self.get_user_base(user_id)
-            for root, _, files in os.walk(user_base):
-                for file in files:
-                    if file.startswith("__id_") and file.endswith("__.md"):
-                        doc_id = self.extract_document_id(file)
-                        if doc_id:
-                            relative_path = Path(root).relative_to(user_base)
-                            topic_path = str(relative_path)
-                            
-                            # 更新索引
-                            self.document_index[user_id][doc_id] = {
-                                "topic_path": topic_path,
-                                "file_name": file,
-                                "last_checked": now
-                            }
-                            found_docs.add(doc_id)
-            
-            # 清理索引中不存在的文档
-            to_remove = []
-            for doc_id in self.document_index[user_id]:
-                if doc_id not in found_docs:
-                    to_remove.append(doc_id)
-            
-            for doc_id in to_remove:
-                del self.document_index[user_id][doc_id]
-                
-            # 更新刷新时间
-            self.last_refresh[user_id] = now
+        # 使用索引管理器的初始化方法
+        return await self.index_manager.initialize(callback)
     
     async def save_cache(self, cache_file: str = None) -> bool:
         """保存索引缓存到文件"""
-        if not cache_file:
-            cache_file = str(self.base_dir / "index_cache.json")
-            
-        try:
-            cache_data = {
-                "timestamp": datetime.now().isoformat(),
-                "index": self.document_index
-            }
-            
-            with open(cache_file, 'w', encoding='utf-8') as f:
-                json.dump(cache_data, f)
-                
-            return True
-        except Exception as e:
-            self.logger.error(f"保存索引缓存失败: {e}")
-            return False
+        return await self.index_manager.save_cache(cache_file)
     
     async def load_cache(self, cache_file: str = None) -> bool:
         """从文件加载索引缓存"""
-        if not cache_file:
-            cache_file = str(self.base_dir / "index_cache.json")
-            
-        if not os.path.exists(cache_file):
-            return False
-            
-        try:
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                cache_data = json.load(f)
-                
-            # 加载索引，确保结构正确
-            self.document_index = {}
-            loaded_index = cache_data["index"]
-            
-            # 确保结构一致性
-            for user_id, docs in loaded_index.items():
-                self.document_index[user_id] = {}
-                for doc_id, info in docs.items():
-                    # 确保info中的topic_path是字符串，而不是字典
-                    if isinstance(info, dict):
-                        topic_path = info.get("topic_path", "")
-                        if isinstance(topic_path, str):
-                            self.document_index[user_id][doc_id] = info
-                        else:
-                            # 如果是错误的结构，尝试修复
-                            corrected_info = {
-                                "topic_path": ".",  # 默认为根目录
-                                "file_name": info.get("file_name", f"__id_{doc_id}__.md"),
-                                "last_checked": info.get("last_checked", datetime.now().timestamp())
-                            }
-                            self.document_index[user_id][doc_id] = corrected_info
-                    else:
-                        # 如果整个info不是字典，创建一个默认结构
-                        self.document_index[user_id][doc_id] = {
-                            "topic_path": ".",
-                            "file_name": f"__id_{doc_id}__.md",
-                            "last_checked": datetime.now().timestamp()
-                        }
-                
-            self.logger.info(f"成功从缓存加载索引，时间戳: {cache_data['timestamp']}")
-            return True
-        except Exception as e:
-            self.logger.error(f"加载索引缓存失败: {e}")
-            return False
+        return await self.index_manager.load_cache(cache_file)
     
     async def create_document(self, user_id: str, topic_path: str, title: str, 
                               content: str = "", metadata: Dict[str, Any] = None) -> str:
@@ -259,6 +118,14 @@ class MarkdownManager:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(frontmatter.dumps(post))
             
+        # 6. 直接添加到索引，避免全量扫描
+        await self.index_manager.add_document(
+            user_id, 
+            document_id, 
+            topic_path, 
+            file_name
+        )
+            
         return document_id
     
     async def read_document(self, user_id: str, document_id: str) -> Optional[Dict[str, Any]]:
@@ -272,10 +139,7 @@ class MarkdownManager:
             包含内容和元数据的字典，如果文档不存在则返回None
         """
         # 1. 优先从索引获取路径
-        topic_path = None
-        if self.document_index.get(user_id) and document_id in self.document_index[user_id]:
-            # 从字典中提取topic_path字段，而不是使用整个字典
-            topic_path = self.document_index[user_id][document_id]["topic_path"]
+        topic_path = await self.index_manager.get_document_path(user_id, document_id)
         
         # 2. 如果没有找到，再尝试从元数据或文件系统查找
         if not topic_path:
@@ -295,19 +159,19 @@ class MarkdownManager:
             if not document_found:
                 return None
         
-        # 2. 构建完整路径
+        # 3. 构建完整路径
         file_name = self.get_document_file_name(document_id)
         file_path = self.get_topic_path(user_id, topic_path) / file_name
         
         if not file_path.exists():
             return None
             
-        # 3. 读取并解析文件
+        # 4. 读取并解析文件
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 post = frontmatter.load(f)
                 
-            # 4. 构建返回结果
+            # 5. 构建返回结果
             result = {
                 "document_id": document_id,
                 "content": post.content,
@@ -363,6 +227,15 @@ class MarkdownManager:
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(frontmatter.dumps(post))
                 
+            # 判断是否更改了路径
+            old_topic_path = document["metadata"].get("topic_path")
+            new_topic_path = current_metadata.get("topic_path")
+            
+            # 只有在路径变更时才更新索引
+            if metadata and "topic_path" in metadata and old_topic_path != new_topic_path:
+                # 更新索引中的路径
+                await self.index_manager.update_document_path(user_id, document_id, new_topic_path)
+                
             return True
         except Exception as e:
             self.logger.error(f"更新文档失败: {document_id}, 错误: {e}")
@@ -388,6 +261,10 @@ class MarkdownManager:
         
         try:
             file_path.unlink()
+            
+            # 3. 从索引中移除
+            await self.index_manager.remove_document(user_id, document_id)
+            
             return True
         except Exception as e:
             self.logger.error(f"删除文档失败: {document_id}, 错误: {e}")
@@ -555,7 +432,9 @@ class MarkdownManager:
             metadata["topic_path"] = target_topic_path
             metadata["updated_at"] = datetime.now().isoformat()
             
-            # 重要：调用update_document保存元数据更改到文件
+            # 更新索引 - 直接更新单个文档的路径
+            await self.index_manager.update_document_path(user_id, document_id, target_topic_path)
+            
             return await self.update_document(user_id, document_id, content=document["content"], metadata=metadata)
         except Exception as e:
             self.logger.error(f"移动文档失败: {document_id}, 错误: {e}")
@@ -627,93 +506,225 @@ class MarkdownManager:
         # 3. 执行文件系统操作
         success = self.path_manager.delete_topic_dir(user_id, relative_path)
         
-        # 4. 从索引中移除已删除的文档
-        async with self.index_lock:
-            if user_id in self.document_index:
-                for doc_id in document_ids:
-                    if doc_id in self.document_index[user_id]:
-                        del self.document_index[user_id][doc_id]
+        # 4. 从索引中移除相关文档 - 直接使用索引管理器的批量删除方法
+        if success:
+            await self.index_manager.remove_documents_in_path(user_id, relative_path)
         
         return success
 
     async def rename_topic(self, user_id: str, old_path: str, new_name: str) -> bool:
         """重命名主题目录，同步更新文档元数据"""
-        # 执行文件系统操作
+        # 1. 首先保存所有受影响文档的ID (在文件系统操作前)
+        document_ids = self.path_manager.get_physical_document_ids(user_id, old_path)
+        
+        # 2. 执行文件系统操作
         success, new_path = self.path_manager.rename_topic_dir(user_id, old_path, new_name)
         if not success:
             return False
         
-        # 更新所有文档的元数据
-        document_ids = self.path_manager.get_physical_document_ids(user_id, new_path)
-        for doc_id in document_ids:
-            document = await self.read_document(user_id, doc_id)
-            if document:
-                metadata = document["metadata"]
-                metadata["topic_path"] = new_path
-                await self.update_document(user_id, doc_id, content=None, metadata=metadata)
+        # 3. 首先刷新索引，确保索引反映新的文件位置
+        await self.index_manager.refresh_index(user_id, force=True, specific_path=new_path)
         
-        # 递归更新子主题
-        await self.verify_and_repair_document_paths(user_id, new_path)
+        # 4. 然后逐个更新文档元数据
+        for doc_id in document_ids:
+            # 先尝试直接从文件系统读取（此时文件已经在新路径）
+            file_name = self.get_document_file_name(doc_id)
+            file_path = self.get_topic_path(user_id, new_path) / file_name
+            
+            if file_path.exists():
+                try:
+                    # 直接读取文件更新元数据
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        post = frontmatter.load(f)
+                    
+                    # 更新元数据
+                    metadata = dict(post.metadata)
+                    metadata["topic_path"] = new_path
+                    metadata["updated_at"] = datetime.now().isoformat()
+                    
+                    # 写回文件
+                    post = frontmatter.Post(post.content, **metadata)
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(frontmatter.dumps(post))
+                    
+                    # 确保索引更新
+                    await self.index_manager.update_document_path(user_id, doc_id, new_path)
+                except Exception as e:
+                    self.logger.error(f"更新文档元数据失败: {doc_id}, 错误: {e}")
+        
+        # 5. 递归处理子主题
+        topic_structure = self.path_manager.get_topic_structure(user_id, new_path)
+        for subtopic in topic_structure["subtopics"]:
+            subtopic_path = f"{new_path}/{subtopic}".lstrip("/")
+            await self.verify_and_repair_document_paths(user_id, subtopic_path)
         
         return True
 
     async def move_topic(self, user_id: str, source_path: str, target_path: str) -> bool:
         """移动主题到新位置，同步更新文档元数据"""
-        # 1. 先获取受影响的文档ID列表
-        affected_docs = self.path_manager.get_physical_document_ids(user_id, source_path)
+        # 1. 先获取受影响的文档ID
+        document_ids = self.path_manager.get_physical_document_ids(user_id, source_path)
         
         # 2. 执行文件系统操作
         success, new_path = self.path_manager.move_topic_dir(user_id, source_path, target_path)
         if not success:
             return False
         
-        # 3. 更新所有受影响文档的元数据
+        # 3. 首先刷新索引，确保索引反映新的文件系统状态
+        await self.index_manager.refresh_index(user_id, force=True, specific_path=new_path)
+        
+        # 4. 直接通过文件系统更新文档元数据，避免依赖不一致的索引
+        for doc_id in document_ids:
+            # 计算新的文档路径
+            file_name = self.get_document_file_name(doc_id)
+            # 处理原路径与目标路径的拼接
+            if source_path == "":
+                old_doc_path = ""
+            else:
+                old_doc_path = source_path
+            
+            if old_doc_path == source_path:
+                # 文档在源路径根目录
+                new_doc_path = new_path
+            else:
+                # 文档在源路径的子目录
+                sub_path = old_doc_path[len(source_path)+1:]  # +1 for slash
+                new_doc_path = f"{new_path}/{sub_path}"
+            
+            # 尝试直接找到并更新文件
+            file_path = self.get_topic_path(user_id, new_doc_path) / file_name
+            
+            if file_path.exists():
+                try:
+                    # 直接读取文件更新元数据
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        post = frontmatter.load(f)
+                    
+                    # 更新元数据
+                    metadata = dict(post.metadata)
+                    metadata["topic_path"] = new_doc_path
+                    metadata["updated_at"] = datetime.now().isoformat()
+                    
+                    # 写回文件
+                    post = frontmatter.Post(post.content, **metadata)
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(frontmatter.dumps(post))
+                    
+                    # 确保索引更新
+                    await self.index_manager.update_document_path(user_id, doc_id, new_doc_path)
+                except Exception as e:
+                    self.logger.error(f"更新文档元数据失败: {doc_id}, 错误: {e}")
+        
+        # 5. 更新子主题下的所有文档
         await self.verify_and_repair_document_paths(user_id, new_path)
         
-        # 4. 增量更新索引 - 只更新受影响的文档
-        async with self.index_lock:
-            if user_id in self.document_index:
-                for doc_id in affected_docs:
-                    if doc_id in self.document_index[user_id]:
-                        # 更新文档路径
-                        self.document_index[user_id][doc_id]["topic_path"] = new_path
-                        self.document_index[user_id][doc_id]["last_checked"] = datetime.now().timestamp()
+        # 6. 再次强制刷新索引，确保一致性
+        await self.index_manager.refresh_index(user_id, force=True, specific_path=new_path)
         
         return True
 
     async def copy_topic(self, user_id: str, source_path: str, target_path: str) -> bool:
         """复制主题到新位置，为新文档创建元数据"""
-        # 执行文件系统操作
+        # 1. 执行文件系统操作
         success, new_path = self.path_manager.copy_topic_dir(user_id, source_path, target_path)
         if not success:
             return False
         
-        # 更新所有文档的元数据
+        # 2. 刷新索引
+        await self.index_manager.refresh_index(user_id, force=True, specific_path=new_path)
+        
+        # 3. 获取新目录下所有文档ID
+        new_doc_ids = self.path_manager.get_physical_document_ids(user_id, new_path)
+        
+        # 4. 直接通过文件系统更新文档元数据
+        for doc_id in new_doc_ids:
+            file_name = self.get_document_file_name(doc_id)
+            file_path = self.get_topic_path(user_id, new_path) / file_name
+            
+            if file_path.exists():
+                try:
+                    # 直接读取文件更新元数据
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        post = frontmatter.load(f)
+                    
+                    # 更新元数据
+                    metadata = dict(post.metadata)
+                    metadata["topic_path"] = new_path
+                    metadata["updated_at"] = datetime.now().isoformat()
+                    
+                    # 写回文件
+                    post = frontmatter.Post(post.content, **metadata)
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(frontmatter.dumps(post))
+                    
+                    # 确保索引更新
+                    await self.index_manager.add_document(user_id, doc_id, new_path, file_name)
+                except Exception as e:
+                    self.logger.error(f"更新复制文档元数据失败: {doc_id}, 错误: {e}")
+        
+        # 5. 处理子主题
         await self.verify_and_repair_document_paths(user_id, new_path)
+        
+        # 6. 再次刷新索引
+        await self.index_manager.refresh_index(user_id, force=True, specific_path=new_path)
         
         return True
 
     async def merge_topics(self, user_id: str, source_path: str, target_path: str, overwrite: bool = False) -> bool:
         """合并主题，同步更新文档元数据"""
-        # 1. 先获取受影响的文档ID列表
-        affected_docs = self.path_manager.get_physical_document_ids(user_id, source_path)
+        # 1. 记录源路径下的所有文档ID
+        source_doc_ids = self.path_manager.get_physical_document_ids(user_id, source_path)
         
         # 2. 执行文件系统操作
         success = self.path_manager.merge_topic_dirs(user_id, source_path, target_path, overwrite)
         if not success:
             return False
         
-        # 3. 更新所有受影响文档的元数据
+        # 3. 刷新目标路径的索引
+        await self.index_manager.refresh_index(user_id, force=True, specific_path=target_path)
+        
+        # 4. 针对每个之前源路径的文档，更新其元数据
+        for doc_id in source_doc_ids:
+            file_name = self.get_document_file_name(doc_id)
+            
+            # 计算新的路径 - 文档可能在源路径的子目录中
+            old_doc_path = await self.index_manager.get_document_path(user_id, doc_id)
+            if old_doc_path and old_doc_path.startswith(source_path):
+                if old_doc_path == source_path:
+                    new_doc_path = target_path
+                else:
+                    sub_path = old_doc_path[len(source_path)+1:]  # +1 for slash
+                    new_doc_path = f"{target_path}/{sub_path}"
+                
+                # 在目标位置查找文件
+                file_path = self.get_topic_path(user_id, new_doc_path) / file_name
+                
+                if file_path.exists():
+                    try:
+                        # 直接读取文件更新元数据
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            post = frontmatter.load(f)
+                        
+                        # 更新元数据
+                        metadata = dict(post.metadata)
+                        metadata["topic_path"] = new_doc_path
+                        metadata["updated_at"] = datetime.now().isoformat()
+                        
+                        # 写回文件
+                        post = frontmatter.Post(post.content, **metadata)
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write(frontmatter.dumps(post))
+                        
+                        # 确保索引更新
+                        await self.index_manager.update_document_path(user_id, doc_id, new_doc_path)
+                    except Exception as e:
+                        self.logger.error(f"更新合并文档元数据失败: {doc_id}, 错误: {e}")
+        
+        # 5. 递归处理目标目录下的所有文档和子目录
         await self.verify_and_repair_document_paths(user_id, target_path)
         
-        # 4. 增量更新索引 - 只更新受影响的文档
-        async with self.index_lock:
-            if user_id in self.document_index:
-                for doc_id in affected_docs:
-                    if doc_id in self.document_index[user_id]:
-                        # 更新文档路径
-                        self.document_index[user_id][doc_id]["topic_path"] = target_path
-                        self.document_index[user_id][doc_id]["last_checked"] = datetime.now().timestamp()
+        # 6. 再次刷新索引确保一致性
+        await self.index_manager.refresh_index(user_id, force=True, specific_path=target_path)
         
         return True
 
@@ -731,7 +742,13 @@ class MarkdownManager:
                 if metadata.get("topic_path") != topic_path:
                     self.logger.info(f"修复文档路径: {doc_id} 从 {metadata.get('topic_path')} 到 {topic_path}")
                     metadata["topic_path"] = topic_path
-                    await self.update_document(user_id, doc_id, content=None, metadata=metadata)
+                    
+                    # 确保元数据更新成功保存到文件
+                    success = await self.update_document(user_id, doc_id, content=None, metadata=metadata)
+                    
+                    # 确保缓存索引也立即更新
+                    if success:
+                        await self.index_manager.update_document_path(user_id, doc_id, topic_path)
         
         # 递归处理子主题
         topic_structure = self.path_manager.get_topic_structure(user_id, topic_path)
