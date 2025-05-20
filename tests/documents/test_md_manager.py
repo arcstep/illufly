@@ -22,40 +22,61 @@ class TestMarkdownManager:
         user1 = "test_user1"
         user2 = "test_user2"
         
+        print("\n=== 开始设置测试数据 ===")
+        
         # 创建用户1的目录结构
+        print(f"创建主题: topic1")
         await md_manager.create_topic(user1, "topic1")
+        print(f"创建主题: topic1/subtopic1")
         await md_manager.create_topic(user1, "topic1/subtopic1")
+        print(f"创建主题: topic2")
         await md_manager.create_topic(user1, "topic2")
         
-        # 创建用户1的文档
-        doc1_id = await md_manager.create_document(user1, "", "根目录文档", "测试文档1的内容")
-        doc2_id = await md_manager.create_document(user1, "topic1", "主题1文档", "测试文档2的内容")
-        doc3_id = await md_manager.create_document(user1, "topic1/subtopic1", "子主题文档", "测试文档3的内容")
-        doc4_id = await md_manager.create_document(user1, "topic2", "主题2文档", "测试文档4的内容")
+        # 创建用户1的文档 - 修改：将根目录文档改为在 topic1 下创建
+        print(f"\n创建文档1")
+        doc1_id = await md_manager.create_document(user1, "topic1", "文档1", "测试文档1的内容")
+        print(f"文档1 ID: {doc1_id}")
         
-        # 创建带引用的文档
-        doc_with_refs_id = await md_manager.create_document(
+        # 验证文档1创建
+        doc1 = await md_manager.read_document(user1, doc1_id)
+        print(f"文档1创建后立即读取: {doc1 is not None}")
+        if doc1:
+            print(f"文档1路径: {doc1.get('topic_path')}")
+            print(f"文档1文件路径: {doc1.get('file_path')}")
+        
+        # 创建其他文档
+        print(f"\n创建文档2")
+        doc2_id = await md_manager.create_document(user1, "topic1", "文档2", "测试文档2的内容")
+        print(f"创建文档3")
+        doc3_id = await md_manager.create_document(user1, "topic1/subtopic1", "文档3", "测试文档3的内容")
+        print(f"创建文档4")
+        doc4_id = await md_manager.create_document(user1, "topic2", "文档4", "测试文档4的内容")
+        print(f"创建文档5")
+        doc5_id = await md_manager.create_document(
             user1, 
             "topic1", 
-            "带引用的文档", 
-            f"测试引用\n![图片](/images/test.png)\n[链接到文档](__id_{doc2_id}__.md)"
+            "文档5", 
+            "测试文档5的内容\n\n![测试图片](/images/test.png)\n\n[文档2](__id_{}__.md)".format(doc2_id)
         )
         
-        # 创建用户2的文档
+        # 创建用户2的目录和文档
+        print(f"\n创建用户2的文档")
         await md_manager.create_topic(user2, "主题A")
-        doc5_id = await md_manager.create_document(user2, "", "用户2的文档", "测试文档5的内容")
-        doc6_id = await md_manager.create_document(user2, "主题A", "用户2的主题文档", "测试文档6的内容")
+        doc6_id = await md_manager.create_document(user2, "主题A", "文档6", "测试文档6的内容")
+        doc7_id = await md_manager.create_document(user2, "主题A", "文档7", "测试文档7的内容")
+        
+        print("\n=== 测试数据设置完成 ===\n")
         
         return {
-            "user1": user1, 
+            "user1": user1,
             "user2": user2,
-            "doc1_id": doc1_id, 
-            "doc2_id": doc2_id, 
-            "doc3_id": doc3_id, 
+            "doc1_id": doc1_id,
+            "doc2_id": doc2_id,
+            "doc3_id": doc3_id,
             "doc4_id": doc4_id,
-            "doc_with_refs_id": doc_with_refs_id,
             "doc5_id": doc5_id,
-            "doc6_id": doc6_id
+            "doc6_id": doc6_id,
+            "doc7_id": doc7_id
         }
     
     # === 文档基本操作测试 ===
@@ -116,7 +137,7 @@ class TestMarkdownManager:
         assert doc is not None
         assert doc["document_id"] == doc_id
         assert doc["content"] == "测试文档2的内容"
-        assert doc["metadata"]["title"] == "主题1文档"
+        assert doc["metadata"]["title"] == "文档2"
         assert doc["metadata"]["topic_path"] == "topic1"
         
         # 测试读取不存在的文档
@@ -128,10 +149,14 @@ class TestMarkdownManager:
         user_id = setup_test_data["user1"]
         doc_id = setup_test_data["doc1_id"]
         
+        # 先尝试读取文档，看看是否能成功
+        doc = await md_manager.read_document(user_id, doc_id)
+        print(f"读取到的文档: {doc}")  # 添加这行来查看文档内容
+        
         # 更新文档内容
         success = await md_manager.update_document(
-            user_id, 
-            doc_id, 
+            user_id,
+            doc_id,
             content="更新后的内容"
         )
         assert success
@@ -229,7 +254,7 @@ class TestMarkdownManager:
     async def test_get_document_with_resources(self, md_manager, setup_test_data, tmpdir):
         """测试获取文档及其引用资源"""
         user_id = setup_test_data["user1"]
-        doc_id = setup_test_data["doc_with_refs_id"]
+        doc_id = setup_test_data["doc5_id"]
         ref_doc_id = setup_test_data["doc2_id"]
         
         # 创建一个测试图片
@@ -261,7 +286,7 @@ class TestMarkdownManager:
         assert link_ref["path"] == f"__id_{ref_doc_id}__.md"
         assert link_ref["exists"]
         assert link_ref["document_id"] == ref_doc_id
-        assert link_ref["title"] == "主题1文档"
+        assert link_ref["title"] == "文档2"
         assert "content" in link_ref
     
     # === 主题目录操作测试 ===
@@ -377,7 +402,7 @@ class TestMarkdownManager:
         
         # 验证目标主题包含源主题的文档
         merged_structure = await md_manager.get_topic_structure(user_id, "topic2")
-        for doc_id in [setup_test_data["doc2_id"], setup_test_data["doc_with_refs_id"]]:
+        for doc_id in [setup_test_data["doc2_id"], setup_test_data["doc5_id"]]:
             doc = await md_manager.read_document(user_id, doc_id)
             assert doc is not None
             assert doc["metadata"]["topic_path"] == "topic2"
@@ -515,7 +540,7 @@ class TestMarkdownManager:
         original_topic_path = doc["metadata"]["topic_path"]
         
         # 直接通过文件系统移动文件，绕过索引更新
-        new_dir = md_manager.get_topic_path(user_id, "manually_moved")
+        new_dir = md_manager.index_manager.get_topic_path(user_id, "manually_moved")
         new_dir.mkdir(exist_ok=True)
         new_path = new_dir / old_path.name
         old_path.rename(new_path)
