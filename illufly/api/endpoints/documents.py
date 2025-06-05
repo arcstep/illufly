@@ -35,6 +35,12 @@ class BookmarkUrlRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[List[str]] = None
+    auto_process: Optional[bool] = False
+
+# 文档处理请求模型
+class ProcessDocumentRequest(BaseModel):
+    """文档处理请求"""
+    document_id: str
 
 # 文档状态查询请求模型
 class DocumentStatusRequest(BaseModel):
@@ -68,7 +74,7 @@ def create_documents_endpoints(
     DOCUMENT_FIELDS = [
         "document_id", "original_name", "size", "type", "extension", 
         "created_at", "updated_at", "status", "title", "description", "tags", 
-        "source_type", "source_url", "chunks_count", "state", "sub_state"
+        "source_type", "source_url", "chunks_count", "processed"
     ]
     
     def format_document_info(doc_info, prefix, include_details=False):
@@ -76,23 +82,9 @@ def create_documents_endpoints(
         # 基础结果
         result = {k: doc_info.get(k) for k in DOCUMENT_FIELDS if k in doc_info}
         
-        # 状态字段保持原样，不做额外处理
-        current_state = doc_info.get("state", "init")
-        sub_state = doc_info.get("sub_state", "none")
-        
-        # 下载URL - 仅本地文件可下载
-        if doc_info.get("source_type") == "local":
-            result["download_url"] = f"{prefix}/documents/{doc_info['document_id']}/download"
-        else:
-            result["download_url"] = None
-        
-        # 移除冗余字段，只保留必要的兼容性字段
-        result["is_processing"] = sub_state == "processing"
-        
         # 包含详细信息
         if include_details:
-            result["resources"] = doc_info.get("resources", {})
-            result["state_history"] = doc_info.get("state_history", [])
+            result["metadata"] = doc_info.get("metadata", {})
         
         return result
     
@@ -103,7 +95,8 @@ def create_documents_endpoints(
     ):
         """获取用户所有文档"""
         user_id = token_claims["user_id"]
-        documents = await document_service.list_documents(user_id)
+        topic_path = request.query_params.get("topic_path")
+        documents = await document_service.list_documents(user_id, topic_path)
         return [format_document_info(doc, prefix) for doc in documents]
     
     @handle_errors()
@@ -147,7 +140,7 @@ def create_documents_endpoints(
                 detail=result.error_message or "文档不存在或无法更新"
             )
         
-        return result.data
+        return format_document_info(result.data, prefix, include_details=True)
     
     @handle_errors()
     async def delete_document(
@@ -158,48 +151,8 @@ def create_documents_endpoints(
         user_id = token_claims["user_id"]
         result = await document_service.delete_document(user_id, document_id)
         if not result.success:
-            raise HTTPException(status_code=404, detail="文档不存在或无法删除")
+            raise HTTPException(status_code=404, detail=result.error_message)
         return {"success": True, "message": "文档已删除"}
-    
-    @handle_errors()
-    async def download_document(
-        document_id: str,
-        token_claims: Dict[str, Any] = Depends(require_user)
-    ):
-        """下载原始文档"""
-        user_id = token_claims["user_id"]
-        try:
-            doc_info = await document_service.get_document(user_id, document_id)
-            if not doc_info:
-                raise HTTPException(status_code=404, detail="文档不存在")
-            
-            # 判断文档类型
-            if doc_info.get("source_type") == "remote":
-                # 远程文档无法下载
-                source_url = doc_info.get("source_url")
-                if not source_url:
-                    raise HTTPException(status_code=404, detail="远程文档没有可用的源URL")
-                return {
-                    "success": False,
-                    "message": "这是一个远程资源，请直接使用原始链接下载",
-                    "source_url": source_url
-                }
-            
-            # 本地文档
-            file_path = document_service.processor.get_raw_path(user_id, document_id)
-            if not file_path.exists():
-                raise HTTPException(status_code=404, detail="原始文档不存在")
-            
-            # 获取MIME类型
-            mimetype, _ = mimetypes.guess_type(doc_info["original_name"])
-            return FileResponse(
-                path=file_path,
-                filename=doc_info["original_name"],
-                media_type=mimetype or "application/octet-stream"
-            )
-        except Exception as e:
-            logger.error(f"下载文档失败: {str(e)}")
-            raise HTTPException(status_code=500, detail="下载文档失败")
     
     @handle_errors()
     async def get_storage_status(
@@ -229,7 +182,9 @@ def create_documents_endpoints(
         title: Optional[str] = Form(None),
         description: Optional[str] = Form(None),
         tags: Optional[str] = Form(None),
-        metadata: Optional[str] = Form(None),  # 新增: 接收自定义元数据的JSON字符串
+        topic_path: Optional[str] = Form(None),
+        auto_process: Optional[bool] = Form(False),
+        metadata: Optional[str] = Form(None),
         token_claims: Dict[str, Any] = Depends(require_user)
     ):
         """上传文档"""
@@ -237,14 +192,6 @@ def create_documents_endpoints(
         logger.info(f"上传文档请求: 用户ID={user_id}, 文件名={file.filename}")
         
         try:
-            # 文件类型检查 - 从processor获取允许的扩展名
-            allowed_extensions = document_service.processor.allowed_extensions
-            file_ext = os.path.splitext(file.filename)[1].lower()
-            
-            if file_ext not in allowed_extensions:
-                supported_ext = ', '.join(allowed_extensions)
-                raise ValueError(f"不支持的文件类型: {file_ext}。支持的类型: {supported_ext}")
-            
             # 准备元数据
             meta_dict = {}
             if title:
@@ -266,22 +213,19 @@ def create_documents_endpoints(
                 except json.JSONDecodeError:
                     logger.warning(f"解析自定义元数据失败: {metadata}")
             
-            result = await document_service.upload_document(user_id, file, metadata=meta_dict)
+            # 调用服务上传文档
+            result = await document_service.upload_document(
+                user_id=user_id, 
+                file=file, 
+                topic_path=topic_path,
+                metadata=meta_dict,
+                auto_process=auto_process
+            )
+            
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error_message)
             
-            doc_info = result.data
-            return {
-                "success": True,
-                "document_id": doc_info["document_id"],
-                "original_name": doc_info["original_name"],
-                "size": doc_info["size"],
-                "type": doc_info["type"],
-                "extension": doc_info.get("extension", ""),
-                "created_at": doc_info["created_at"],
-                "status": "active",
-                "download_url": f"{prefix}/documents/{doc_info['document_id']}/download",
-            }
+            return format_document_info(result.data, prefix)
         except ValueError as e:
             logger.error(f"文档上传失败: {str(e)}")
             raise HTTPException(status_code=400, detail=str(e))
@@ -308,202 +252,64 @@ def create_documents_endpoints(
             if bookmark.tags:
                 metadata["tags"] = bookmark.tags
             
+            # 调用服务创建书签
             result = await document_service.create_bookmark(
                 user_id=user_id,
                 url=str(bookmark.url),
                 filename=bookmark.filename or "remote_document.html",
-                metadata=metadata
+                metadata=metadata,
+                auto_process=bookmark.auto_process
             )
             
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error_message)
             
-            doc_info = result.data
-            return {
-                "success": True,
-                "document_id": doc_info["document_id"],
-                "original_name": doc_info["original_name"],
-                "type": doc_info["type"],
-                "extension": doc_info.get("extension", ""),
-                "created_at": doc_info["created_at"],
-                "status": "active",
-                "source_type": "remote",
-                "source_url": str(bookmark.url)
-            }
+            return format_document_info(result.data, prefix)
         except Exception as e:
             logger.error(f"收藏远程文档失败: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
     
     @handle_errors()
-    async def convert_to_markdown(
+    async def process_document(
         document_id: str,
         token_claims: Dict[str, Any] = Depends(require_user)
     ):
-        """将文档转换为Markdown格式"""
+        """一体化处理文档(转换、切片、嵌入)"""
         user_id = token_claims["user_id"]
-        logger.info(f"文档转换为Markdown请求: 用户ID={user_id}, 文档ID={document_id}")
+        logger.info(f"文档处理请求: 用户ID={user_id}, 文档ID={document_id}")
         
         try:
+            # 检查文档是否存在
             doc_info = await document_service.get_document(user_id, document_id)
             if not doc_info:
                 raise HTTPException(status_code=404, detail="文档不存在")
             
-            # 检查是否在处理中
-            current_state = doc_info.get("state")
-            sub_state = doc_info.get("sub_state")
-            if sub_state == "processing":
+            # 如果已处理，直接返回
+            if doc_info.get("processed", False):
                 return {
-                    "success": False,
+                    "success": True,
                     "document_id": document_id,
-                    "message": f"文档处理已在进行中: {current_state}",
-                    "current_state": current_state
+                    "message": "文档已处理，无需重复处理",
+                    "already_processed": True
                 }
             
-            result = await document_service.convert_to_markdown(user_id, document_id)
+            # 调用服务处理文档
+            result = await document_service.process_document(user_id, document_id)
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error_message)
             
-            return {
-                "success": True,
-                "document_id": document_id,
-                "message": "文档转换已启动",
-                "current_state": result.data.get("state", "markdowned"),
-                "is_processing": result.data.get("sub_state") == "processing"
-            }
-        except Exception as e:
-            logger.error(f"文档转换失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @handle_errors()
-    async def get_document_markdown(
-        document_id: str,
-        token_claims: Dict[str, Any] = Depends(require_user)
-    ):
-        """获取文档的Markdown内容"""
-        user_id = token_claims["user_id"]
-        logger.info(f"获取Markdown内容请求: 用户ID={user_id}, 文档ID={document_id}")
-        
-        try:
-            result = await document_service.get_markdown(user_id, document_id)
-            if not result.success:
-                raise HTTPException(status_code=404, detail=result.error_message)
+            # 处理成功后获取最新的文档信息
+            updated_doc = await document_service.get_document(user_id, document_id)
             
             return {
                 "success": True,
                 "document_id": document_id,
-                "content": result.data.get("content"),
-                "length": len(result.data.get("content", ""))
+                "message": "文档处理完成",
+                "already_processed": result.data.get("already_processed", False),
+                "document": format_document_info(updated_doc, prefix) if updated_doc else None
             }
         except Exception as e:
-            logger.error(f"获取Markdown内容失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @handle_errors()
-    async def chunk_document(
-        document_id: str,
-        token_claims: Dict[str, Any] = Depends(require_user)
-    ):
-        """将文档切片处理"""
-        user_id = token_claims["user_id"]
-        logger.info(f"文档切片请求: 用户ID={user_id}, 文档ID={document_id}")
-        
-        try:
-            doc_info = await document_service.get_document(user_id, document_id)
-            if not doc_info:
-                raise HTTPException(status_code=404, detail="文档不存在")
-            
-            # 检查文档是否处于可切片状态
-            if doc_info.get("sub_state") == "processing":
-                raise HTTPException(status_code=400, detail=f"文档处理进行中: {doc_info['state']}")
-            elif doc_info['state'] in ["init", "uploaded", "bookmarked"]:
-                raise HTTPException(status_code=400, detail="文档必须先转换为Markdown才能进行切片")
-            elif doc_info['state'] in ["chunked", "embedded"]:
-                # 已经完成切片或更高阶段
-                return {
-                    "success": True,
-                    "document_id": document_id,
-                    "message": "文档已完成切片",
-                    "current_state": doc_info['state'],
-                    "chunks_count": doc_info.get("chunks_count", 0)
-                }
-            
-            result = await document_service.chunk_document(user_id, document_id)
-            
-            return {
-                "success": True,
-                "document_id": document_id,
-                "message": "文档切片处理完成",
-                "current_state": result.data.get("state", "chunked"),
-                "chunks_count": result.data.get("chunks_count", 0)
-            }
-        except Exception as e:
-            logger.error(f"文档切片失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @handle_errors()
-    async def get_document_chunks(
-        document_id: str,
-        token_claims: Dict[str, Any] = Depends(require_user)
-    ):
-        """获取文档的所有切片"""
-        user_id = token_claims["user_id"]
-        logger.info(f"获取文档切片请求: 用户ID={user_id}, 文档ID={document_id}")
-        
-        try:
-            result = await document_service.get_chunks(user_id, document_id)
-            if not result.success:
-                raise HTTPException(status_code=404, detail=result.error_message)
-            
-            chunks = result.data.get("chunks", [])
-            return {
-                "success": True,
-                "chunks_count": len(chunks),
-                "chunks": chunks
-            }
-        except Exception as e:
-            logger.error(f"获取文档切片失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @handle_errors()
-    async def index_document(
-        document_id: str,
-        token_claims: Dict[str, Any] = Depends(require_user)
-    ):
-        """将文档添加到向量索引"""
-        user_id = token_claims["user_id"]
-        logger.info(f"文档索引请求: 用户ID={user_id}, 文档ID={document_id}")
-        
-        try:
-            doc_info = await document_service.get_document(user_id, document_id)
-            if not doc_info:
-                raise HTTPException(status_code=404, detail="文档不存在")
-            
-            # 检查文档是否处于可索引状态
-            if doc_info.get("sub_state") == "processing":
-                raise HTTPException(status_code=400, detail=f"文档处理进行中: {doc_info['state']}")
-            elif doc_info['state'] in ["init", "uploaded", "bookmarked", "markdowned"]:
-                raise HTTPException(status_code=400, detail="文档必须先完成切片才能创建索引")
-            elif doc_info['state'] == "embedded":
-                # 已经完成嵌入
-                return {
-                    "success": True,
-                    "document_id": document_id,
-                    "message": "文档已完成索引",
-                    "current_state": doc_info['state'],
-                    "indexed_chunks": doc_info.get("vectors_count", 0)
-                }
-            
-            result = await document_service.generate_embeddings(user_id, document_id)
-            
-            return {
-                "success": True,
-                "document_id": document_id,
-                "message": "文档索引创建完成",
-                "current_state": result.data.get("state", "embedded"),
-                "indexed_chunks": result.data.get("vectors_count", 0)
-            }
-        except Exception as e:
-            logger.error(f"创建文档索引失败: {str(e)}")
+            logger.error(f"处理文档失败: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
     
     @handle_errors()
@@ -511,7 +317,6 @@ def create_documents_endpoints(
         query: str,
         document_id: Optional[str] = None,
         limit: Optional[int] = 10,
-        filter_metadata: Optional[str] = None,  # 新增: 接收元数据过滤条件
         token_claims: Dict[str, Any] = Depends(require_user)
     ):
         """搜索文档内容"""
@@ -519,32 +324,11 @@ def create_documents_endpoints(
         logger.info(f"文档搜索请求: 用户ID={user_id}, 查询={query}, 文档ID={document_id}")
         
         try:
-            # 解析元数据过滤条件
-            filter_condition = None
-            if filter_metadata:
-                try:
-                    filter_dict = json.loads(filter_metadata)
-                    conditions = []
-                    for key, value in filter_dict.items():
-                        if isinstance(value, str):
-                            conditions.append(f"{key} = '{value}'")
-                        elif isinstance(value, (int, float)):
-                            conditions.append(f"{key} = {value}")
-                        elif isinstance(value, list):
-                            values = "', '".join([str(v) for v in value])
-                            conditions.append(f"{key} IN ('{values}')")
-                    
-                    if conditions:
-                        filter_condition = " AND ".join(conditions)
-                except json.JSONDecodeError:
-                    logger.warning(f"解析元数据过滤条件失败: {filter_metadata}")
-                
             result = await document_service.search_chunks(
                 user_id=user_id,
                 query=query,
                 document_id=document_id,
-                limit=limit,
-                filter=filter_condition
+                limit=limit
             )
             
             if not result.success:
@@ -581,17 +365,12 @@ def create_documents_endpoints(
                     }
                     continue
                 
-                current_state = doc_meta.get("state", "init")
-                sub_state = doc_meta.get("sub_state", "none")
-                
                 results[document_id] = {
                     "found": True,
                     "document_id": document_id,
                     "title": doc_meta.get("title", ""),
                     "original_name": doc_meta.get("original_name", ""),
-                    "process_state": current_state,
-                    "sub_state": sub_state,
-                    "is_processing": sub_state == "processing"
+                    "processed": doc_meta.get("processed", False)
                 }
             except Exception as e:
                 logger.error(f"获取文档状态失败: {document_id}, 错误: {e}")
@@ -628,7 +407,8 @@ def create_documents_endpoints(
             "success": True,
             "document_id": document_id,
             "target_topic": target_topic or "根目录",
-            "message": "文档已移动到新位置"
+            "message": "文档已移动到新位置",
+            "document": format_document_info(result.data, prefix)
         }
     
     @handle_errors()
@@ -649,23 +429,62 @@ def create_documents_endpoints(
             "total": result.data.get("total", 0)
         }
     
+    @handle_errors()
+    async def list_processed_documents(
+        token_claims: Dict[str, Any] = Depends(require_user),
+        processed: bool = True
+    ):
+        """列出已处理或未处理的文档"""
+        user_id = token_claims["user_id"]
+        documents = await document_service.list_processed_documents(user_id, processed)
+        return [format_document_info(doc, prefix) for doc in documents]
+    
+    @handle_errors()
+    async def get_document_markdown(
+        document_id: str,
+        token_claims: Dict[str, Any] = Depends(require_user)
+    ):
+        """获取文档的Markdown内容"""
+        user_id = token_claims["user_id"]
+        logger.info(f"获取Markdown内容请求: 用户ID={user_id}, 文档ID={document_id}")
+        
+        try:
+            # 检查文档是否存在
+            doc_info = await document_service.get_document(user_id, document_id)
+            if not doc_info:
+                raise HTTPException(status_code=404, detail="文档不存在")
+            
+            # 检查文档是否已处理
+            if not doc_info.get("processed", False):
+                raise HTTPException(status_code=400, detail="文档尚未处理完成，无法获取内容")
+            
+            # 使用processor的get_markdown方法获取内容
+            markdown_result = await document_service.processor.get_markdown(user_id, document_id)
+            
+            return {
+                "success": True,
+                "document_id": document_id,
+                "content": markdown_result.get("content", ""),
+                "length": len(markdown_result.get("content", ""))
+            }
+        except Exception as e:
+            logger.error(f"获取Markdown内容失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
     # 返回路由列表，格式为(HTTP方法, 路径, 处理函数)
     return [
         (HttpMethod.GET,  f"{prefix}/documents", list_documents),
         (HttpMethod.GET,  f"{prefix}/documents/{{document_id}}", get_document_info),
-        (HttpMethod.PUT, f"{prefix}/documents/{{document_id}}", update_document_metadata),
+        (HttpMethod.PUT,  f"{prefix}/documents/{{document_id}}", update_document_metadata),
         (HttpMethod.DELETE, f"{prefix}/documents/{{document_id}}", delete_document),
         (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/move", move_document_to_topic),
-        (HttpMethod.GET,  f"{prefix}/documents/{{document_id}}/download", download_document),
         (HttpMethod.GET,  f"{prefix}/documents/storage/status", get_storage_status),
         (HttpMethod.POST, f"{prefix}/documents/upload", upload_document),
         (HttpMethod.POST, f"{prefix}/documents/bookmark", bookmark_remote_document),
-        (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/convert", convert_to_markdown),
+        (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/process", process_document),
         (HttpMethod.GET,  f"{prefix}/documents/{{document_id}}/markdown", get_document_markdown),
-        (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/chunks", chunk_document),
-        (HttpMethod.GET,  f"{prefix}/documents/{{document_id}}/chunks", get_document_chunks),
-        (HttpMethod.POST, f"{prefix}/documents/{{document_id}}/index", index_document),
         (HttpMethod.POST, f"{prefix}/documents/chunks/search", search_documents),
         (HttpMethod.POST, f"{prefix}/documents/status", get_documents_status),
         (HttpMethod.GET,  f"{prefix}/documents/collections", list_user_collections),
+        (HttpMethod.GET,  f"{prefix}/documents/processed", list_processed_documents),
     ]

@@ -123,4 +123,4 @@ def create_memory_endpoints(
         (HttpMethod.PUT, f"{prefix}/memory/{{memory_id}}", update_memory),
         (HttpMethod.DELETE, f"{prefix}/memory/{{memory_id}}", delete_memory),
         (HttpMethod.POST, f"{prefix}/memory/search", search_memory),
-    ] 
+    ]

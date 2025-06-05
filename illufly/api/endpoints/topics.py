@@ -8,7 +8,7 @@ from soulseal import TokenSDK
 from ..schemas import Result, HttpMethod
 from ..http import handle_errors
 from ...documents.service import DocumentService
-from ...documents.topic import TopicManager
+from ...documents.path_manager import PathManager
 
 # 主题请求模型
 class CreateTopicRequest(BaseModel):
@@ -66,7 +66,7 @@ def create_topics_endpoints(
     require_user = token_sdk.get_auth_dependency(logger=logger)
     
     # 获取主题管理器
-    topic_manager = TopicManager(
+    topic_manager = PathManager(
         base_dir=document_service.base_dir / "docs",
         meta_manager=document_service.meta_manager  # 传入元数据管理器
     )
